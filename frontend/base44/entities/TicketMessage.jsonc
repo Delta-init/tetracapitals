@@ -1,0 +1,49 @@
+{
+  "name": "TicketMessage",
+  "type": "object",
+  "properties": {
+    "ticket_id": {
+      "type": "string",
+      "description": "References the Ticket this message belongs to"
+    },
+    "sender_id": {
+      "type": "string",
+      "description": "User ID of the sender"
+    },
+    "sender_name": {
+      "type": "string",
+      "description": "Display name of the sender"
+    },
+    "sender_role": {
+      "type": "string",
+      "description": "app_role of the sender"
+    },
+    "message": {
+      "type": "string",
+      "description": "The actual message content"
+    },
+    "message_type": {
+      "type": "string",
+      "enum": [
+        "user_message",
+        "system_message",
+        "auto_close_warning",
+        "auto_closed"
+      ],
+      "default": "user_message",
+      "description": "Type of message"
+    },
+    "attachment_url": {
+      "type": "string",
+      "description": "Optional image attachment URL for this message"
+    }
+  },
+  "required": [
+    "ticket_id",
+    "sender_id",
+    "sender_name",
+    "sender_role",
+    "message",
+    "message_type"
+  ]
+}

@@ -1,0 +1,136 @@
+{
+  "name": "FundingTransaction",
+  "type": "object",
+  "properties": {
+    "type": {
+      "type": "string",
+      "enum": [
+        "DEPOSIT",
+        "WITHDRAWAL"
+      ],
+      "description": "Transaction type"
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "PENDING",
+        "APPROVED",
+        "REJECTED"
+      ],
+      "default": "PENDING",
+      "description": "Transaction status"
+    },
+    "student_id": {
+      "type": "string",
+      "description": "Related Student ID"
+    },
+    "student_name": {
+      "type": "string",
+      "description": "Student full name"
+    },
+    "student_code": {
+      "type": "string",
+      "description": "Student code"
+    },
+    "primary_mentor_id": {
+      "type": "string",
+      "description": "Primary mentor (Junior Mentor) ID"
+    },
+    "primary_mentor_name": {
+      "type": "string",
+      "description": "Primary mentor name"
+    },
+    "senior_mentor_id": {
+      "type": "string",
+      "description": "Senior mentor ID"
+    },
+    "senior_mentor_name": {
+      "type": "string",
+      "description": "Senior mentor name"
+    },
+    "initiating_mentor_id": {
+      "type": "string",
+      "description": "The mentor who raised this specific transaction \u2014 determines commission attribution (important for co-managed clients)"
+    },
+    "initiating_mentor_name": {
+      "type": "string",
+      "description": "Name of the mentor who raised this transaction"
+    },
+    "upline_commission_percentage": {
+      "type": "number",
+      "description": "Senior mentor's upline commission percentage at time of transaction"
+    },
+    "mt5_account_id": {
+      "type": "string",
+      "description": "Related MT5Account ID"
+    },
+    "mt5_login": {
+      "type": "string",
+      "description": "MT5 login ID"
+    },
+    "amount_usd": {
+      "type": "number",
+      "description": "Amount in USD"
+    },
+    "payment_method": {
+      "type": "string",
+      "description": "Payment method used"
+    },
+    "screenshot_url": {
+      "type": "string",
+      "description": "Screenshot proof URL"
+    },
+    "user_id": {
+      "type": "string",
+      "description": "CRM user ID"
+    },
+    "transaction_id": {
+      "type": "string",
+      "description": "CRM/PSP transaction ID"
+    },
+    "requested_by_id": {
+      "type": "string",
+      "description": "User ID who created the request"
+    },
+    "requested_by_name": {
+      "type": "string",
+      "description": "Name of user who created the request"
+    },
+    "requested_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "Request creation timestamp"
+    },
+    "approved_by_id": {
+      "type": "string",
+      "description": "User ID who approved/rejected"
+    },
+    "approved_by_name": {
+      "type": "string",
+      "description": "Name of user who approved/rejected"
+    },
+    "approved_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "Approval/rejection timestamp"
+    },
+    "rejection_reason": {
+      "type": "string",
+      "description": "Reason for rejection (when status is REJECTED)"
+    },
+    "notes": {
+      "type": "string",
+      "description": "Additional notes"
+    }
+  },
+  "required": [
+    "type",
+    "status",
+    "student_id",
+    "student_name",
+    "primary_mentor_id",
+    "amount_usd",
+    "payment_method",
+    "requested_by_id"
+  ]
+}

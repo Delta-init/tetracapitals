@@ -1,0 +1,24 @@
+{
+  "name": "student-tracker-backend",
+  "version": "1.0.0",
+  "type": "module",
+  "description": "Bun + TypeScript + MongoDB backend for the Student Tracker CRM",
+  "scripts": {
+    "dev": "bun run --watch src/index.ts",
+    "start": "bun run src/index.ts",
+    "seed": "bun run src/scripts/seed.ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "bcryptjs": "^2.4.3",
+    "jose": "^5.9.6",
+    "mongodb": "^6.10.0",
+    "zod": "^3.23.8"
+  },
+  "devDependencies": {
+    "@types/bcryptjs": "^2.4.6",
+    "@types/bun": "^1.1.13",
+    "mongodb-memory-server": "^11.1.0",
+    "typescript": "^5.6.0"
+  }
+}

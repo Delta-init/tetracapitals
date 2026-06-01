@@ -1,0 +1,200 @@
+{
+  "name": "CommissionLedger",
+  "type": "object",
+  "properties": {
+    "mentor_id": {
+      "type": "string",
+      "description": "Mentor user ID"
+    },
+    "mentor_name": {
+      "type": "string",
+      "description": "Mentor full name"
+    },
+    "quarter": {
+      "type": "string",
+      "description": "Quarter label (e.g., 2025-Q1)"
+    },
+    "year": {
+      "type": "number",
+      "description": "Year for filtering"
+    },
+    "quarter_number": {
+      "type": "number",
+      "enum": [
+        1,
+        2,
+        3,
+        4
+      ],
+      "description": "Quarter number"
+    },
+    "start_date": {
+      "type": "string",
+      "format": "date",
+      "description": "Quarter start date"
+    },
+    "end_date": {
+      "type": "string",
+      "format": "date",
+      "description": "Quarter end date"
+    },
+    "net_deposit_usd": {
+      "type": "number",
+      "default": 0,
+      "description": "Total net deposit for quarter"
+    },
+    "commission_rate": {
+      "type": "number",
+      "default": 4,
+      "description": "Commission rate % used for this ledger"
+    },
+    "gross_commission_usd": {
+      "type": "number",
+      "default": 0,
+      "description": "Raw gross commission before manual adjustments"
+    },
+    "manual_adjustment_usd": {
+      "type": "number",
+      "default": 0,
+      "description": "Sum of all manual adjustments for the quarter (positive or negative)"
+    },
+    "adjusted_gross_commission_usd": {
+      "type": "number",
+      "default": 0,
+      "description": "Gross commission after manual adjustments (gross + adjustments)"
+    },
+    "commission_release_usd": {
+      "type": "number",
+      "default": 0,
+      "description": "Commission to be released (75% of adjusted gross)"
+    },
+    "commission_buffer_usd": {
+      "type": "number",
+      "default": 0,
+      "description": "Commission buffer held back (25% of adjusted gross)"
+    },
+    "buffer_carried_in_usd": {
+      "type": "number",
+      "default": 0,
+      "description": "Buffer carried from previous quarter"
+    },
+    "buffer_carried_out_usd": {
+      "type": "number",
+      "default": 0,
+      "description": "Buffer carried to next quarter"
+    },
+    "is_closed": {
+      "type": "boolean",
+      "default": false,
+      "description": "Whether quarter is closed"
+    },
+    "overall_status": {
+      "type": "string",
+      "enum": [
+        "pending_broker_approval",
+        "pending_academic_approval",
+        "pending_finance_approval",
+        "released",
+        "rejected"
+      ],
+      "default": "pending_broker_approval",
+      "description": "Overall approval status"
+    },
+    "broker_admin_approval_status": {
+      "type": "string",
+      "enum": [
+        "pending",
+        "approved",
+        "rejected"
+      ],
+      "default": "pending"
+    },
+    "broker_admin_approved_by_id": {
+      "type": "string"
+    },
+    "broker_admin_approved_by_name": {
+      "type": "string"
+    },
+    "broker_admin_approved_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "broker_admin_rejection_reason": {
+      "type": "string"
+    },
+    "academic_head_approval_status": {
+      "type": "string",
+      "enum": [
+        "pending",
+        "approved",
+        "rejected"
+      ],
+      "default": "pending"
+    },
+    "academic_head_approved_by_id": {
+      "type": "string"
+    },
+    "academic_head_approved_by_name": {
+      "type": "string"
+    },
+    "academic_head_approved_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "academic_head_rejection_reason": {
+      "type": "string"
+    },
+    "finance_admin_approval_status": {
+      "type": "string",
+      "enum": [
+        "pending",
+        "approved",
+        "rejected"
+      ],
+      "default": "pending"
+    },
+    "finance_admin_approved_by_id": {
+      "type": "string"
+    },
+    "finance_admin_approved_by_name": {
+      "type": "string"
+    },
+    "finance_admin_approved_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "finance_admin_rejection_reason": {
+      "type": "string"
+    },
+    "release_date": {
+      "type": "string",
+      "format": "date"
+    },
+    "actual_release_date": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "closed_by_id": {
+      "type": "string"
+    },
+    "closed_by_name": {
+      "type": "string"
+    },
+    "closed_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "notes": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "mentor_id",
+    "mentor_name",
+    "quarter",
+    "year",
+    "quarter_number",
+    "start_date",
+    "end_date"
+  ]
+}

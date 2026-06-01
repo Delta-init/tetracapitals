@@ -1,0 +1,117 @@
+{
+  "name": "Ticket",
+  "type": "object",
+  "properties": {
+    "ticket_number": {
+      "type": "string",
+      "description": "Unique identifier like TKT-00001"
+    },
+    "title": {
+      "type": "string",
+      "description": "Short summary of the issue"
+    },
+    "description": {
+      "type": "string",
+      "description": "Detailed description from the mentor"
+    },
+    "category": {
+      "type": "string",
+      "enum": [
+        "academic",
+        "financial",
+        "technical",
+        "general"
+      ],
+      "description": "Ticket category"
+    },
+    "priority": {
+      "type": "string",
+      "enum": [
+        "low",
+        "medium",
+        "high",
+        "urgent"
+      ],
+      "default": "medium",
+      "description": "Ticket priority"
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "open",
+        "in_progress",
+        "resolved",
+        "closed"
+      ],
+      "default": "open",
+      "description": "Ticket status"
+    },
+    "created_by_id": {
+      "type": "string",
+      "description": "User ID of the mentor who created the ticket"
+    },
+    "created_by_name": {
+      "type": "string",
+      "description": "Display name of the creator"
+    },
+    "assigned_to_role": {
+      "type": "string",
+      "description": "Role this ticket is assigned to: academic_head, finance_admin, broker_admin"
+    },
+    "assigned_to_id": {
+      "type": "string",
+      "description": "Specific user ID if assigned to a specific person"
+    },
+    "assigned_to_name": {
+      "type": "string",
+      "description": "Display name of the assigned person"
+    },
+    "student_id": {
+      "type": "string",
+      "description": "Optional linked student ID"
+    },
+    "student_name": {
+      "type": "string",
+      "description": "Optional linked student name"
+    },
+    "screenshot_url": {
+      "type": "string",
+      "description": "Optional screenshot attachment URL"
+    },
+    "first_response_date": {
+      "type": "string",
+      "format": "date-time",
+      "description": "When the first admin response was sent"
+    },
+    "resolved_date": {
+      "type": "string",
+      "format": "date-time",
+      "description": "When admin clicked Resolved"
+    },
+    "closed_date": {
+      "type": "string",
+      "format": "date-time",
+      "description": "When ticket was actually closed"
+    },
+    "escalated": {
+      "type": "boolean",
+      "default": false,
+      "description": "Whether this ticket was escalated to super admin"
+    },
+    "escalation_sent_date": {
+      "type": "string",
+      "format": "date-time",
+      "description": "When escalation notification was sent"
+    }
+  },
+  "required": [
+    "title",
+    "description",
+    "category",
+    "priority",
+    "status",
+    "created_by_id",
+    "created_by_name",
+    "assigned_to_role"
+  ]
+}

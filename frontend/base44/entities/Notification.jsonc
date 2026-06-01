@@ -1,0 +1,52 @@
+{
+  "name": "Notification",
+  "type": "object",
+  "properties": {
+    "user_id": {
+      "type": "string",
+      "description": "The user this notification is for"
+    },
+    "title": {
+      "type": "string",
+      "description": "Notification title"
+    },
+    "message": {
+      "type": "string",
+      "description": "Notification message body"
+    },
+    "type": {
+      "type": "string",
+      "enum": [
+        "ticket_new",
+        "ticket_escalation",
+        "ticket_auto_closed",
+        "ticket_resolved",
+        "ticket_reply",
+        "ticket_status",
+        "ticket_closed",
+        "general"
+      ],
+      "default": "general",
+      "description": "Notification type"
+    },
+    "read": {
+      "type": "boolean",
+      "default": false,
+      "description": "Whether the notification has been read"
+    },
+    "link": {
+      "type": "string",
+      "description": "Optional link to navigate to"
+    },
+    "reference_id": {
+      "type": "string",
+      "description": "Reference ID (e.g. ticket ID) for deep-linking"
+    }
+  },
+  "required": [
+    "user_id",
+    "title",
+    "message",
+    "type"
+  ]
+}
