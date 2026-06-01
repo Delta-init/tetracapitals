@@ -15,6 +15,7 @@ import { Label } from "@/components/ui/label";
 import ProcessFundingDialog from "../components/funding/ProcessFundingDialog.jsx";
 import AddTransactionDialog from "../components/funding/AddTransactionDialog";
 import BulkImportDialog from "../components/funding/BulkImportDialog";
+import TagChips from "../components/funding/TagChips";
 import { 
   canProcessFundingTransaction,
   canCreateFundingTransaction,
@@ -32,6 +33,7 @@ export default function FundingRequests() {
   const [filterDateTo, setFilterDateTo] = useState('');
   const [filterMentor, setFilterMentor] = useState('all');
   const [filterPaymentMethod, setFilterPaymentMethod] = useState('all');
+  const [filterTag, setFilterTag] = useState('all');
   const [searchTerm, setSearchTerm] = useState('');
   const [showBulkUpdateDialog, setShowBulkUpdateDialog] = useState(false);
   const [bulkUpdatePaymentMethod, setBulkUpdatePaymentMethod] = useState('');
@@ -72,6 +74,12 @@ export default function FundingRequests() {
       return res.data?.users || [];
     },
     enabled: !!currentUser
+  });
+
+  const { data: tagCatalog = [] } = useQuery({
+    queryKey: ['transaction-tags-catalog'],
+    queryFn: () => base44.entities.TransactionTag.list('name'),
+    enabled: !!currentUser,
   });
 
   const updateMutation = useMutation({
@@ -166,6 +174,9 @@ export default function FundingRequests() {
   }
   if (filterPaymentMethod !== 'all') {
     filteredTransactions = filteredTransactions.filter(t => t.payment_method === filterPaymentMethod);
+  }
+  if (filterTag !== 'all') {
+    filteredTransactions = filteredTransactions.filter(t => Array.isArray(t.tags) && t.tags.includes(filterTag));
   }
   if (filterDateFrom) {
     const from = new Date(filterDateFrom);
@@ -421,9 +432,11 @@ export default function FundingRequests() {
     };
 
     const csvContent = [
-      ['Requested Date', 'Type', 'Status', 'Student Name', 'Student Email', 'Student Code', 'Primary Mentor', 'Added By', 'MT5 Login', 'Amount USD', 'Payment Method', 'User ID', 'Transaction ID', 'Approved By', 'Approved Date', 'Notes'].join(','),
+      ['Requested Date', 'Type', 'Status', 'Student Name', 'Student Email', 'Student Code', 'Primary Mentor', 'Added By', 'MT5 Login', 'Amount USD', 'Payment Method', 'Tags', 'User ID', 'Transaction ID', 'Approved By', 'Approved Date', 'Notes'].join(','),
       ...filteredTransactions.map(t => {
         const student = students.find(s => s.id === t.student_id);
+        // Tags are stored as a string array; join with "; " so they fit in one CSV cell.
+        const tagsStr = Array.isArray(t.tags) ? t.tags.join('; ') : '';
         return [
           escapeCSV(t.requested_at ? format(new Date(t.requested_at), 'yyyy-MM-dd HH:mm') : ''),
           escapeCSV(t.type || ''),
@@ -436,6 +449,7 @@ export default function FundingRequests() {
           escapeCSV(t.mt5_login || ''),
           escapeCSV(t.amount_usd?.toFixed(2) || '0.00'),
           escapeCSV(t.payment_method || ''),
+          escapeCSV(tagsStr),
           escapeCSV(t.user_id || ''),
           escapeCSV(t.transaction_id || ''),
           escapeCSV(t.approved_by_name || ''),
@@ -608,6 +622,26 @@ export default function FundingRequests() {
                   </SelectContent>
                 </Select>
               )}
+
+              {/* Tag Filter (admin-managed list from TransactionTag) */}
+              {tagCatalog.length > 0 && (
+                <Select value={filterTag} onValueChange={setFilterTag}>
+                  <SelectTrigger className="w-44">
+                    <SelectValue placeholder="Tag" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All Tags</SelectItem>
+                    {tagCatalog.filter(t => t.active !== false).map((t) => (
+                      <SelectItem key={t.id} value={t.name}>
+                        <span className="inline-flex items-center gap-2">
+                          {t.color && <span className="inline-block w-2.5 h-2.5 rounded-full" style={{ backgroundColor: t.color }} />}
+                          {t.name}
+                        </span>
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              )}
                 </div>
 
                 {/* Search - top right */}
@@ -719,6 +753,7 @@ export default function FundingRequests() {
                     <TableHead className="font-semibold">MT5 Login</TableHead>
                     <TableHead className="font-semibold">Amount</TableHead>
                     <TableHead className="font-semibold">Payment</TableHead>
+                    <TableHead className="font-semibold">Tags</TableHead>
                     <TableHead className="font-semibold">User ID</TableHead>
                     <TableHead className="font-semibold">Txn ID</TableHead>
                     <TableHead className="font-semibold">Approved By</TableHead>
@@ -729,7 +764,7 @@ export default function FundingRequests() {
                 <TableBody>
                   {filteredTransactions.length === 0 ? (
                     <TableRow>
-                      <TableCell colSpan={['super_admin', 'broker_admin'].includes(currentUser.app_role) ? 17 : 16} className="text-center py-8 text-gray-500">
+                      <TableCell colSpan={['super_admin', 'broker_admin'].includes(currentUser.app_role) ? 18 : 17} className="text-center py-8 text-gray-500">
                         No funding requests found
                       </TableCell>
                     </TableRow>
@@ -813,6 +848,11 @@ export default function FundingRequests() {
                           ${transaction.amount_usd?.toFixed(2)}
                         </TableCell>
                         <TableCell className="text-sm">{transaction.payment_method}</TableCell>
+                        <TableCell>
+                          {transaction.tags && transaction.tags.length > 0
+                            ? <TagChips tags={transaction.tags} />
+                            : <span className="text-gray-400">-</span>}
+                        </TableCell>
                         <TableCell className="text-sm">{transaction.user_id || '-'}</TableCell>
                         <TableCell className="text-sm font-mono">
                           {transaction.transaction_id || '-'}

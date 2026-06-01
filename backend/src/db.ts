@@ -8,6 +8,7 @@ export async function connectDb(): Promise<Db> {
   if (dbInstance) return dbInstance;
   client = new MongoClient(config.mongoUri, {
     maxPoolSize: 20,
+    authSource: "admin",
     serverSelectionTimeoutMS: 10_000,
   });
   await client.connect();

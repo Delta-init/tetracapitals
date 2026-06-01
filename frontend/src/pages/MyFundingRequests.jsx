@@ -10,7 +10,8 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Plus, TrendingUp, TrendingDown, DollarSign, Award, Wallet, Eye, Users, Clock, Filter, X } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import FundingRequestForm from "../components/funding/FundingRequestForm";
-import { 
+import TagChips from "../components/funding/TagChips";
+import {
   canCreateFundingTransaction,
   filterFundingTransactionsByRole 
 } from "../components/utils/FundingAccessControl";
@@ -445,6 +446,7 @@ export default function MyFundingRequests() {
                         <TableHead className="font-semibold">Amount</TableHead>
                         {!isAssistance && <TableHead className="font-semibold">Commission</TableHead>}
                         <TableHead className="font-semibold">Payment Method</TableHead>
+                        <TableHead className="font-semibold">Tags</TableHead>
                         <TableHead className="font-semibold">Rejection Reason</TableHead>
                         <TableHead className="font-semibold">Screenshot</TableHead>
                       </TableRow>
@@ -475,7 +477,7 @@ export default function MyFundingRequests() {
                         if (filteredTransactions.length === 0 && filteredReferrals.length === 0 && filteredAdjustments.length === 0) {
                           return (
                             <TableRow>
-                              <TableCell colSpan={10} className="text-center py-8 text-gray-500">
+                              <TableCell colSpan={!isAssistance ? 12 : 11} className="text-center py-8 text-gray-500">
                                 {(dateFrom || dateTo) ? 'No transactions found for selected date range' : 'No funding requests yet'}
                               </TableCell>
                             </TableRow>
@@ -507,6 +509,7 @@ export default function MyFundingRequests() {
                                 {!isAssistance && <TableCell className="text-gray-400">-</TableCell>}
                                 <TableCell className="text-sm">{referral.payment_method || '-'}</TableCell>
                                 <TableCell>-</TableCell>
+                                <TableCell>-</TableCell>
                                 <TableCell>
                                   {referral.screenshot_url ? (
                                     <a href={referral.screenshot_url} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:text-blue-800">
@@ -532,6 +535,7 @@ export default function MyFundingRequests() {
                                   {adj.amount_usd >= 0 ? '+' : ''}${adj.amount_usd.toFixed(2)}
                                 </TableCell>
                                 {!isAssistance && <TableCell>-</TableCell>}
+                                <TableCell>-</TableCell>
                                 <TableCell>-</TableCell>
                                 <TableCell>-</TableCell>
                                 <TableCell>-</TableCell>
@@ -571,6 +575,11 @@ export default function MyFundingRequests() {
                                     </TableCell>
                                   )}
                                   <TableCell className="text-sm">{transaction.payment_method}</TableCell>
+                                  <TableCell>
+                                    {transaction.tags && transaction.tags.length > 0
+                                      ? <TagChips tags={transaction.tags} />
+                                      : <span className="text-gray-400">-</span>}
+                                  </TableCell>
                                   <TableCell className="text-sm">
                                     {transaction.status === 'REJECTED' && transaction.rejection_reason ? (
                                       <span className="text-red-600 font-medium">{transaction.rejection_reason}</span>
