@@ -221,7 +221,7 @@ export async function updateCoMentorContribution(req: Request, _user: AuthUser):
   }
   let netContribution = 0;
   for (const tx of txs) {
-    if (tx.type === "DEPOSIT") netContribution += tx.amount_usd || 0;
+    if (tx.type === "DEPOSIT" || tx.type === "BONUS") netContribution += tx.amount_usd || 0;
     else if (tx.type === "WITHDRAWAL") netContribution -= tx.amount_usd || 0;
   }
   const updated = coMentors.map((cm) =>

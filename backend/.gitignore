@@ -5,3 +5,6 @@ uploads/*
 !uploads/.gitkeep
 *.log
 dist/
+# Persistent embedded MongoDB data (dev-with-mongo.ts) — never commit.
+data/
+

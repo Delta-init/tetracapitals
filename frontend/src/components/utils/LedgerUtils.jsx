@@ -49,12 +49,13 @@ export const calculateQuarterNetDeposit = (mentorId, startDate, endDate, transac
     .filter(mentorFilter)
     .filter(dateFilter);
 
-  // Aggregate per-student, cap at $25k, floor at 0 — same logic as mentor portal
+  // Aggregate per-student, cap at $25k, floor at 0 — same logic as mentor portal.
+  // DEPOSIT and BONUS both contribute positively; WITHDRAWAL contributes negatively.
   const studentNetDeposits = {};
   relevantTransactions.forEach(t => {
     const studentId = t.student_id;
     if (!studentNetDeposits[studentId]) studentNetDeposits[studentId] = 0;
-    if (t.type === 'DEPOSIT') studentNetDeposits[studentId] += (t.amount_usd || 0);
+    if (t.type === 'DEPOSIT' || t.type === 'BONUS') studentNetDeposits[studentId] += (t.amount_usd || 0);
     else if (t.type === 'WITHDRAWAL') studentNetDeposits[studentId] -= (t.amount_usd || 0);
   });
 

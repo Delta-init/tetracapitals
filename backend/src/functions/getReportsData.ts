@@ -52,7 +52,9 @@ export async function getReportsData(req: Request, user: AuthUser): Promise<Resp
         transaction_count: 0,
       };
     }
-    if (tx.type === "DEPOSIT") studentMap[key].total_deposit += tx.amount_usd || 0;
+    // BONUS rolls up into the same "deposit" bucket for the per-student totals
+    // so commissionable net matches what mentors see.
+    if (tx.type === "DEPOSIT" || tx.type === "BONUS") studentMap[key].total_deposit += tx.amount_usd || 0;
     else if (tx.type === "WITHDRAWAL") studentMap[key].total_withdrawal += tx.amount_usd || 0;
     studentMap[key].transaction_count += 1;
   }

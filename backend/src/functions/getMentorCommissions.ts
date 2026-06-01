@@ -81,7 +81,8 @@ export async function getMentorCommissions(req: Request, user: AuthUser): Promis
     for (const tx of mentor.transactions) {
       const sid = tx.student_id;
       if (!studentNetDeposits[sid]) studentNetDeposits[sid] = 0;
-      if (tx.type === "DEPOSIT") {
+      // BONUS counts as a deposit for commission attribution.
+      if (tx.type === "DEPOSIT" || tx.type === "BONUS") {
         studentNetDeposits[sid] += tx.amount_usd || 0;
         totalDeposit += tx.amount_usd || 0;
       } else if (tx.type === "WITHDRAWAL") {

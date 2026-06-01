@@ -25,7 +25,7 @@ export const calculateMentorPoints = (mentorId, transactions, settings) => {
   );
 
   // Calculate net deposit
-  const deposits = mentorTransactions.filter(t => t.type === 'DEPOSIT')
+  const deposits = mentorTransactions.filter(t => t.type === 'DEPOSIT' || t.type === 'BONUS')
     .reduce((sum, t) => sum + (t.amount_usd || 0), 0);
   const withdrawals = mentorTransactions.filter(t => t.type === 'WITHDRAWAL')
     .reduce((sum, t) => sum + (t.amount_usd || 0), 0);
@@ -40,9 +40,9 @@ export const calculateMentorPoints = (mentorId, transactions, settings) => {
     if (!studentDeposits[t.student_id]) {
       studentDeposits[t.student_id] = 0;
     }
-    if (t.type === 'DEPOSIT') {
+    if (t.type === 'DEPOSIT' || t.type === 'BONUS') {
       studentDeposits[t.student_id] += t.amount_usd || 0;
-    } else {
+    } else if (t.type === 'WITHDRAWAL') {
       studentDeposits[t.student_id] -= t.amount_usd || 0;
     }
   });

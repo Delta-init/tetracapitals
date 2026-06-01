@@ -18,7 +18,7 @@ export const getNetDepositForPeriod = (transactions, mentorId, startDate, endDat
   
   // Calculate net deposit
   const totalDeposits = relevantTransactions
-    .filter(t => t.type === 'DEPOSIT')
+    .filter(t => t.type === 'DEPOSIT' || t.type === 'BONUS')
     .reduce((sum, t) => sum + (t.amount_usd || 0), 0);
   
   const totalWithdrawals = relevantTransactions

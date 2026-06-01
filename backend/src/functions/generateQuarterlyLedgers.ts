@@ -62,7 +62,8 @@ export async function generateQuarterlyLedgers(): Promise<Response> {
       return d >= start && d <= end;
     });
 
-    const totalDeposits = relevant.filter((t: any) => t.type === "DEPOSIT").reduce((s: number, t: any) => s + (t.amount_usd || 0), 0);
+    // DEPOSIT and BONUS both feed into the mentor's commissionable net.
+    const totalDeposits = relevant.filter((t: any) => t.type === "DEPOSIT" || t.type === "BONUS").reduce((s: number, t: any) => s + (t.amount_usd || 0), 0);
     const totalWithdrawals = relevant.filter((t: any) => t.type === "WITHDRAWAL").reduce((s: number, t: any) => s + (t.amount_usd || 0), 0);
     const netDeposit = totalDeposits - totalWithdrawals;
 

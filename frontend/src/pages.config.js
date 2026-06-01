@@ -78,6 +78,7 @@ import Students from './pages/Students';
 import TargetsManagement from './pages/TargetsManagement';
 import Tickets from './pages/Tickets';
 import Transactions from './pages/Transactions';
+import TransactionTags from './pages/TransactionTags';
 import __Layout from './Layout.jsx';
 
 
@@ -113,6 +114,7 @@ export const PAGES = {
     "TargetsManagement": TargetsManagement,
     "Tickets": Tickets,
     "Transactions": Transactions,
+    "TransactionTags": TransactionTags,
 }
 
 export const pagesConfig = {

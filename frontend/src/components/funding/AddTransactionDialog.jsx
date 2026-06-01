@@ -9,6 +9,7 @@ import { Button } from '@/components/ui/button';
 import { Loader2, Upload } from 'lucide-react';
 import { toast } from 'sonner';
 import SearchableStudentSelect from '../common/SearchableStudentSelect';
+import TagsPicker from './TagsPicker';
 
 const DEPOSIT_PAYMENT_METHODS = [
   'AED TRANSFER',
@@ -41,7 +42,8 @@ export default function AddTransactionDialog({ open, onClose, onSubmit, students
     user_id: '',
     transaction_id: '',
     screenshot_url: '',
-    notes: ''
+    notes: '',
+    tags: [],
   });
   const [uploading, setUploading] = useState(false);
 
@@ -67,6 +69,11 @@ export default function AddTransactionDialog({ open, onClose, onSubmit, students
     const selectedStudent = students.find(s => s.id === formData.student_id);
     if (!selectedStudent) {
       toast.error('Please select a student');
+      return;
+    }
+
+    if (formData.type === 'BONUS' && (!formData.tags || formData.tags.length === 0)) {
+      toast.error('Please pick at least one tag for the bonus');
       return;
     }
 
@@ -107,6 +114,7 @@ export default function AddTransactionDialog({ open, onClose, onSubmit, students
                 <SelectContent>
                   <SelectItem value="DEPOSIT">Deposit</SelectItem>
                   <SelectItem value="WITHDRAWAL">Withdrawal</SelectItem>
+                  <SelectItem value="BONUS">Bonus</SelectItem>
                 </SelectContent>
               </Select>
             </div>
@@ -125,6 +133,16 @@ export default function AddTransactionDialog({ open, onClose, onSubmit, students
               label="Student"
               required
             />
+
+            {formData.type === 'BONUS' && (
+              <div className="space-y-2 md:col-span-2">
+                <Label>Tags *</Label>
+                <TagsPicker
+                  value={formData.tags}
+                  onChange={(tags) => setFormData({ ...formData, tags })}
+                />
+              </div>
+            )}
 
             <div className="space-y-2">
               <Label>Amount (USD) *</Label>

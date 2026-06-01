@@ -9,6 +9,7 @@ import { Button } from "@/components/ui/button";
 import { Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import SearchableStudentSelect from '../common/SearchableStudentSelect';
+import TagsPicker from './TagsPicker';
 
 const PAYMENT_METHODS = [
   'AED TRANSFER',
@@ -27,7 +28,8 @@ export default function FundingRequestForm({ students, allStudents = [], current
     amount_usd: '',
     payment_method: '',
     mt5_login: '',
-    screenshot_url: ''
+    screenshot_url: '',
+    tags: [],          // only meaningful when type === 'BONUS'
   });
   const [uploading, setUploading] = useState(false);
   const [referralStudent, setReferralStudent] = useState(null);
@@ -75,6 +77,11 @@ export default function FundingRequestForm({ students, allStudents = [], current
     const selectedStudent = students.find(s => s.id === formData.student_id);
     if (!selectedStudent) {
       toast.error('Please select a student');
+      return;
+    }
+
+    if (formData.type === 'BONUS' && (!formData.tags || formData.tags.length === 0)) {
+      toast.error('Please pick at least one tag for the bonus');
       return;
     }
 
@@ -150,6 +157,7 @@ export default function FundingRequestForm({ students, allStudents = [], current
               <SelectContent>
                 <SelectItem value="DEPOSIT">Deposit</SelectItem>
                 <SelectItem value="WITHDRAWAL">Withdrawal</SelectItem>
+                <SelectItem value="BONUS">Bonus</SelectItem>
               </SelectContent>
             </Select>
           </div>
@@ -172,6 +180,19 @@ export default function FundingRequestForm({ students, allStudents = [], current
               </button>
             )}
           </div>
+
+          {formData.type === 'BONUS' && (
+            <div className="space-y-2 md:col-span-2">
+              <Label>Tags *</Label>
+              <TagsPicker
+                value={formData.tags}
+                onChange={(tags) => setFormData({ ...formData, tags })}
+              />
+              <p className="text-xs text-muted-foreground">
+                Pick one or more tags to categorize this bonus. Tag names are managed by admins.
+              </p>
+            </div>
+          )}
 
           <div className="space-y-2">
             <Label htmlFor="amount">Amount (USD) *</Label>

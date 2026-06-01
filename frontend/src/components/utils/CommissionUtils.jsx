@@ -63,7 +63,7 @@ export const calculateQuarterlyNetDepositAndCommission = (transactions, currentU
   relevantTransactions.forEach(t => {
     const studentId = t.student_id;
     if (!studentNetDeposits[studentId]) studentNetDeposits[studentId] = 0;
-    if (t.type === 'DEPOSIT') studentNetDeposits[studentId] += (t.amount_usd || 0);
+    if (t.type === 'DEPOSIT' || t.type === 'BONUS') studentNetDeposits[studentId] += (t.amount_usd || 0);
     else if (t.type === 'WITHDRAWAL') studentNetDeposits[studentId] -= (t.amount_usd || 0);
   });
 

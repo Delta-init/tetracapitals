@@ -252,6 +252,16 @@ export const ENTITIES: Record<string, EntityConfig> = {
     delete: ADMIN_ROLES,
     defaultSort: "-generated_at",
   },
+  TransactionTag: {
+    // Admin-managed list of tags applied to bonus (and other) transactions.
+    // Documents look like: { name: "Promo", color?: "#0ea5e9", active: true, created_by, ... }
+    collection: "transaction_tags",
+    read: ALL_ROLES,
+    create: ADMIN_ROLES,
+    update: ADMIN_ROLES,
+    delete: ADMIN_ROLES,
+    defaultSort: "name",
+  },
 };
 
 export function getEntity(name: string): EntityConfig | undefined {
