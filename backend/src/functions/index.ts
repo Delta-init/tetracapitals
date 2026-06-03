@@ -2,6 +2,7 @@ import { json, notFound, forbidden, unauthorized } from "../lib/response";
 import { getAuthUser } from "../auth/middleware";
 import { getAllUsers } from "./getAllUsers";
 import { updateUser } from "./updateUser";
+import { createUser } from "./createUser";
 import { getReportsData } from "./getReportsData";
 import { getMentorCommissions } from "./getMentorCommissions";
 import { generateQuarterlyLedgers } from "./generateQuarterlyLedgers";
@@ -15,6 +16,7 @@ type AnonHandler = (req: Request) => Promise<Response>;
 const AUTHED: Record<string, AuthedHandler> = {
   getAllUsers,
   updateUser,
+  createUser,
   getReportsData,
   getMentorCommissions,
   sendTicketNotification,

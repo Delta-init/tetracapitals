@@ -17,6 +17,7 @@ import {
 } from '@/components/ui/dialog';
 
 export default function PersonnelForm({ user, onSubmit, onClose, allUsers }) {
+  const isCreate = !user;
   const [formData, setFormData] = useState({
     full_name: '',
     email: '',
@@ -26,8 +27,10 @@ export default function PersonnelForm({ user, onSubmit, onClose, allUsers }) {
     assigned_mentor_id: '',
     assigned_mentor_name: '',
     commission_rate: 4,
-    upline_commission_percentage: 0
+    upline_commission_percentage: 0,
+    password: '',
   });
+  const [showPassword, setShowPassword] = useState(false);
 
   useEffect(() => {
     if (user) {
@@ -47,7 +50,25 @@ export default function PersonnelForm({ user, onSubmit, onClose, allUsers }) {
 
   const handleSubmit = (e) => {
     e.preventDefault();
-    onSubmit(formData);
+    if (isCreate) {
+      if (!formData.password || formData.password.length < 8) {
+        alert('Initial password is required and must be at least 8 characters.');
+        return;
+      }
+      onSubmit(formData);
+    } else {
+      // Editing — don't send the password field at all.
+      const { password, ...rest } = formData;
+      onSubmit(rest);
+    }
+  };
+
+  const generatePassword = () => {
+    const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789';
+    let out = '';
+    for (let i = 0; i < 12; i++) out += chars[Math.floor(Math.random() * chars.length)];
+    setFormData((d) => ({ ...d, password: out }));
+    setShowPassword(true);
   };
 
   const seniorMentors = allUsers?.filter(u => u.app_role === 'senior_mentor') || [];
@@ -101,6 +122,33 @@ export default function PersonnelForm({ user, onSubmit, onClose, allUsers }) {
             />
             {user && <p className="text-xs text-gray-500 mt-1">Email cannot be changed</p>}
           </div>
+
+          {isCreate && (
+            <div>
+              <Label htmlFor="password">Initial Password *</Label>
+              <div className="flex gap-2">
+                <Input
+                  id="password"
+                  type={showPassword ? 'text' : 'password'}
+                  value={formData.password}
+                  onChange={(e) => setFormData({ ...formData, password: e.target.value })}
+                  placeholder="Min 8 characters"
+                  required
+                  minLength={8}
+                  autoComplete="new-password"
+                />
+                <Button type="button" variant="outline" onClick={() => setShowPassword((s) => !s)}>
+                  {showPassword ? 'Hide' : 'Show'}
+                </Button>
+                <Button type="button" variant="outline" onClick={generatePassword}>
+                  Generate
+                </Button>
+              </div>
+              <p className="text-xs text-gray-500 mt-1">
+                Share this password securely with the user. They can change it after first login.
+              </p>
+            </div>
+          )}
 
           <div>
             <Label htmlFor="app_role">Role *</Label>

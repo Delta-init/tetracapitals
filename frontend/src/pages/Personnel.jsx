@@ -19,7 +19,7 @@ import {
   TableRow,
 } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
-import { Search, Edit, Users, Shield, LogIn } from 'lucide-react';
+import { Search, Edit, Users, Shield, LogIn, Plus } from 'lucide-react';
 import { toast } from 'sonner';
 import PersonnelForm from '../components/personnel/PersonnelForm';
 import { canViewPersonnel, canEditPersonnel, filterPersonnelByRole } from '../components/utils/PersonnelAccessControl';
@@ -74,6 +74,26 @@ export default function Personnel() {
     }
   });
 
+  const createUserMutation = useMutation({
+    mutationFn: async (userData) => {
+      const response = await base44.functions.invoke('createUser', userData);
+      const created = response.data?.user;
+      if (created) {
+        await logAction('create_user', 'User', created.id, `Created user: ${userData.full_name} (${userData.app_role})`, null, { ...userData, password: '[redacted]' });
+      }
+      return created;
+    },
+    onSuccess: (created) => {
+      queryClient.invalidateQueries({ queryKey: ['all-users'] });
+      setShowForm(false);
+      setEditingUser(null);
+      toast.success(`Created ${created?.full_name || 'user'}. They can sign in now.`);
+    },
+    onError: (err) => {
+      toast.error(err?.response?.data?.error || err?.message || 'Failed to create user');
+    }
+  });
+
   const handleEdit = (user) => {
     setEditingUser(user);
     setShowForm(true);
@@ -85,8 +105,12 @@ export default function Personnel() {
         userId: editingUser.id,
         userData: formData
       });
+    } else {
+      createUserMutation.mutate(formData);
     }
   };
+
+  const canCreate = ['super_admin', 'admin'].includes(currentUser?.app_role);
 
   const handleClose = () => {
     setShowForm(false);
@@ -162,6 +186,15 @@ export default function Personnel() {
             <h1 className="text-4xl font-bold text-gray-900 tracking-tight">Personnel Directory</h1>
             <p className="text-gray-600 mt-2 text-base">Manage users and roles</p>
           </div>
+          {canCreate && (
+            <Button
+              onClick={() => { setEditingUser(null); setShowForm(true); }}
+              className="bg-blue-600 hover:bg-blue-700"
+            >
+              <Plus className="h-4 w-4 mr-2" />
+              Add User
+            </Button>
+          )}
         </div>
 
         {/* Stats */}
