@@ -81,7 +81,7 @@ export default function FundingRequestForm({ students, allStudents = [], current
     }
 
     if (formData.type === 'BONUS' && (!formData.tags || formData.tags.length === 0)) {
-      toast.error('Please pick at least one tag for the bonus');
+      toast.error('Please pick a tag for the bonus');
       return;
     }
 
@@ -183,13 +183,13 @@ export default function FundingRequestForm({ students, allStudents = [], current
 
           {formData.type === 'BONUS' && (
             <div className="space-y-2 md:col-span-2">
-              <Label>Tags *</Label>
+              <Label>Tag *</Label>
               <TagsPicker
                 value={formData.tags}
                 onChange={(tags) => setFormData({ ...formData, tags })}
               />
               <p className="text-xs text-muted-foreground">
-                Pick one or more tags to categorize this bonus. Tag names are managed by admins.
+                Pick the tag that categorizes this bonus. Tag names are managed by admins.
               </p>
             </div>
           )}

@@ -914,6 +914,7 @@ export default function FundingRequests() {
         {/* Process Dialog */}
         <ProcessFundingDialog
           transaction={selectedTransaction}
+          currentUser={currentUser}
           open={showProcessDialog}
           onClose={() => {
             setShowProcessDialog(false);

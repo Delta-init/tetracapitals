@@ -73,7 +73,7 @@ export default function AddTransactionDialog({ open, onClose, onSubmit, students
     }
 
     if (formData.type === 'BONUS' && (!formData.tags || formData.tags.length === 0)) {
-      toast.error('Please pick at least one tag for the bonus');
+      toast.error('Please pick a tag for the bonus');
       return;
     }
 
@@ -136,7 +136,7 @@ export default function AddTransactionDialog({ open, onClose, onSubmit, students
 
             {formData.type === 'BONUS' && (
               <div className="space-y-2 md:col-span-2">
-                <Label>Tags *</Label>
+                <Label>Tag *</Label>
                 <TagsPicker
                   value={formData.tags}
                   onChange={(tags) => setFormData({ ...formData, tags })}

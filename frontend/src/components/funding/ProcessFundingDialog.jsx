@@ -8,6 +8,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Button } from "@/components/ui/button";
 import { CheckCircle, XCircle } from "lucide-react";
+import TagsPicker from "./TagsPicker";
 
 const DEPOSIT_PAYMENT_METHODS = [
   'AED TRANSFER',
@@ -30,7 +31,7 @@ const WITHDRAWAL_PAYMENT_METHODS = [
   'Other'
 ];
 
-export default function ProcessFundingDialog({ transaction, open, onClose, onProcess }) {
+export default function ProcessFundingDialog({ transaction, open, onClose, onProcess, currentUser }) {
   const [formData, setFormData] = useState({
     amount_usd: 0,
     payment_method: '',
@@ -38,7 +39,8 @@ export default function ProcessFundingDialog({ transaction, open, onClose, onPro
     mt5_login: '',
     transaction_id: '',
     rejection_reason: '',
-    notes: ''
+    notes: '',
+    tags: [],
   });
   const [transactionIdError, setTransactionIdError] = useState('');
   const [withdrawalMentorId, setWithdrawalMentorId] = useState('');
@@ -102,7 +104,9 @@ export default function ProcessFundingDialog({ transaction, open, onClose, onPro
         mt5_login: transaction.mt5_login || '',
         transaction_id: transaction.transaction_id || '',
         rejection_reason: transaction.rejection_reason || '',
-        notes: transaction.notes || ''
+        notes: transaction.notes || '',
+        // Carry existing tag through. Old data may have multiple; we only keep the first one.
+        tags: Array.isArray(transaction.tags) && transaction.tags.length > 0 ? [transaction.tags[0]] : [],
       });
       setTransactionIdError('');
       setWithdrawalMentorId('');
@@ -112,6 +116,10 @@ export default function ProcessFundingDialog({ transaction, open, onClose, onPro
   const handleApprove = async () => {
     if (!formData.transaction_id || formData.transaction_id.trim() === '') {
       setTransactionIdError('Transaction ID is required');
+      return;
+    }
+    if (transaction.type === 'BONUS' && (!formData.tags || formData.tags.length === 0)) {
+      setTransactionIdError('Please pick a tag for this bonus before approving');
       return;
     }
 
@@ -236,6 +244,29 @@ export default function ProcessFundingDialog({ transaction, open, onClose, onPro
               className="text-lg font-semibold"
             />
           </div>
+
+          {/* Tag editor — visible only for BONUS transactions. Super admins can
+              change the tag before approving; other roles see it read-only. */}
+          {transaction.type === 'BONUS' && (
+            <div className="space-y-2 bg-amber-50 p-4 rounded-lg border-2 border-amber-200">
+              <Label className="text-base font-semibold">
+                Bonus Tag
+                {currentUser?.app_role === 'super_admin'
+                  ? <span className="ml-2 text-xs font-normal text-amber-700">(super admin can change before approval)</span>
+                  : <span className="ml-2 text-xs font-normal text-gray-500">(only super admins can change this)</span>}
+              </Label>
+              {currentUser?.app_role === 'super_admin' ? (
+                <TagsPicker
+                  value={formData.tags}
+                  onChange={(tags) => setFormData({ ...formData, tags })}
+                />
+              ) : (
+                <p className="text-sm font-medium">
+                  {formData.tags?.[0] || <span className="text-gray-500 italic">No tag set</span>}
+                </p>
+              )}
+            </div>
+          )}
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div className="space-y-2">
