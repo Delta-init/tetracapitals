@@ -21,9 +21,10 @@ export const maskPhone = (phone) => {
   return `${first2}******${last2}`;
 };
 
-export const shouldMaskData = (userRole) => {
-  // Only Super Admin, Admin and Broker Admin see unmasked data
-  return !['super_admin', 'admin', 'broker_admin'].includes(userRole);
+export const shouldMaskData = (_userRole) => {
+  // Masking disabled — every role sees unmasked data.
+  // (Previously: only super_admin/admin/broker_admin saw unmasked data.)
+  return false;
 };
 
 export const canEditData = (userRole) => {
