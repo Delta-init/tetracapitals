@@ -109,7 +109,7 @@ export default function Students() {
       return newStudent;
     },
     onSuccess: () => {
-      queryClient.invalidateQueries(['students']);
+      queryClient.invalidateQueries({ queryKey: ['students'] });
       setShowAddDialog(false);
       toast.success('Student created successfully');
     },
@@ -162,8 +162,8 @@ export default function Students() {
       return newStudent;
     },
     onSuccess: (result) => {
-      queryClient.invalidateQueries(['student-requests']);
-      queryClient.invalidateQueries(['students']);
+      queryClient.invalidateQueries({ queryKey: ['student-requests'] });
+      queryClient.invalidateQueries({ queryKey: ['students'] });
       setShowAddDialog(false);
       
       if (result?.isTransferRequest) {
@@ -217,7 +217,7 @@ export default function Students() {
       return results;
     },
     onSuccess: () => {
-      queryClient.invalidateQueries(['students']);
+      queryClient.invalidateQueries({ queryKey: ['students'] });
       setSelectedStudentIds([]);
       setShowBulkUpgradeDialog(false);
       toast.success('Students upgraded to Level 2 successfully');
@@ -261,8 +261,8 @@ export default function Students() {
       await logAction('assign_open_pool_student', 'Student', student.id, `Assigned open pool student: ${student.full_name}`, null, student);
     },
     onSuccess: () => {
-      queryClient.invalidateQueries(['student-requests']);
-      queryClient.invalidateQueries(['students']);
+      queryClient.invalidateQueries({ queryKey: ['student-requests'] });
+      queryClient.invalidateQueries({ queryKey: ['students'] });
       toast.success('Student assigned successfully');
     }
   });
@@ -1307,7 +1307,7 @@ export default function Students() {
           open={showBulkImportDialog}
           onOpenChange={setShowBulkImportDialog}
           onImportComplete={() => {
-            queryClient.invalidateQueries(['students']);
+            queryClient.invalidateQueries({ queryKey: ['students'] });
             setShowBulkImportDialog(false);
           }}
           mentors={mentorUsers}

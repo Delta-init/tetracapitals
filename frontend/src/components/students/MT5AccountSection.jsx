@@ -35,7 +35,7 @@ export default function MT5AccountSection({ student, currentUser }) {
   const createMutation = useMutation({
     mutationFn: (data) => base44.entities.MT5Account.create(data),
     onSuccess: () => {
-      queryClient.invalidateQueries(['mt5accounts']);
+      queryClient.invalidateQueries({ queryKey: ['mt5accounts'] });
       setShowAddDialog(false);
       toast.success('MT5 Account added successfully');
       resetForm();

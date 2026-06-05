@@ -101,7 +101,7 @@ export default function Leaderboard() {
       }
 
       // Assign ranks
-      await queryClient.invalidateQueries(['mentor-points']);
+      await queryClient.invalidateQueries({ queryKey: ['mentor-points'] });
       await logAction('recalculate_leaderboard', 'MentorPoints', null, 'Recalculated entire leaderboard', null, null);
       toast.success('Leaderboard recalculated successfully!');
     } catch (error) {

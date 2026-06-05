@@ -59,7 +59,7 @@ export default function Transactions() {
   const createMutation = useMutation({
     mutationFn: (data) => base44.entities.FundingTransaction.create(data),
     onSuccess: () => {
-      queryClient.invalidateQueries(['transactions']);
+      queryClient.invalidateQueries({ queryKey: ['transactions'] });
       setShowAddDialog(false);
       toast.success('Transaction request created successfully');
       resetForm();
@@ -77,8 +77,8 @@ export default function Transactions() {
       });
     },
     onSuccess: () => {
-      queryClient.invalidateQueries(['transactions']);
-      queryClient.invalidateQueries(['students']);
+      queryClient.invalidateQueries({ queryKey: ['transactions'] });
+      queryClient.invalidateQueries({ queryKey: ['students'] });
       setShowApproveDialog(false);
       toast.success('Transaction approved successfully');
     }
@@ -93,7 +93,7 @@ export default function Transactions() {
       notes: reason
     }),
     onSuccess: () => {
-      queryClient.invalidateQueries(['transactions']);
+      queryClient.invalidateQueries({ queryKey: ['transactions'] });
       setShowRejectDialog(false);
       toast.success('Transaction rejected');
     }

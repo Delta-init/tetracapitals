@@ -108,7 +108,7 @@ export default function MyFundingRequests() {
       return base44.entities.FundingTransaction.create(updatedData);
     },
     onSuccess: () => {
-      queryClient.invalidateQueries(['funding-transactions']);
+      queryClient.invalidateQueries({ queryKey: ['funding-transactions'] });
       setShowAddDialog(false);
       toast.success('Funding request submitted successfully');
     }

@@ -128,7 +128,7 @@ export default function Tickets() {
       return newTicket;
     },
     onSuccess: () => {
-      queryClient.invalidateQueries(['tickets']);
+      queryClient.invalidateQueries({ queryKey: ['tickets'] });
       setShowCreateDialog(false);
       toast.success('Ticket submitted successfully');
     },
@@ -195,8 +195,8 @@ export default function Tickets() {
       }
     },
     onSuccess: () => {
-      queryClient.invalidateQueries(['ticket-messages', selectedTicket?.id]);
-      queryClient.invalidateQueries(['tickets']);
+      queryClient.invalidateQueries({ queryKey: ['ticket-messages', selectedTicket?.id] });
+      queryClient.invalidateQueries({ queryKey: ['tickets'] });
     },
   });
 
@@ -224,8 +224,8 @@ export default function Tickets() {
       });
     },
     onSuccess: () => {
-      queryClient.invalidateQueries(['tickets']);
-      queryClient.invalidateQueries(['ticket-messages', selectedTicket?.id]);
+      queryClient.invalidateQueries({ queryKey: ['tickets'] });
+      queryClient.invalidateQueries({ queryKey: ['ticket-messages', selectedTicket?.id] });
       toast.success('Ticket marked as resolved');
     },
   });
@@ -257,8 +257,8 @@ export default function Tickets() {
       } catch (e) { console.error('Notification error (closed):', e); }
     },
     onSuccess: () => {
-      queryClient.invalidateQueries(['tickets']);
-      queryClient.invalidateQueries(['ticket-messages', selectedTicket?.id]);
+      queryClient.invalidateQueries({ queryKey: ['tickets'] });
+      queryClient.invalidateQueries({ queryKey: ['ticket-messages', selectedTicket?.id] });
       toast.success('Ticket closed');
     },
   });

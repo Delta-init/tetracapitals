@@ -65,7 +65,7 @@ export default function TargetsManagement() {
       return result;
     },
     onSuccess: () => {
-      queryClient.invalidateQueries(['mentor-targets']);
+      queryClient.invalidateQueries({ queryKey: ['mentor-targets'] });
       setShowAddDialog(false);
       toast.success('Target created successfully');
     }
@@ -77,7 +77,7 @@ export default function TargetsManagement() {
       return base44.entities.MentorTarget.delete(id);
     },
     onSuccess: () => {
-      queryClient.invalidateQueries(['mentor-targets']);
+      queryClient.invalidateQueries({ queryKey: ['mentor-targets'] });
       toast.success('Target deleted successfully');
     }
   });

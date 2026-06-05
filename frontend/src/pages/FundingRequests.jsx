@@ -90,8 +90,8 @@ export default function FundingRequests() {
       return result;
     },
     onSuccess: () => {
-      queryClient.invalidateQueries(['funding-transactions']);
-      queryClient.invalidateQueries(['students']);
+      queryClient.invalidateQueries({ queryKey: ['funding-transactions'] });
+      queryClient.invalidateQueries({ queryKey: ['students'] });
       setShowProcessDialog(false);
       setSelectedTransaction(null);
       toast.success('Transaction processed successfully');
@@ -117,7 +117,7 @@ export default function FundingRequests() {
       return result;
     },
     onSuccess: () => {
-      queryClient.invalidateQueries(['funding-transactions']);
+      queryClient.invalidateQueries({ queryKey: ['funding-transactions'] });
       setShowAddDialog(false);
       toast.success('Transaction created successfully');
     }
@@ -139,7 +139,7 @@ export default function FundingRequests() {
       return result;
     },
     onSuccess: () => {
-      queryClient.invalidateQueries(['funding-transactions']);
+      queryClient.invalidateQueries({ queryKey: ['funding-transactions'] });
       setShowBulkImportDialog(false);
     }
   });
@@ -290,8 +290,8 @@ export default function FundingRequests() {
       });
 
       await Promise.all(updatePromises);
-      queryClient.invalidateQueries(['funding-transactions']);
-      queryClient.invalidateQueries(['students']);
+      queryClient.invalidateQueries({ queryKey: ['funding-transactions'] });
+      queryClient.invalidateQueries({ queryKey: ['students'] });
       setSelectedIds([]);
       toast.success(`Successfully approved ${selectedPendingIds.length} transactions`);
     } catch (error) {
@@ -324,7 +324,7 @@ export default function FundingRequests() {
       });
 
       await Promise.all(updatePromises);
-      queryClient.invalidateQueries(['funding-transactions']);
+      queryClient.invalidateQueries({ queryKey: ['funding-transactions'] });
       setSelectedIds([]);
       toast.success(`Successfully rejected ${selectedPendingIds.length} transactions`);
     } catch (error) {
@@ -360,7 +360,7 @@ export default function FundingRequests() {
       });
 
       await Promise.all(updatePromises);
-      queryClient.invalidateQueries(['funding-transactions']);
+      queryClient.invalidateQueries({ queryKey: ['funding-transactions'] });
       setSelectedIds([]);
       setShowBulkUpdateDialog(false);
       setBulkUpdatePaymentMethod('');
@@ -390,7 +390,7 @@ export default function FundingRequests() {
       });
 
       await Promise.all(deletePromises);
-      queryClient.invalidateQueries(['funding-transactions']);
+      queryClient.invalidateQueries({ queryKey: ['funding-transactions'] });
       setSelectedIds([]);
       setShowBulkDeleteDialog(false);
       toast.success(`Successfully deleted ${selectedIds.length} transactions`);

@@ -51,14 +51,23 @@ export default function MyStudentRequests() {
       return res.data;
     },
     onSuccess: (_, variables) => {
-      queryClient.invalidateQueries(['incoming-referrals']);
+      // react-query v5 requires the options-object form here. The old v4
+      // signature (passing the key directly) is silently ignored, which is why
+      // the Approve / Reject buttons appeared to "do nothing": the mutation
+      // actually succeeded on the server but the list never refetched.
+      queryClient.invalidateQueries({ queryKey: ['incoming-referrals'] });
+      queryClient.invalidateQueries({ queryKey: ['my-student-requests'] });
+      // Approving creates a PENDING FundingTransaction + updates the student's
+      // co_mentors_details — refresh those caches too so any open tabs see it.
+      queryClient.invalidateQueries({ queryKey: ['funding-transactions'] });
+      queryClient.invalidateQueries({ queryKey: ['students'] });
       toast.success(variables.action === 'approve' ? 'Referral approved! Student is now co-managed.' : 'Referral rejected.');
       setRejectDialogOpen(false);
       setSelectedReferral(null);
       setRejectionReason('');
     },
     onError: (error) => {
-      toast.error(error?.response?.data?.error || 'Failed to process referral');
+      toast.error(error?.response?.data?.error || error?.message || 'Failed to process referral');
     }
   });
 

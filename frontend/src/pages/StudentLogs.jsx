@@ -69,7 +69,7 @@ export default function StudentLogs() {
       return newLog;
     },
     onSuccess: () => {
-      queryClient.invalidateQueries(['student-logs']);
+      queryClient.invalidateQueries({ queryKey: ['student-logs'] });
       setShowAddDialog(false);
       toast.success('Student log created successfully');
     }
@@ -101,7 +101,7 @@ export default function StudentLogs() {
       return updatedLog;
     },
     onSuccess: () => {
-      queryClient.invalidateQueries(['student-logs']);
+      queryClient.invalidateQueries({ queryKey: ['student-logs'] });
       setShowEditDialog(false);
       setSelectedLog(null);
       toast.success('Student log updated successfully');

@@ -63,7 +63,7 @@ export default function QuarterClosing() {
       return result;
     },
     onSuccess: () => {
-      queryClient.invalidateQueries(['commission-ledgers']);
+      queryClient.invalidateQueries({ queryKey: ['commission-ledgers'] });
       toast.success('Quarter ledger created successfully');
     }
   });

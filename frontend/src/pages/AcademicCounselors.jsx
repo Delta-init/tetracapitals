@@ -42,7 +42,7 @@ export default function AcademicCounselors() {
   const createMutation = useMutation({
     mutationFn: (data) => base44.entities.AcademicCounselor.create(data),
     onSuccess: () => {
-      queryClient.invalidateQueries(['academic-counselors']);
+      queryClient.invalidateQueries({ queryKey: ['academic-counselors'] });
       setShowDialog(false);
       setFormData({ counselor_name: '', email: '', phone: '', status: 'Active' });
       toast.success('Academic counselor created successfully');
@@ -52,7 +52,7 @@ export default function AcademicCounselors() {
   const updateMutation = useMutation({
     mutationFn: ({ id, data }) => base44.entities.AcademicCounselor.update(id, data),
     onSuccess: () => {
-      queryClient.invalidateQueries(['academic-counselors']);
+      queryClient.invalidateQueries({ queryKey: ['academic-counselors'] });
       setShowDialog(false);
       setSelectedCounselor(null);
       setFormData({ counselor_name: '', email: '', phone: '', status: 'Active' });
@@ -63,7 +63,7 @@ export default function AcademicCounselors() {
   const deleteMutation = useMutation({
     mutationFn: (id) => base44.entities.AcademicCounselor.delete(id),
     onSuccess: () => {
-      queryClient.invalidateQueries(['academic-counselors']);
+      queryClient.invalidateQueries({ queryKey: ['academic-counselors'] });
       toast.success('Academic counselor deleted successfully');
     }
   });

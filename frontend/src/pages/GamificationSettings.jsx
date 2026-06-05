@@ -47,14 +47,14 @@ export default function GamificationSettings() {
       }
     },
     onSuccess: () => {
-      queryClient.invalidateQueries(['gamification-settings']);
+      queryClient.invalidateQueries({ queryKey: ['gamification-settings'] });
     }
   });
 
   const createDefaultMutation = useMutation({
     mutationFn: (data) => base44.entities.GamificationSettings.create(data),
     onSuccess: () => {
-      queryClient.invalidateQueries(['gamification-settings']);
+      queryClient.invalidateQueries({ queryKey: ['gamification-settings'] });
       toast.success('Default settings created');
     }
   });

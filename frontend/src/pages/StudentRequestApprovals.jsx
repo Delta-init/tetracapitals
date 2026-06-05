@@ -160,8 +160,8 @@ export default function StudentRequestApprovals() {
         toast.success('Student upgraded to Level 2 successfully');
       }
 
-      queryClient.invalidateQueries(['student-requests']);
-      queryClient.invalidateQueries(['students']);
+      queryClient.invalidateQueries({ queryKey: ['student-requests'] });
+      queryClient.invalidateQueries({ queryKey: ['students'] });
       setShowApproveDialog(false);
       setSelectedRequest(null);
     } catch (error) {
@@ -191,7 +191,7 @@ export default function StudentRequestApprovals() {
       await logAction('reject_level_upgrade', 'StudentRequest', selectedRequest.id, 
         `Rejected level upgrade for ${selectedRequest.full_name}: ${rejectionReason}`, null, { reason: rejectionReason });
 
-      queryClient.invalidateQueries(['student-requests']);
+      queryClient.invalidateQueries({ queryKey: ['student-requests'] });
       toast.success('Upgrade request rejected');
       setShowRejectDialog(false);
       setSelectedRequest(null);
@@ -218,7 +218,7 @@ export default function StudentRequestApprovals() {
       await logAction('approve_transfer_request', 'StudentRequest', selectedRequest.id,
         `Academic head approved transfer request for ${selectedRequest.full_name}, forwarded to Broker Admin`, null, selectedRequest);
 
-      queryClient.invalidateQueries(['student-requests']);
+      queryClient.invalidateQueries({ queryKey: ['student-requests'] });
       toast.success('Transfer request approved and forwarded to Broker Admin');
       setShowAcademicApproveDialog(false);
       setSelectedRequest(null);
@@ -260,8 +260,8 @@ export default function StudentRequestApprovals() {
         { old_mentor: duplicateStudent.primary_mentor_name }, 
         { new_mentor: selectedRequest.requested_primary_mentor_name });
 
-      queryClient.invalidateQueries(['student-requests']);
-      queryClient.invalidateQueries(['students']);
+      queryClient.invalidateQueries({ queryKey: ['student-requests'] });
+      queryClient.invalidateQueries({ queryKey: ['students'] });
       toast.success('Student transferred successfully');
       setShowTransferDialog(false);
       setSelectedRequest(null);

@@ -71,8 +71,8 @@ export default function StudentDetail() {
   const updateMutation = useMutation({
     mutationFn: ({ id, data }) => base44.entities.Student.update(id, data),
     onSuccess: () => {
-      queryClient.invalidateQueries(['student', studentId]);
-      queryClient.invalidateQueries(['students']);
+      queryClient.invalidateQueries({ queryKey: ['student', studentId] });
+      queryClient.invalidateQueries({ queryKey: ['students'] });
       setShowEditDialog(false);
       toast.success('Student updated successfully');
     }

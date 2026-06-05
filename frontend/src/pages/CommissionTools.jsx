@@ -174,7 +174,7 @@ export default function CommissionTools() {
     onSuccess: () => {
       toast.success('Adjustment added');
       setAdjMentorId(''); setAdjAmount(''); setAdjReason(''); setAdjNotes(''); setAdjType('ADDITION');
-      queryClient.invalidateQueries(['manual-commission-adjustments']);
+      queryClient.invalidateQueries({ queryKey: ['manual-commission-adjustments'] });
     },
     onError: (e) => toast.error(e.message),
   });

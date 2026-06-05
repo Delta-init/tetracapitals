@@ -59,7 +59,7 @@ export default function CoManageCalculator({ students = [], coManagedStudents = 
       return deduction;
     },
     onSuccess: (deduction) => {
-      queryClient.invalidateQueries(['mentor-deductions']);
+      queryClient.invalidateQueries({ queryKey: ['mentor-deductions'] });
       toast.success(`Deduction applied successfully for ${deduction.mentor_name}`);
       setApplyingMentorId(null);
     },
