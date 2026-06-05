@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -37,26 +37,39 @@ export default function StudentRequestForm({ onSubmit, onCancel, isSubmitting, u
     }
   }, [currentUser, primaryMentorId, users]);
 
+  // Synchronous re-entrancy guard. `isSubmitting` from the parent only flips
+  // after React re-renders, so a fast second click (or accidental double-tap)
+  // can call onSubmit twice before the disabled state propagates. The ref
+  // blocks that path entirely.
+  const inFlight = useRef(false);
+
   const handleSubmit = async (e) => {
     e.preventDefault();
+    if (inFlight.current || isSubmitting) return;
+    inFlight.current = true;
     try {
-      const allStudents = await base44.entities.Student.list();
-      const duplicate = allStudents.find(s => s.email?.toLowerCase() === formData.email?.toLowerCase());
-      if (duplicate) {
-        setEmailError("A student with this email already exists");
-        return;
+      try {
+        const allStudents = await base44.entities.Student.list();
+        const duplicate = allStudents.find(s => s.email?.toLowerCase() === formData.email?.toLowerCase());
+        if (duplicate) {
+          setEmailError("A student with this email already exists");
+          return;
+        }
+      } catch (err) {
+        // fall through to submit if check fails
       }
-    } catch (err) {
-      // fall through to submit if check fails
+      setEmailError('');
+      onSubmit({
+        ...formData,
+        requested_primary_mentor_id: primaryMentorId,
+        requested_primary_mentor_name: currentUser?.full_name || '',
+        requested_senior_mentor_id: seniorMentorInfo?.id || null,
+        requested_senior_mentor_name: seniorMentorInfo?.name || null
+      });
+    } finally {
+      // Clear on next tick so the disabled state has propagated.
+      setTimeout(() => { inFlight.current = false; }, 0);
     }
-    setEmailError('');
-    onSubmit({
-      ...formData,
-      requested_primary_mentor_id: primaryMentorId,
-      requested_primary_mentor_name: currentUser?.full_name || '',
-      requested_senior_mentor_id: seniorMentorInfo?.id || null,
-      requested_senior_mentor_name: seniorMentorInfo?.name || null
-    });
   };
 
   return (

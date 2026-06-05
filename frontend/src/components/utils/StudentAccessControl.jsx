@@ -96,18 +96,30 @@ export const applyStudentMasking = (student, userRole) => {
   };
 };
 
-// Generate next student code
+/**
+ * Generate the next unique student code.
+ *
+ * Calls the backend `getNextStudentCode` function, which uses an atomic
+ * MongoDB counter so concurrent creates always get distinct codes — the
+ * read-then-increment pattern used previously here let two simultaneous
+ * submits collide on the same code (e.g. both got STU-0015).
+ *
+ * Falls back to the old client-side computation only if the backend call
+ * fails (e.g. older deployments where the function isn't registered).
+ */
 export const generateStudentCode = async (base44) => {
-  const students = await base44.entities.Student.list('-created_date', 1);
-  
-  if (students.length === 0) {
-    return 'STU-0001';
+  try {
+    const res = await base44.functions.invoke('getNextStudentCode', {});
+    const code = res?.data?.code;
+    if (code) return code;
+  } catch (_) {
+    // fall through to client-side computation
   }
-  
-  const lastStudent = students[0];
-  const lastCode = lastStudent.student_code || 'STU-0000';
+
+  // Legacy fallback — NOT race-safe. Kept only for graceful degradation.
+  const students = await base44.entities.Student.list('-created_date', 1);
+  if (students.length === 0) return 'STU-0001';
+  const lastCode = students[0].student_code || 'STU-0000';
   const lastNumber = parseInt(lastCode.split('-')[1] || '0');
-  const nextNumber = lastNumber + 1;
-  
-  return `STU-${String(nextNumber).padStart(4, '0')}`;
+  return `STU-${String(lastNumber + 1).padStart(4, '0')}`;
 };

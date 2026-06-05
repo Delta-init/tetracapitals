@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { base44 } from "@/api/base44Client";
 import { useQuery } from "@tanstack/react-query";
 import { Input } from "@/components/ui/input";
@@ -50,9 +50,16 @@ export default function StudentForm({ student, onSubmit, onCancel, isSubmitting,
   const subJuniorMentors = users.filter(u => u.app_role === 'subjunior_mentor');
   const allMentors = [...juniorMentors, ...seniorMentors, ...subJuniorMentors];
 
+  // Synchronous double-submit guard — `isSubmitting` only flips after React
+  // re-renders, so a fast second click could fire onSubmit twice.
+  const inFlight = useRef(false);
+
   const handleSubmit = (e) => {
     e.preventDefault();
-    
+    if (inFlight.current || isSubmitting) return;
+    inFlight.current = true;
+    setTimeout(() => { inFlight.current = false; }, 0);
+
     // Regular mentor assignment flow
     const primaryMentor = users.find(u => u.id === formData.primary_mentor_id);
     
