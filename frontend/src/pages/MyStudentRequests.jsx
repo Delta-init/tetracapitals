@@ -64,6 +64,13 @@ export default function MyStudentRequests() {
 
   const pendingIncoming = incomingReferrals.filter(r => r.receiving_mentor_id === currentUser?.id && r.status === 'pending');
 
+  // Outgoing referrals = ones THIS user initiated (sent). They previously had
+  // no visibility into the response — only the receiving mentor saw them.
+  const outgoingReferrals = incomingReferrals
+    .filter(r => r.initiating_mentor_id === currentUser?.id)
+    .sort((a, b) => new Date(b.created_at || b.created_date || 0) - new Date(a.created_at || a.created_date || 0));
+  const outgoingPending = outgoingReferrals.filter(r => r.status === 'pending').length;
+
   if (!currentUser) {
     return <div className="flex items-center justify-center h-screen">Loading...</div>;
   }
@@ -109,6 +116,26 @@ export default function MyStudentRequests() {
         return <XCircle className="h-4 w-4" />;
       default:
         return null;
+    }
+  };
+
+  // Color/icon for the lowercase MentorReferral.status values used in the
+  // Outgoing section (`pending` / `approved` / `rejected`). Distinct from the
+  // StudentRequest status colors above, which use uppercase enum values.
+  const getReferralStatusColor = (status) => {
+    switch (status) {
+      case 'pending':  return 'bg-yellow-100 text-yellow-800 border-yellow-200';
+      case 'approved': return 'bg-green-100 text-green-800 border-green-200';
+      case 'rejected': return 'bg-red-100 text-red-800 border-red-200';
+      default:         return 'bg-gray-100 text-gray-800 border-gray-200';
+    }
+  };
+  const getReferralStatusIcon = (status) => {
+    switch (status) {
+      case 'pending':  return <Clock className="h-3.5 w-3.5" />;
+      case 'approved': return <CheckCircle className="h-3.5 w-3.5" />;
+      case 'rejected': return <XCircle className="h-3.5 w-3.5" />;
+      default:         return null;
     }
   };
 
@@ -174,6 +201,66 @@ export default function MyStudentRequests() {
                   ))}
                 </TableBody>
               </Table>
+            </CardContent>
+          </Card>
+        )}
+
+        {/* Outgoing Co-Management Referrals — referrals THIS user sent. Shows
+            the receiving mentor's response so the initiator can see whether
+            their request is still pending, was approved, or was rejected. */}
+        {outgoingReferrals.length > 0 && (
+          <Card className="border-blue-200 bg-blue-50">
+            <CardHeader className="pb-3">
+              <CardTitle className="text-base font-semibold flex items-center gap-2 text-blue-800">
+                <Share2 className="h-4 w-4" />
+                My Co-Management Referrals Sent ({outgoingReferrals.length}
+                {outgoingPending > 0 ? `, ${outgoingPending} pending` : ''})
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="p-0">
+              <div className="overflow-x-auto">
+                <Table>
+                  <TableHeader>
+                    <TableRow className="bg-blue-100/50">
+                      <TableHead className="font-semibold">Student</TableHead>
+                      <TableHead className="font-semibold">To Mentor</TableHead>
+                      <TableHead className="font-semibold">Deposit Amount</TableHead>
+                      <TableHead className="font-semibold">Status</TableHead>
+                      <TableHead className="font-semibold">Requested</TableHead>
+                      <TableHead className="font-semibold">Responded</TableHead>
+                      <TableHead className="font-semibold">Notes / Rejection</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {outgoingReferrals.map((ref) => (
+                      <TableRow key={ref.id} className="bg-white">
+                        <TableCell className="font-medium">
+                          {ref.student_name} <span className="text-xs text-gray-400 font-mono">{ref.student_code}</span>
+                        </TableCell>
+                        <TableCell className="text-sm text-purple-700 font-medium">{ref.receiving_mentor_name}</TableCell>
+                        <TableCell className="text-sm font-semibold text-green-700">${(ref.requested_deposit_amount || 0).toLocaleString()}</TableCell>
+                        <TableCell>
+                          <Badge variant="outline" className={`${getReferralStatusColor(ref.status)} flex items-center gap-1 w-fit`}>
+                            {getReferralStatusIcon(ref.status)}
+                            <span className="text-xs capitalize">{ref.status}</span>
+                          </Badge>
+                        </TableCell>
+                        <TableCell className="text-sm">{ref.created_at ? format(new Date(ref.created_at), 'MMM d, yyyy HH:mm') : '-'}</TableCell>
+                        <TableCell className="text-sm">
+                          {ref.responded_at ? format(new Date(ref.responded_at), 'MMM d, yyyy HH:mm') : <span className="text-gray-400">—</span>}
+                        </TableCell>
+                        <TableCell className="text-sm max-w-xs">
+                          {ref.status === 'rejected' && ref.rejection_reason
+                            ? <span className="text-red-600">{ref.rejection_reason}</span>
+                            : ref.status === 'approved'
+                              ? <span className="text-green-600">Student added as co-managed; deposit queued for admin approval.</span>
+                              : <span className="text-gray-500">Awaiting response from {ref.receiving_mentor_name}</span>}
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </div>
             </CardContent>
           </Card>
         )}
