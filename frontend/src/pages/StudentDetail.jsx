@@ -15,6 +15,7 @@ import {
   applyStudentMasking,
   filterStudentsByRole 
 } from "../components/utils/StudentAccessControl";
+import { getEffectiveUser } from "../components/utils/ImpersonationContext";
 import { toast } from "sonner";
 import { format } from "date-fns";
 
@@ -28,8 +29,11 @@ export default function StudentDetail() {
 
   useEffect(() => {
     const fetchUser = async () => {
-      const user = await base44.auth.me();
-      setCurrentUser(user);
+      const realUser = await base44.auth.me();
+      // Honor impersonation — when an admin is impersonating a mentor, all the
+      // role-gated UI on this page (Edit Student button, masking, action visibility)
+      // should reflect the impersonated role, not the underlying admin token.
+      setCurrentUser(getEffectiveUser(realUser));
     };
     fetchUser();
   }, []);
