@@ -62,7 +62,13 @@ export const ENTITIES: Record<string, EntityConfig> = {
     collection: "students",
     read: ALL_ROLES,
     create: ALL_ROLES,
-    update: ALL_ROLES,
+    // Mentors are NOT allowed to edit students — only the admin-style roles.
+    // (Frontend already hides the Edit button via canEditStudent; this is the
+    // matching server-side gate so a mentor can't bypass it via the API.)
+    // Admin-mediated automation that touches the doc (auto LEVEL_2 upgrade on
+    // first approved deposit, retention assignment, student-request approval)
+    // all runs from admin sessions and stays within this allow-list.
+    update: ADMIN_ROLES,
     delete: ADMIN_ROLES,
     defaultSort: "-created_date",
   },
