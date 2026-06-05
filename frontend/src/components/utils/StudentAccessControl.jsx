@@ -8,6 +8,13 @@ export const canEditStudent = (userRole) => {
   return ['super_admin', 'admin'].includes(userRole);
 };
 
+export const canDeleteStudent = (userRole) => {
+  // Same gate as edit — admins only. Deleting a student is destructive and
+  // also breaks any FundingTransaction / StudentLog FKs that still point at
+  // it, so keep this tight to the same roles allowed to edit.
+  return ['super_admin', 'admin'].includes(userRole);
+};
+
 export const canCreateMT5Account = (userRole) => {
   return ['super_admin', 'admin', 'broker_admin'].includes(userRole);
 };

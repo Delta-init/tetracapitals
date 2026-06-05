@@ -12,7 +12,7 @@ import StudentForm from "../components/students/StudentForm";
 import StudentRequestForm from "../components/students/StudentRequestForm";
 import BulkImportStudentsDialog from "../components/students/BulkImportStudentsDialog";
 
-import { Plus, Search, Eye, Users, UserCheck, Upload, Download, Filter, ArrowUp, Share2 } from "lucide-react";
+import { Plus, Search, Eye, Users, UserCheck, Upload, Download, Filter, ArrowUp, Share2, Trash2 } from "lucide-react";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
@@ -21,6 +21,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { 
   canSubmitStudentRequest, 
   canEditStudent,
+  canDeleteStudent,
   filterStudentsByRole, 
   applyStudentMasking,
   generateStudentCode
@@ -179,6 +180,27 @@ export default function Students() {
       }
     }
   });
+
+  const deleteStudentMutation = useMutation({
+    mutationFn: async (student) => {
+      await base44.entities.Student.delete(student.id);
+      await logAction('delete_student', 'Student', student.id, `Deleted student: ${student.full_name} (${student.student_code})`, student, null);
+      return student;
+    },
+    onSuccess: (student) => {
+      queryClient.invalidateQueries({ queryKey: ['students'] });
+      toast.success(`Deleted ${student.full_name}`);
+    },
+    onError: (err) => {
+      toast.error(err?.message || 'Failed to delete student');
+    },
+  });
+
+  const handleDeleteStudent = (student) => {
+    const code = student.student_code || student.id;
+    if (!confirm(`Delete ${student.full_name} (${code})?\n\nThis cannot be undone. Existing transactions and logs that reference this student will keep their copy of the student name/code but will no longer link to a live record.`)) return;
+    deleteStudentMutation.mutate(student);
+  };
 
   const bulkUpgradeMutation = useMutation({
     mutationFn: async (studentIds) => {
@@ -440,6 +462,7 @@ export default function Students() {
   };
   
   const canEdit = canEditStudent(currentUser.app_role);
+  const canDelete = canDeleteStudent(currentUser.app_role);
   
   const getStatusColor = (status) => {
     return status === 'ACTIVE' 
@@ -721,11 +744,25 @@ export default function Students() {
                               {student.created_date ? format(new Date(student.created_date), 'MMM d, yyyy') : '-'}
                             </TableCell>
                             <TableCell className="text-right">
-                              <Link to={createPageUrl('StudentDetail') + '?id=' + student.id}>
-                                <Button size="sm" variant="ghost" className="h-8 w-8 p-0">
-                                  <Eye className="h-4 w-4" />
-                                </Button>
-                              </Link>
+                              <div className="flex justify-end gap-1">
+                                <Link to={createPageUrl('StudentDetail') + '?id=' + student.id}>
+                                  <Button size="sm" variant="ghost" className="h-8 w-8 p-0" title="View">
+                                    <Eye className="h-4 w-4" />
+                                  </Button>
+                                </Link>
+                                {canDelete && (
+                                  <Button
+                                    size="sm"
+                                    variant="ghost"
+                                    className="h-8 w-8 p-0 text-red-600 hover:text-red-700 hover:bg-red-50"
+                                    title="Delete"
+                                    onClick={() => handleDeleteStudent(student)}
+                                    disabled={deleteStudentMutation.isPending}
+                                  >
+                                    <Trash2 className="h-4 w-4" />
+                                  </Button>
+                                )}
+                              </div>
                             </TableCell>
                           </TableRow>
                         ))
@@ -789,11 +826,25 @@ export default function Students() {
                            {student.created_date ? format(new Date(student.created_date), 'MMM d, yyyy') : '-'}
                          </TableCell>
                          <TableCell className="text-right">
-                           <Link to={createPageUrl('StudentDetail') + '?id=' + student.id}>
-                             <Button size="sm" variant="ghost" className="h-8 w-8 p-0">
-                               <Eye className="h-4 w-4" />
-                             </Button>
-                           </Link>
+                           <div className="flex justify-end gap-1">
+                             <Link to={createPageUrl('StudentDetail') + '?id=' + student.id}>
+                               <Button size="sm" variant="ghost" className="h-8 w-8 p-0" title="View">
+                                 <Eye className="h-4 w-4" />
+                               </Button>
+                             </Link>
+                             {canDelete && (
+                               <Button
+                                 size="sm"
+                                 variant="ghost"
+                                 className="h-8 w-8 p-0 text-red-600 hover:text-red-700 hover:bg-red-50"
+                                 title="Delete"
+                                 onClick={() => handleDeleteStudent(student)}
+                                 disabled={deleteStudentMutation.isPending}
+                               >
+                                 <Trash2 className="h-4 w-4" />
+                               </Button>
+                             )}
+                           </div>
                          </TableCell>
                        </TableRow>
                      ))
@@ -876,11 +927,25 @@ export default function Students() {
                             {student.created_date ? format(new Date(student.created_date), 'MMM d, yyyy') : '-'}
                           </TableCell>
                           <TableCell className="text-right">
-                            <Link to={createPageUrl('StudentDetail') + '?id=' + student.id}>
-                              <Button size="sm" variant="ghost" className="h-8 w-8 p-0">
-                                <Eye className="h-4 w-4" />
-                              </Button>
-                            </Link>
+                            <div className="flex justify-end gap-1">
+                              <Link to={createPageUrl('StudentDetail') + '?id=' + student.id}>
+                                <Button size="sm" variant="ghost" className="h-8 w-8 p-0" title="View">
+                                  <Eye className="h-4 w-4" />
+                                </Button>
+                              </Link>
+                              {canDelete && (
+                                <Button
+                                  size="sm"
+                                  variant="ghost"
+                                  className="h-8 w-8 p-0 text-red-600 hover:text-red-700 hover:bg-red-50"
+                                  title="Delete"
+                                  onClick={() => handleDeleteStudent(student)}
+                                  disabled={deleteStudentMutation.isPending}
+                                >
+                                  <Trash2 className="h-4 w-4" />
+                                </Button>
+                              )}
+                            </div>
                           </TableCell>
                         </TableRow>
                       ))
@@ -943,11 +1008,25 @@ export default function Students() {
                               {myEntry?.since ? format(new Date(myEntry.since), 'MMM d, yyyy') : '-'}
                             </TableCell>
                             <TableCell className="text-right">
-                              <Link to={createPageUrl('StudentDetail') + '?id=' + student.id}>
-                                <Button size="sm" variant="ghost" className="h-8 w-8 p-0">
-                                  <Eye className="h-4 w-4" />
-                                </Button>
-                              </Link>
+                              <div className="flex justify-end gap-1">
+                                <Link to={createPageUrl('StudentDetail') + '?id=' + student.id}>
+                                  <Button size="sm" variant="ghost" className="h-8 w-8 p-0" title="View">
+                                    <Eye className="h-4 w-4" />
+                                  </Button>
+                                </Link>
+                                {canDelete && (
+                                  <Button
+                                    size="sm"
+                                    variant="ghost"
+                                    className="h-8 w-8 p-0 text-red-600 hover:text-red-700 hover:bg-red-50"
+                                    title="Delete"
+                                    onClick={() => handleDeleteStudent(student)}
+                                    disabled={deleteStudentMutation.isPending}
+                                  >
+                                    <Trash2 className="h-4 w-4" />
+                                  </Button>
+                                )}
+                              </div>
                             </TableCell>
                           </TableRow>
                         );
@@ -1013,13 +1092,25 @@ export default function Students() {
                         <TableCell className="text-right">
                           <div className="flex justify-end gap-2">
                             <Link to={createPageUrl('StudentDetail') + '?id=' + student.id}>
-                              <Button size="sm" variant="ghost" className="h-8 w-8 p-0">
+                              <Button size="sm" variant="ghost" className="h-8 w-8 p-0" title="View">
                                 <Eye className="h-4 w-4" />
                               </Button>
                             </Link>
+                            {canDelete && (
+                              <Button
+                                size="sm"
+                                variant="ghost"
+                                className="h-8 w-8 p-0 text-red-600 hover:text-red-700 hover:bg-red-50"
+                                title="Delete"
+                                onClick={() => handleDeleteStudent(student)}
+                                disabled={deleteStudentMutation.isPending}
+                              >
+                                <Trash2 className="h-4 w-4" />
+                              </Button>
+                            )}
                             {isMentor && (
-                              <Button 
-                                size="sm" 
+                              <Button
+                                size="sm"
                                 onClick={() => requestOpenPoolStudentMutation.mutate(student)}
                                 disabled={requestOpenPoolStudentMutation.isPending}
                                 className="bg-green-600 hover:bg-green-700"
@@ -1157,11 +1248,25 @@ export default function Students() {
                         {student.created_date ? format(new Date(student.created_date), 'MMM d, yyyy') : '-'}
                       </TableCell>
                       <TableCell className="text-right">
-                        <Link to={createPageUrl('StudentDetail') + '?id=' + student.id}>
-                          <Button size="sm" variant="ghost" className="h-8 w-8 p-0">
-                            <Eye className="h-4 w-4" />
-                          </Button>
-                        </Link>
+                        <div className="flex justify-end gap-1">
+                          <Link to={createPageUrl('StudentDetail') + '?id=' + student.id}>
+                            <Button size="sm" variant="ghost" className="h-8 w-8 p-0" title="View">
+                              <Eye className="h-4 w-4" />
+                            </Button>
+                          </Link>
+                          {canDelete && (
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              className="h-8 w-8 p-0 text-red-600 hover:text-red-700 hover:bg-red-50"
+                              title="Delete"
+                              onClick={() => handleDeleteStudent(student)}
+                              disabled={deleteStudentMutation.isPending}
+                            >
+                              <Trash2 className="h-4 w-4" />
+                            </Button>
+                          )}
+                        </div>
                       </TableCell>
                     </TableRow>
                   ))
