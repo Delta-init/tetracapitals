@@ -45,8 +45,12 @@ async function api(path, { method = "GET", body, isForm = false } = {}) {
   const token = getToken();
   if (token) headers["Authorization"] = `Bearer ${token}`;
   // Pass through impersonation when active — the backend treats it as "act as
-  // this user" for permission checks and audit trail.
-  const impId = getImpersonationId();
+  // this user" for permission checks and audit trail. NEVER on auth endpoints:
+  // login/register run without a token, and adding this header on an
+  // origin-cross preflight against a backend whose CORS list doesn't include
+  // it produces "Failed to fetch" with no other clue.
+  const isAuthRoute = path.startsWith("/api/auth/");
+  const impId = isAuthRoute ? null : getImpersonationId();
   if (impId) headers["X-Impersonate-User-Id"] = impId;
   const res = await fetch(`${API_URL}${path}`, {
     method,
@@ -122,6 +126,9 @@ const auth = {
   },
   logout: (redirectTo) => {
     setToken(null);
+    // Drop any active impersonation so the next session doesn't ship
+    // impersonation headers from the previous admin's tab state.
+    try { sessionStorage.removeItem(IMPERSONATION_KEY); } catch {}
     if (typeof window !== "undefined" && redirectTo === true) window.location.href = "/Login";
   },
   // Aliases preserved from the Base44 SDK so legacy callers keep working.
