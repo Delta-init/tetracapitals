@@ -16,6 +16,12 @@ export interface AuthUser {
 /**
  * Resolve the authenticated user from a request's Authorization header.
  * Loads the latest user document from MongoDB so role changes take effect immediately.
+ *
+ * Impersonation: if the request carries an `X-Impersonate-User-Id` header
+ * AND the real (token-bearing) user is super_admin or admin, the returned
+ * AuthUser is the impersonated target — so downstream handlers see the
+ * impersonated identity for permission checks and ownership comparisons.
+ * The original admin id is preserved on `_impersonatedBy` for auditing.
  */
 export async function getAuthUser(req: Request): Promise<AuthUser | null> {
   const auth = req.headers.get("authorization") ?? req.headers.get("Authorization");
@@ -30,7 +36,25 @@ export async function getAuthUser(req: Request): Promise<AuthUser | null> {
   if (!userDoc) return null;
   // Strip password before exposing.
   const { password_hash, ...safe } = userDoc as any;
-  return serialize(safe) as AuthUser;
+  const realUser = serialize(safe) as AuthUser;
+
+  // Impersonation handoff.
+  const impersonateId = req.headers.get("x-impersonate-user-id") ?? req.headers.get("X-Impersonate-User-Id");
+  if (impersonateId && ["super_admin", "admin"].includes(realUser.app_role)) {
+    const targetOid = toObjectId(impersonateId);
+    if (targetOid) {
+      const targetDoc = await col("users").findOne({ _id: targetOid });
+      if (targetDoc) {
+        const { password_hash: _pw, ...targetSafe } = targetDoc as any;
+        const target = serialize(targetSafe) as AuthUser;
+        // Stamp the real admin so audit logs and request-scoped logic can read it.
+        (target as any)._impersonatedBy = { id: realUser.id, email: realUser.email, full_name: realUser.full_name };
+        return target;
+      }
+    }
+  }
+
+  return realUser;
 }
 
 export async function requireAuth(req: Request): Promise<AuthUser | Response> {

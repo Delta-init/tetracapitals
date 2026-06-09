@@ -16,6 +16,7 @@
 
 const API_URL = (import.meta.env.VITE_API_URL || "http://localhost:4000").replace(/\/$/, "");
 const TOKEN_KEY = "st_token";
+const IMPERSONATION_KEY = "impersonated_user";   // keep in sync with ImpersonationContext.jsx
 
 function getToken() {
   try { return localStorage.getItem(TOKEN_KEY); } catch { return null; }
@@ -24,11 +25,29 @@ function setToken(t) {
   try { t ? localStorage.setItem(TOKEN_KEY, t) : localStorage.removeItem(TOKEN_KEY); } catch {}
 }
 
+// When the user is impersonating, return the target id so we can ship it to
+// the backend as a header. The backend honors it ONLY when the real user is
+// super_admin / admin, so this header is safe to send unconditionally.
+function getImpersonationId() {
+  try {
+    const raw = sessionStorage.getItem(IMPERSONATION_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    return parsed?.targetUser?.id || null;
+  } catch {
+    return null;
+  }
+}
+
 async function api(path, { method = "GET", body, isForm = false } = {}) {
   const headers = {};
   if (!isForm) headers["Content-Type"] = "application/json";
   const token = getToken();
   if (token) headers["Authorization"] = `Bearer ${token}`;
+  // Pass through impersonation when active — the backend treats it as "act as
+  // this user" for permission checks and audit trail.
+  const impId = getImpersonationId();
+  if (impId) headers["X-Impersonate-User-Id"] = impId;
   const res = await fetch(`${API_URL}${path}`, {
     method,
     headers,
