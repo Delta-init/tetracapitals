@@ -39,24 +39,60 @@ function getImpersonationId() {
   }
 }
 
+// Backend capability flag. true once we know the API accepts the new
+// X-Impersonate-User-Id CORS header. Until we've confirmed support, every
+// impersonated request gets a try-with-header / fall-back-without-header
+// loop so the page doesn't break against a backend that hasn't been
+// redeployed yet. Once we've seen a single success WITH the header, we keep
+// sending it.
+let impersonationHeaderConfirmedOk = false;
+let warnedAboutImpersonationFallback = false;
+
+async function rawFetch(path, headers, method, body, isForm) {
+  return fetch(`${API_URL}${path}`, {
+    method,
+    headers,
+    body: isForm ? body : body !== undefined ? JSON.stringify(body) : undefined,
+  });
+}
+
 async function api(path, { method = "GET", body, isForm = false } = {}) {
   const headers = {};
   if (!isForm) headers["Content-Type"] = "application/json";
   const token = getToken();
   if (token) headers["Authorization"] = `Bearer ${token}`;
-  // Pass through impersonation when active — the backend treats it as "act as
-  // this user" for permission checks and audit trail. NEVER on auth endpoints:
-  // login/register run without a token, and adding this header on an
-  // origin-cross preflight against a backend whose CORS list doesn't include
-  // it produces "Failed to fetch" with no other clue.
+  // Auth endpoints (login/register/me/change-password) never run inside an
+  // impersonated session — skip the header there.
   const isAuthRoute = path.startsWith("/api/auth/");
   const impId = isAuthRoute ? null : getImpersonationId();
-  if (impId) headers["X-Impersonate-User-Id"] = impId;
-  const res = await fetch(`${API_URL}${path}`, {
-    method,
-    headers,
-    body: isForm ? body : body !== undefined ? JSON.stringify(body) : undefined,
-  });
+  const willImpersonate = !!impId;
+  if (willImpersonate) headers["X-Impersonate-User-Id"] = impId;
+
+  let res;
+  try {
+    res = await rawFetch(path, headers, method, body, isForm);
+    if (willImpersonate) impersonationHeaderConfirmedOk = true;
+  } catch (err) {
+    // Network / CORS-preflight failure. If we attempted impersonation and the
+    // backend hasn't been redeployed to accept the new header, retry once
+    // WITHOUT the header so the actions go through under the admin's token.
+    if (willImpersonate && !impersonationHeaderConfirmedOk) {
+      delete headers["X-Impersonate-User-Id"];
+      if (!warnedAboutImpersonationFallback && typeof window !== "undefined") {
+        warnedAboutImpersonationFallback = true;
+        console.warn(
+          "[base44] Backend doesn't accept X-Impersonate-User-Id yet — " +
+          "falling back to admin-token requests. Some ownership-gated actions " +
+          "(e.g. mentor-specific Approve buttons) may still fail until the " +
+          "backend is redeployed."
+        );
+      }
+      res = await rawFetch(path, headers, method, body, isForm);
+    } else {
+      throw err;
+    }
+  }
+
   const ct = res.headers.get("content-type") || "";
   const payload = ct.includes("application/json") ? await res.json().catch(() => null) : await res.text();
   if (!res.ok) {
@@ -64,7 +100,6 @@ async function api(path, { method = "GET", body, isForm = false } = {}) {
     const err = new Error(msg);
     err.status = res.status;
     err.payload = payload;
-    // Axios-shaped, for legacy SDK callers that read `error.response.data.error`.
     err.response = { data: payload, status: res.status };
     throw err;
   }
