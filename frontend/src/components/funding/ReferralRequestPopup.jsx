@@ -8,12 +8,14 @@ import { Textarea } from "@/components/ui/textarea";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Users, Send, Loader2 } from "lucide-react";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import TagsPicker from "./TagsPicker";
 
 import { toast } from "sonner";
 
 const PAYMENT_METHODS = ['AED TRANSFER','UPI','CARD PAYMENT','USDT','INR TRANSFER','Cash deposit','Other'];
 
-export default function ReferralRequestPopup({ student, currentUser, onClose }) {
+export default function ReferralRequestPopup({ student, currentUser, onClose, transactionType = 'DEPOSIT', initialTags = [] }) {
+  const isBonus = transactionType === 'BONUS';
   const [depositAmount, setDepositAmount] = useState('');
   const [paymentMethod, setPaymentMethod] = useState('');
   const [mt5Login, setMt5Login] = useState('');
@@ -21,6 +23,7 @@ export default function ReferralRequestPopup({ student, currentUser, onClose }) 
   const [uploading, setUploading] = useState(false);
   const [notes, setNotes] = useState('');
   const [submitting, setSubmitting] = useState(false);
+  const [tags, setTags] = useState(initialTags || []);
 
   const handleFileUpload = async (e) => {
     const file = e.target.files?.[0];
@@ -38,11 +41,15 @@ export default function ReferralRequestPopup({ student, currentUser, onClose }) 
 
   const handleSubmit = async () => {
     if (!depositAmount || parseFloat(depositAmount) <= 0) {
-      toast.error('Please enter a valid deposit amount');
+      toast.error(isBonus ? 'Please enter a valid bonus amount' : 'Please enter a valid deposit amount');
       return;
     }
     if (!paymentMethod) {
       toast.error('Please select a payment method');
+      return;
+    }
+    if (isBonus && (!tags || tags.length === 0)) {
+      toast.error('Please pick a tag for the bonus');
       return;
     }
     setSubmitting(true);
@@ -57,7 +64,9 @@ export default function ReferralRequestPopup({ student, currentUser, onClose }) 
         payment_method: paymentMethod,
         mt5_login: mt5Login,
         screenshot_url: screenshotUrl,
-        notes
+        notes,
+        transaction_type: transactionType,
+        tags: isBonus ? tags : [],
       });
 
       toast.success(`Referral request sent to ${student.primary_mentor_name}. They will be notified to approve or reject.`);
@@ -83,7 +92,9 @@ export default function ReferralRequestPopup({ student, currentUser, onClose }) 
           <Alert className="bg-amber-50 border-amber-200">
             <AlertDescription className="text-sm text-amber-800">
               <strong>{student.full_name}</strong> is managed by <strong>{student.primary_mentor_name}</strong>.
-              You can send a referral request to co-manage this client. If approved, your deposits for this client will be tracked separately and commissions attributed to you.
+              You can send a referral request to co-manage this client. If approved, your
+              {isBonus ? ' bonuses ' : ' deposits '}
+              for this client will be tracked separately and commissions attributed to you.
             </AlertDescription>
           </Alert>
 
@@ -118,6 +129,16 @@ export default function ReferralRequestPopup({ student, currentUser, onClose }) 
               </SelectContent>
             </Select>
           </div>
+
+          {isBonus && (
+            <div className="space-y-2">
+              <Label>Tag *</Label>
+              <TagsPicker value={tags} onChange={setTags} />
+              <p className="text-xs text-muted-foreground">
+                Categorize this bonus. Tag names are managed by admins on the Tags page.
+              </p>
+            </div>
+          )}
 
           <div className="space-y-2">
             <Label>MT5 Login (Optional)</Label>

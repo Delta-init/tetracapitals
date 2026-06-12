@@ -139,6 +139,11 @@ export default function FundingRequestForm({ students, allStudents = [], current
         <ReferralRequestPopup
           student={referralStudent}
           currentUser={currentUser}
+          // Carry the type + tags chosen in the parent form into the referral so
+          // BONUS (and its required tag) flows through the co-management path
+          // the same way DEPOSIT does.
+          transactionType={formData.type}
+          initialTags={formData.tags}
           onClose={() => setReferralStudent(null)}
         />
       )}

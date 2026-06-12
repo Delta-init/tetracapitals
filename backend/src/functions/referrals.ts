@@ -14,8 +14,16 @@ export async function createReferralRequest(req: Request, user: AuthUser): Promi
     student_id, student_name, student_code,
     receiving_mentor_id, receiving_mentor_name,
     requested_deposit_amount, payment_method, mt5_login, screenshot_url, notes,
+    transaction_type, tags,
   } = body;
   if (!student_id || !receiving_mentor_id) return error("Missing required fields", 400);
+  // Default to DEPOSIT for backwards-compat with the original popup that
+  // didn't send a type. New BONUS referrals flow through here too.
+  const txType = transaction_type === "BONUS" ? "BONUS" : "DEPOSIT";
+  const txTags = Array.isArray(tags) ? tags.filter((t) => typeof t === "string" && t) : [];
+  if (txType === "BONUS" && txTags.length === 0) {
+    return error("BONUS referrals must include at least one tag", 400);
+  }
 
   const sid = toObjectId(student_id);
   const student = sid ? await col("students").findOne({ _id: sid }) : null;
@@ -45,7 +53,8 @@ export async function createReferralRequest(req: Request, user: AuthUser): Promi
     initiating_mentor_name: user.full_name,
     receiving_mentor_id, receiving_mentor_name,
     requested_deposit_amount: parseFloat(requested_deposit_amount) || 0,
-    transaction_type: "DEPOSIT",
+    transaction_type: txType,
+    tags: txTags,
     payment_method: payment_method || "",
     mt5_login: mt5_login || "",
     screenshot_url: screenshot_url || "",
@@ -118,6 +127,9 @@ export async function processReferralResponse(req: Request, user: AuthUser): Pro
 
     await col("funding_transactions").insertOne({
       type: (referral as any).transaction_type || "DEPOSIT",
+      // Carry the tags from the referral so a BONUS keeps its category when the
+      // approval converts the referral into a real FundingTransaction.
+      tags: Array.isArray((referral as any).tags) ? (referral as any).tags : [],
       status: "PENDING",
       student_id: (referral as any).student_id,
       student_name: (referral as any).student_name,
