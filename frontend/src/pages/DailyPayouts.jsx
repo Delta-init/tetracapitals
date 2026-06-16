@@ -95,12 +95,13 @@ export default function DailyPayouts() {
           id: mid,
           name: t.initiating_mentor_name || t.primary_mentor_name || u?.full_name || 'Unknown',
           rate: u?.commission_rate ?? 4,
-          net: 0,
+          dailyDeposit: 0,
         };
         byMentor.set(mid, row);
       }
-      if (t.type === 'DEPOSIT' || t.type === 'BONUS') row.net += t.amount_usd || 0;
-      else if (t.type === 'WITHDRAWAL') row.net -= t.amount_usd || 0;
+      // Daily 1% counts DEPOSIT + BONUS only. WITHDRAWAL is intentionally
+      // skipped here — it's already deducted by the quarterly commission math.
+      if (t.type === 'DEPOSIT' || t.type === 'BONUS') row.dailyDeposit += t.amount_usd || 0;
     }
     // Map of existing daily-1% releases for this date.
     const releasedByMentor = new Map();
@@ -111,25 +112,25 @@ export default function DailyPayouts() {
     }
     const out = [];
     for (const row of byMentor.values()) {
-      if (row.net <= 0) continue;                         // hide zero / negative days
+      if (row.dailyDeposit <= 0) continue;                // hide rows with no DEPOSIT/BONUS on the day
       out.push({
         ...row,
-        payout: Math.round(row.net * 0.01 * 100) / 100,
+        payout: Math.round(row.dailyDeposit * 0.01 * 100) / 100,
         released: releasedByMentor.get(row.id) || null,
       });
     }
-    return out.sort((a, b) => b.net - a.net);
+    return out.sort((a, b) => b.dailyDeposit - a.dailyDeposit);
   }, [transactions, adjustments, users, selectedDate, currentUser, isMentor]);
 
   const totals = useMemo(() => ({
-    net: rows.reduce((s, r) => s + r.net, 0),
+    dailyDeposit: rows.reduce((s, r) => s + r.dailyDeposit, 0),
     payout: rows.reduce((s, r) => s + r.payout, 0),
     released: rows.filter(r => r.released).length,
     total: rows.length,
   }), [rows]);
 
   const openRelease = (row) => {
-    setReleaseModal({ mentor_id: row.id, mentor_name: row.name, net: row.net, payout: row.payout });
+    setReleaseModal({ mentor_id: row.id, mentor_name: row.name, dailyDeposit: row.dailyDeposit, payout: row.payout });
     setInvoiceNumber('');
   };
 
@@ -182,8 +183,8 @@ export default function DailyPayouts() {
               <p className="text-2xl font-bold text-gray-900">{totals.total}</p>
             </div>
             <div>
-              <p className="text-xs uppercase tracking-wider text-gray-500">Net Deposits</p>
-              <p className="text-2xl font-bold text-blue-700">${totals.net.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</p>
+              <p className="text-xs uppercase tracking-wider text-gray-500">Deposits + Bonuses</p>
+              <p className="text-2xl font-bold text-blue-700">${totals.dailyDeposit.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</p>
             </div>
             <div>
               <p className="text-xs uppercase tracking-wider text-gray-500">1% Payout Total</p>
@@ -209,7 +210,9 @@ export default function DailyPayouts() {
                 <TableRow className="bg-gray-50">
                   <TableHead>Mentor</TableHead>
                   <TableHead>Rate</TableHead>
-                  <TableHead className="text-right">Net Deposit</TableHead>
+                  <TableHead className="text-right" title="DEPOSIT + BONUS only. Withdrawals are not counted toward the daily 1% — they're still deducted from the quarterly commission.">
+                    Deposits + Bonuses
+                  </TableHead>
                   <TableHead className="text-right">1% Payout</TableHead>
                   <TableHead>Status</TableHead>
                   <TableHead>Invoice</TableHead>
@@ -227,7 +230,7 @@ export default function DailyPayouts() {
                   <TableRow key={r.id} className={r.released ? 'bg-green-50/40' : ''}>
                     <TableCell className="font-medium">{r.name}</TableCell>
                     <TableCell><Badge variant="outline">{r.rate}%</Badge></TableCell>
-                    <TableCell className="text-right font-mono">${r.net.toFixed(2)}</TableCell>
+                    <TableCell className="text-right font-mono">${r.dailyDeposit.toFixed(2)}</TableCell>
                     <TableCell className="text-right font-mono font-semibold text-green-700">${r.payout.toFixed(2)}</TableCell>
                     <TableCell>
                       {r.released ? (
@@ -278,8 +281,9 @@ export default function DailyPayouts() {
               <div className="bg-gray-50 rounded p-3 text-sm space-y-1">
                 <p><span className="text-gray-500">Mentor:</span> <strong>{releaseModal.mentor_name}</strong></p>
                 <p><span className="text-gray-500">Date:</span> {selectedDate}</p>
-                <p><span className="text-gray-500">Net deposit:</span> <span className="font-mono">${releaseModal.net.toFixed(2)}</span></p>
+                <p><span className="text-gray-500">Deposits + Bonuses:</span> <span className="font-mono">${releaseModal.dailyDeposit.toFixed(2)}</span></p>
                 <p><span className="text-gray-500">1% payout:</span> <span className="font-mono font-semibold text-green-700">${releaseModal.payout.toFixed(2)}</span></p>
+                <p className="text-xs text-gray-500 pt-1">Withdrawals on this date are not included — they're already deducted from the quarterly commission.</p>
               </div>
               <div className="space-y-2">
                 <Label htmlFor="invoice">Invoice Number (Optional)</Label>

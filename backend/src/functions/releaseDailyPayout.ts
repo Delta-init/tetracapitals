@@ -47,22 +47,26 @@ export async function releaseDailyPayout(req: Request, user: AuthUser): Promise<
   const mentor = await col("users").findOne({ _id: mOid });
   if (!mentor) return error("Mentor not found", 404);
 
-  // Compute net for the calendar day in UTC.
+  // Compute the day's eligible amount in UTC. Per business rule: ONLY DEPOSIT
+  // and BONUS count toward the daily 1% advance. WITHDRAWAL is intentionally
+  // excluded here — it's already reflected in the full quarterly commission
+  // (where the standard 4%/2%/5% etc. is computed off net), so deducting it
+  // again here would double-penalize the mentor.
   const dayStart = new Date(`${date}T00:00:00.000Z`);
   const dayEnd = new Date(`${date}T23:59:59.999Z`);
   const txs = await col("funding_transactions").find({ status: "APPROVED" }).toArray();
-  let net = 0;
+  let dailyDeposit = 0;
   for (const t of txs as any[]) {
     const attr = t.initiating_mentor_id || t.primary_mentor_id;
     if (attr !== mentor_id) continue;
     const ts = new Date(t.requested_at || t.created_date);
     if (ts < dayStart || ts > dayEnd) continue;
-    if (t.type === "DEPOSIT" || t.type === "BONUS") net += t.amount_usd || 0;
-    else if (t.type === "WITHDRAWAL") net -= t.amount_usd || 0;
+    if (t.type === "DEPOSIT" || t.type === "BONUS") dailyDeposit += t.amount_usd || 0;
+    // WITHDRAWAL deliberately ignored — see comment above.
   }
-  if (net <= 0) return error("Net deposit is zero or negative for this date — nothing to release", 400);
+  if (dailyDeposit <= 0) return error("No deposits / bonuses on this date — nothing to release", 400);
 
-  const payoutAmount = Math.round(net * 0.01 * 100) / 100; // 1% rounded to cents
+  const payoutAmount = Math.round(dailyDeposit * 0.01 * 100) / 100; // 1% rounded to cents
   const reason = reasonForDate(date);
   const now = new Date().toISOString();
 
@@ -76,7 +80,10 @@ export async function releaseDailyPayout(req: Request, user: AuthUser): Promise<
     invoice_number: invoice_number || "",
     payout_kind: "daily_1pct",
     payout_date: date,
-    net_deposit_usd: net,
+    // Stored as `net_deposit_usd` to stay compatible with existing
+    // ManualCommissionAdjustment readers, but the value is gross deposit +
+    // bonus only (withdrawals excluded per business rule for the daily 1%).
+    net_deposit_usd: dailyDeposit,
     created_by_id: user.id,
     created_by_name: user.full_name,
     created_date: now,
@@ -91,7 +98,7 @@ export async function releaseDailyPayout(req: Request, user: AuthUser): Promise<
     entity_type: "ManualCommissionAdjustment",
     entity_id: res.insertedId.toString(),
     details: JSON.stringify({
-      mentor: (mentor as any).full_name, date, net,
+      mentor: (mentor as any).full_name, date, daily_deposit: dailyDeposit,
       payout: doc.amount_usd, invoice: invoice_number || null,
     }),
     success: true,
@@ -101,7 +108,7 @@ export async function releaseDailyPayout(req: Request, user: AuthUser): Promise<
   return json({
     adjustment_id: res.insertedId.toString(),
     mentor_name: (mentor as any).full_name,
-    net_deposit_usd: net,
+    daily_deposit_usd: dailyDeposit,
     amount_usd: doc.amount_usd,
     reason,
     invoice_number: doc.invoice_number,
