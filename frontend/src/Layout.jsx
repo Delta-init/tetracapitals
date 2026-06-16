@@ -126,6 +126,7 @@ export default function Layout({ children, currentPageName }) {
     { name: 'TargetsManagement', href: createPageUrl('TargetsManagement'), icon: Target, roles: ['super_admin', 'broker_admin', 'academic_head'] },
     { name: 'MyCommissionHistory', href: createPageUrl('MyCommissionHistory'), icon: Award, roles: ['senior_mentor', 'junior_mentor'] },
     { name: 'QuarterClosing', href: createPageUrl('QuarterClosing'), icon: Award, roles: ['super_admin', 'broker_admin', 'finance_admin'] },
+    { name: 'DailyPayouts', href: createPageUrl('DailyPayouts'), icon: DollarSign, roles: ['super_admin', 'admin', 'broker_admin', 'finance_admin', 'senior_mentor', 'junior_mentor', 'subjunior_mentor'] },
     { name: 'CommissionTools', href: createPageUrl('CommissionTools'), icon: DollarSign, roles: ['super_admin', 'broker_admin', 'finance_admin'] },
     { name: 'CommissionReports', href: createPageUrl('CommissionReports'), icon: Award, roles: ['super_admin', 'broker_admin', 'academic_head', 'finance_admin'] },
     { name: 'GamificationSettings', href: createPageUrl('GamificationSettings'), icon: Target, roles: ['super_admin', 'academic_head'] },

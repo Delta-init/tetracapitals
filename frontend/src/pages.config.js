@@ -52,6 +52,7 @@ import AcademicCounselors from './pages/AcademicCounselors';
 import AuditLogs from './pages/AuditLogs';
 import CommissionReports from './pages/CommissionReports';
 import Commissions from './pages/Commissions';
+import DailyPayouts from './pages/DailyPayouts';
 import Dashboard from './pages/Dashboard';
 import DrawAdminStudents from './pages/DrawAdminStudents';
 import FundingRequests from './pages/FundingRequests';
@@ -88,6 +89,7 @@ export const PAGES = {
     "AuditLogs": AuditLogs,
     "CommissionReports": CommissionReports,
     "Commissions": Commissions,
+    "DailyPayouts": DailyPayouts,
     "Dashboard": Dashboard,
     "DrawAdminStudents": DrawAdminStudents,
     "FundingRequests": FundingRequests,

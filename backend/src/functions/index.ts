@@ -4,6 +4,7 @@ import { getAllUsers } from "./getAllUsers";
 import { updateUser } from "./updateUser";
 import { createUser } from "./createUser";
 import { getNextStudentCode } from "./getNextStudentCode";
+import { releaseDailyPayout } from "./releaseDailyPayout";
 import { getReportsData } from "./getReportsData";
 import { getMentorCommissions } from "./getMentorCommissions";
 import { generateQuarterlyLedgers } from "./generateQuarterlyLedgers";
@@ -26,6 +27,7 @@ const AUTHED: Record<string, AuthedHandler> = {
   processWithdrawal,
   updateCoMentorContribution,
   getNextStudentCode,
+  releaseDailyPayout,
 };
 
 // Functions that should still require auth but accept no body of interest.
