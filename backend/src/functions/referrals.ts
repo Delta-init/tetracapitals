@@ -27,6 +27,12 @@ export async function createReferralRequest(req: Request, user: AuthUser): Promi
 
   const sid = toObjectId(student_id);
   const student = sid ? await col("students").findOne({ _id: sid }) : null;
+  // Self-request guard: a mentor can't co-manage their own primary student.
+  // Check primary FIRST so the error message is accurate even when they're
+  // also already listed in co_mentors_details with role 'primary'.
+  if (student && (student as any).primary_mentor_id === user.id) {
+    return error("You're already the primary mentor for this client.", 400);
+  }
   if (student && (student as any).co_mentors_details) {
     let existing: any[] = [];
     try {
@@ -34,8 +40,12 @@ export async function createReferralRequest(req: Request, user: AuthUser): Promi
       existing = Array.isArray(raw) ? raw : JSON.parse(raw);
     } catch { /* ignore */ }
     if (Array.isArray(existing)) {
-      if (existing.some((cm) => cm.mentor_id === user.id)) return error("You are already a co-mentor for this client.", 400);
-      if (existing.length >= 2) return error("This student already has the maximum number of co-mentors (2 total).", 400);
+      // Block duplicate self-requests. Any number of OTHER mentors may
+      // co-manage; the previous 2-mentor cap was removed per business
+      // rule (primary + as many approved co-mentors as needed).
+      if (existing.some((cm) => cm.mentor_id === user.id)) {
+        return error("You are already a co-mentor for this client.", 400);
+      }
     }
   }
 
@@ -110,11 +120,40 @@ export async function processReferralResponse(req: Request, user: AuthUser): Pro
     if (sid) {
       student = await col("students").findOne({ _id: sid });
       if (student) {
-        const since = now;
-        const coMentors = [
-          { mentor_id: student.primary_mentor_id, mentor_name: student.primary_mentor_name, net_deposit_contribution_usd: 0, role: "primary", since },
-          { mentor_id: (referral as any).initiating_mentor_id, mentor_name: (referral as any).initiating_mentor_name, net_deposit_contribution_usd: 0, role: "co_mentor", since },
-        ];
+        // Append the new co-mentor to the existing list instead of rebuilding
+        // from scratch. The old behaviour overwrote co_mentors_details every
+        // approval, so a second co-mentor approval wiped out the first one —
+        // effectively capping each student at one co-mentor regardless of how
+        // many had been approved.
+        let coMentors: any[] = [];
+        if (student.co_mentors_details) {
+          try {
+            const raw = student.co_mentors_details;
+            const parsed = typeof raw === "string" ? JSON.parse(raw) : raw;
+            if (Array.isArray(parsed)) coMentors = parsed;
+          } catch { /* fall through with empty list */ }
+        }
+        // Ensure the primary mentor is recorded as role: primary (idempotent).
+        if (student.primary_mentor_id && !coMentors.some((cm) => cm.mentor_id === student.primary_mentor_id)) {
+          coMentors.push({
+            mentor_id: student.primary_mentor_id,
+            mentor_name: student.primary_mentor_name,
+            net_deposit_contribution_usd: 0,
+            role: "primary",
+            since: now,
+          });
+        }
+        // Append the newly-approved co-mentor (idempotent — won't double-add).
+        const newCoId = (referral as any).initiating_mentor_id;
+        if (newCoId && !coMentors.some((cm) => cm.mentor_id === newCoId)) {
+          coMentors.push({
+            mentor_id: newCoId,
+            mentor_name: (referral as any).initiating_mentor_name,
+            net_deposit_contribution_usd: 0,
+            role: "co_mentor",
+            since: now,
+          });
+        }
         await col("students").updateOne(
           { _id: sid },
           { $set: { co_mentors_details: JSON.stringify(coMentors), updated_date: now } },
