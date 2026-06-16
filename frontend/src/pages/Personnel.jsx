@@ -19,7 +19,9 @@ import {
   TableRow,
 } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
-import { Search, Edit, Users, Shield, LogIn, Plus } from 'lucide-react';
+import { Search, Edit, Users, Shield, LogIn, Plus, KeyRound } from 'lucide-react';
+import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { Label } from '@/components/ui/label';
 import { toast } from 'sonner';
 import PersonnelForm from '../components/personnel/PersonnelForm';
 import { canViewPersonnel, canEditPersonnel, filterPersonnelByRole } from '../components/utils/PersonnelAccessControl';
@@ -73,6 +75,48 @@ export default function Personnel() {
       toast.error('Failed to update user');
     }
   });
+
+  const [resetPasswordUser, setResetPasswordUser] = useState(null);
+  const [resetPasswordValue, setResetPasswordValue] = useState('');
+  const [resetPasswordShow, setResetPasswordShow] = useState(false);
+
+  const resetPasswordMutation = useMutation({
+    mutationFn: async ({ userId, newPassword, userName }) => {
+      const r = await base44.functions.invoke('resetUserPassword', { userId, newPassword });
+      await logAction('reset_user_password', 'User', userId, `Reset password for ${userName}`, null, { user_id: userId });
+      return r.data;
+    },
+    onSuccess: (_, vars) => {
+      toast.success(`Password reset for ${vars.userName}. Share the new password with them securely.`);
+      setResetPasswordUser(null);
+      setResetPasswordValue('');
+      setResetPasswordShow(false);
+    },
+    onError: (e) => {
+      toast.error(e?.response?.data?.error || e?.message || 'Failed to reset password');
+    },
+  });
+
+  const generateRandomPassword = () => {
+    const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789';
+    let out = '';
+    for (let i = 0; i < 12; i++) out += chars[Math.floor(Math.random() * chars.length)];
+    setResetPasswordValue(out);
+    setResetPasswordShow(true);
+  };
+
+  const confirmResetPassword = () => {
+    if (!resetPasswordUser) return;
+    if (!resetPasswordValue || resetPasswordValue.length < 8) {
+      toast.error('Password must be at least 8 characters');
+      return;
+    }
+    resetPasswordMutation.mutate({
+      userId: resetPasswordUser.id,
+      newPassword: resetPasswordValue,
+      userName: resetPasswordUser.full_name,
+    });
+  };
 
   const createUserMutation = useMutation({
     mutationFn: async (userData) => {
@@ -343,6 +387,17 @@ export default function Personnel() {
                             <LogIn className="h-4 w-4" />
                           </Button>
                         )}
+                        {['super_admin', 'admin'].includes(currentUser.app_role) && (
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => { setResetPasswordUser(user); setResetPasswordValue(''); setResetPasswordShow(false); }}
+                            title={`Reset ${user.full_name}'s password`}
+                            className="text-blue-600 hover:text-blue-700 hover:bg-blue-50"
+                          >
+                            <KeyRound className="h-4 w-4" />
+                          </Button>
+                        )}
                         </div>
                     </TableCell>
                   </TableRow>
@@ -361,6 +416,62 @@ export default function Personnel() {
           allUsers={allUsers}
         />
       )}
+
+      <Dialog open={!!resetPasswordUser} onOpenChange={(o) => !o && setResetPasswordUser(null)}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <KeyRound className="h-5 w-5 text-blue-600" />
+              Reset Password
+            </DialogTitle>
+          </DialogHeader>
+          {resetPasswordUser && (
+            <div className="space-y-4">
+              <div className="bg-gray-50 rounded p-3 text-sm space-y-1">
+                <p><span className="text-gray-500">User:</span> <strong>{resetPasswordUser.full_name}</strong></p>
+                <p><span className="text-gray-500">Email:</span> {resetPasswordUser.email}</p>
+                <p><span className="text-gray-500">Role:</span> {resetPasswordUser.app_role?.replace(/_/g, ' ')}</p>
+              </div>
+              <div>
+                <Label htmlFor="resetpw">New Password *</Label>
+                <div className="flex gap-2 mt-1">
+                  <Input
+                    id="resetpw"
+                    type={resetPasswordShow ? 'text' : 'password'}
+                    value={resetPasswordValue}
+                    onChange={(e) => setResetPasswordValue(e.target.value)}
+                    placeholder="Min 8 characters"
+                    minLength={8}
+                    autoComplete="new-password"
+                    autoFocus
+                  />
+                  <Button type="button" variant="outline" onClick={() => setResetPasswordShow(s => !s)}>
+                    {resetPasswordShow ? 'Hide' : 'Show'}
+                  </Button>
+                  <Button type="button" variant="outline" onClick={generateRandomPassword}>
+                    Generate
+                  </Button>
+                </div>
+                <p className="text-xs text-gray-500 mt-2">
+                  The user can sign in immediately with this password. Share it with them through a secure channel — the system never emails it.
+                </p>
+              </div>
+            </div>
+          )}
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setResetPasswordUser(null)} disabled={resetPasswordMutation.isPending}>
+              Cancel
+            </Button>
+            <Button
+              className="bg-blue-600 hover:bg-blue-700"
+              onClick={confirmResetPassword}
+              disabled={resetPasswordMutation.isPending}
+            >
+              {resetPasswordMutation.isPending ? 'Resetting…' : 'Reset password'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
