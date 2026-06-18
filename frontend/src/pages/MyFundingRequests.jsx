@@ -136,11 +136,16 @@ export default function MyFundingRequests() {
     myStudents = students.filter(s => s.primary_mentor_id === currentUser.assigned_mentor_id);
     teamTransactions = [];
   } else {
-    // Filter MY transactions - by initiating_mentor_id or primary_mentor_id (covers assistance-submitted & legacy transactions)
-    myTransactions = transactions.filter(t =>
-      t.initiating_mentor_id === currentUser.id ||
-      t.primary_mentor_id === currentUser.id
-    );
+    // "My" transactions = transactions THIS user initiated. When a co-mentor
+    // adds a deposit/bonus for someone else's student, only the co-mentor
+    // should see it in their personal list — the primary mentor sees it via
+    // the Team Funding Requests tab (for senior mentors) or via reports.
+    // Falls back to primary_mentor_id only for legacy rows that don't have
+    // initiating_mentor_id set, matching the commission-attribution rule.
+    myTransactions = transactions.filter(t => {
+      const attribMentor = t.initiating_mentor_id || t.primary_mentor_id;
+      return attribMentor === currentUser.id;
+    });
     myStudents = students.filter(s => {
       if (s.primary_mentor_id === currentUser.id) return true;
       if (!s.co_mentors_details) return false;
