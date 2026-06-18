@@ -154,11 +154,10 @@ export default function Personnel() {
     }
   };
 
-  // Super admins use /MasterAdmin for all personnel actions (add, edit,
-  // impersonate, reset password). /Personnel becomes a read-only directory
-  // for them, so we hide the action buttons here.
-  const isSuper = currentUser?.app_role === 'super_admin';
-  const canCreate = !isSuper && ['super_admin', 'admin'].includes(currentUser?.app_role);
+  // Personnel actions stay available here for all eligible roles, including
+  // super_admin — /MasterAdmin is an additional surface for super_admin, not
+  // a replacement.
+  const canCreate = ['super_admin', 'admin'].includes(currentUser?.app_role);
 
   const handleClose = () => {
     setShowForm(false);
@@ -370,7 +369,7 @@ export default function Personnel() {
                     </TableCell>
                     <TableCell>
                       <div className="flex items-center gap-1">
-                        {!isSuper && ['academic_head', 'broker_admin', 'admin'].includes(currentUser.app_role) && (
+                        {['super_admin', 'academic_head', 'broker_admin'].includes(currentUser.app_role) && (
                           <Button
                             variant="ghost"
                             size="sm"
@@ -380,7 +379,7 @@ export default function Personnel() {
                             <Edit className="h-4 w-4" />
                           </Button>
                         )}
-                        {!isSuper && ['academic_head', 'broker_admin'].includes(currentUser.app_role) && !isImpersonating() && user.app_role !== 'super_admin' && user.app_role !== 'broker_admin' && (
+                        {['super_admin', 'academic_head', 'broker_admin'].includes(currentUser.app_role) && !isImpersonating() && user.app_role !== 'super_admin' && user.app_role !== 'broker_admin' && (
                           <Button
                             variant="ghost"
                             size="sm"
@@ -391,7 +390,7 @@ export default function Personnel() {
                             <LogIn className="h-4 w-4" />
                           </Button>
                         )}
-                        {!isSuper && currentUser.app_role === 'admin' && (
+                        {['super_admin', 'admin'].includes(currentUser.app_role) && (
                           <Button
                             variant="ghost"
                             size="sm"
