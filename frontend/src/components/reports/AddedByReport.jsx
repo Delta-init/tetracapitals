@@ -63,7 +63,8 @@ export default function AddedByReport({ transactions, dateLabel, startDate, endD
                     transaction_count: 0,
                 };
             }
-            if (tx.type === 'DEPOSIT') map[key].total_deposit += tx.amount_usd || 0;
+            // BONUS counts toward deposits — same rule as the quarterly commission math.
+            if (tx.type === 'DEPOSIT' || tx.type === 'BONUS') map[key].total_deposit += tx.amount_usd || 0;
             else if (tx.type === 'WITHDRAWAL') map[key].total_withdrawal += tx.amount_usd || 0;
             map[key].student_ids.add(tx.student_id);
             map[key].transaction_count += 1;

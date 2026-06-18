@@ -27,7 +27,8 @@ export default function PrimaryMentorReport({ transactions, dateLabel, startDate
                     transaction_count: 0,
                 };
             }
-            if (tx.type === 'DEPOSIT') mentorMap[key].total_deposit += tx.amount_usd || 0;
+            // BONUS counts toward deposits — same rule as the quarterly commission math.
+            if (tx.type === 'DEPOSIT' || tx.type === 'BONUS') mentorMap[key].total_deposit += tx.amount_usd || 0;
             else if (tx.type === 'WITHDRAWAL') mentorMap[key].total_withdrawal += tx.amount_usd || 0;
             mentorMap[key].student_count.add(tx.student_id);
             mentorMap[key].transaction_count += 1;

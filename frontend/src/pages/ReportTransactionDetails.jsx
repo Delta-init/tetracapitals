@@ -79,8 +79,10 @@ export default function ReportTransactionDetails() {
       if (!studentMap[t.student_id]) {
         studentMap[t.student_id] = { deposits: 0, withdrawals: 0 };
       }
-      if (t.type === 'DEPOSIT') studentMap[t.student_id].deposits += t.amount_usd || 0;else
-      if (t.type === 'WITHDRAWAL') studentMap[t.student_id].withdrawals += t.amount_usd || 0;
+      // BONUS counts toward deposits for commission (same business rule as
+      // every other commission calculator in the app).
+      if (t.type === 'DEPOSIT' || t.type === 'BONUS') studentMap[t.student_id].deposits += t.amount_usd || 0;
+      else if (t.type === 'WITHDRAWAL') studentMap[t.student_id].withdrawals += t.amount_usd || 0;
     }
 
     let commissionFromDepositsOnly = 0;
@@ -100,7 +102,7 @@ export default function ReportTransactionDetails() {
       return sum + (a.adjustment_type === 'addition' ? a.amount_usd || 0 : -(Math.abs(a.amount_usd) || 0));
     }, 0);
 
-    const totalDeposit = transactions.filter((t) => t.type === 'DEPOSIT').reduce((s, t) => s + (t.amount_usd || 0), 0);
+    const totalDeposit = transactions.filter((t) => t.type === 'DEPOSIT' || t.type === 'BONUS').reduce((s, t) => s + (t.amount_usd || 0), 0);
     const totalWithdrawal = transactions.filter((t) => t.type === 'WITHDRAWAL').reduce((s, t) => s + (t.amount_usd || 0), 0);
     const netDeposit = totalDeposit - totalWithdrawal;
 
@@ -238,18 +240,18 @@ export default function ReportTransactionDetails() {
                                             <td className="px-4 py-3 text-gray-600">{t.senior_mentor_name || '—'}</td>
                                             {!isMentor && <td className="px-4 py-3 text-gray-600">{t.initiating_mentor_name || t.requested_by_name || '—'}</td>}
                                             <td className="px-4 py-3 text-center">
-                                                <Badge variant={t.type === 'DEPOSIT' ? 'default' : 'destructive'} className="text-xs">
+                                                <Badge variant={t.type === 'WITHDRAWAL' ? 'destructive' : 'default'} className="text-xs">
                                                     {t.type}
                                                 </Badge>
                                             </td>
-                                            <td className={`px-4 py-3 text-right font-bold ${t.type === 'DEPOSIT' ? 'text-green-700' : 'text-red-600'}`}>
+                                            <td className={`px-4 py-3 text-right font-bold ${t.type === 'WITHDRAWAL' ? 'text-red-600' : 'text-green-700'}`}>
                                                 ${(t.amount_usd || 0).toLocaleString('en-US', { minimumFractionDigits: 2 })}
                                             </td>
                                             <td className="px-4 py-3 text-right font-medium">
-                                               {t.type === 'DEPOSIT' ?
-                    <span className="text-purple-700">+${((t.amount_usd || 0) * 0.04).toLocaleString('en-US', { minimumFractionDigits: 2 })}</span> :
-
-                    <span className="text-red-500">-${((t.amount_usd || 0) * 0.04).toLocaleString('en-US', { minimumFractionDigits: 2 })}</span>
+                                               {/* DEPOSIT and BONUS both earn commission (positive); only WITHDRAWAL deducts it. */}
+                                               {t.type === 'WITHDRAWAL' ?
+                    <span className="text-red-500">-${((t.amount_usd || 0) * 0.04).toLocaleString('en-US', { minimumFractionDigits: 2 })}</span> :
+                    <span className="text-purple-700">+${((t.amount_usd || 0) * 0.04).toLocaleString('en-US', { minimumFractionDigits: 2 })}</span>
                     }
                                             </td>
                                             <td className="px-4 py-3 text-gray-600 text-xs">{t.payment_method || '—'}</td>
