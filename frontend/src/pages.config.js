@@ -60,6 +60,7 @@ import GamificationSettings from './pages/GamificationSettings';
 import Home from './pages/Home';
 import Leaderboard from './pages/Leaderboard';
 import Login from './pages/Login';
+import MasterAdmin from './pages/MasterAdmin';
 import MT5Accounts from './pages/MT5Accounts';
 import MentorPerformance from './pages/MentorPerformance';
 import MentorTraining from './pages/MentorTraining';
@@ -97,6 +98,7 @@ export const PAGES = {
     "Home": Home,
     "Leaderboard": Leaderboard,
     "Login": Login,
+    "MasterAdmin": MasterAdmin,
     "MT5Accounts": MT5Accounts,
     "MentorPerformance": MentorPerformance,
     "MentorTraining": MentorTraining,
