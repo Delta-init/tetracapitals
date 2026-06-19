@@ -155,13 +155,14 @@ export default function MasterAdmin() {
       if (txTypeFilter !== 'all' && t.type !== txTypeFilter) return false;
       if (txStatusFilter !== 'all' && t.status !== txStatusFilter) return false;
       if (!q) return true;
+      const has = (v) => v != null && String(v).toLowerCase().includes(q);
       return (
-        t.student_name?.toLowerCase().includes(q) ||
-        t.student_code?.toLowerCase().includes(q) ||
-        t.transaction_id?.toLowerCase().includes(q) ||
-        t.mt5_login?.toLowerCase().includes(q) ||
-        t.primary_mentor_name?.toLowerCase().includes(q) ||
-        t.initiating_mentor_name?.toLowerCase().includes(q)
+        has(t.student_name) ||
+        has(t.student_code) ||
+        has(t.transaction_id) ||
+        has(t.mt5_login) ||
+        has(t.primary_mentor_name) ||
+        has(t.initiating_mentor_name)
       );
     }).slice(0, 500);
   }, [transactions, txSearch, txTypeFilter, txStatusFilter]);

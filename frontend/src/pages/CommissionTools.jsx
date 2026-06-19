@@ -219,7 +219,12 @@ export default function CommissionTools() {
                       />
                     </div>
                     {coManagedStudents
-                      .filter(s => !studentSearch || s.full_name?.toLowerCase().includes(studentSearch.toLowerCase()) || s.student_code?.toLowerCase().includes(studentSearch.toLowerCase()))
+                      .filter(s => {
+                        if (!studentSearch) return true;
+                        const q = studentSearch.toLowerCase();
+                        const has = (v) => v != null && String(v).toLowerCase().includes(q);
+                        return has(s.full_name) || has(s.student_code);
+                      })
                       .map(s => (
                         <SelectItem key={s.id} value={s.id}>{s.full_name} ({s.student_code})</SelectItem>
                       ))}

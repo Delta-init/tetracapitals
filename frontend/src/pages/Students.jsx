@@ -410,11 +410,13 @@ export default function Students() {
 
   // Apply search filter
   if (searchTerm) {
+    const q = searchTerm.toLowerCase();
+    const has = (v) => v != null && String(v).toLowerCase().includes(q);
     filteredStudents = filteredStudents.filter(s =>
-      s.full_name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      s.student_code?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      s.email?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      s.phone?.toLowerCase().includes(searchTerm.toLowerCase())
+      has(s.full_name) ||
+      has(s.student_code) ||
+      has(s.email) ||
+      has(s.phone)
     );
   }
 

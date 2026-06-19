@@ -194,14 +194,18 @@ export default function FundingRequests() {
   }
   if (searchTerm) {
     const lowerSearch = searchTerm.toLowerCase();
+    // Coerce each field to a string before lowercasing — imported docs may
+    // have numeric mt5_login / transaction_id values that would otherwise
+    // throw .toLowerCase is not a function and blank the page.
+    const has = (v) => v != null && String(v).toLowerCase().includes(lowerSearch);
     filteredTransactions = filteredTransactions.filter(t => {
       const student = students.find(s => s.id === t.student_id);
-      return t.student_name?.toLowerCase().includes(lowerSearch) ||
-        t.student_code?.toLowerCase().includes(lowerSearch) ||
-        t.mt5_login?.toLowerCase().includes(lowerSearch) ||
-        t.transaction_id?.toLowerCase().includes(lowerSearch) ||
-        t.user_id?.toLowerCase().includes(lowerSearch) ||
-        student?.email?.toLowerCase().includes(lowerSearch);
+      return has(t.student_name) ||
+        has(t.student_code) ||
+        has(t.mt5_login) ||
+        has(t.transaction_id) ||
+        has(t.user_id) ||
+        has(student?.email);
     });
   }
 

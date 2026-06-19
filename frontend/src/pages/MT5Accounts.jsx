@@ -63,10 +63,12 @@ export default function MT5Accounts() {
 
   // Apply search filter
   if (searchTerm) {
+    const q = searchTerm.toLowerCase();
+    const has = (v) => v != null && String(v).toLowerCase().includes(q);
     filteredAccounts = filteredAccounts.filter(acc =>
-      acc.mt5_login?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      acc.student_name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      acc.student_code?.toLowerCase().includes(searchTerm.toLowerCase())
+      has(acc.mt5_login) ||
+      has(acc.student_name) ||
+      has(acc.student_code)
     );
   }
 

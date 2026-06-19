@@ -464,7 +464,11 @@ export default function MyFundingRequests() {
                           if (dateTo && d > new Date(dateTo + 'T23:59:59')) return false;
                           if (filterType !== 'ALL' && t.type !== filterType) return false;
                           if (filterStatus !== 'ALL' && t.status !== filterStatus) return false;
-                          if (filterSearch && !t.student_name?.toLowerCase().includes(filterSearch.toLowerCase()) && !t.student_code?.toLowerCase().includes(filterSearch.toLowerCase())) return false;
+                          if (filterSearch) {
+                            const q = filterSearch.toLowerCase();
+                            const matches = (v) => v != null && String(v).toLowerCase().includes(q);
+                            if (!matches(t.student_name) && !matches(t.student_code)) return false;
+                          }
                           return true;
                         });
                         const filteredReferrals = pendingReferrals.filter(r => {

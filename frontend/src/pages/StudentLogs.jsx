@@ -160,11 +160,12 @@ export default function StudentLogs() {
   let filteredLogs = visibleLogs;
   if (searchTerm) {
     const lowerSearch = searchTerm.toLowerCase();
-    filteredLogs = visibleLogs.filter(log => 
-      log.student_name?.toLowerCase().includes(lowerSearch) ||
-      log.student_code?.toLowerCase().includes(lowerSearch) ||
-      log.email?.toLowerCase().includes(lowerSearch) ||
-      log.phone_number?.toLowerCase().includes(lowerSearch)
+    const has = (v) => v != null && String(v).toLowerCase().includes(lowerSearch);
+    filteredLogs = visibleLogs.filter(log =>
+      has(log.student_name) ||
+      has(log.student_code) ||
+      has(log.email) ||
+      has(log.phone_number)
     );
   }
 

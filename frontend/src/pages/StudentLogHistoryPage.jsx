@@ -195,10 +195,11 @@ export default function StudentLogHistoryPage() {
 
   if (searchTerm) {
     const t = searchTerm.toLowerCase();
+    const has = (v) => v != null && String(v).toLowerCase().includes(t);
     filtered = filtered.filter(e =>
-      e.student_name?.toLowerCase().includes(t) ||
-      e.student_code?.toLowerCase().includes(t) ||
-      e.updated_by_name?.toLowerCase().includes(t)
+      has(e.student_name) ||
+      has(e.student_code) ||
+      has(e.updated_by_name)
     );
   }
   if (filterStudent) {

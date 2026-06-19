@@ -19,10 +19,11 @@ export default function SearchableStudentSelect({
     if (!searchTerm) return students;
     
     const term = searchTerm.toLowerCase();
-    return students.filter(student => 
-      student.full_name?.toLowerCase().includes(term) ||
-      student.student_code?.toLowerCase().includes(term) ||
-      student.email?.toLowerCase().includes(term)
+    const has = (v) => v != null && String(v).toLowerCase().includes(term);
+    return students.filter(student =>
+      has(student.full_name) ||
+      has(student.student_code) ||
+      has(student.email)
     );
   }, [students, searchTerm]);
 
