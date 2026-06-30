@@ -117,7 +117,8 @@ export default function QuarterClosing() {
 
     // Sum manual adjustments for this mentor within the quarter (same window).
     const mentorAdjustments = manualAdjustments.filter(a => {
-      const aDate = new Date(a.created_date);
+      // Attribute by the admin-chosen effective_date; fall back to created_date.
+      const aDate = new Date(a.effective_date || a.created_date);
       return a.mentor_id === mentor.id && aDate >= quarterStart && aDate <= quarterEnd;
     });
     const manualAdjustmentTotal = mentorAdjustments.reduce((sum, a) => sum + (a.amount_usd || 0), 0);

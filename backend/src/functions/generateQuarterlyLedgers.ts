@@ -77,7 +77,8 @@ export async function generateQuarterlyLedgers(): Promise<Response> {
     const adjustmentTotal = allAdjustments
       .filter((a: any) => {
         if (a.mentor_id !== mentor.id) return false;
-        const d = new Date(a.created_date);
+        // Attribute by effective_date (falls back to created_date for old rows).
+        const d = new Date(a.effective_date || a.created_date);
         return d >= start && d <= end;
       })
       .reduce((s: number, a: any) => s + (a.amount_usd || 0), 0);

@@ -38,7 +38,9 @@ export async function getMentorCommissions(req: Request, user: AuthUser): Promis
     return d >= start && d <= end;
   });
   let filteredAdj = allAdjs.filter((a: any) => {
-    const d = new Date(a.created_date);
+    // Quarter attribution follows the admin-chosen effective_date; legacy rows
+    // without it fall back to created_date.
+    const d = new Date(a.effective_date || a.created_date);
     return d >= start && d <= end;
   });
 

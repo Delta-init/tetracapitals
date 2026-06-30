@@ -9,10 +9,22 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Calculator, PlusCircle, MinusCircle, ListFilter } from "lucide-react";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
+import { Calculator, PlusCircle, MinusCircle, ListFilter, Pencil, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { format } from "date-fns";
 import { getEffectiveUser } from "@/components/utils/ImpersonationContext";
+import { getBusinessQuarter } from "@/components/utils/quarterRange";
+
+// Which commission quarter an adjustment lands in, derived from its effective
+// date (the date the admin picked) — falling back to created_date for older
+// rows that predate the effective_date field.
+const quarterLabelFor = (effectiveDate, createdDate) => {
+  const d = new Date(effectiveDate || createdDate);
+  if (isNaN(d.getTime())) return '—';
+  const { quarter, year } = getBusinessQuarter(d);
+  return `Q${quarter} ${year}`;
+};
 
 export default function CommissionTools() {
   const [currentUser, setCurrentUser] = useState(null);
@@ -132,11 +144,31 @@ export default function CommissionTools() {
   };
 
   // ─── Manual Commission Adjustment ────────────────────────────────────────
+  const todayStr = format(new Date(), 'yyyy-MM-dd');
   const [adjMentorId, setAdjMentorId] = useState('');
   const [adjAmount, setAdjAmount] = useState('');
   const [adjReason, setAdjReason] = useState('');
   const [adjType, setAdjType] = useState('ADDITION');
   const [adjNotes, setAdjNotes] = useState('');
+  const [adjEffectiveDate, setAdjEffectiveDate] = useState(todayStr);
+
+  // Edit dialog (super admin only)
+  const isSuperAdmin = currentUser?.app_role === 'super_admin';
+  const [editingAdj, setEditingAdj] = useState(null);
+  const [editType, setEditType] = useState('ADDITION');
+  const [editAmount, setEditAmount] = useState('');
+  const [editReason, setEditReason] = useState('');
+  const [editNotes, setEditNotes] = useState('');
+  const [editEffectiveDate, setEditEffectiveDate] = useState(todayStr);
+
+  const openEdit = (adj) => {
+    setEditingAdj(adj);
+    setEditType(adj.adjustment_type || (adj.amount_usd < 0 ? 'DEDUCTION' : 'ADDITION'));
+    setEditAmount(String(Math.abs(adj.amount_usd ?? 0)));
+    setEditReason(adj.reason || '');
+    setEditNotes(adj.notes || '');
+    setEditEffectiveDate((adj.effective_date || adj.created_date || '').slice(0, 10) || todayStr);
+  };
 
   const { data: mentors = [] } = useQuery({
     queryKey: ['mentor-users-for-tools'],
@@ -167,13 +199,47 @@ export default function CommissionTools() {
         reason: adjReason,
         adjustment_type: adjType,
         notes: adjNotes,
+        // The quarter this adjustment affects is driven by effective_date, not
+        // by when the row was created. Pick 25/06/2026 while in Q3 and it still
+        // deducts from Q2.
+        effective_date: adjEffectiveDate,
         created_by_id: currentUser.id,
         created_by_name: currentUser.full_name,
       });
     },
     onSuccess: () => {
       toast.success('Adjustment added');
-      setAdjMentorId(''); setAdjAmount(''); setAdjReason(''); setAdjNotes(''); setAdjType('ADDITION');
+      setAdjMentorId(''); setAdjAmount(''); setAdjReason(''); setAdjNotes(''); setAdjType('ADDITION'); setAdjEffectiveDate(todayStr);
+      queryClient.invalidateQueries({ queryKey: ['manual-commission-adjustments'] });
+    },
+    onError: (e) => toast.error(e.message),
+  });
+
+  const updateAdjMutation = useMutation({
+    mutationFn: async () => {
+      const raw = parseFloat(editAmount);
+      if (!raw || raw === 0) throw new Error('Invalid amount');
+      const finalAmount = editType === 'DEDUCTION' ? -Math.abs(raw) : Math.abs(raw);
+      return base44.entities.ManualCommissionAdjustment.update(editingAdj.id, {
+        amount_usd: finalAmount,
+        adjustment_type: editType,
+        reason: editReason,
+        notes: editNotes,
+        effective_date: editEffectiveDate,
+      });
+    },
+    onSuccess: () => {
+      toast.success('Adjustment updated');
+      setEditingAdj(null);
+      queryClient.invalidateQueries({ queryKey: ['manual-commission-adjustments'] });
+    },
+    onError: (e) => toast.error(e.message),
+  });
+
+  const deleteAdjMutation = useMutation({
+    mutationFn: (id) => base44.entities.ManualCommissionAdjustment.delete(id),
+    onSuccess: () => {
+      toast.success('Adjustment deleted');
       queryClient.invalidateQueries({ queryKey: ['manual-commission-adjustments'] });
     },
     onError: (e) => toast.error(e.message),
@@ -317,6 +383,13 @@ export default function CommissionTools() {
                 <Label>Reason *</Label>
                 <Input value={adjReason} onChange={e => setAdjReason(e.target.value)} placeholder="e.g. Q1 performance bonus" />
               </div>
+              <div className="space-y-2">
+                <Label>Effective Date *</Label>
+                <Input type="date" value={adjEffectiveDate} onChange={e => setAdjEffectiveDate(e.target.value)} />
+                <p className="text-xs text-gray-500">
+                  Applies to <span className="font-semibold text-purple-700">{quarterLabelFor(adjEffectiveDate)}</span> commission
+                </p>
+              </div>
             </div>
             <div className="space-y-2">
               <Label>Notes (Optional)</Label>
@@ -324,7 +397,7 @@ export default function CommissionTools() {
             </div>
             <Button
               onClick={() => createAdjMutation.mutate()}
-              disabled={createAdjMutation.isPending || !adjMentorId || !adjAmount || !adjReason}
+              disabled={createAdjMutation.isPending || !adjMentorId || !adjAmount || !adjReason || !adjEffectiveDate}
               className="bg-purple-600 hover:bg-purple-700"
             >
               {createAdjMutation.isPending ? 'Saving...' : 'Add Adjustment'}
@@ -344,21 +417,24 @@ export default function CommissionTools() {
             <Table>
               <TableHeader>
                 <TableRow className="bg-gray-50">
-                  <TableHead>Date</TableHead>
+                  <TableHead>Effective Date</TableHead>
+                  <TableHead>Quarter</TableHead>
                   <TableHead>Mentor</TableHead>
                   <TableHead>Type</TableHead>
                   <TableHead className="text-right">Amount (USD)</TableHead>
                   <TableHead>Reason</TableHead>
                   <TableHead>Created By</TableHead>
+                  {isSuperAdmin && <TableHead className="text-right">Actions</TableHead>}
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {adjustments.length === 0 ? (
-                  <TableRow><TableCell colSpan={6} className="text-center py-8 text-gray-500">No adjustments yet.</TableCell></TableRow>
+                  <TableRow><TableCell colSpan={isSuperAdmin ? 8 : 7} className="text-center py-8 text-gray-500">No adjustments yet.</TableCell></TableRow>
                 ) : (
                   adjustments.map(adj => (
                     <TableRow key={adj.id} className="hover:bg-gray-50">
-                      <TableCell className="text-sm">{format(new Date(adj.created_date), 'MMM d, yyyy HH:mm')}</TableCell>
+                      <TableCell className="text-sm">{format(new Date(adj.effective_date || adj.created_date), 'MMM d, yyyy')}</TableCell>
+                      <TableCell className="text-sm font-medium text-purple-700">{quarterLabelFor(adj.effective_date, adj.created_date)}</TableCell>
                       <TableCell className="font-medium">{adj.mentor_name}</TableCell>
                       <TableCell>
                         <Badge variant="outline" className={adj.adjustment_type === 'ADDITION' ? 'bg-green-100 text-green-800 border-green-200' : 'bg-red-100 text-red-800 border-red-200'}>
@@ -370,6 +446,27 @@ export default function CommissionTools() {
                       </TableCell>
                       <TableCell className="text-sm">{adj.reason}</TableCell>
                       <TableCell className="text-sm">{adj.created_by_name}</TableCell>
+                      {isSuperAdmin && (
+                        <TableCell className="text-right whitespace-nowrap">
+                          <Button variant="ghost" size="icon" className="h-8 w-8 text-blue-600 hover:text-blue-800" onClick={() => openEdit(adj)} title="Edit">
+                            <Pencil className="h-4 w-4" />
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-8 w-8 text-red-600 hover:text-red-800"
+                            title="Delete"
+                            disabled={deleteAdjMutation.isPending}
+                            onClick={() => {
+                              if (window.confirm(`Delete this ${adj.adjustment_type?.toLowerCase()} of $${Math.abs(adj.amount_usd ?? 0).toFixed(2)} for ${adj.mentor_name}? This cannot be undone.`)) {
+                                deleteAdjMutation.mutate(adj.id);
+                              }
+                            }}
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </Button>
+                        </TableCell>
+                      )}
                     </TableRow>
                   ))
                 )}
@@ -377,6 +474,58 @@ export default function CommissionTools() {
             </Table>
           </CardContent>
         </Card>
+
+        {/* Edit Adjustment Dialog (super admin) */}
+        <Dialog open={!!editingAdj} onOpenChange={(open) => { if (!open) setEditingAdj(null); }}>
+          <DialogContent className="max-w-lg">
+            <DialogHeader>
+              <DialogTitle>Edit Manual Adjustment{editingAdj ? ` — ${editingAdj.mentor_name}` : ''}</DialogTitle>
+            </DialogHeader>
+            <div className="space-y-4 py-2">
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label>Type *</Label>
+                  <Select value={editType} onValueChange={setEditType}>
+                    <SelectTrigger><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="ADDITION">Addition</SelectItem>
+                      <SelectItem value="DEDUCTION">Deduction</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-2">
+                  <Label>Amount (USD) *</Label>
+                  <Input type="number" step="0.01" min="0" value={editAmount} onChange={e => setEditAmount(e.target.value)} />
+                </div>
+              </div>
+              <div className="space-y-2">
+                <Label>Effective Date *</Label>
+                <Input type="date" value={editEffectiveDate} onChange={e => setEditEffectiveDate(e.target.value)} />
+                <p className="text-xs text-gray-500">
+                  Applies to <span className="font-semibold text-purple-700">{quarterLabelFor(editEffectiveDate)}</span> commission
+                </p>
+              </div>
+              <div className="space-y-2">
+                <Label>Reason *</Label>
+                <Input value={editReason} onChange={e => setEditReason(e.target.value)} />
+              </div>
+              <div className="space-y-2">
+                <Label>Notes (Optional)</Label>
+                <Textarea value={editNotes} onChange={e => setEditNotes(e.target.value)} rows={2} />
+              </div>
+            </div>
+            <DialogFooter>
+              <Button variant="outline" onClick={() => setEditingAdj(null)}>Cancel</Button>
+              <Button
+                className="bg-purple-600 hover:bg-purple-700"
+                disabled={updateAdjMutation.isPending || !editAmount || !editReason || !editEffectiveDate}
+                onClick={() => updateAdjMutation.mutate()}
+              >
+                {updateAdjMutation.isPending ? 'Saving...' : 'Save Changes'}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
       </div>
     </div>
   );

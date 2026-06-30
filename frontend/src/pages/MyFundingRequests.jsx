@@ -171,7 +171,9 @@ export default function MyFundingRequests() {
 
   const myAdjustments = manualAdjustments.filter(a => {
     if (a.mentor_id !== currentUser.id) return false;
-    const d = new Date(a.created_date);
+    // Attribute by effective_date (the quarter the admin chose), not when the
+    // row was created. Legacy rows without effective_date fall back to created_date.
+    const d = new Date(a.effective_date || a.created_date);
     return d >= selectedQuarterRange.start && d <= selectedQuarterRange.end;
   });
   const adjustmentTotal = myAdjustments.reduce((sum, a) => sum + (a.amount_usd || 0), 0);
@@ -478,7 +480,7 @@ export default function MyFundingRequests() {
                           return true;
                         });
                         const filteredAdjustments = myAdjustments.filter(a => {
-                          const d = new Date(a.created_date);
+                          const d = new Date(a.effective_date || a.created_date);
                           if (dateFrom && d < new Date(dateFrom)) return false;
                           if (dateTo && d > new Date(dateTo + 'T23:59:59')) return false;
                           return true;
