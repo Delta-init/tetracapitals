@@ -51,7 +51,8 @@
       "Bash(cygpath -w /tmp/frames/f001.jpg)",
       "Bash(rm debug-approve.txt)",
       "Bash(curl -s -o /dev/null -w \"HTTP %{http_code}  \\(%{time_total}s\\)\\\\n\" https://api-commission.tetracapitals.com/health)",
-      "Bash(curl -s -i -X POST https://api-commission.tetracapitals.com/api/auth/login -H 'Content-Type: application/json' -H 'Origin: https://commission.tetracapitals.com' --data '{\"email\":\"admin@example.com\",\"password\":\"ChangeMe123!\"}')"
+      "Bash(curl -s -i -X POST https://api-commission.tetracapitals.com/api/auth/login -H 'Content-Type: application/json' -H 'Origin: https://commission.tetracapitals.com' --data '{\"email\":\"admin@example.com\",\"password\":\"ChangeMe123!\"}')",
+      "Bash(node \"C:/Users/user/AppData/Local/Temp/claude/C--projects-student-tracker/430039ff-e5dc-424c-b328-ca7f97c1f52c/scratchpad/inspect4.mjs\")"
     ]
   }
 }

@@ -27,21 +27,24 @@ export const getQuarterLabel = (year, quarter_number) => {
   return `${year}-Q${quarter_number}`;
 };
 
-export const calculateQuarterNetDeposit = (mentorId, startDate, endDate, transactions) => {
-  if (!transactions || !mentorId || !startDate || !endDate) return 0;
-  
+// `start` and `end` are Date instants from getQuarterRange() — the SAME
+// business-timezone-anchored window the mentor portal uses. Passing instants
+// (not YYYY-MM-DD strings) avoids the old bug where the start was parsed as UTC
+// midnight while the end was localized, so the two screens disagreed on
+// boundary transactions.
+export const calculateQuarterNetDeposit = (mentorId, start, end, transactions) => {
+  if (!transactions || !mentorId || !start || !end) return 0;
+
   const MAX_NET_DEPOSIT_PER_STUDENT = 25000;
-  
-  const start = new Date(startDate);
-  const end = new Date(endDate);
-  end.setHours(23, 59, 59, 999);
-  
+
   const mentorFilter = t =>
     t.initiating_mentor_id ? t.initiating_mentor_id === mentorId : t.primary_mentor_id === mentorId;
 
   const dateFilter = t => {
-    const requestedDate = new Date(t.requested_at);
-    return requestedDate >= start && requestedDate <= end;
+    // Match the mentor portal: fall back to created_date when requested_at is
+    // missing so neither screen silently drops a malformed-but-approved row.
+    const d = new Date(t.requested_at || t.created_date);
+    return d >= start && d <= end;
   };
 
   const relevantTransactions = transactions

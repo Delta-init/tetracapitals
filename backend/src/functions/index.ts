@@ -7,6 +7,7 @@ import { getNextStudentCode } from "./getNextStudentCode";
 import { releaseDailyPayout } from "./releaseDailyPayout";
 import { resetUserPassword } from "./resetUserPassword";
 import { masterEditTransaction, masterDeleteTransaction } from "./masterEditTransaction";
+import { wipeData } from "./wipeData";
 import { getReportsData } from "./getReportsData";
 import { getMentorCommissions } from "./getMentorCommissions";
 import { generateQuarterlyLedgers } from "./generateQuarterlyLedgers";
@@ -33,6 +34,7 @@ const AUTHED: Record<string, AuthedHandler> = {
   resetUserPassword,
   masterEditTransaction,
   masterDeleteTransaction,
+  wipeData,
 };
 
 // Functions that should still require auth but accept no body of interest.

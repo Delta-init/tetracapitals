@@ -14,6 +14,7 @@ import {
   calculateQuarterCommission,
   calculateReleaseDate
 } from "../components/utils/LedgerUtils";
+import { getQuarterRange } from "../components/utils/quarterRange";
 import { toast } from "sonner";
 import { logAction } from "../components/utils/AuditLogger";
 
@@ -83,11 +84,12 @@ export default function QuarterClosing() {
   const quarterDate = new Date(selectedYear, (selectedQuarter - 1) * 3, 1);
   const { start_date, end_date } = getQuarterDates(quarterDate);
   const quarterLabel = getQuarterLabel(selectedYear, selectedQuarter);
+  // Business-timezone-anchored window used for ALL filtering below; the
+  // start_date/end_date strings above are kept only for display + persistence.
+  const { start: quarterStart, end: quarterEnd } = getQuarterRange(selectedQuarter, selectedYear);
 
   // Check if quarter has ended
-  const quarterEndDate = new Date(end_date);
-  const currentDate = new Date();
-  const isQuarterEnded = currentDate > quarterEndDate;
+  const isQuarterEnded = new Date() > quarterEnd;
 
   // Get all mentors
   const mentors = users.filter(u => ['junior_mentor', 'senior_mentor'].includes(u.app_role));
@@ -104,7 +106,7 @@ export default function QuarterClosing() {
     }
 
     // Calculate live data
-    const netDeposit = calculateQuarterNetDeposit(mentor.id, start_date, end_date, transactions);
+    const netDeposit = calculateQuarterNetDeposit(mentor.id, quarterStart, quarterEnd, transactions);
 
     // Get previous quarter's buffer
     const prevQuarter = selectedQuarter === 1 ? 4 : selectedQuarter - 1;
@@ -113,13 +115,10 @@ export default function QuarterClosing() {
     const prevLedger = ledgers.find(l => l.mentor_id === mentor.id && l.quarter === prevQuarterLabel);
     const bufferCarriedIn = prevLedger?.commission_buffer_usd || 0;
 
-    // Sum manual adjustments for this mentor within the quarter
-    const start = new Date(start_date);
-    const end = new Date(end_date);
-    end.setHours(23, 59, 59, 999);
+    // Sum manual adjustments for this mentor within the quarter (same window).
     const mentorAdjustments = manualAdjustments.filter(a => {
       const aDate = new Date(a.created_date);
-      return a.mentor_id === mentor.id && aDate >= start && aDate <= end;
+      return a.mentor_id === mentor.id && aDate >= quarterStart && aDate <= quarterEnd;
     });
     const manualAdjustmentTotal = mentorAdjustments.reduce((sum, a) => sum + (a.amount_usd || 0), 0);
 

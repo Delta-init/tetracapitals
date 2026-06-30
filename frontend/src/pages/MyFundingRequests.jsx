@@ -337,7 +337,7 @@ export default function MyFundingRequests() {
 
                   <div className="bg-white rounded-lg p-4 border border-emerald-100">
                     <div className="flex items-center justify-between mb-2">
-                      <p className="text-sm text-gray-600">Gross Commission (4%)</p>
+                      <p className="text-sm text-gray-600">Gross Commission ({commission.commissionRate}%)</p>
                       <Award className="h-5 w-5 text-emerald-600" />
                     </div>
                     <p className="text-2xl font-bold text-emerald-600">${commission.grossCommissionUsd.toFixed(2)}</p>

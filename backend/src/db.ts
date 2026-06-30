@@ -6,10 +6,13 @@ let dbInstance: Db | null = null;
 
 export async function connectDb(): Promise<Db> {
   if (dbInstance) return dbInstance;
+  // Only pass authSource when the URI actually has user creds — embedded
+  // mongo-memory-server has no auth and rejects the handshake otherwise.
+  const hasCreds = /^mongodb(\+srv)?:\/\/[^/@]+@/.test(config.mongoUri);
   client = new MongoClient(config.mongoUri, {
     maxPoolSize: 20,
-    authSource: "admin",
     serverSelectionTimeoutMS: 10_000,
+    ...(hasCreds ? { authSource: "admin" } : {}),
   });
   await client.connect();
   dbInstance = client.db(config.mongoDb);
