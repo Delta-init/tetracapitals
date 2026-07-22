@@ -73,7 +73,7 @@ export async function generateQuarterlyLedgers(): Promise<Response> {
     const prevLedger = existingLedgers.find((l: any) => l.mentor_id === mentor.id && l.quarter === prevQuarterLabel);
     const bufferCarriedIn = prevLedger?.commission_buffer_usd || 0;
 
-    const grossCommission = (netDeposit + bufferCarriedIn) * 0.04;
+    const grossCommission = netDeposit * 0.04;
     const adjustmentTotal = allAdjustments
       .filter((a: any) => {
         if (a.mentor_id !== mentor.id) return false;
@@ -82,7 +82,9 @@ export async function generateQuarterlyLedgers(): Promise<Response> {
         return d >= start && d <= end;
       })
       .reduce((s: number, a: any) => s + (a.amount_usd || 0), 0);
-    const adjustedGross = grossCommission + adjustmentTotal;
+    // Last quarter's held buffer carries forward into adjusted gross, then splits
+    // 75/25 into this quarter's release and buffer.
+    const adjustedGross = grossCommission + adjustmentTotal + bufferCarriedIn;
     const commissionRelease = adjustedGross * 0.75;
     const commissionBuffer = adjustedGross * 0.25;
     const releaseDate = new Date(prevYear, startMonth + 3, 15);

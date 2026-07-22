@@ -54,7 +54,14 @@
       "Bash(curl -s -i -X POST https://api-commission.tetracapitals.com/api/auth/login -H 'Content-Type: application/json' -H 'Origin: https://commission.tetracapitals.com' --data '{\"email\":\"admin@example.com\",\"password\":\"ChangeMe123!\"}')",
       "Bash(node \"C:/Users/user/AppData/Local/Temp/claude/C--projects-student-tracker/430039ff-e5dc-424c-b328-ca7f97c1f52c/scratchpad/inspect4.mjs\")",
       "PowerShell($ErrorActionPreference='Stop'; irm bun.sh/install.ps1 | iex)",
-      "Bash(curl -s -m 3 http://localhost:4000/health)"
+      "Bash(curl -s -m 3 http://localhost:4000/health)",
+      "Bash(curl -s -m 15 -I https://api-commission.tetracapitals.com/health)",
+      "Bash(node \"C:/Users/user/AppData/Local/Temp/claude/C--projects-student-tracker/430039ff-e5dc-424c-b328-ca7f97c1f52c/scratchpad/why-buffer-diff.mjs\")",
+      "Bash(node \"C:/Users/user/AppData/Local/Temp/claude/C--projects-student-tracker/430039ff-e5dc-424c-b328-ca7f67c1f52c/scratchpad/find-boundary.mjs\")",
+      "Bash(node \"C:/Users/user/AppData/Local/Temp/claude/C--projects-student-tracker/430039ff-e5dc-424c-b328-ca7f77c1f52c/scratchpad/find-boundary.mjs\")",
+      "Bash(node \"C:/Users/user/AppData/Local/Temp/claude/C--projects-student-tracker/430039ff-e5dc-424c-b328-ca7f78c1f52c/scratchpad/find-boundary.mjs\")",
+      "Bash(node \"C:/Users/user/AppData/Local/Temp/claude/C--projects-student-tracker/430039ff-e5dc-424c-b328-ca7f97c1f52c/scratchpad/trace-q1.mjs\")",
+      "Bash(node \"C:/Users/user/AppData/Local/Temp/claude/C--projects-student-tracker/430039ff-e5dc-424c-b328-ca7f97c1f52c/scratchpad/dump-q1.mjs\")"
     ]
   }
 }

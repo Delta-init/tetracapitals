@@ -126,7 +126,9 @@ export default function QuarterClosing() {
     // Use mentor's individual commission rate (default 4%)
     const commissionRate = mentor.commission_rate ?? 4;
     const commission = calculateQuarterCommission(netDeposit, bufferCarriedIn, commissionRate);
-    const adjustedGross = commission.gross_commission_usd + manualAdjustmentTotal;
+    // Carry forward last quarter's held buffer: add it into adjusted gross, then
+    // split 75/25 into this quarter's Release and Buffer.
+    const adjustedGross = commission.gross_commission_usd + manualAdjustmentTotal + bufferCarriedIn;
     const adjustedRelease = adjustedGross * 0.75;
     const adjustedBuffer = adjustedGross * 0.25;
 

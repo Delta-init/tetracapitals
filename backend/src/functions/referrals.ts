@@ -187,7 +187,11 @@ export async function processReferralResponse(req: Request, user: AuthUser): Pro
       notes: (referral as any).notes || "",
       requested_by_id: (referral as any).initiating_mentor_id,
       requested_by_name: (referral as any).initiating_mentor_name,
-      requested_at: now,
+      // Use the time the co-mentor ORIGINALLY submitted the referral, not the
+      // time the primary mentor got around to approving it. Admin should see
+      // when the deposit was actually requested (and commission is attributed
+      // to that date's quarter), even if the primary delayed the approval.
+      requested_at: (referral as any).created_at || (referral as any).created_date || now,
       created_date: now,
       updated_date: now,
     } as any);

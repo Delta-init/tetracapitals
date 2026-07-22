@@ -102,9 +102,11 @@ export default function ReportTransactionDetails() {
       return sum + (a.adjustment_type === 'addition' ? a.amount_usd || 0 : -(Math.abs(a.amount_usd) || 0));
     }, 0);
 
-    const totalDeposit = transactions.filter((t) => t.type === 'DEPOSIT' || t.type === 'BONUS').reduce((s, t) => s + (t.amount_usd || 0), 0);
+    // Split BONUS out for display; it still counts toward net like a deposit.
+    const totalDeposit = transactions.filter((t) => t.type === 'DEPOSIT').reduce((s, t) => s + (t.amount_usd || 0), 0);
+    const totalBonus = transactions.filter((t) => t.type === 'BONUS').reduce((s, t) => s + (t.amount_usd || 0), 0);
     const totalWithdrawal = transactions.filter((t) => t.type === 'WITHDRAWAL').reduce((s, t) => s + (t.amount_usd || 0), 0);
-    const netDeposit = totalDeposit - totalWithdrawal;
+    const netDeposit = totalDeposit + totalBonus - totalWithdrawal;
 
     return {
       commissionEarned: commissionFromDepositsOnly,
@@ -113,6 +115,7 @@ export default function ReportTransactionDetails() {
       manualAdjTotal,
       netCommission: grossCommission + manualAdjTotal,
       totalDeposit,
+      totalBonus,
       totalWithdrawal,
       netDeposit
     };
@@ -161,10 +164,14 @@ export default function ReportTransactionDetails() {
 
       <>
                     {/* Summary */}
-                    <div className="grid grid-cols-2 md:grid-cols-3 gap-4 mb-5">
+                    <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-5">
                         <div className="bg-green-50 border border-green-200 rounded-xl p-4">
                             <p className="text-xs text-green-600 font-medium uppercase tracking-wide">Total Deposit</p>
                             <p className="text-2xl font-bold text-green-700 mt-1">${totals.totalDeposit.toLocaleString('en-US', { minimumFractionDigits: 2 })}</p>
+                        </div>
+                        <div className="bg-purple-50 border border-purple-200 rounded-xl p-4">
+                            <p className="text-xs text-purple-600 font-medium uppercase tracking-wide">Total Bonus</p>
+                            <p className="text-2xl font-bold text-purple-700 mt-1">${totals.totalBonus.toLocaleString('en-US', { minimumFractionDigits: 2 })}</p>
                         </div>
                         <div className="bg-red-50 border border-red-200 rounded-xl p-4">
                             <p className="text-xs text-red-600 font-medium uppercase tracking-wide">Total Withdrawal</p>

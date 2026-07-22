@@ -83,6 +83,14 @@ export default function MyFundingRequests() {
     enabled: !!currentUser,
   });
 
+  // Closed commission ledgers — used to read the previous quarter's held buffer,
+  // which carries forward into this quarter's adjusted gross.
+  const { data: commissionLedgers = [] } = useQuery({
+    queryKey: ['commission-ledgers'],
+    queryFn: () => base44.entities.CommissionLedger.list('-created_date'),
+    enabled: !!currentUser,
+  });
+
   const createMutation = useMutation({
     mutationFn: async (data) => {
       // Refetch current user to ensure we have the latest upline_commission_percentage
@@ -177,9 +185,52 @@ export default function MyFundingRequests() {
     return d >= selectedQuarterRange.start && d <= selectedQuarterRange.end;
   });
   const adjustmentTotal = myAdjustments.reduce((sum, a) => sum + (a.amount_usd || 0), 0);
-  const adjustedGross = commission.grossCommissionUsd + adjustmentTotal;
+
+  // Last quarter's held buffer (25%) carries forward: it's added into this
+  // quarter's adjusted gross, then split 75/25 into Release and Buffer. Read
+  // from the previous quarter's closed ledger (0 if that quarter isn't closed).
+  const prevQuarterNum = selectedQuarter === 1 ? 4 : selectedQuarter - 1;
+  const prevQuarterYear = selectedQuarter === 1 ? selectedYear - 1 : selectedYear;
+  const prevLedger = commissionLedgers.find(
+    l => l.mentor_id === currentUser.id && l.quarter === `${prevQuarterYear}-Q${prevQuarterNum}`
+  );
+  const bufferCarriedIn = prevLedger?.commission_buffer_usd || 0;
+
+  const adjustedGross = commission.grossCommissionUsd + adjustmentTotal + bufferCarriedIn;
   const adjustedRelease = adjustedGross * 0.75;
   const adjustedBuffer = adjustedGross * 0.25;
+
+  // Once a quarter is CLOSED (a ledger exists), show the frozen ledger figures
+  // instead of the live recompute. This keeps the mentor's summary identical to
+  // what was actually finalized — and to the buffer that carries into the next
+  // quarter — so the two can never drift apart after closing.
+  const closedLedger = commissionLedgers.find(
+    l => l.mentor_id === currentUser.id && l.quarter === `${selectedYear}-Q${selectedQuarter}`
+  );
+  const isClosed = !!closedLedger;
+  const view = isClosed
+    ? {
+        netDeposit: closedLedger.net_deposit_usd ?? 0,
+        rawNetDeposit: closedLedger.net_deposit_usd ?? 0,
+        rate: closedLedger.commission_rate ?? commission.commissionRate,
+        gross: closedLedger.gross_commission_usd ?? 0,
+        adjustmentTotal: closedLedger.manual_adjustment_usd ?? 0,
+        bufferIn: closedLedger.buffer_carried_in_usd ?? 0,
+        adjustedGross: closedLedger.adjusted_gross_commission_usd ?? 0,
+        release: closedLedger.commission_release_usd ?? 0,
+        buffer: closedLedger.commission_buffer_usd ?? 0,
+      }
+    : {
+        netDeposit: commission.netDepositUsd,
+        rawNetDeposit: commission.rawNetDepositUsd,
+        rate: commission.commissionRate,
+        gross: commission.grossCommissionUsd,
+        adjustmentTotal,
+        bufferIn: bufferCarriedIn,
+        adjustedGross,
+        release: adjustedRelease,
+        buffer: adjustedBuffer,
+      };
 
   // Calculate TEAM commission - each transaction uses its own stored percentage
   const approvedTeamTransactions = teamTransactions.filter(t => {
@@ -300,6 +351,7 @@ export default function MyFundingRequests() {
                     <Award className="h-5 w-5 text-blue-600" />
                     Commission Summary - {quarterLabel}
                     {isCurrentQuarter && <span className="text-xs font-normal bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full">Current</span>}
+                    {isClosed && <span className="text-xs font-normal bg-emerald-100 text-emerald-700 px-2 py-0.5 rounded-full">Closed</span>}
                   </CardTitle>
                   <div className="flex items-center gap-2">
                     <select
@@ -331,18 +383,18 @@ export default function MyFundingRequests() {
                       <p className="text-sm text-gray-600">Net Deposit</p>
                       <DollarSign className="h-5 w-5 text-blue-600" />
                     </div>
-                    <p className="text-2xl font-bold text-gray-900">${commission.netDepositUsd.toFixed(2)}</p>
+                    <p className="text-2xl font-bold text-gray-900">${view.netDeposit.toFixed(2)}</p>
                     <p className="text-xs text-gray-500 mt-1">
-                      Actual: <span className={commission.rawNetDepositUsd < 0 ? 'text-red-500 font-semibold' : 'text-gray-600'}>${commission.rawNetDepositUsd.toFixed(2)}</span>
+                      Actual: <span className={view.rawNetDeposit < 0 ? 'text-red-500 font-semibold' : 'text-gray-600'}>${view.rawNetDeposit.toFixed(2)}</span>
                     </p>
                   </div>
 
                   <div className="bg-white rounded-lg p-4 border border-emerald-100">
                     <div className="flex items-center justify-between mb-2">
-                      <p className="text-sm text-gray-600">Gross Commission ({commission.commissionRate}%)</p>
+                      <p className="text-sm text-gray-600">Gross Commission ({view.rate}%)</p>
                       <Award className="h-5 w-5 text-emerald-600" />
                     </div>
-                    <p className="text-2xl font-bold text-emerald-600">${commission.grossCommissionUsd.toFixed(2)}</p>
+                    <p className="text-2xl font-bold text-emerald-600">${view.gross.toFixed(2)}</p>
                   </div>
 
                   <div className="bg-white rounded-lg p-4 border border-purple-100">
@@ -350,10 +402,19 @@ export default function MyFundingRequests() {
                       <p className="text-sm text-gray-600">Manual Adjustments</p>
                       <Wallet className="h-5 w-5 text-purple-600" />
                     </div>
-                    <p className={`text-2xl font-bold ${adjustmentTotal >= 0 ? 'text-green-600' : 'text-red-600'}`}>
-                      {adjustmentTotal >= 0 ? '+' : ''}${adjustmentTotal.toFixed(2)}
+                    <p className={`text-2xl font-bold ${view.adjustmentTotal >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                      {view.adjustmentTotal >= 0 ? '+' : ''}${view.adjustmentTotal.toFixed(2)}
                     </p>
                     <p className="text-xs text-gray-500 mt-1">{myAdjustments.length} adjustment(s)</p>
+                  </div>
+
+                  <div className="bg-white rounded-lg p-4 border border-orange-100">
+                    <div className="flex items-center justify-between mb-2">
+                      <p className="text-sm text-gray-600">Last Quarter Buffer In</p>
+                      <Wallet className="h-5 w-5 text-orange-600" />
+                    </div>
+                    <p className="text-2xl font-bold text-orange-600">${view.bufferIn.toFixed(2)}</p>
+                    <p className="text-xs text-gray-500 mt-1">Carried from Q{prevQuarterNum} {prevQuarterYear}</p>
                   </div>
 
                   <div className="bg-white rounded-lg p-4 border border-indigo-100">
@@ -361,7 +422,10 @@ export default function MyFundingRequests() {
                       <p className="text-sm text-gray-600">Adjusted Gross</p>
                       <Award className="h-5 w-5 text-indigo-600" />
                     </div>
-                    <p className="text-2xl font-bold text-indigo-600">${adjustedGross.toFixed(2)}</p>
+                    <p className="text-2xl font-bold text-indigo-600">${view.adjustedGross.toFixed(2)}</p>
+                    {view.bufferIn > 0 && (
+                      <p className="text-xs text-gray-500 mt-1">incl. ${view.bufferIn.toFixed(2)} buffer in</p>
+                    )}
                   </div>
 
                   <div className="bg-white rounded-lg p-4 border border-green-100">
@@ -369,7 +433,7 @@ export default function MyFundingRequests() {
                       <p className="text-sm text-gray-600">Release (75%)</p>
                       <Wallet className="h-5 w-5 text-green-600" />
                     </div>
-                    <p className="text-2xl font-bold text-green-600">${adjustedRelease.toFixed(2)}</p>
+                    <p className="text-2xl font-bold text-green-600">${view.release.toFixed(2)}</p>
                   </div>
 
                   <div className="bg-white rounded-lg p-4 border border-amber-100">
@@ -377,7 +441,7 @@ export default function MyFundingRequests() {
                       <p className="text-sm text-gray-600">Buffer (25%)</p>
                       <Wallet className="h-5 w-5 text-amber-600" />
                     </div>
-                    <p className="text-2xl font-bold text-amber-600">${adjustedBuffer.toFixed(2)}</p>
+                    <p className="text-2xl font-bold text-amber-600">${view.buffer.toFixed(2)}</p>
                   </div>
                 </div>
               </CardContent>
@@ -412,6 +476,7 @@ export default function MyFundingRequests() {
                       <option value="ALL">All Types</option>
                       <option value="DEPOSIT">Deposit</option>
                       <option value="WITHDRAWAL">Withdrawal</option>
+                      <option value="BONUS">Bonus</option>
                     </select>
                     <select
                       value={filterStatus}

@@ -79,14 +79,19 @@ export async function getMentorCommissions(req: Request, user: AuthUser): Promis
     const mentor = mentorMap[mentorId];
     const studentNetDeposits: Record<string, number> = {};
     let totalDeposit = 0;
+    let totalBonus = 0;
     let totalWithdrawal = 0;
     for (const tx of mentor.transactions) {
       const sid = tx.student_id;
       if (!studentNetDeposits[sid]) studentNetDeposits[sid] = 0;
-      // BONUS counts as a deposit for commission attribution.
-      if (tx.type === "DEPOSIT" || tx.type === "BONUS") {
+      // BONUS still counts as a deposit for commission attribution, but is
+      // tracked separately so reports can show it as its own column.
+      if (tx.type === "DEPOSIT") {
         studentNetDeposits[sid] += tx.amount_usd || 0;
         totalDeposit += tx.amount_usd || 0;
+      } else if (tx.type === "BONUS") {
+        studentNetDeposits[sid] += tx.amount_usd || 0;
+        totalBonus += tx.amount_usd || 0;
       } else if (tx.type === "WITHDRAWAL") {
         studentNetDeposits[sid] -= tx.amount_usd || 0;
         totalWithdrawal += tx.amount_usd || 0;
@@ -106,8 +111,9 @@ export async function getMentorCommissions(req: Request, user: AuthUser): Promis
       mentor_name: mentor.mentor_name,
       commission_rate: commissionRateMap[mentorId] ?? 4,
       total_deposit: totalDeposit,
+      total_bonus: totalBonus,
       total_withdrawal: totalWithdrawal,
-      net_deposit: totalDeposit - totalWithdrawal,
+      net_deposit: totalDeposit + totalBonus - totalWithdrawal,
       commissionable_net: commissionableNet,
       gross_commission: grossCommission,
       manual_adjustment: manualAdjTotal,
