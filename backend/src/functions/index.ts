@@ -6,7 +6,7 @@ import { createUser } from "./createUser";
 import { getNextStudentCode } from "./getNextStudentCode";
 import { releaseDailyPayout } from "./releaseDailyPayout";
 import { resetUserPassword } from "./resetUserPassword";
-import { masterEditTransaction, masterDeleteTransaction } from "./masterEditTransaction";
+import { masterEditTransaction, masterDeleteTransaction, masterBulkEditTransactions } from "./masterEditTransaction";
 import { wipeData } from "./wipeData";
 import { getReportsData } from "./getReportsData";
 import { getMentorCommissions } from "./getMentorCommissions";
@@ -34,6 +34,7 @@ const AUTHED: Record<string, AuthedHandler> = {
   resetUserPassword,
   masterEditTransaction,
   masterDeleteTransaction,
+  masterBulkEditTransactions,
   wipeData,
 };
 

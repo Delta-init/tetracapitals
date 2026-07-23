@@ -44,6 +44,8 @@ export default function MasterAdmin() {
   const [txStatusFilter, setTxStatusFilter] = useState('all');
   const [txEdit, setTxEdit] = useState(null); // the tx being edited
   const [draft, setDraft] = useState({});     // patch staged for save
+  const [selectedIds, setSelectedIds] = useState(() => new Set()); // bulk selection
+  const [bulkDate, setBulkDate] = useState('');                     // date to apply in bulk
 
   // Personnel state — same as the existing Personnel page actions, just lifted here
   const [personnelForm, setPersonnelForm] = useState({ open: false, user: null });
@@ -102,6 +104,20 @@ export default function MasterAdmin() {
       setDraft({});
     },
     onError: (e) => toast.error(e?.message || 'Delete failed'),
+  });
+
+  const bulkEditMutation = useMutation({
+    mutationFn: async ({ ids, patch }) => {
+      const r = await base44.functions.invoke('masterBulkEditTransactions', { ids, patch });
+      return r.data;
+    },
+    onSuccess: (out) => {
+      queryClient.invalidateQueries({ queryKey: ['funding-transactions'] });
+      toast.success(`Updated ${out?.modified ?? 0} transaction${(out?.modified ?? 0) === 1 ? '' : 's'}`);
+      setSelectedIds(new Set());
+      setBulkDate('');
+    },
+    onError: (e) => toast.error(e?.message || 'Bulk update failed'),
   });
 
   const createUserMutation = useMutation({
@@ -166,6 +182,28 @@ export default function MasterAdmin() {
       );
     }).slice(0, 500);
   }, [transactions, txSearch, txTypeFilter, txStatusFilter]);
+
+  // ── Bulk selection ─────────────────────────────────────────────────────────
+  const toggleSelect = (id) => setSelectedIds(prev => {
+    const next = new Set(prev);
+    next.has(id) ? next.delete(id) : next.add(id);
+    return next;
+  });
+  const allVisibleSelected = visibleTxs.length > 0 && visibleTxs.every(t => selectedIds.has(t.id));
+  const toggleSelectAllVisible = () => setSelectedIds(prev => {
+    const next = new Set(prev);
+    if (visibleTxs.every(t => next.has(t.id))) visibleTxs.forEach(t => next.delete(t.id));
+    else visibleTxs.forEach(t => next.add(t.id));
+    return next;
+  });
+  const applyBulkDate = () => {
+    if (!bulkDate || selectedIds.size === 0) return;
+    // Anchor at local noon so the calendar date can't slip across midnight in UTC.
+    const iso = new Date(`${bulkDate}T12:00:00`).toISOString();
+    if (isNaN(new Date(iso).getTime())) { toast.error('Invalid date'); return; }
+    if (!window.confirm(`Set the Requested date to ${bulkDate} for ${selectedIds.size} selected transaction(s)?`)) return;
+    bulkEditMutation.mutate({ ids: Array.from(selectedIds), patch: { requested_at: iso } });
+  };
 
   // ── Edit dialog helpers ───────────────────────────────────────────────────
   const openEdit = (tx) => {
@@ -320,12 +358,30 @@ export default function MasterAdmin() {
               </CardContent>
             </Card>
 
+            {/* Bulk date editor — appears once rows are selected */}
+            {selectedIds.size > 0 && (
+              <Card className="border-blue-300 bg-blue-50">
+                <CardContent className="p-3 flex flex-wrap items-center gap-3">
+                  <span className="text-sm font-semibold text-blue-800">{selectedIds.size} selected</span>
+                  <span className="text-sm text-gray-600">Set <strong>Requested date</strong> to:</span>
+                  <Input type="date" value={bulkDate} onChange={e => setBulkDate(e.target.value)} className="w-44 h-9" />
+                  <Button size="sm" onClick={applyBulkDate} disabled={!bulkDate || bulkEditMutation.isPending} className="bg-blue-600 hover:bg-blue-700">
+                    {bulkEditMutation.isPending ? 'Applying…' : `Apply to ${selectedIds.size}`}
+                  </Button>
+                  <Button size="sm" variant="ghost" onClick={() => setSelectedIds(new Set())}>Clear selection</Button>
+                </CardContent>
+              </Card>
+            )}
+
             <Card>
               <CardContent className="p-0">
                 <div className="overflow-x-auto">
                 <Table>
                   <TableHeader>
                     <TableRow className="bg-gray-50">
+                      <TableHead className="w-8">
+                        <input type="checkbox" checked={allVisibleSelected} onChange={toggleSelectAllVisible} aria-label="Select all" className="h-4 w-4 cursor-pointer align-middle" />
+                      </TableHead>
                       <TableHead>Requested</TableHead>
                       <TableHead>Type</TableHead>
                       <TableHead>Status</TableHead>
@@ -338,9 +394,12 @@ export default function MasterAdmin() {
                   </TableHeader>
                   <TableBody>
                     {visibleTxs.length === 0 ? (
-                      <TableRow><TableCell colSpan={8} className="text-center py-8 text-gray-500">No transactions match.</TableCell></TableRow>
+                      <TableRow><TableCell colSpan={9} className="text-center py-8 text-gray-500">No transactions match.</TableCell></TableRow>
                     ) : visibleTxs.map(t => (
-                      <TableRow key={t.id} className="hover:bg-gray-50">
+                      <TableRow key={t.id} className={`hover:bg-gray-50 ${selectedIds.has(t.id) ? 'bg-blue-50' : ''}`}>
+                        <TableCell className="w-8">
+                          <input type="checkbox" checked={selectedIds.has(t.id)} onChange={() => toggleSelect(t.id)} aria-label="Select row" className="h-4 w-4 cursor-pointer align-middle" />
+                        </TableCell>
                         <TableCell className="text-sm whitespace-nowrap">{t.requested_at ? format(new Date(t.requested_at), 'MMM d, yyyy HH:mm') : '-'}</TableCell>
                         <TableCell><Badge variant="outline">{t.type}</Badge></TableCell>
                         <TableCell>
