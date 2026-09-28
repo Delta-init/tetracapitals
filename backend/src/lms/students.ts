@@ -56,6 +56,7 @@ export async function handleLmsStudents(req: Request): Promise<Response> {
       lms_course: course,
       lms_academy: academy,
     },
+    arrived: `Arrived from the Delta LMS${course ? ` — ${course}` : ""}${academy ? ` (${academy})` : ""}`,
     createdBy: "delta-lms",
     createdByName: "Delta LMS",
     unique: { field: "lms_user_id", value: lmsUserId, existing: "lms", detail: "This LMS student is already here" },

@@ -56,6 +56,7 @@ export async function handleFinanceStudents(req: Request): Promise<Response> {
       lms_course: course,
       lms_user_id: text(body.lmsUserId, 64),
     },
+    arrived: `Arrived from the Delta sales CRM, via finance — ${course || "a course"}${invoiceNumber ? `, invoice ${invoiceNumber}` : ""}`,
     createdBy: "delta-finance",
     createdByName: "Delta LMS (via finance)",
     unique: { field: "finance_invoice_id", value: invoiceId, existing: "invoice", detail: "This invoice's student is already here" },

@@ -68,11 +68,11 @@ const person = (full_name: string, app_role: string, created_date: string, extra
   _id: new ObjectId(), email: `${full_name.toLowerCase().replace(/\s+/g, ".")}@e2e-lms.test`,
   full_name, app_role, password_hash: hash, created_date, updated_date: created_date, ...extra,
 });
-// Three teams, each a Chief with somebody under them, created in this order.
+// Three teams, each a Chief with a CS person under them, created in this order.
 const leads = [person("Lead One", "chief_mentor", "2026-01-01T00:00:00.000Z"), person("Lead Two", "chief_mentor", "2026-02-01T00:00:00.000Z"),
   person("Lead Three", "chief_mentor", "2026-03-01T00:00:00.000Z")];
-await db.collection("users").insertMany([...leads, ...leads.map((l, i) =>
-  person(`Member ${i + 1}`, "junior_mentor", l.created_date, { up_head_id: String(l._id), up_head_name: l.full_name }))] as any[]);
+const cs = leads.map((l, i) => person(`CS ${i + 1}`, "cs", l.created_date, { up_head_id: String(l._id), up_head_name: l.full_name }));
+await db.collection("users").insertMany([...leads, ...cs] as any[]);
 await students.insertOne({
   student_code: "STU-0007", full_name: "Taken Already", email: "taken@e2e-lms.test", primary_mentor_id: "someone",
   primary_mentor_name: "Existing Mentor", assignment_status: "assigned", status: "ACTIVE", student_level: "LEVEL_2", notes: "added by hand",
@@ -95,17 +95,19 @@ check("...and none of that made a student", (await students.countDocuments()) ==
 step("A new LMS student");
 const first = lmsStudent();
 r = await fromLms(first);
-check("created, and given team 1", r.status === 200 && r.body?.data?.created === true && r.body?.data?.teamName === "Lead One", JSON.stringify(r.body));
+check("created, and given team 1's CS person", r.status === 200 && r.body?.data?.created === true && r.body?.data?.teamName === "Lead One" &&
+  r.body?.data?.mentorName === "CS 1", JSON.stringify(r.body));
 const s1 = await students.findOne({ lms_user_id: first.lmsUserId }) as any;
-check("recorded like a student added on the Students page",
+check("recorded like a student added on the Students page, with the team stored",
   s1?.full_name === first.name && s1?.email === first.email.toLowerCase() && s1?.phone === first.phone && s1?.country === "United Arab Emirates" &&
-  s1?.status === "ACTIVE" && s1?.student_level === "LEVEL_1" && s1?.assignment_status === "assigned" && s1?.primary_mentor_id === String(leads[0]!._id),
+  s1?.status === "ACTIVE" && s1?.student_level === "LEVEL_1" && s1?.assignment_status === "assigned" && s1?.primary_mentor_id === String(cs[0]!._id) &&
+  s1?.team_id === String(leads[0]!._id) && s1?.team_name === "Lead One",
   JSON.stringify(s1));
 check("...with a note naming the course and the academy", s1?.notes === "From Delta LMS — Delta Wave Theory Trading Programme (Delta Dubai)", s1?.notes);
 check("...the trail back to the LMS, and nothing of finance's",
   s1?.source === "delta_lms" && s1?.lms_academy === "Delta Dubai" && s1?.created_by_name === "Delta LMS" && s1?.finance_invoice_id === undefined);
 const log = await db.collection("logs").findOne({ entity_id: String(s1?._id) }) as any;
-check("...and the activity log has it", log?.action_type === "create_student" && log?.user_name === "Delta LMS" && /→ team Lead One/.test(log?.details ?? ""));
+check("...and the activity log has it", log?.action_type === "create_student" && log?.user_name === "Delta LMS" && /→ CS 1 \(CS\) of team Lead One/.test(log?.details ?? ""));
 const noCourse = lmsStudent({ course: "", academy: "Delta Bangalore" });
 r = await fromLms(noCourse);
 const s2 = await students.findOne({ lms_user_id: noCourse.lmsUserId }) as any;

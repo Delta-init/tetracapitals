@@ -11,6 +11,7 @@ import { Link } from "react-router-dom";
 import { createPageUrl } from "../utils";
 import StudentForm from "../components/students/StudentForm";
 import MT5AccountSection from "../components/students/MT5AccountSection";
+import StudentHistory, { useStudentHistory } from "../components/students/StudentHistory";
 import { isMentorRole as isMentorTier } from "@/components/utils/roles";
 import { 
   canEditStudent, 
@@ -70,10 +71,14 @@ export default function StudentDetail() {
     enabled: !!studentId && !!currentUser
   });
 
+  // Team, who received them first, where they came from — and the history card below.
+  const { data: history } = useStudentHistory(studentId, !!currentUser);
+
   const updateMutation = useMutation({
     mutationFn: ({ id, data }) => base44.entities.Student.update(id, data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['student', studentId] });
+      queryClient.invalidateQueries({ queryKey: ['student-history', studentId] });
       queryClient.invalidateQueries({ queryKey: ['students'] });
       setShowEditDialog(false);
       toast.success('Student updated successfully');
@@ -251,10 +256,44 @@ export default function StudentDetail() {
               </div>
               
               <div>
-                <label className="text-sm font-medium text-gray-500">Primary Mentor (Junior)</label>
+                <label className="text-sm font-medium text-gray-500">Primary Mentor</label>
                 <p className="mt-1 text-base font-semibold text-gray-900">
-                  {displayStudent.primary_mentor_name}
+                  {displayStudent.primary_mentor_name || '-'}
                 </p>
+              </div>
+
+              <div>
+                <label className="text-sm font-medium text-gray-500">Team</label>
+                <p className="mt-1 text-base font-semibold text-gray-900">
+                  {history?.team?.name || displayStudent.team_name || '-'}
+                </p>
+              </div>
+
+              <div>
+                <label className="text-sm font-medium text-gray-500">First Received By</label>
+                <p className="mt-1 text-base font-semibold text-gray-900">
+                  {history?.firstReceivedBy?.name
+                    ? `${history.firstReceivedBy.name}${history.firstReceivedBy.role ? ` (${history.firstReceivedBy.role})` : ''}`
+                    : '-'}
+                </p>
+                {history?.firstReceivedBy?.name && (
+                  <p className="text-xs text-gray-500">
+                    {history.firstReceivedBy.at ? format(new Date(history.firstReceivedBy.at), 'MMMM d, yyyy') : ''}
+                    {history.firstReceivedBy.fromRecords ? ' · from earlier records' : ''}
+                  </p>
+                )}
+              </div>
+
+              <div>
+                <label className="text-sm font-medium text-gray-500">Came From</label>
+                <p className="mt-1 text-base text-gray-900">
+                  {history?.cameFrom?.label || '-'}
+                </p>
+                {(history?.cameFrom?.invoice || history?.cameFrom?.course || history?.cameFrom?.academy) && (
+                  <p className="text-xs text-gray-500">
+                    {[history.cameFrom.course, history.cameFrom.academy, history.cameFrom.invoice && `invoice ${history.cameFrom.invoice}`].filter(Boolean).join(' · ')}
+                  </p>
+                )}
               </div>
               
               <div>
@@ -302,6 +341,9 @@ export default function StudentDetail() {
             </div>
           </CardContent>
         </Card>
+
+        {/* Everything that happened to this student */}
+        <StudentHistory studentId={studentId} enabled={!!currentUser} />
 
         {/* MT5 Accounts Section */}
         <MT5AccountSection student={student} currentUser={currentUser} />

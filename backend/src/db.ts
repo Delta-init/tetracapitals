@@ -69,6 +69,8 @@ export async function ensureIndexes(): Promise<void> {
     d.collection("logs").createIndex({ timestamp: -1 }),
     d.collection("logs").createIndex({ entity_type: 1, entity_id: 1 }),
     d.collection("student_logs").createIndex({ student_id: 1, created_date: -1 }),
+    d.collection("student_history").createIndex({ student_id: 1, at: 1 }),
+    d.collection("students").createIndex({ team_id: 1 }),
     d.collection("retention_assignments").createIndex({ student_id: 1 }),
     d.collection("mentor_targets").createIndex({ mentor_id: 1, period: 1 }),
     d.collection("mentor_points").createIndex({ total_points: -1 }),

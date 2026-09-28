@@ -18,6 +18,7 @@ import { releaseCommission } from "./releaseCommission";
 import { approveCommissionPeriod } from "./approveCommissionPeriod";
 import { distributeDepositPool } from "./distributeDepositPool";
 import { searchStudents } from "./searchStudents";
+import { getStudentHistory } from "./getStudentHistory";
 import type { AuthUser } from "../auth/middleware";
 
 type AuthedHandler = (req: Request, user: AuthUser) => Promise<Response>;
@@ -45,6 +46,7 @@ const AUTHED: Record<string, AuthedHandler> = {
   approveCommissionPeriod,
   distributeDepositPool,
   searchStudents,
+  getStudentHistory,
   wipeData,
 };
 

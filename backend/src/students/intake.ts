@@ -2,20 +2,29 @@ import { timingSafeEqual } from "node:crypto";
 import { col } from "../db";
 import { json } from "../lib/response";
 import { nextStudentCode } from "../lib/studentCode";
-import { isMentorRole } from "../lib/roles";
+import { loadTeams, type Member, type Team } from "./teams";
+import { recordHistory } from "./history";
 
 /* ────────────────────────────────────────────────────────────────────────────
    New Delta students arriving from another system — what the finance and LMS
    intakes (finance/students.ts, lms/students.ts) share.
 
-   Each new student goes to the next team in turn — team 1, 2, 3, 4, then
-   team 1 again — one round for every intake together. Teams are the ones the
-   Teams page shows (see teamsInTurn), and the student's primary mentor is the
-   team's leader, who can pass them to somebody in the team with a transfer
-   request, as today. Teams take turns in the order their leaders' accounts
-   were created; a team whose leader was switched off from the portal is
-   skipped, and a new team takes its place in the round. With no team at all
-   the student waits in Delta Open Students rather than being lost.
+   Two rounds, one inside the other. The teams take turns — team 1, 2, 3, 4,
+   then team 1 again — one round for every intake together; and each team's CS
+   people take turns within their team, so it runs team 1 CS1, team 2 CS1,
+   team 3 CS1, team 4 CS1, team 1 CS2, … The CS person is the student's primary
+   mentor, so commission climbs from them: CS → CS Manager → Junior → Senior →
+   Chief. Teams are the ones the Teams page shows (students/teams.ts); they
+   take turns in the order their leaders' accounts were created, and a team's
+   CS people in the order theirs were.
+
+   A team whose leader was switched off, or that has no CS person who is not
+   switched off, sits the round out and rejoins it in its place once it has
+   one. With no such team at all the student waits in Delta Open Students
+   rather than being lost.
+
+   The team is stored on the student, with who received them first, and both
+   go into the student's history (students/history.ts).
 
    Answers use the same envelope as the LMS's finance routes ({ success, data }
    / { success: false, error: { code, message } }): the callers read the
@@ -38,99 +47,49 @@ export const text = (v: unknown, max = 200) => String(v ?? "").trim().slice(0, m
 export const isEmail = (s: string) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(s);
 const escapeRegex = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 
-interface Team {
-  /** The leader's id: the student's primary mentor. */
-  id: string;
-  /** The team's name, or its leader's when it has none — as the Teams page shows it. */
-  name: string;
-  leaderName: string;
-  key: string;
-}
-
-/**
- * The teams, in turn order — the same teams the Teams page shows
- * (frontend/src/pages/Teams.jsx, with teamRootId in components/utils/teams.js;
- * keep the three in step).
- *
- * A team is an Up-Head chain of staff rooted at its top person: climbing
- * stops at a Chief Mentor, at a missing parent, or at a parent who isn't staff,
- * so a team never runs into the admins. Somebody alone at the top is a team
- * only if the team was named (created empty on purpose) — anyone else alone,
- * a Chief Mentor included, is unassigned. A team whose leader was switched
- * off from the portal cannot take a student, so it sits the round out.
- */
-async function teamsInTurn(): Promise<Team[]> {
-  const users = (await col("users")
-    .find({}, { projection: { full_name: 1, email: 1, app_role: 1, up_head_id: 1, team_name: 1, status: 1, created_date: 1 } })
-    .toArray()) as any[];
-  const byId = new Map(users.map((u) => [String(u._id), u]));
-
-  const rootOf = (user: any): string => {
-    let cur = user;
-    const seen = new Set<string>();
-    while (cur && cur.app_role !== "chief_mentor" && cur.up_head_id && !seen.has(String(cur._id))) {
-      seen.add(String(cur._id));
-      const parent = byId.get(String(cur.up_head_id));
-      if (!parent || !isMentorRole(String(parent.app_role ?? ""))) break;
-      cur = parent;
-    }
-    return String(cur._id);
-  };
-
-  const size = new Map<string, number>();
-  for (const u of users) {
-    if (!isMentorRole(String(u.app_role ?? ""))) continue;
-    const root = rootOf(u);
-    size.set(root, (size.get(root) ?? 0) + 1);
-  }
-
-  const teams: Team[] = [];
-  for (const [id, members] of size) {
-    const leader = byId.get(id);
-    if (!leader) continue;
-    if (members === 1 && !leader.team_name) continue;
-    if (leader.status === "inactive") continue;
-    const leaderName = String(leader.full_name || leader.email || "Team leader");
-    teams.push({
-      id,
-      name: String(leader.team_name || leaderName),
-      leaderName,
-      // Creation time, then id: a stable order, whatever the teams are renamed to.
-      key: `${leader.created_date ?? ""}|${id}`,
-    });
-  }
-  return teams.sort((a, b) => (a.key < b.key ? -1 : a.key > b.key ? 1 : 0));
-}
-
 /* One round for every intake. The record keeps the name it was given when
    finance was the only intake, so the round carries on where it is. */
 const TURN = "finance_student_team_turn";
+/* Each team's own round of its CS people, one record per team. */
+const csTurn = (teamId: string) => `team_cs_turn:${teamId}`;
+
+type Keyed = { key: string };
 
 /**
- * Whose turn it is: the first team after the one that took the last student.
- *
- * Remembered by that team's place in the order rather than by a count, so a
- * team added, or sitting out, between two students neither skips a team nor
- * gives one two in a row. Compare-and-set, so two students arriving at once
- * cannot both take the same turn.
+ * The next in a round: the first after the one that took the last turn,
+ * remembered by its place in the order rather than by a count, so somebody
+ * added or sitting out neither skips a turn nor gives one two in a row.
+ * Compare-and-set, so two students arriving at once cannot take the same turn.
  */
-async function takeTurn(): Promise<Team | null> {
+async function takeNext<T extends Keyed>(recordId: string, inTurn: T[], extra: (next: T) => Record<string, unknown>): Promise<T | null> {
   const counters = col<{ _id: string; last_key?: string }>("counters");
+  const state = await counters.findOne({ _id: recordId });
+  const last = state?.last_key ?? "";
+  const next = inTurn.find((t) => t.key > last) ?? inTurn[0]!;
+  const set = { last_key: next.key, ...extra(next), updated_date: new Date().toISOString() };
+  try {
+    const res = state
+      ? await counters.updateOne({ _id: recordId, last_key: last }, { $set: set })
+      : await counters.updateOne({ _id: recordId }, { $setOnInsert: set }, { upsert: true });
+    if (state ? res.modifiedCount === 1 : res.upsertedCount === 1) return next;
+  } catch (err) {
+    // Two first-ever students racing to create the turn record: one wins, the other goes round again.
+    if ((err as { code?: number }).code !== 11000) throw err;
+  }
+  return null;
+}
+
+/** Whose turn it is: the next team that can take a student, then that team's next CS person. */
+async function takeTurn(): Promise<{ team: Team; cs: Member } | null> {
   for (let attempt = 0; attempt < 5; attempt++) {
-    const teams = await teamsInTurn();
-    if (!teams.length) return null;
-    const state = await counters.findOne({ _id: TURN });
-    const last = state?.last_key ?? "";
-    const next = teams.find((t) => t.key > last) ?? teams[0]!;
-    const set = { last_key: next.key, last_team_id: next.id, last_team_name: next.name, updated_date: new Date().toISOString() };
-    try {
-      const res = state
-        ? await counters.updateOne({ _id: TURN, last_key: last }, { $set: set })
-        : await counters.updateOne({ _id: TURN }, { $setOnInsert: set }, { upsert: true });
-      if (state ? res.modifiedCount === 1 : res.upsertedCount === 1) return next;
-    } catch (err) {
-      // Two first-ever students racing to create the turn record: one wins, the other goes round again.
-      if ((err as { code?: number }).code !== 11000) throw err;
+    const { teams } = await loadTeams();
+    const open = teams.filter((t) => t.active && t.cs.length > 0);
+    if (!open.length) return null;
+    const team = await takeNext(TURN, open, (t) => ({ last_team_id: t.id, last_team_name: t.name }));
+    if (!team) continue;
+    for (let tries = 0; tries < 5; tries++) {
+      const cs = await takeNext(csTurn(team.id), team.cs, (m) => ({ last_cs_id: m.id, last_cs_name: m.name, team_id: team.id }));
+      if (cs) return { team, cs };
     }
   }
   throw new Error("Could not take a team's turn — try again");
@@ -154,7 +113,7 @@ export function answer(student: any, created: boolean, existing: Existing, detai
     assignment: student.assignment_status === "open_pool" ? "open_pool" : "assigned",
     mentorName: String(student.primary_mentor_name ?? ""),
     /** The team this call gave them to; empty when it gave them to nobody. */
-    teamName: created ? String(student.auto_assigned_team_name ?? "") : "",
+    teamName: created ? String(student.team_name ?? "") : "",
     detail,
   };
 }
@@ -169,9 +128,10 @@ export async function studentWithEmail(email: string) {
 
 /**
  * Makes the student, the way the Students page does, and gives them to the
- * next team in turn. `trace` is kept on the record for tracing back to where
- * they came from (the pages ignore it); `unique` is the field that makes a
- * second delivery of the same student the same student.
+ * next team's next CS person. `trace` is kept on the record for tracing back
+ * to where they came from (the pages ignore it); `arrived` is the first line
+ * of their history; `unique` is the field that makes a second delivery of the
+ * same student the same student.
  */
 export async function createStudent(input: {
   name: string;
@@ -180,12 +140,15 @@ export async function createStudent(input: {
   country: string;
   notes: string;
   trace: Record<string, unknown>;
+  arrived: string;
   createdBy: string;
   createdByName: string;
   unique: { field: string; value: string; existing: Exclude<Existing, "email" | null>; detail: string };
 }) {
   const students = col("students");
-  const team = await takeTurn();
+  const turn = await takeTurn();
+  const team = turn?.team ?? null;
+  const cs = turn?.cs ?? null;
   const now = new Date().toISOString();
   const doc = {
     student_code: await nextStudentCode(),
@@ -194,13 +157,21 @@ export async function createStudent(input: {
     phone: input.phone,
     country: input.country,
     notes: input.notes,
-    primary_mentor_id: team?.id ?? "",
-    primary_mentor_name: team?.leaderName ?? "",
+    primary_mentor_id: cs?.id ?? "",
+    primary_mentor_name: cs?.name ?? "",
     senior_mentor_id: "",
     senior_mentor_name: "",
-    assignment_status: team ? "assigned" : "open_pool",
+    assignment_status: cs ? "assigned" : "open_pool",
     status: "ACTIVE",
     student_level: "LEVEL_1",
+    // The team they are with now — kept right when their mentor changes (students/history.ts).
+    team_id: team?.id ?? "",
+    team_name: team?.name ?? "",
+    // Who received them first; never changes once set.
+    first_assignee_id: cs?.id ?? "",
+    first_assignee_name: cs?.name ?? "",
+    first_assignee_role: cs ? "cs" : "",
+    first_assigned_at: cs ? now : "",
     ...input.trace,
     auto_assigned_team_id: team?.id ?? "",
     auto_assigned_team_name: team?.name ?? "",
@@ -222,9 +193,17 @@ export async function createStudent(input: {
     throw err;
   }
 
-  const where = team
-    ? `team ${team.name}${team.name !== team.leaderName ? ` (${team.leaderName})` : ""}`
-    : "Delta Open Students — there is no team to give them to";
+  const where = team && cs
+    ? `${cs.name} (CS) of team ${team.name}`
+    : "Delta Open Students — no team has a CS person to give them to";
+  const base = { student_id: String(insertedId), at: now, by_id: null, by_name: input.createdByName };
+  await recordHistory([
+    { ...base, type: "arrived", text: input.arrived },
+    team && cs
+      ? { ...base, type: "assigned", text: `Given to ${where}, in turn`, to: { id: cs.id, name: cs.name, role: "cs", team: team.name } }
+      : { ...base, type: "pool_changed", text: `Put in ${where}`, to: "open_pool" },
+  ]);
+
   try {
     // The same activity log the Students page writes to when somebody adds a student.
     await col("logs").insertOne({

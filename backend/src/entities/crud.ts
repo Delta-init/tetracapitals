@@ -6,6 +6,8 @@ import { serialize, serializeMany, toObjectId } from "../lib/id";
 import { translateFilter, parseOrder, clampLimit, clampSkip } from "../lib/query";
 import { getAuthUser, type AuthUser } from "../auth/middleware";
 import { buildScopeFilter, applyScope, docMatchesScope } from "../lib/scope";
+import { stampNewStudents, recordCreated, prepareStudentUpdate, recordHistory, type HistoryEntry } from "../students/history";
+import type { TeamIndex } from "../students/teams";
 
 // The built-in roles the registry policies are written in terms of. Roles
 // created at runtime via Role Management (e.g. "cs_manager") are NOT in this
@@ -34,6 +36,13 @@ function canRead(cfg: EntityConfig, user: AuthUser, doc: any): boolean {
   if (rolesAllow(cfg.read, user.app_role)) return true;
   if (cfg.ownerField && doc && doc[cfg.ownerField] === user.id) return true;
   return false;
+}
+
+/** Whether `user` may see this record — the same test a fetch by id applies, row-level scope included. */
+export async function userCanReadDoc(user: AuthUser, entityName: string, doc: any): Promise<boolean> {
+  const cfg = getEntity(entityName);
+  if (!cfg || !canRead(cfg, user, doc)) return false;
+  return docMatchesScope(doc, await buildScopeFilter(user, entityName));
 }
 
 interface CrudCtx {
@@ -179,8 +188,12 @@ export async function createEntity(req: Request, entityName: string): Promise<Re
     return error(`A ${entityName} with ${conflict.field} "${conflict.value}" already exists`, 409);
   }
 
+  // A student's team and who received them first are the server's to set; so is their history.
+  const teams: TeamIndex | null = entityName === "Student" ? await stampNewStudents([data]) : null;
+
   const res = await col(ctx.cfg.collection).insertOne(data as any);
   const created = await col(ctx.cfg.collection).findOne({ _id: res.insertedId });
+  if (teams && created) await recordCreated([created], ctx.user, "created", teams);
   return json(serialize(created));
 }
 
@@ -218,10 +231,13 @@ export async function bulkCreateEntity(req: Request, entityName: string): Promis
     toInsert = kept;
   }
 
+  const teams: TeamIndex | null = entityName === "Student" ? await stampNewStudents(toInsert) : null;
+
   const res = await col(ctx.cfg.collection).insertMany(toInsert as any[]);
   const created = await col(ctx.cfg.collection)
     .find({ _id: { $in: Object.values(res.insertedIds) } })
     .toArray();
+  if (teams) await recordCreated(created, ctx.user, "imported", teams);
   return json(serializeMany(created));
 }
 
@@ -246,9 +262,17 @@ export async function updateEntity(req: Request, entityName: string, id: string)
   if (conflict) {
     return error(`A ${entityName} with ${conflict.field} "${conflict.value}" already exists`, 409);
   }
+  // A student's history: whatever screen changed them, the change is recorded here.
+  let history: HistoryEntry[] = [];
+  if (entityName === "Student") {
+    const existing = await col(ctx.cfg.collection).findOne({ _id: oid });
+    if (!existing) return notFound();
+    history = await prepareStudentUpdate(existing, data, ctx.user);
+  }
   await col(ctx.cfg.collection).updateOne({ _id: oid }, { $set: data });
   const doc = await col(ctx.cfg.collection).findOne({ _id: oid });
   if (!doc) return notFound();
+  await recordHistory(history);
   return json(serialize(doc));
 }
 

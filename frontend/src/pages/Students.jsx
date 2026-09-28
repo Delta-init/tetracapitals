@@ -719,6 +719,7 @@ export default function Students() {
                         <TableHead className="font-semibold">Country</TableHead>
                         <TableHead className="font-semibold">User ID</TableHead>
                         <TableHead className="font-semibold">Primary Mentor</TableHead>
+                        <TableHead className="font-semibold">Team</TableHead>
                         <TableHead className="font-semibold">Status</TableHead>
                         <TableHead className="font-semibold">Created</TableHead>
                         <TableHead className="font-semibold text-right">Actions</TableHead>
@@ -727,7 +728,7 @@ export default function Students() {
                     <TableBody>
                       {displayStudents.length === 0 ? (
                         <TableRow>
-                          <TableCell colSpan={10} className="text-center py-8 text-gray-500">
+                          <TableCell colSpan={11} className="text-center py-8 text-gray-500">
                             No students found
                           </TableCell>
                         </TableRow>
@@ -743,6 +744,7 @@ export default function Students() {
                             <TableCell className="text-sm">{student.country || '-'}</TableCell>
                             <TableCell className="text-sm font-mono">{student.user_id || '-'}</TableCell>
                             <TableCell className="text-sm">{student.primary_mentor_name}</TableCell>
+                            <TableCell className="text-sm">{student.team_name || '-'}</TableCell>
                             <TableCell>
                               <Badge variant="outline" className={getStatusColor(student.status)}>
                                 {student.status}
@@ -801,6 +803,7 @@ export default function Students() {
                       <TableHead className="font-semibold">Country</TableHead>
                       <TableHead className="font-semibold">User ID</TableHead>
                       <TableHead className="font-semibold">Primary Mentor</TableHead>
+                      <TableHead className="font-semibold">Team</TableHead>
                       <TableHead className="font-semibold">Status</TableHead>
                       <TableHead className="font-semibold">Created</TableHead>
                       <TableHead className="font-semibold text-right">Actions</TableHead>
@@ -809,7 +812,7 @@ export default function Students() {
                   <TableBody>
                     {displayStudents.length === 0 ? (
                      <TableRow>
-                       <TableCell colSpan={10} className="text-center py-8 text-gray-500">
+                       <TableCell colSpan={11} className="text-center py-8 text-gray-500">
                          No team students found
                        </TableCell>
                      </TableRow>
@@ -825,6 +828,7 @@ export default function Students() {
                          <TableCell className="text-sm">{student.country || '-'}</TableCell>
                          <TableCell className="text-sm font-mono">{student.user_id || '-'}</TableCell>
                          <TableCell className="text-sm text-purple-600 font-medium">{student.primary_mentor_name}</TableCell>
+                         <TableCell className="text-sm">{student.team_name || '-'}</TableCell>
                          <TableCell>
                            <Badge variant="outline" className={getStatusColor(student.status)}>
                              {student.status}
@@ -893,6 +897,7 @@ export default function Students() {
                       <TableHead className="font-semibold">Country</TableHead>
                       <TableHead className="font-semibold">User ID</TableHead>
                       <TableHead className="font-semibold">Primary Mentor</TableHead>
+                      <TableHead className="font-semibold">Team</TableHead>
                       <TableHead className="font-semibold">Status</TableHead>
                       <TableHead className="font-semibold">Created</TableHead>
                       <TableHead className="font-semibold text-right">Actions</TableHead>
@@ -901,7 +906,7 @@ export default function Students() {
                   <TableBody>
                     {displayStudents.length === 0 ? (
                       <TableRow>
-                        <TableCell colSpan={isSuperAdmin ? 11 : 10} className="text-center py-8 text-gray-500">
+                        <TableCell colSpan={isSuperAdmin ? 12 : 11} className="text-center py-8 text-gray-500">
                           No students found
                         </TableCell>
                       </TableRow>
@@ -926,6 +931,7 @@ export default function Students() {
                           <TableCell className="text-sm">{student.country || '-'}</TableCell>
                           <TableCell className="text-sm font-mono">{student.user_id || '-'}</TableCell>
                           <TableCell className="text-sm">{student.primary_mentor_name}</TableCell>
+                          <TableCell className="text-sm">{student.team_name || '-'}</TableCell>
                           <TableCell>
                             <Badge variant="outline" className={getStatusColor(student.status)}>
                               {student.status}
@@ -981,6 +987,7 @@ export default function Students() {
                       <TableHead className="font-semibold">Client Name</TableHead>
                       <TableHead className="font-semibold">Code</TableHead>
                       <TableHead className="font-semibold">Primary Mentor</TableHead>
+                      <TableHead className="font-semibold">Team</TableHead>
                       <TableHead className="font-semibold">My Net Deposits</TableHead>
                       <TableHead className="font-semibold">Primary Net Deposits</TableHead>
                       <TableHead className="font-semibold">Combined Total</TableHead>
@@ -991,7 +998,7 @@ export default function Students() {
                   <TableBody>
                     {coManagedStudents.length === 0 ? (
                       <TableRow>
-                        <TableCell colSpan={8} className="text-center py-8 text-gray-500">
+                        <TableCell colSpan={9} className="text-center py-8 text-gray-500">
                           No co-managed clients yet. Send a referral request from a Fund Request to get started.
                         </TableCell>
                       </TableRow>
@@ -1009,6 +1016,7 @@ export default function Students() {
                             <TableCell className="font-medium">{student.full_name}</TableCell>
                             <TableCell className="font-mono text-sm text-blue-600">{student.student_code || '-'}</TableCell>
                             <TableCell className="text-sm">{student.primary_mentor_name}</TableCell>
+                            <TableCell className="text-sm">{student.team_name || '-'}</TableCell>
                             <TableCell className="text-sm font-semibold text-green-700">${myNet.toLocaleString()}</TableCell>
                             <TableCell className="text-sm text-gray-600">${primaryNet.toLocaleString()}</TableCell>
                             <TableCell className="text-sm font-semibold">${combinedNet.toLocaleString()}</TableCell>
@@ -1153,6 +1161,7 @@ export default function Students() {
                       <TableHead className="font-semibold">Client Name</TableHead>
                       <TableHead className="font-semibold">Code</TableHead>
                       <TableHead className="font-semibold">Primary Mentor</TableHead>
+                      <TableHead className="font-semibold">Team</TableHead>
                       <TableHead className="font-semibold">Co-Mentor</TableHead>
                       <TableHead className="font-semibold">Primary Net Deposits</TableHead>
                       <TableHead className="font-semibold">Co-Mentor Net Deposits</TableHead>
@@ -1164,7 +1173,7 @@ export default function Students() {
                   <TableBody>
                     {allCoManagedStudents.length === 0 ? (
                       <TableRow>
-                        <TableCell colSpan={9} className="text-center py-8 text-gray-500">
+                        <TableCell colSpan={10} className="text-center py-8 text-gray-500">
                           No co-managed clients found
                         </TableCell>
                       </TableRow>
@@ -1181,6 +1190,7 @@ export default function Students() {
                               <TableCell className="font-medium">{student.full_name}</TableCell>
                               <TableCell className="font-mono text-sm text-blue-600">{student.student_code || '-'}</TableCell>
                               <TableCell className="text-sm">{student.primary_mentor_name}</TableCell>
+                              <TableCell className="text-sm">{student.team_name || '-'}</TableCell>
                               <TableCell className="text-sm font-medium text-purple-700">{co.mentor_name}</TableCell>
                               <TableCell className="text-sm text-gray-700">${primaryNet.toLocaleString()}</TableCell>
                               <TableCell className="text-sm font-semibold text-green-700">${coNet.toLocaleString()}</TableCell>
@@ -1223,6 +1233,7 @@ export default function Students() {
                   <TableHead className="font-semibold">Country</TableHead>
                   <TableHead className="font-semibold">User ID</TableHead>
                   <TableHead className="font-semibold">Primary Mentor</TableHead>
+                  <TableHead className="font-semibold">Team</TableHead>
                   <TableHead className="font-semibold">Status</TableHead>
                   <TableHead className="font-semibold">Created</TableHead>
                   <TableHead className="font-semibold text-right">Actions</TableHead>
@@ -1231,7 +1242,7 @@ export default function Students() {
               <TableBody>
                 {displayStudents.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={10} className="text-center py-8 text-gray-500">
+                    <TableCell colSpan={11} className="text-center py-8 text-gray-500">
                       No students found
                     </TableCell>
                   </TableRow>
@@ -1247,6 +1258,7 @@ export default function Students() {
                       <TableCell className="text-sm">{student.country || '-'}</TableCell>
                       <TableCell className="text-sm font-mono">{student.user_id || '-'}</TableCell>
                       <TableCell className="text-sm">{student.primary_mentor_name}</TableCell>
+                      <TableCell className="text-sm">{student.team_name || '-'}</TableCell>
                       <TableCell>
                         <Badge variant="outline" className={getStatusColor(student.status)}>
                           {student.status}
