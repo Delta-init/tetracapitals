@@ -19,11 +19,13 @@ import { getQuarterRange } from "../components/utils/quarterRange";
 import { isMentorRole } from "../components/utils/roles";
 import { toast } from "sonner";
 import { logAction } from "../components/utils/AuditLogger";
+import PoolDistributionCard from "@/components/commission/PoolDistributionCard";
+import DepositApprovalsCard from "@/components/commission/DepositApprovalsCard";
 
 const money = (n) => `$${(n || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 
-// Friendly labels for a generated ledger's approval stage — so Quarter Closing
-// reads like Monthly Closing (clear release status per staff).
+// Friendly labels for a generated ledger's approval stage — so Quarterly Deposit Closing
+// reads like Bonus Closing (clear release status per staff).
 const STATUS_LABEL = {
   pending_broker_approval: { label: 'Pending Broker', cls: 'bg-amber-100 text-amber-800 border-amber-200' },
   pending_academic_approval: { label: 'Pending Academic', cls: 'bg-amber-100 text-amber-800 border-amber-200' },
@@ -260,8 +262,8 @@ export default function QuarterClosing() {
       <div className="max-w-7xl mx-auto space-y-6">
         {/* Header */}
         <div>
-          <PageTitle eyebrow="Commission">Quarter Closing</PageTitle>
-          <p className="mt-2 max-w-3xl text-sm text-slate-500 sm:text-base">Generate commission ledgers for completed quarters</p>
+          <PageTitle eyebrow="Commission">Quarterly Deposit Closing</PageTitle>
+          <p className="mt-2 max-w-3xl text-sm text-slate-500 sm:text-base">Deposit and withdrawal commission for the quarter — generate ledgers, approve, release and distribute pools.</p>
         </div>
 
         {/* Quarter Selection */}
@@ -325,7 +327,23 @@ export default function QuarterClosing() {
           </CardContent>
         </Card>
 
-        {/* Summary cards — same layout as Monthly Closing */}
+        {/* Deposit approvals + pool distribution (moved here from Deposit Commission Reports) */}
+        {['super_admin', 'admin', 'broker_admin', 'academic_head', 'finance_admin'].includes(currentUser.app_role) && (
+          <>
+            <DepositApprovalsCard
+              credits={commissionCredits} start={quarterStart} end={quarterEnd}
+              periodKey={`${selectedYear}-Q${selectedQuarter}`} periodLabel={`Q${selectedQuarter} ${selectedYear}`}
+              periodEnded={isQuarterEnded} currentUser={currentUser}
+            />
+            <PoolDistributionCard
+              kind="deposit" credits={commissionCredits} start={quarterStart} end={quarterEnd}
+              periodKey={`${selectedYear}-Q${selectedQuarter}`} periodLabel={`Q${selectedQuarter} ${selectedYear}`}
+              periodEnded={isQuarterEnded}
+            />
+          </>
+        )}
+
+        {/* Summary cards — same layout as Bonus Closing */}
         <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
           <div className="bg-blue-50 border border-blue-200 rounded-xl p-4">
             <p className="text-xs text-blue-600 font-medium uppercase">Total Net Deposit</p>
@@ -378,7 +396,7 @@ export default function QuarterClosing() {
                       <TableCell>
                         <Badge variant="outline" className="bg-purple-100 text-purple-800 border-purple-200">Pool</Badge>
                       </TableCell>
-                      <TableCell className="text-right text-xs text-gray-400">Distribute in Deposit Commission</TableCell>
+                      <TableCell className="text-right text-xs text-gray-400">Distribute above</TableCell>
                     </TableRow>
                   ))}
                   {mentorData.map((data) => (
@@ -420,7 +438,7 @@ export default function QuarterClosing() {
                           </Badge>
                         ) : (() => {
                           // Once a ledger exists, show WHERE it is in the approval chain
-                          // (Broker -> Academic -> Finance -> Released), like Monthly Closing.
+                          // (Broker -> Academic -> Finance -> Released), like Bonus Closing.
                           const st = data.ledger.overall_status || 'pending_broker_approval';
                           const info = STATUS_LABEL[st] || STATUS_LABEL.pending_broker_approval;
                           return (

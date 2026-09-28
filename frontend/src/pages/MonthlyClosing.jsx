@@ -7,6 +7,9 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Award, CheckCircle2, Lock } from 'lucide-react';
 import { toast } from 'sonner';
+import { getEffectiveUser } from '@/components/utils/ImpersonationContext';
+import PeriodApprovalCell from '@/components/commission/PeriodApprovalCell';
+import PoolDistributionCard from '@/components/commission/PoolDistributionCard';
 
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 const money = (n) => `$${(n || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
@@ -21,6 +24,20 @@ export default function MonthlyClosing() {
     queryKey: ['commission-credits'],
     queryFn: () => base44.entities.CommissionCredit.list('-created_date'),
   });
+
+  // Per-staff approval (Broker -> Academic -> Finance -> Released) and pool
+  // distribution — moved here from the Bonus Commission Reports page.
+  const { data: currentUser } = useQuery({ queryKey: ['me-effective'], queryFn: async () => getEffectiveUser(await base44.auth.me()) });
+  const canApprove = !!currentUser && ['super_admin', 'admin', 'broker_admin', 'academic_head', 'finance_admin'].includes(currentUser.app_role);
+  const periodKey = `${year}-${String(month).padStart(2, '0')}`;
+  const periodStart = useMemo(() => new Date(year, month - 1, 1), [year, month]);
+  const periodEnd = useMemo(() => new Date(year, month, 1), [year, month]);
+  const periodEnded = new Date() >= periodEnd;
+  const { data: approvals = [], refetch: refetchApprovals } = useQuery({
+    queryKey: ['period-approvals', 'bonus', periodKey],
+    queryFn: () => base44.entities.CommissionPeriodApproval.filter({ kind: 'bonus', period: periodKey }),
+  });
+  const approvalByStaff = useMemo(() => Object.fromEntries(approvals.map(a => [a.recipient_id, a])), [approvals]);
 
   const { rows, totals, periodCredits, poolRows } = useMemo(() => {
     const start = new Date(year, month - 1, 1);
@@ -75,8 +92,8 @@ export default function MonthlyClosing() {
       <div className="w-full max-w-6xl mx-auto space-y-6">
         <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
           <div>
-            <PageTitle eyebrow="Commission" icon={Award}>Monthly Closing — Bonus</PageTitle>
-            <p className="mt-2 max-w-3xl text-sm text-slate-500 sm:text-base">Close and release bonus commission per staff for the month.</p>
+            <PageTitle eyebrow="Commission" icon={Award}>Bonus Closing</PageTitle>
+            <p className="mt-2 max-w-3xl text-sm text-slate-500 sm:text-base">Approve, release and distribute bonus commission for the month.</p>
           </div>
           <div className="flex items-center gap-2">
             <select value={month} onChange={e => setMonth(Number(e.target.value))} className="h-9 rounded-md border border-input bg-white px-3 text-sm">
@@ -98,6 +115,13 @@ export default function MonthlyClosing() {
             <p className="text-xs text-gray-400 mt-1">credits released</p>
           </div>
         </div>
+
+        {canApprove && (
+          <PoolDistributionCard
+            kind="bonus" credits={credits} start={periodStart} end={periodEnd}
+            periodKey={periodKey} periodLabel={periodLabel} periodEnded={periodEnded}
+          />
+        )}
 
         <Card>
           <CardHeader className="border-b flex-row items-center justify-between space-y-0">
@@ -122,13 +146,14 @@ export default function MonthlyClosing() {
                     <th className="text-right px-4 py-3 font-semibold text-gray-600">Without Bonus</th>
                     <th className="text-right px-4 py-3 font-semibold text-gray-600">Total</th>
                     <th className="text-center px-4 py-3 font-semibold text-gray-600">Status</th>
+                    {canApprove && <th className="text-right px-4 py-3 font-semibold text-gray-600">Approval</th>}
                   </tr>
                 </thead>
                 <tbody>
                   {isLoading ? (
-                    <tr><td colSpan={5} className="text-center py-10 text-gray-400">Loading…</td></tr>
+                    <tr><td colSpan={canApprove ? 6 : 5} className="text-center py-10 text-gray-400">Loading…</td></tr>
                   ) : (rows.length === 0 && poolRows.length === 0) ? (
-                    <tr><td colSpan={5} className="text-center py-10 text-gray-400">No bonus commission for {periodLabel}.</td></tr>
+                    <tr><td colSpan={canApprove ? 6 : 5} className="text-center py-10 text-gray-400">No bonus commission for {periodLabel}.</td></tr>
                   ) : (<>
                   {poolRows.map(p => (
                     <tr key={'pool-' + p.key} className="border-b-2 border-purple-200 bg-purple-50/60 hover:bg-purple-50">
@@ -139,6 +164,7 @@ export default function MonthlyClosing() {
                       <td className="px-4 py-3 text-center">
                         <Badge variant="outline" className="bg-purple-100 text-purple-800 border-purple-200">Pool</Badge>
                       </td>
+                      {canApprove && <td className="px-4 py-3 text-right text-xs text-slate-400">Distribute above</td>}
                     </tr>
                   ))}
                   {rows.map(r => (
@@ -152,6 +178,17 @@ export default function MonthlyClosing() {
                           {r.released ? 'Released' : 'Pending'}
                         </Badge>
                       </td>
+                      {canApprove && (
+                        <td className="px-4 py-3 text-right">
+                          <PeriodApprovalCell
+                            kind="bonus" period={periodKey}
+                            recipientId={r.key} recipientName={r.name}
+                            approval={approvalByStaff[r.key]}
+                            currentUser={currentUser} periodEnded={periodEnded}
+                            onDone={refetchApprovals}
+                          />
+                        </td>
+                      )}
                     </tr>
                   ))}
                   </>)}
@@ -164,6 +201,7 @@ export default function MonthlyClosing() {
                       <td className="px-4 py-3 text-right text-amber-700">{money(totals.withoutB)}</td>
                       <td className="px-4 py-3 text-right text-purple-700">{money(totals.total)}</td>
                       <td></td>
+                      {canApprove && <td></td>}
                     </tr>
                   </tfoot>
                 )}

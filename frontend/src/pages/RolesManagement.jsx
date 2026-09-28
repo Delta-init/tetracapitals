@@ -17,7 +17,10 @@ import {
 import { NAV_ITEMS, NAV_GROUPS, GROUP_OF, navLabel, defaultPagesFor } from '@/components/utils/navigation';
 
 // Every page a role's access can be toggled for — the sidebar's pages.
-const PAGES = NAV_ITEMS.map(i => i.name);
+const PAGES = NAV_ITEMS.filter(i => !i.hidden).map(i => i.name);
+// Hidden pages aren't offered here, but a role that already lists one keeps it
+// on save, so un-hiding a page later restores it for those roles.
+const keptHidden = (doc) => (Array.isArray(doc?.page_permissions) ? doc.page_permissions : []).filter(p => !PAGES.includes(p));
 const LABEL_OF = Object.fromEntries(NAV_ITEMS.map(i => [i.name, navLabel(i)]));
 const PAGE_GROUPS = NAV_GROUPS
   .map(group => ({ group, pages: PAGES.filter(p => (GROUP_OF[p] || 'More') === group) }))
@@ -83,7 +86,7 @@ export default function RolesManagement() {
         kind: 'builtin',
         key,
         name: BUILTIN_ROLE_NAMES[key],
-        pages: override ? doc.page_permissions : defaultPagesFor(key),
+        pages: override ? doc.page_permissions.filter(p => PAGES.includes(p)) : defaultPagesFor(key),
         customised: override,
         scope: isAdminRole(key) ? 'all' : (doc?.data_scope || DEFAULT_SCOPES[key] || null),
         locked: key === 'super_admin',
@@ -98,7 +101,7 @@ export default function RolesManagement() {
         key: r.role_key,
         doc: r,
         name: r.name,
-        pages: Array.isArray(r.page_permissions) ? r.page_permissions : [],
+        pages: Array.isArray(r.page_permissions) ? r.page_permissions.filter(p => PAGES.includes(p)) : [],
         customised: false,
         scope: r.data_scope || 'own',
         locked: false,
@@ -135,7 +138,8 @@ export default function RolesManagement() {
         const key = editing.key;
         const doc = docOf(key);
         // Store only what differs from the built-in defaults (null = default).
-        const pages = sameSet(form.page_permissions, defaultPagesFor(key)) ? null : form.page_permissions;
+        const hidden = keptHidden(doc);
+        const pages = sameSet(form.page_permissions, defaultPagesFor(key)) && !hidden.length ? null : [...form.page_permissions, ...hidden];
         const scope = isAdminRole(key) || !form.data_scope || form.data_scope === DEFAULT_SCOPES[key] ? null : form.data_scope;
         if (doc) return base44.entities.CommissionRole.update(doc.id, { page_permissions: pages, data_scope: scope });
         if (pages === null && scope === null) return null; // nothing to store
@@ -146,7 +150,7 @@ export default function RolesManagement() {
       }
       const payload = {
         name: form.name.trim(),
-        page_permissions: form.page_permissions,
+        page_permissions: [...form.page_permissions, ...(editing.kind === 'custom' ? keptHidden(editing.doc) : [])],
         data_scope: form.data_scope || 'own',
         active: !!form.active,
       };

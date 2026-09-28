@@ -140,6 +140,7 @@ export default function Layout({ children, currentPageName }) {
   // admin can't lock themselves out of re-enabling pages.
   const allowedPages = currentUser?.app_role === 'super_admin' ? null : myRole?.page_permissions;
   const filteredNavigation = navigation.filter(item => {
+    if (item.hidden) return false;
     if (item.name === 'RolesManagement' && ['super_admin', 'admin'].includes(currentUser?.app_role)) return true;
     if (Array.isArray(allowedPages)) return allowedPages.includes(item.name);
     return item.roles.includes('all') || item.roles.includes(currentUser?.app_role);
