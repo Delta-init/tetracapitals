@@ -80,17 +80,24 @@ const person = (full_name: string, app_role: string, created_date: string, extra
   _id: new ObjectId(), email: `${full_name.toLowerCase().replace(/\s+/g, ".")}@e2e-finance.test`,
   full_name, app_role, password_hash: hash, commission_rate: 4, created_date, updated_date: created_date, ...extra,
 });
-// Four teams, created in this order — and a Chief whose account was switched off from the portal.
+// Four teams, created in this order, each a Chief with somebody under them; a
+// team whose Chief was switched off from the portal; and a Chief on their own
+// with no team name — "unassigned" on the Teams page, so not a team.
 const one = person("Chief One", "chief_mentor", "2026-01-01T00:00:00.000Z");
 const off = person("Chief Off", "chief_mentor", "2026-01-15T00:00:00.000Z", { status: "inactive" });
+const lone = person("Lone Chief", "chief_mentor", "2026-01-20T00:00:00.000Z");
 const two = person("Chief Two", "chief_mentor", "2026-02-01T00:00:00.000Z");
 const three = person("Chief Three", "chief_mentor", "2026-03-01T00:00:00.000Z");
 const four = person("Chief Four", "chief_mentor", "2026-04-01T00:00:00.000Z");
+const memberOf = (lead: any, name: string, created_date: string) =>
+  person(name, "junior_mentor", created_date, { up_head_id: String(lead._id), up_head_name: lead.full_name });
 // Staff inside a team are members, not teams of their own.
-const junior = person("Jun Ior", "junior_mentor", "2026-01-02T00:00:00.000Z", { up_head_id: String(one._id), up_head_name: one.full_name });
+const junior = memberOf(one, "Jun Ior", "2026-01-02T00:00:00.000Z");
+const members = [junior, memberOf(off, "Off Member", "2026-01-16T00:00:00.000Z"), memberOf(two, "Two Member", "2026-02-02T00:00:00.000Z"),
+  memberOf(three, "Three Member", "2026-03-02T00:00:00.000Z"), memberOf(four, "Four Member", "2026-04-02T00:00:00.000Z")];
 const mentor = person("Existing Mentor", "senior_mentor", "2025-12-01T00:00:00.000Z");
 const admin = person("Ad Min", "super_admin", "2025-11-01T00:00:00.000Z");
-await db.collection("users").insertMany([one, off, two, three, four, junior, mentor, admin] as any[]);
+await db.collection("users").insertMany([one, off, lone, two, three, four, ...members, mentor, admin] as any[]);
 // Somebody a mentor already added by hand — the highest code so far is STU-0007.
 await db.collection("students").insertOne({
   student_code: "STU-0007", full_name: "Taken Already", email: "taken@e2e-finance.test",
@@ -98,7 +105,7 @@ await db.collection("students").insertOne({
   assignment_status: "assigned", status: "ACTIVE", student_level: "LEVEL_2", notes: "added by hand",
   created_date: "2026-05-01T00:00:00.000Z", updated_date: "2026-05-01T00:00:00.000Z",
 });
-check("four teams, a switched-off Chief, a team member, and a student already here", true);
+check("four teams, a switched-off Chief, a Chief on their own, and a student already here", true);
 
 step("Only finance, with its secret");
 let r = await send(enrolment(), null);
@@ -137,8 +144,8 @@ check("...with a note saying where they came from", s1?.notes === "From Delta LM
 check("...and the trail back to finance and the LMS",
   s1?.source === "delta_lms" && s1?.finance_invoice_number === "INV-0004" && s1?.lms_user_id === first[0].e.lmsUserId &&
   s1?.auto_assigned_team_name === "Chief One" && s1?.created_by_name === "Delta LMS (via finance)");
-check("the switched-off Chief and the team member got none",
-  (await db.collection("students").countDocuments({ primary_mentor_id: { $in: [String(off._id), String(junior._id)] } })) === 0);
+check("the switched-off Chief, the Chief on their own and the team members got none",
+  (await db.collection("students").countDocuments({ primary_mentor_id: { $in: [off, lone, ...members].map((u) => String(u._id)) } })) === 0);
 const log = await db.collection("logs").findOne({ entity_id: String(s1?._id) }) as any;
 check("the activity log has it, as the Students page would", log?.action_type === "create_student" && log?.entity_type === "Student" &&
   /Student 4 → team Chief One/.test(log?.details ?? ""), JSON.stringify(log));
@@ -160,13 +167,13 @@ r = await send(enrolment());
 check("none of that used up a turn: the next new student goes to team 3", r.body?.data?.mentorName === "Chief Three", JSON.stringify(r.body));
 
 step("Teams changing between students");
-// A Chief created now joins the end of the round, after team 4.
+// A team made now — a Chief and somebody under them — joins the end of the round, after team 4.
 const five = person("Chief Five", "chief_mentor", "2026-06-01T00:00:00.000Z");
-await db.collection("users").insertOne(five as any);
+await db.collection("users").insertMany([five, memberOf(five, "Five Member", "2026-06-02T00:00:00.000Z")] as any[]);
 r = await send(enrolment());
 check("after team 3 comes team 4, as before", r.body?.data?.mentorName === "Chief Four", JSON.stringify(r.body));
 r = await send(enrolment());
-check("...then the new Chief's team, at the end of the round", r.body?.data?.mentorName === "Chief Five", JSON.stringify(r.body));
+check("...then the new team, at the end of the round", r.body?.data?.mentorName === "Chief Five", JSON.stringify(r.body));
 r = await send(enrolment());
 check("...then round to team 1", r.body?.data?.mentorName === "Chief One", JSON.stringify(r.body));
 await db.collection("users").updateOne({ _id: two._id }, { $set: { status: "inactive" } });
@@ -195,9 +202,9 @@ check("...recorded that way on the student and in the log",
   falconsStudent?.primary_mentor_id === String(falcons._id) && falconsStudent?.auto_assigned_team_name === "Falcons" &&
   /→ team Falcons \(Sen Ior\)/.test(((await db.collection("logs").findOne({ entity_id: String(falconsStudent?._id) })) as any)?.details ?? ""));
 check("a chain with no Chief above it is a team too, under its leader's name", round[3]?.mentorName === "Lead Two");
-check("people on their own, team members, and staff under an admin are never given a student",
+check("people on their own (a Chief included), team members, and staff under an admin are never given a student",
   (await db.collection("students").countDocuments({
-    primary_mentor_id: { $in: [solo, underAdmin, underLead, underFour, junior, mentor].map((u) => String(u._id)) },
+    primary_mentor_id: { $in: [solo, lone, underAdmin, underLead, underFour, ...members, mentor].map((u) => String(u._id)) },
     source: "delta_lms",
   })) === 0);
 

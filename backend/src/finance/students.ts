@@ -65,8 +65,8 @@ interface Team {
  * A team is an Up-Head chain of staff rooted at its top person: climbing
  * stops at a Chief Mentor, at a missing parent, or at a parent who isn't staff,
  * so a team never runs into the admins. Somebody alone at the top is a team
- * only if they are a Chief Mentor or the team was named (created empty on
- * purpose); anyone else alone is unassigned. A team whose leader was switched
+ * only if the team was named (created empty on purpose) — anyone else alone,
+ * a Chief Mentor included, is unassigned. A team whose leader was switched
  * off from the portal cannot take a student, so it sits the round out.
  */
 async function teamsInTurn(): Promise<Team[]> {
@@ -98,7 +98,7 @@ async function teamsInTurn(): Promise<Team[]> {
   for (const [id, members] of size) {
     const leader = byId.get(id);
     if (!leader) continue;
-    if (members === 1 && leader.app_role !== "chief_mentor" && !leader.team_name) continue;
+    if (members === 1 && !leader.team_name) continue;
     if (leader.status === "inactive") continue;
     const leaderName = String(leader.full_name || leader.email || "Team leader");
     teams.push({
