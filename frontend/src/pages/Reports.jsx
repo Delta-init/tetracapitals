@@ -9,6 +9,7 @@ import { Calendar, RefreshCw } from 'lucide-react';
 import StudentWiseReport from '../components/reports/StudentWiseReport';
 import CommissionByMentorReport from '../components/reports/CommissionByMentorReport';
 import { getEffectiveUser } from '../components/utils/ImpersonationContext';
+import { isMentorRole } from '@/components/utils/roles';
 
 const DATE_TABS = ['Daily', 'Weekly', 'Monthly', 'Quarterly', 'Custom'];
 
@@ -79,7 +80,7 @@ export default function Reports() {
     const endDateStr = format(safeEnd, 'yyyy-MM-dd');
     const dateLabel = `${format(safeStart, 'dd MMM yyyy')} – ${format(safeEnd, 'dd MMM yyyy')}`;
 
-    const isMentor = currentUser && MENTOR_ROLES.includes(currentUser.app_role);
+    const isMentor = currentUser && isMentorRole(currentUser.app_role);
     const reportTabs = isMentor ? MENTOR_REPORT_TABS : ADMIN_REPORT_TABS;
 
     const { data: allTransactions = [], isLoading, refetch } = useQuery({

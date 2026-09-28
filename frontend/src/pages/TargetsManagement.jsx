@@ -19,6 +19,7 @@ import { computeTargetAchievement } from "../components/utils/TargetMetricsUtils
 import { toast } from "sonner";
 import { format } from "date-fns";
 import { logAction } from "../components/utils/AuditLogger";
+import { isMentorRole } from "../components/utils/roles";
 
 export default function TargetsManagement() {
   const [currentUser, setCurrentUser] = useState(null);
@@ -114,8 +115,8 @@ export default function TargetsManagement() {
     return { ...target, ...achievement };
   });
 
-  // Get mentors for filters and form
-  const mentors = users.filter(u => ['junior_mentor', 'senior_mentor'].includes(u.app_role));
+  // Get mentors for filters and form (built-in mentors + custom staff-tier roles)
+  const mentors = users.filter(u => isMentorRole(u.app_role));
   const uniqueMentorIds = [...new Set(targets.map(t => t.mentor_id))];
   const mentorsWithTargets = users.filter(u => uniqueMentorIds.includes(u.id));
 

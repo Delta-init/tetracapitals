@@ -50,6 +50,9 @@
 import AIInsights from './pages/AIInsights';
 import AcademicCounselors from './pages/AcademicCounselors';
 import AuditLogs from './pages/AuditLogs';
+import BonusCommissionReports from './pages/BonusCommissionReports';
+import CommissionPlans from './pages/CommissionPlans';
+import DepositCommissionReports from './pages/DepositCommissionReports';
 import CommissionReports from './pages/CommissionReports';
 import Commissions from './pages/Commissions';
 import DailyPayouts from './pages/DailyPayouts';
@@ -57,6 +60,7 @@ import Dashboard from './pages/Dashboard';
 import DrawAdminStudents from './pages/DrawAdminStudents';
 import FundingRequests from './pages/FundingRequests';
 import GamificationSettings from './pages/GamificationSettings';
+import Hierarchy from './pages/Hierarchy';
 import Home from './pages/Home';
 import Leaderboard from './pages/Leaderboard';
 import Login from './pages/Login';
@@ -64,6 +68,9 @@ import MasterAdmin from './pages/MasterAdmin';
 import MT5Accounts from './pages/MT5Accounts';
 import MentorPerformance from './pages/MentorPerformance';
 import MentorTraining from './pages/MentorTraining';
+import MonthlyClosing from './pages/MonthlyClosing';
+import ActivityTracker from './pages/ActivityTracker';
+import TeamDashboard from './pages/TeamDashboard';
 import MyCommissionHistory from './pages/MyCommissionHistory';
 import MyFundingRequests from './pages/MyFundingRequests';
 import MyStudentRequests from './pages/MyStudentRequests';
@@ -72,12 +79,14 @@ import Personnel from './pages/Personnel';
 import QuarterClosing from './pages/QuarterClosing';
 import Reports from './pages/Reports';
 import RetentionManagement from './pages/RetentionManagement';
+import RolesManagement from './pages/RolesManagement';
 import StudentDetail from './pages/StudentDetail';
 import StudentLogHistoryPage from './pages/StudentLogHistoryPage';
 import StudentLogs from './pages/StudentLogs';
 import StudentRequestApprovals from './pages/StudentRequestApprovals';
 import Students from './pages/Students';
 import TargetsManagement from './pages/TargetsManagement';
+import Teams from './pages/Teams';
 import Tickets from './pages/Tickets';
 import Transactions from './pages/Transactions';
 import TransactionTags from './pages/TransactionTags';
@@ -88,6 +97,9 @@ export const PAGES = {
     "AIInsights": AIInsights,
     "AcademicCounselors": AcademicCounselors,
     "AuditLogs": AuditLogs,
+    "BonusCommissionReports": BonusCommissionReports,
+    "CommissionPlans": CommissionPlans,
+    "DepositCommissionReports": DepositCommissionReports,
     "CommissionReports": CommissionReports,
     "Commissions": Commissions,
     "DailyPayouts": DailyPayouts,
@@ -95,6 +107,7 @@ export const PAGES = {
     "DrawAdminStudents": DrawAdminStudents,
     "FundingRequests": FundingRequests,
     "GamificationSettings": GamificationSettings,
+    "Hierarchy": Hierarchy,
     "Home": Home,
     "Leaderboard": Leaderboard,
     "Login": Login,
@@ -102,6 +115,9 @@ export const PAGES = {
     "MT5Accounts": MT5Accounts,
     "MentorPerformance": MentorPerformance,
     "MentorTraining": MentorTraining,
+    "MonthlyClosing": MonthlyClosing,
+    "ActivityTracker": ActivityTracker,
+    "TeamDashboard": TeamDashboard,
     "MyCommissionHistory": MyCommissionHistory,
     "MyFundingRequests": MyFundingRequests,
     "MyStudentRequests": MyStudentRequests,
@@ -110,12 +126,14 @@ export const PAGES = {
     "QuarterClosing": QuarterClosing,
     "Reports": Reports,
     "RetentionManagement": RetentionManagement,
+    "RolesManagement": RolesManagement,
     "StudentDetail": StudentDetail,
     "StudentLogHistoryPage": StudentLogHistoryPage,
     "StudentLogs": StudentLogs,
     "StudentRequestApprovals": StudentRequestApprovals,
     "Students": Students,
     "TargetsManagement": TargetsManagement,
+    "Teams": Teams,
     "Tickets": Tickets,
     "Transactions": Transactions,
     "TransactionTags": TransactionTags,

@@ -23,6 +23,7 @@ import { Button } from '@/components/ui/button';
 
 export default function Layout({ children, currentPageName }) {
   const [currentUser, setCurrentUser] = useState(null);
+  const [myRole, setMyRole] = useState(null); // current user's role (drives page visibility)
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [pendingCounts, setPendingCounts] = useState({
     fundingRequests: 0,
@@ -43,6 +44,14 @@ export default function Layout({ children, currentPageName }) {
     };
     fetchUser();
   }, []);
+
+  // Load the current user's role so the sidebar can respect its page permissions.
+  useEffect(() => {
+    if (!currentUser?.app_role) return;
+    base44.entities.CommissionRole.list()
+      .then(rows => setMyRole((rows || []).find(r => r.role_key === currentUser.app_role) || null))
+      .catch(() => setMyRole(null));
+  }, [currentUser?.app_role]);
 
   useEffect(() => {
     const fetchPendingCounts = async () => {
@@ -106,12 +115,17 @@ export default function Layout({ children, currentPageName }) {
 
   const navigation = [
     { name: 'Dashboard', href: createPageUrl('Dashboard'), icon: LayoutDashboard, roles: ['super_admin', 'admin', 'broker_admin', 'academic_head', 'admin_supervisor', 'junior_mentor', 'senior_mentor', 'finance_admin'] },
+    { name: 'TeamDashboard', href: createPageUrl('TeamDashboard'), icon: LayoutDashboard, roles: ['super_admin', 'admin', 'broker_admin', 'academic_head', 'chief_mentor'] },
+    { name: 'Teams', href: createPageUrl('Teams'), icon: Users, roles: ['all'] },
+    { name: 'ActivityTracker', href: createPageUrl('ActivityTracker'), icon: TrendingUp, roles: ['all'] },
     { name: 'AIInsights', href: createPageUrl('AIInsights'), icon: TrendingUp, roles: ['super_admin', 'broker_admin', 'academic_head'] },
     { name: 'MentorTraining', href: createPageUrl('MentorTraining'), icon: TrendingUp, roles: ['junior_mentor', 'senior_mentor'] },
     { name: 'Leaderboard', href: createPageUrl('Leaderboard'), icon: Award, roles: ['super_admin', 'admin', 'broker_admin', 'academic_head', 'junior_mentor', 'senior_mentor', 'finance_admin'] },
     { name: 'MentorPerformance', href: createPageUrl('MentorPerformance'), icon: Award, roles: ['super_admin', 'admin', 'broker_admin', 'academic_head', 'junior_mentor', 'senior_mentor', 'finance_admin'] },
     { name: 'MasterAdmin', href: createPageUrl('MasterAdmin'), icon: Shield, roles: ['super_admin'] },
     { name: 'Personnel', href: createPageUrl('Personnel'), icon: Users, roles: ['super_admin', 'admin', 'broker_admin', 'academic_head', 'admin_supervisor'] },
+    { name: 'RolesManagement', href: createPageUrl('RolesManagement'), icon: Shield, roles: ['super_admin', 'admin'] },
+    { name: 'Hierarchy', href: createPageUrl('Hierarchy'), icon: Users, roles: ['super_admin', 'admin', 'broker_admin', 'academic_head'] },
     { name: 'AcademicCounselors', href: createPageUrl('AcademicCounselors'), icon: Users, roles: ['academic_head', 'super_admin'] },
     { name: 'Students', href: createPageUrl('Students'), icon: Users, roles: ['super_admin', 'admin', 'broker_admin', 'academic_head', 'academic_admin', 'junior_mentor', 'senior_mentor', 'subjunior_mentor', 'assistance'] },
     { name: 'StudentLogs', href: createPageUrl('StudentLogs'), icon: Users, roles: ['super_admin', 'admin', 'broker_admin', 'academic_head', 'academic_admin', 'junior_mentor', 'senior_mentor', 'subjunior_mentor', 'assistance'] },
@@ -127,21 +141,48 @@ export default function Layout({ children, currentPageName }) {
     { name: 'TargetsManagement', href: createPageUrl('TargetsManagement'), icon: Target, roles: ['super_admin', 'broker_admin', 'academic_head'] },
     { name: 'MyCommissionHistory', href: createPageUrl('MyCommissionHistory'), icon: Award, roles: ['senior_mentor', 'junior_mentor'] },
     { name: 'QuarterClosing', href: createPageUrl('QuarterClosing'), icon: Award, roles: ['super_admin', 'broker_admin', 'finance_admin'] },
+    { name: 'MonthlyClosing', href: createPageUrl('MonthlyClosing'), icon: Award, roles: ['super_admin', 'admin', 'broker_admin', 'finance_admin'] },
     { name: 'DailyPayouts', href: createPageUrl('DailyPayouts'), icon: DollarSign, roles: ['super_admin', 'admin', 'broker_admin', 'finance_admin', 'senior_mentor', 'junior_mentor', 'subjunior_mentor'] },
+    { name: 'CommissionPlans', href: createPageUrl('CommissionPlans'), icon: Award, roles: ['super_admin', 'admin', 'broker_admin', 'finance_admin'] },
+    { name: 'BonusCommissionReports', href: createPageUrl('BonusCommissionReports'), icon: Award, roles: ['super_admin', 'admin', 'broker_admin', 'finance_admin'] },
+    { name: 'DepositCommissionReports', href: createPageUrl('DepositCommissionReports'), icon: DollarSign, roles: ['super_admin', 'admin', 'broker_admin', 'finance_admin'] },
     { name: 'CommissionTools', href: createPageUrl('CommissionTools'), icon: DollarSign, roles: ['super_admin', 'broker_admin', 'finance_admin'] },
     { name: 'CommissionReports', href: createPageUrl('CommissionReports'), icon: Award, roles: ['super_admin', 'broker_admin', 'academic_head', 'finance_admin'] },
     { name: 'GamificationSettings', href: createPageUrl('GamificationSettings'), icon: Target, roles: ['super_admin', 'academic_head'] },
     { name: 'Transactions', href: createPageUrl('Transactions'), icon: TrendingUp, roles: ['super_admin', 'admin', 'broker_admin', 'academic_head'] },
-    { name: 'TransactionTags', href: createPageUrl('TransactionTags'), icon: Award, roles: ['super_admin', 'admin', 'broker_admin', 'academic_head', 'finance_admin'] },
+    { name: 'TransactionTags', label: 'Products', href: createPageUrl('TransactionTags'), icon: Award, roles: ['super_admin', 'admin', 'broker_admin', 'academic_head', 'finance_admin'] },
     { name: 'Commissions', href: createPageUrl('Commissions'), icon: Award, roles: ['super_admin', 'broker_admin', 'academic_head'] },
     { name: 'Tickets', href: createPageUrl('Tickets'), icon: Ticket, roles: ['super_admin', 'broker_admin', 'academic_head', 'senior_mentor', 'junior_mentor'] },
     { name: 'Reports', href: createPageUrl('Reports'), icon: TrendingUp, roles: ['super_admin', 'broker_admin', 'academic_head', 'junior_mentor', 'senior_mentor'] },
     { name: 'AuditLogs', href: createPageUrl('AuditLogs'), icon: Shield, roles: ['super_admin', 'admin_supervisor', 'academic_head'] }
   ];
 
-  const filteredNavigation = navigation.filter(item => 
-    item.roles.includes('all') || item.roles.includes(currentUser?.app_role)
-  );
+  // Sidebar section grouping (page name -> group). Rendered as labelled groups.
+  const NAV_GROUPS = ['Overview', 'People & Access', 'Students', 'Funding', 'Commission', 'More'];
+  const GROUP_OF = {
+    Dashboard: 'Overview', TeamDashboard: 'Overview', Teams: 'Overview', ActivityTracker: 'Overview', AIInsights: 'Overview', Leaderboard: 'Overview', MentorPerformance: 'Overview', MentorTraining: 'Overview',
+    Personnel: 'People & Access', RolesManagement: 'People & Access', Hierarchy: 'People & Access', AcademicCounselors: 'People & Access', MasterAdmin: 'People & Access',
+    Students: 'Students', StudentLogs: 'Students', StudentLogHistoryPage: 'Students', MyStudentRequests: 'Students', StudentRequestApprovals: 'Students', RetentionManagement: 'Students', DrawAdminStudents: 'Students', MT5Accounts: 'Students',
+    FundingActivities: 'Funding', FundingRequests: 'Funding', Transactions: 'Funding', TransactionTags: 'Funding',
+    CommissionPlans: 'Commission', BonusCommissionReports: 'Commission', DepositCommissionReports: 'Commission', CommissionReports: 'Commission', CommissionTools: 'Commission', Commissions: 'Commission', QuarterClosing: 'Commission', MonthlyClosing: 'Commission', DailyPayouts: 'Commission', MyCommissionHistory: 'Commission', MyTargets: 'Commission', TargetsManagement: 'Commission',
+    Tickets: 'More', Reports: 'More', AuditLogs: 'More', GamificationSettings: 'More',
+  };
+
+  // Sidebar now respects the role's page permissions (from Role Management).
+  // Falls back to the legacy per-item role list when the role isn't configured
+  // yet. super_admin/admin always keep RolesManagement so an admin can't
+  // accidentally lock themselves out of re-enabling pages.
+  const allowedPages = myRole?.page_permissions;
+  const filteredNavigation = navigation.filter(item => {
+    if (item.name === 'RolesManagement' && ['super_admin', 'admin'].includes(currentUser?.app_role)) return true;
+    if (Array.isArray(allowedPages)) return allowedPages.includes(item.name);
+    return item.roles.includes('all') || item.roles.includes(currentUser?.app_role);
+  });
+
+  // Group the visible nav items into labelled sections for the sidebar.
+  const groupedNav = NAV_GROUPS
+    .map(group => ({ group, items: filteredNavigation.filter(i => (GROUP_OF[i.name] || 'More') === group) }))
+    .filter(section => section.items.length > 0);
 
   if (!currentUser) {
     return (
@@ -192,42 +233,46 @@ export default function Layout({ children, currentPageName }) {
             </div>
           </div>
 
-          <nav className="flex-1 px-3 space-y-1.5">
-            {filteredNavigation.map((item) => {
-              const isActive = currentPageName === item.name;
-              const showBadge = 
-                (item.name === 'FundingRequests' && pendingCounts.fundingRequests > 0) ||
-                (item.name === 'StudentRequestApprovals' && pendingCounts.studentRequests > 0) ||
-                (item.name === 'Tickets' && pendingCounts.tickets > 0) ||
-                (item.name === 'RetentionManagement' && pendingCounts.retention > 0);
-
-               return (
-                <Link
-                  key={item.name}
-                  to={item.href}
-                  className={`
-                    group flex items-center justify-between px-3 py-2.5 text-sm font-medium rounded-xl transition-all duration-300 ease-in-out
-                    ${isActive 
-                      ? 'bg-gradient-to-r from-blue-600 to-indigo-600 text-white shadow-lg shadow-blue-500/40 scale-[1.02] transform' 
-                      : 'text-gray-700 hover:bg-white/80 hover:shadow-md hover:scale-[1.01] hover:-translate-x-1'
-                    }
-                  `}
-                >
-                  <div className="flex items-center">
-                    <item.icon
-                      className={`mr-3 h-5 w-5 flex-shrink-0 ${isActive ? 'text-white' : 'text-gray-400 group-hover:text-gray-600'}`}
-                    />
-                    {item.name}
-                  </div>
-                  {showBadge && (
-                    <span className="flex h-2 w-2 relative">
-                      <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75"></span>
-                      <span className="relative inline-flex rounded-full h-2 w-2 bg-red-500"></span>
-                    </span>
-                  )}
-                </Link>
-              );
-            })}
+          <nav className="flex-1 px-3 space-y-0.5 overflow-y-auto">
+            {groupedNav.map((section) => (
+              <div key={section.group} className="pt-3 first:pt-1">
+                <p className="px-3 pb-1 text-[10px] font-bold uppercase tracking-wider text-gray-400/90">{section.group}</p>
+                {section.items.map((item) => {
+                  const isActive = currentPageName === item.name;
+                  const showBadge =
+                    (item.name === 'FundingRequests' && pendingCounts.fundingRequests > 0) ||
+                    (item.name === 'StudentRequestApprovals' && pendingCounts.studentRequests > 0) ||
+                    (item.name === 'Tickets' && pendingCounts.tickets > 0) ||
+                    (item.name === 'RetentionManagement' && pendingCounts.retention > 0);
+                  return (
+                    <Link
+                      key={item.name}
+                      to={item.href}
+                      className={`
+                        group flex items-center justify-between px-3 py-2 mb-0.5 text-sm font-medium rounded-xl transition-all duration-300 ease-in-out
+                        ${isActive
+                          ? 'bg-gradient-to-r from-blue-600 to-indigo-600 text-white shadow-lg shadow-blue-500/40'
+                          : 'text-gray-700 hover:bg-white/80 hover:shadow-md hover:-translate-x-1'
+                        }
+                      `}
+                    >
+                      <div className="flex items-center">
+                        <item.icon
+                          className={`mr-3 h-5 w-5 flex-shrink-0 ${isActive ? 'text-white' : 'text-gray-400 group-hover:text-gray-600'}`}
+                        />
+                        {item.label || item.name}
+                      </div>
+                      {showBadge && (
+                        <span className="flex h-2 w-2 relative">
+                          <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75"></span>
+                          <span className="relative inline-flex rounded-full h-2 w-2 bg-red-500"></span>
+                        </span>
+                      )}
+                    </Link>
+                  );
+                })}
+              </div>
+            ))}
           </nav>
 
           <div className="flex-shrink-0 px-3 pb-4">
@@ -263,41 +308,45 @@ export default function Layout({ children, currentPageName }) {
 
         {/* Mobile menu */}
         {mobileMenuOpen && (
-          <div className="px-2 pt-2 pb-3 space-y-1">
-            {filteredNavigation.map((item) => {
-              const isActive = currentPageName === item.name;
-              const showBadge = 
-                (item.name === 'FundingRequests' && pendingCounts.fundingRequests > 0) ||
-                (item.name === 'StudentRequestApprovals' && pendingCounts.studentRequests > 0) ||
-                (item.name === 'Tickets' && pendingCounts.tickets > 0) ||
-                (item.name === 'RetentionManagement' && pendingCounts.retention > 0);
-
-              return (
-                <Link
-                  key={item.name}
-                  to={item.href}
-                  onClick={() => setMobileMenuOpen(false)}
-                  className={`
-                    group flex items-center justify-between px-3 py-2 text-sm font-medium rounded-lg
-                    ${isActive 
-                      ? 'bg-blue-600 text-white' 
-                      : 'text-gray-700 hover:bg-gray-100'
-                    }
-                  `}
-                >
-                  <div className="flex items-center">
-                    <item.icon className={`mr-3 h-5 w-5 ${isActive ? 'text-white' : 'text-gray-400'}`} />
-                    {item.name}
-                  </div>
-                  {showBadge && (
-                    <span className="flex h-2 w-2 relative">
-                      <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75"></span>
-                      <span className="relative inline-flex rounded-full h-2 w-2 bg-red-500"></span>
-                    </span>
-                  )}
-                </Link>
-              );
-            })}
+          <div className="px-2 pt-2 pb-3 space-y-0.5">
+            {groupedNav.map((section) => (
+              <div key={section.group} className="pt-2 first:pt-0">
+                <p className="px-3 pb-1 text-[10px] font-bold uppercase tracking-wider text-gray-400">{section.group}</p>
+                {section.items.map((item) => {
+                  const isActive = currentPageName === item.name;
+                  const showBadge =
+                    (item.name === 'FundingRequests' && pendingCounts.fundingRequests > 0) ||
+                    (item.name === 'StudentRequestApprovals' && pendingCounts.studentRequests > 0) ||
+                    (item.name === 'Tickets' && pendingCounts.tickets > 0) ||
+                    (item.name === 'RetentionManagement' && pendingCounts.retention > 0);
+                  return (
+                    <Link
+                      key={item.name}
+                      to={item.href}
+                      onClick={() => setMobileMenuOpen(false)}
+                      className={`
+                        group flex items-center justify-between px-3 py-2 text-sm font-medium rounded-lg
+                        ${isActive
+                          ? 'bg-blue-600 text-white'
+                          : 'text-gray-700 hover:bg-gray-100'
+                        }
+                      `}
+                    >
+                      <div className="flex items-center">
+                        <item.icon className={`mr-3 h-5 w-5 ${isActive ? 'text-white' : 'text-gray-400'}`} />
+                        {item.label || item.name}
+                      </div>
+                      {showBadge && (
+                        <span className="flex h-2 w-2 relative">
+                          <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75"></span>
+                          <span className="relative inline-flex rounded-full h-2 w-2 bg-red-500"></span>
+                        </span>
+                      )}
+                    </Link>
+                  );
+                })}
+              </div>
+            ))}
             <Button
               onClick={handleLogout}
               variant="ghost"

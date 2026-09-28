@@ -14,7 +14,14 @@
  * localStorage under "st_token". All subsequent calls include `Authorization: Bearer <token>`.
  */
 
-const API_URL = (import.meta.env.VITE_API_URL || "http://localhost:4000").replace(/\/$/, "");
+// Resolve the backend URL.
+//   - If VITE_API_URL is set (e.g. a real deployed API), use it verbatim.
+//   - Otherwise use "" (same origin). All API paths start with "/api/", and the
+//     Vite dev server proxies "/api" → the backend (see vite.config.js). Going
+//     same-origin means the browser only ever talks to whatever host served the
+//     page, so this works identically for localhost, a LAN IP, or a public
+//     tunnel URL — no per-device or per-tunnel configuration needed.
+const API_URL = (import.meta.env.VITE_API_URL || "").replace(/\/$/, "");
 const TOKEN_KEY = "st_token";
 const IMPERSONATION_KEY = "impersonated_user";   // keep in sync with ImpersonationContext.jsx
 

@@ -1,7 +1,9 @@
 // Ticket Access Control Utility
+import { isMentorRole } from './roles';
 
 export function canCreateTicket(role) {
-  return ['junior_mentor', 'senior_mentor', 'co_mentor', 'academic_head', 'finance_admin', 'broker_admin', 'super_admin', 'admin', 'subjunior_mentor', 'assistance'].includes(role);
+  return ['co_mentor', 'academic_head', 'finance_admin', 'broker_admin', 'super_admin', 'admin'].includes(role)
+    || isMentorRole(role);
 }
 
 export function canRespondToTicket(role) {

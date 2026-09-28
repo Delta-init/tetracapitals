@@ -1,16 +1,44 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
+import { base44 } from "@/api/base44Client";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
-import { Search, User } from "lucide-react";
+import { Search, User, Loader2 } from "lucide-react";
 
-export default function CoManageSearchModal({ allStudents = [], currentUser, onSelectStudent, onClose }) {
+export default function CoManageSearchModal({ currentUser, onSelectStudent, onClose }) {
   const [query, setQuery] = useState('');
+  const [results, setResults] = useState([]);
+  const [loading, setLoading] = useState(false);
 
-  // Only show students NOT owned by current user
-  const filtered = query.trim().length < 2 ? [] : allStudents.filter(s => {
-    if (s.primary_mentor_id === currentUser?.id) return false;
-    return s.email?.toLowerCase().includes(query.toLowerCase());
-  });
+  // Co-management means finding a client managed by ANOTHER mentor — which is
+  // outside this user's own/downline data scope, so we can't rely on the
+  // (now scoped) Student.list(). Instead hit the dedicated unscoped lookup
+  // function, debounced as the user types.
+  useEffect(() => {
+    const q = query.trim();
+    if (q.length < 2) {
+      setResults([]);
+      setLoading(false);
+      return;
+    }
+    setLoading(true);
+    let cancelled = false;
+    const handle = setTimeout(async () => {
+      try {
+        // functions.invoke returns { data, status } — the students are in .data.
+        const res = await base44.functions.invoke('searchStudents', { q });
+        const rows = Array.isArray(res?.data) ? res.data : (Array.isArray(res) ? res : []);
+        if (!cancelled) {
+          // Hide clients this user already owns — they don't co-manage their own.
+          setResults(rows.filter(s => s.primary_mentor_id !== currentUser?.id));
+        }
+      } catch (_) {
+        if (!cancelled) setResults([]);
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    }, 300);
+    return () => { cancelled = true; clearTimeout(handle); };
+  }, [query, currentUser?.id]);
 
   return (
     <Dialog open onOpenChange={onClose}>
@@ -18,13 +46,13 @@ export default function CoManageSearchModal({ allStudents = [], currentUser, onS
         <DialogHeader>
           <DialogTitle>Find a Client for Co-Management</DialogTitle>
         </DialogHeader>
-        <p className="text-sm text-gray-500 -mt-2">Search by client email. You can only see their name and current mentor.</p>
+        <p className="text-sm text-gray-500 -mt-2">Search by client name or email. You can only see their name and current mentor.</p>
 
         <div className="relative">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
           <Input
             className="pl-9"
-            placeholder="Type client email..."
+            placeholder="Type client name or email..."
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             autoFocus
@@ -34,10 +62,12 @@ export default function CoManageSearchModal({ allStudents = [], currentUser, onS
         <div className="space-y-2 max-h-64 overflow-y-auto">
           {query.trim().length < 2 ? (
             <p className="text-sm text-gray-400 text-center py-4">Type at least 2 characters to search</p>
-          ) : filtered.length === 0 ? (
+          ) : loading ? (
+            <p className="text-sm text-gray-400 text-center py-4 flex items-center justify-center gap-2"><Loader2 className="h-4 w-4 animate-spin" /> Searching…</p>
+          ) : results.length === 0 ? (
             <p className="text-sm text-gray-400 text-center py-4">No clients found</p>
           ) : (
-            filtered.map(student => (
+            results.map(student => (
               <button
                 key={student.id}
                 onClick={() => onSelectStudent(student)}

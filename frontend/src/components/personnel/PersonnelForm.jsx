@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { useQuery } from '@tanstack/react-query';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -15,6 +16,8 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
+import { base44 } from '@/api/base44Client';
+import SearchableSelect from '@/components/common/SearchableSelect';
 
 export default function PersonnelForm({ user, onSubmit, onClose, allUsers }) {
   const isCreate = !user;
@@ -26,11 +29,25 @@ export default function PersonnelForm({ user, onSubmit, onClose, allUsers }) {
     senior_mentor_name: '',
     assigned_mentor_id: '',
     assigned_mentor_name: '',
-    commission_rate: 4,
-    upline_commission_percentage: 0,
+    up_head_id: '',      // the person directly above this user (A is under this head)
+    up_head_name: '',
+    commission_plan_id: '',  // commission plan applied when this staff submits
     password: '',
   });
   const [showPassword, setShowPassword] = useState(false);
+
+  // Load via React Query with the SAME keys the Personnel page uses, so the
+  // lists are already cached when the edit dialog opens — otherwise the Radix
+  // Select mounts with a value whose matching option doesn't exist yet, and it
+  // sticks on the placeholder ("(none)") even after the options arrive.
+  const { data: commissionRoles = [] } = useQuery({
+    queryKey: ['commission-roles'],
+    queryFn: () => base44.entities.CommissionRole.list('name'),
+  });
+  const { data: commissionPlans = [] } = useQuery({
+    queryKey: ['commission-plans'],
+    queryFn: () => base44.entities.CommissionPlan.list('name'),
+  });
 
   useEffect(() => {
     if (user) {
@@ -42,8 +59,9 @@ export default function PersonnelForm({ user, onSubmit, onClose, allUsers }) {
         senior_mentor_name: user.senior_mentor_name || '',
         assigned_mentor_id: user.assigned_mentor_id || '',
         assigned_mentor_name: user.assigned_mentor_name || '',
-        commission_rate: user.commission_rate || 4,
-        upline_commission_percentage: user.upline_commission_percentage || 0
+        up_head_id: user.up_head_id || '',
+        up_head_name: user.up_head_name || '',
+        commission_plan_id: user.commission_plan_id || '',
       });
     }
   }, [user]);
@@ -71,6 +89,19 @@ export default function PersonnelForm({ user, onSubmit, onClose, allUsers }) {
     setShowPassword(true);
   };
 
+  const slugify = (s) => (s || '').trim().toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '');
+  const BUILTIN_ROLES = [
+    ['super_admin', 'Super Admin'], ['admin', 'Admin'], ['broker_admin', 'Broker Admin'],
+    ['academic_head', 'Academic Head'], ['academic_admin', 'Academic Admin'], ['admin_supervisor', 'Admin Supervisor'],
+    ['senior_mentor', 'Senior Mentor'], ['junior_mentor', 'Junior Mentor'], ['subjunior_mentor', 'Sub Junior Mentor'],
+    ['finance_admin', 'Finance Admin'], ['assistance', 'Assistance'], ['draw_admin', 'Draw Admin'],
+  ];
+  // Role options come live from Role Management (so custom roles appear); fall
+  // back to the built-in list if none have been seeded yet.
+  const roleOptions = commissionRoles.length
+    ? commissionRoles.map(r => [r.role_key || slugify(r.name), r.name])
+    : BUILTIN_ROLES;
+
   const seniorMentors = allUsers?.filter(u => u.app_role === 'senior_mentor') || [];
   const allMentors = allUsers?.filter(u => ['senior_mentor', 'junior_mentor'].includes(u.app_role)) || [];
 
@@ -94,7 +125,7 @@ export default function PersonnelForm({ user, onSubmit, onClose, allUsers }) {
 
   return (
     <Dialog open={true} onOpenChange={onClose}>
-      <DialogContent className="max-w-md">
+      <DialogContent className="max-w-md max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>{user ? 'Edit User' : 'Add New User'}</DialogTitle>
         </DialogHeader>
@@ -160,55 +191,12 @@ export default function PersonnelForm({ user, onSubmit, onClose, allUsers }) {
                 <SelectValue placeholder="Select role" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="super_admin">Super Admin</SelectItem>
-                <SelectItem value="admin">Admin</SelectItem>
-                <SelectItem value="broker_admin">Broker Admin</SelectItem>
-                <SelectItem value="academic_head">Academic Head</SelectItem>
-                <SelectItem value="academic_admin">Academic Admin</SelectItem>
-                <SelectItem value="admin_supervisor">Admin Supervisor</SelectItem>
-                <SelectItem value="senior_mentor">Senior Mentor</SelectItem>
-                <SelectItem value="junior_mentor">Junior Mentor</SelectItem>
-                <SelectItem value="subjunior_mentor">Sub Junior Mentor</SelectItem>
-                <SelectItem value="finance_admin">Finance Admin</SelectItem>
-                <SelectItem value="assistance">Assistance</SelectItem>
-                <SelectItem value="draw_admin">Draw Admin</SelectItem>
+                {roleOptions.map(([value, label]) => (
+                  <SelectItem key={value} value={value}>{label}</SelectItem>
+                ))}
               </SelectContent>
             </Select>
           </div>
-
-          {(formData.app_role === 'junior_mentor' || formData.app_role === 'senior_mentor') && (
-            <div>
-              <Label htmlFor="commission_rate">Commission Rate (%)</Label>
-              <Input
-                id="commission_rate"
-                type="number"
-                step="0.01"
-                min="0"
-                max="100"
-                value={formData.commission_rate}
-                onChange={(e) => setFormData({ ...formData, commission_rate: parseFloat(e.target.value) || 0 })}
-                placeholder="e.g., 4 for 4%"
-              />
-              <p className="text-xs text-gray-500 mt-1">Percentage of net deposit as commission</p>
-            </div>
-          )}
-
-          {formData.app_role === 'junior_mentor' && (
-            <div>
-              <Label htmlFor="upline_commission">Upline Senior Mentor Commission (%)</Label>
-              <Input
-                id="upline_commission"
-                type="number"
-                step="0.01"
-                min="0"
-                max="100"
-                value={formData.upline_commission_percentage}
-                onChange={(e) => setFormData({ ...formData, upline_commission_percentage: parseFloat(e.target.value) || 0 })}
-                placeholder="e.g., 1 for 1%"
-              />
-              <p className="text-xs text-gray-500 mt-1">Percentage given to senior mentor from this junior's net deposits</p>
-            </div>
-          )}
 
           {formData.app_role === 'assistance' && (
             <div>
@@ -231,6 +219,40 @@ export default function PersonnelForm({ user, onSubmit, onClose, allUsers }) {
               <p className="text-xs text-gray-500 mt-1">Students and funding requests will be associated with this mentor</p>
             </div>
           )}
+
+          {/* Hierarchy: the person directly above this user */}
+          <div>
+            <Label htmlFor="up_head">Up Head</Label>
+            <SearchableSelect
+              value={formData.up_head_id || '__none__'}
+              onValueChange={(v) => {
+                if (v === '__none__') { setFormData({ ...formData, up_head_id: '', up_head_name: '' }); return; }
+                const head = allUsers?.find(u => u.id === v);
+                setFormData({ ...formData, up_head_id: v, up_head_name: head?.full_name || '' });
+              }}
+              placeholder="(no head — top of chain)"
+              searchPlaceholder="Search by name or email…"
+              noneLabel="(no head — top of chain)"
+              options={(allUsers || [])
+                .filter(u => u.id !== user?.id)
+                .map(u => ({ value: u.id, label: `${u.full_name} — ${u.email}` }))}
+            />
+            <p className="text-xs text-gray-500 mt-1">The person directly above this user. Set B here in A's profile → A is under B.</p>
+          </div>
+
+          <div>
+            <Label htmlFor="commission_plan">Commission Plan</Label>
+            <SearchableSelect
+              key={`plan-select-${commissionPlans.length}`}
+              value={formData.commission_plan_id || '__none__'}
+              onValueChange={(v) => setFormData({ ...formData, commission_plan_id: v === '__none__' ? '' : v })}
+              placeholder="(none)"
+              searchPlaceholder="Search plans…"
+              noneLabel="(none)"
+              options={commissionPlans.map(p => ({ value: p.id, label: p.name }))}
+            />
+            <p className="text-xs text-gray-500 mt-1">Applied when this staff submits a transaction — pays each level up the chain per the plan.</p>
+          </div>
 
           <div className="flex justify-end gap-3 pt-4">
             <Button type="button" variant="outline" onClick={onClose}>

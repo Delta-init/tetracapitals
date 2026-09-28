@@ -1,4 +1,5 @@
 // Utility functions for target access control
+import { isMentorRole } from './roles';
 
 export const canCreateTarget = (role) => {
   return ['super_admin', 'admin', 'broker_admin', 'academic_head', 'academic_admin'].includes(role);
@@ -24,10 +25,10 @@ export const filterTargetsByRole = (currentUser, allTargets) => {
     return allTargets;
   }
   
-  // Mentors see only their own targets
-  if (['senior_mentor', 'junior_mentor'].includes(role)) {
+  // Mentors and any custom staff-tier role see only their own targets.
+  if (isMentorRole(role)) {
     return allTargets.filter(t => t.mentor_id === id);
   }
-  
+
   return [];
 };

@@ -59,6 +59,13 @@ export default function Personnel() {
     retry: 2
   });
 
+  const { data: commissionPlans = [] } = useQuery({
+    queryKey: ['commission-plans'],
+    queryFn: () => base44.entities.CommissionPlan.list('name'),
+    enabled: !!currentUser,
+  });
+  const planName = (id) => commissionPlans.find(p => p.id === id)?.name || '-';
+
   const updateUserMutation = useMutation({
     mutationFn: async ({ userId, userData }) => {
       const response = await base44.functions.invoke('updateUser', { userId, userData });
@@ -323,10 +330,8 @@ export default function Personnel() {
                 <TableHead>Name</TableHead>
                 <TableHead>Email</TableHead>
                 <TableHead>Role</TableHead>
-                <TableHead>Commission Rate</TableHead>
-                <TableHead>Upline %</TableHead>
-                <TableHead>Senior Mentor</TableHead>
-                <TableHead>Assigned Mentor</TableHead>
+                <TableHead>Up Head</TableHead>
+                <TableHead>Plan</TableHead>
                 <TableHead>Joined</TableHead>
                 <TableHead>Actions</TableHead>
               </TableRow>
@@ -334,7 +339,7 @@ export default function Personnel() {
             <TableBody>
               {filteredUsers.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={9} className="text-center py-8 text-gray-500">
+                  <TableCell colSpan={7} className="text-center py-8 text-gray-500">
                     No users found
                   </TableCell>
                 </TableRow>
@@ -349,20 +354,10 @@ export default function Personnel() {
                       </Badge>
                     </TableCell>
                     <TableCell>
-                      {['junior_mentor', 'senior_mentor'].includes(user.app_role) 
-                        ? `${user.commission_rate || 4}%` 
-                        : '-'}
+                      {user.up_head_name || '-'}
                     </TableCell>
-                    <TableCell>
-                      {user.app_role === 'junior_mentor' 
-                        ? `${user.upline_commission_percentage || 0}%` 
-                        : '-'}
-                    </TableCell>
-                    <TableCell>
-                      {user.app_role === 'senior_mentor' ? (user.senior_mentor_name || '-') : '-'}
-                    </TableCell>
-                    <TableCell>
-                      {user.assigned_mentor_name || '-'}
+                    <TableCell className="text-sm text-gray-600">
+                      {planName(user.commission_plan_id)}
                     </TableCell>
                     <TableCell>
                       {new Date(user.created_date).toLocaleDateString()}

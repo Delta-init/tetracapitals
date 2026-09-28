@@ -1,7 +1,10 @@
 // Utility functions for funding transaction access control
+import { isMentorRole } from './roles';
 
 export const canCreateFundingTransaction = (role) => {
-  return ['junior_mentor', 'senior_mentor', 'broker_admin', 'super_admin', 'admin', 'assistance'].includes(role);
+  // Built-in admins that can raise requests, plus any mentor/staff-tier role
+  // (built-in mentors AND custom Role-Management roles).
+  return ['broker_admin', 'super_admin', 'admin'].includes(role) || isMentorRole(role);
 };
 
 export const canProcessFundingTransaction = (role) => {
@@ -16,38 +19,53 @@ export const filterFundingTransactionsByRole = (currentUser, allTransactions, al
   if (!currentUser || !allTransactions) return [];
   
   const { app_role: role, id } = currentUser;
-  
+
+  // A transaction belongs to whoever INITIATED it. For co-managed clients the
+  // co-mentor is the initiator (and gets the commission), so the transaction
+  // shows for them, NOT for the client's primary mentor — matching how the
+  // commission is attributed. Legacy rows without an initiator fall back to the
+  // primary mentor, so existing data is unaffected.
+  const initiatorId = (t) => t.initiating_mentor_id || t.primary_mentor_id;
+
   // Super Admin, Admin and Broker Admin see all
   if (['super_admin', 'admin', 'broker_admin'].includes(role)) {
     return allTransactions;
   }
-  
+
   // Academic Head, Academic Admin, and Finance Admin see all
   if (['academic_head', 'academic_admin', 'finance_admin'].includes(role)) {
     return allTransactions;
   }
-  
-  // Junior Mentor sees only their students' transactions
+
+  // Junior Mentor sees only transactions they initiated (incl. co-managed ones
+  // they raised on another mentor's client).
   if (role === 'junior_mentor') {
-    return allTransactions.filter(t => t.primary_mentor_id === id);
+    return allTransactions.filter(t => initiatorId(t) === id);
   }
-  
-  // Senior Mentor sees their students + their junior mentors' students
+
+  // Senior Mentor sees what they initiated + their junior mentors' transactions
   if (role === 'senior_mentor') {
     // Get all junior mentors assigned to this senior mentor
-    const myJuniorMentors = allUsers.filter(u => 
+    const myJuniorMentors = allUsers.filter(u =>
       u.app_role === 'junior_mentor' && u.senior_mentor_id === id
     );
     const juniorMentorIds = myJuniorMentors.map(jm => jm.id);
-    
-    return allTransactions.filter(t => 
-      t.primary_mentor_id === id || // Their own students
+
+    return allTransactions.filter(t =>
+      initiatorId(t) === id || // Transactions they initiated
       t.senior_mentor_id === id || // Students assigned to them as senior mentor
-      juniorMentorIds.includes(t.primary_mentor_id) // Their junior mentors' students
+      juniorMentorIds.includes(initiatorId(t)) // Their junior mentors' transactions
     );
   }
-  
-  return [];
+
+  // Any other staff / custom Role-Management role: transactions they initiated
+  // (or where they're the senior / requester). Row-level scope is also enforced
+  // on the backend by the role's data_scope.
+  return allTransactions.filter(t =>
+    initiatorId(t) === id ||
+    t.senior_mentor_id === id ||
+    t.requested_by_id === id
+  );
 };
 
 export const canEditFundingCoreFields = (record, currentUser) => {

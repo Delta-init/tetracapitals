@@ -8,6 +8,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Award, Users, TrendingUp, DollarSign, Target, Calendar, Search } from "lucide-react";
 import { getEffectiveUser } from "../components/utils/ImpersonationContext";
+import { isMentorRole } from "@/components/utils/roles";
 import { format } from "date-fns";
 
 export default function MentorPerformance() {
@@ -65,7 +66,7 @@ export default function MentorPerformance() {
   }
 
   const isAdmin = ['super_admin', 'admin', 'broker_admin', 'academic_head', 'academic_admin'].includes(currentUser.app_role);
-  const isMentor = ['junior_mentor', 'senior_mentor'].includes(currentUser.app_role);
+  const isMentor = isMentorRole(currentUser.app_role);
 
   // Get all mentors
   let mentors = users.filter(u => ['junior_mentor', 'senior_mentor'].includes(u.app_role));

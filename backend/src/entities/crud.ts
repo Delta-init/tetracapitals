@@ -1,15 +1,33 @@
 import { type Filter } from "mongodb";
 import { col } from "../db";
-import { getEntity, type EntityConfig, type Role } from "./registry";
+import { getEntity, ALL_ROLES, type EntityConfig, type Role } from "./registry";
 import { json, error, forbidden, notFound, unauthorized } from "../lib/response";
 import { serialize, serializeMany, toObjectId } from "../lib/id";
 import { translateFilter, parseOrder, clampLimit, clampSkip } from "../lib/query";
 import { getAuthUser, type AuthUser } from "../auth/middleware";
+import { buildScopeFilter, applyScope, docMatchesScope } from "../lib/scope";
+
+// The built-in roles the registry policies are written in terms of. Roles
+// created at runtime via Role Management (e.g. "chief_mentor") are NOT in this
+// set, so they'd fail every hardcoded role check below.
+const BUILTIN_ROLES = new Set<string>(ALL_ROLES);
+// junior_mentor is the "all staff" tier — it appears in ALL_ROLES (which grants
+// every entity readable by staff) but never in ADMIN_ROLES. We use its presence
+// in a policy as the marker for "this entity is open to all staff, not admins".
+const STAFF_TIER: Role = "junior_mentor";
 
 function rolesAllow(roles: Role[] | undefined, role: string): boolean {
   if (!roles) return true; // undefined => any authenticated user
   if (roles.length === 0) return false;
-  return roles.includes(role as Role);
+  if (roles.includes(role as Role)) return true;
+  // Custom roles (from Role Management) aren't part of the built-in Role union.
+  // Treat them as staff/mentor-tier: allow them wherever the staff tier is
+  // allowed (entities open to all staff), while keeping admin-only entities
+  // restricted to built-in admin roles. Without this, a custom-role user is
+  // forbidden from reading every entity — including CommissionRole itself, so
+  // the sidebar can't load their page permissions and collapses to nothing.
+  if (!BUILTIN_ROLES.has(role) && roles.includes(STAFF_TIER)) return true;
+  return false;
 }
 
 function canRead(cfg: EntityConfig, user: AuthUser, doc: any): boolean {
@@ -30,6 +48,34 @@ async function buildCtx(req: Request, entityName: string): Promise<CrudCtx | Res
   const cfg = getEntity(entityName);
   if (!cfg) return notFound(`Unknown entity '${entityName}'`);
   return { user, cfg, entityName };
+}
+
+function escapeRegex(s: string): string {
+  return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+/**
+ * If the entity declares uniqueFields, return the first conflict found in the
+ * collection (case-insensitive, blank values exempt), else null. Pass excludeId
+ * to skip the record being updated.
+ */
+async function findUniqueConflict(
+  cfg: EntityConfig,
+  data: Record<string, any>,
+  excludeOid?: any,
+): Promise<{ field: string; value: any } | null> {
+  if (!cfg.uniqueFields?.length) return null;
+  for (const field of cfg.uniqueFields) {
+    const raw = data[field];
+    if (raw == null || String(raw).trim() === "") continue; // blank exempt
+    const q: Filter<any> = {
+      [field]: { $regex: `^${escapeRegex(String(raw).trim())}$`, $options: "i" },
+    };
+    if (excludeOid) (q as any)._id = { $ne: excludeOid };
+    const dup = await col(cfg.collection).findOne(q);
+    if (dup) return { field, value: raw };
+  }
+  return null;
 }
 
 function stripIncomingId<T extends Record<string, any>>(data: T): T {
@@ -66,8 +112,12 @@ export async function listEntity(req: Request, entityName: string): Promise<Resp
     else return forbidden();
   }
 
+  // Row-level data scope (own / downline) from the user's role.
+  const scopeFilter = await buildScopeFilter(ctx.user, ctx.entityName);
+  const finalFilter = applyScope(baseFilter, scopeFilter);
+
   const docs = await col(ctx.cfg.collection)
-    .find(baseFilter)
+    .find(finalFilter)
     .sort(parseOrder(order))
     .skip(skip)
     .limit(limit)
@@ -85,8 +135,10 @@ export async function filterEntity(req: Request, entityName: string): Promise<Re
     if (ctx.cfg.ownerField) filter[ctx.cfg.ownerField] = ctx.user.id;
     else return forbidden();
   }
+  const scopeFilter = await buildScopeFilter(ctx.user, ctx.entityName);
+  const finalFilter = applyScope(filter, scopeFilter);
   const docs = await col(ctx.cfg.collection)
-    .find(filter)
+    .find(finalFilter)
     .sort(parseOrder(order))
     .skip(clampSkip(skip))
     .limit(clampLimit(limit, 100, 10_000))
@@ -102,6 +154,9 @@ export async function getEntityById(req: Request, entityName: string, id: string
   const doc = await col(ctx.cfg.collection).findOne({ _id: oid });
   if (!doc) return notFound();
   if (!canRead(ctx.cfg, ctx.user, doc)) return forbidden();
+  // Row-level data scope also applies to single-record fetches.
+  const scopeFilter = await buildScopeFilter(ctx.user, ctx.entityName);
+  if (!docMatchesScope(doc, scopeFilter)) return forbidden();
   return json(serialize(doc));
 }
 
@@ -117,6 +172,13 @@ export async function createEntity(req: Request, entityName: string): Promise<Re
   if (!data.created_by) data.created_by = ctx.user.id;
   if (!data.created_by_name) data.created_by_name = ctx.user.full_name;
 
+  // Server-side uniqueness (e.g. student email) — catches duplicates the client
+  // can't see because of data scoping.
+  const conflict = await findUniqueConflict(ctx.cfg, data);
+  if (conflict) {
+    return error(`A ${entityName} with ${conflict.field} "${conflict.value}" already exists`, 409);
+  }
+
   const res = await col(ctx.cfg.collection).insertOne(data as any);
   const created = await col(ctx.cfg.collection).findOne({ _id: res.insertedId });
   return json(serialize(created));
@@ -129,7 +191,33 @@ export async function bulkCreateEntity(req: Request, entityName: string): Promis
   const body: any = await req.json().catch(() => null);
   const items: any[] = Array.isArray(body) ? body : Array.isArray(body?.items) ? body.items : [];
   if (!items.length) return error("Expected an array of items", 400);
-  const toInsert = items.map((it) => withTimestamps(stripIncomingId(it), true));
+  let toInsert = items.map((it) => withTimestamps(stripIncomingId(it), true));
+
+  // Enforce uniqueFields: drop rows that duplicate an existing record OR an
+  // earlier row in this same batch (case-insensitive; blanks exempt).
+  if (ctx.cfg.uniqueFields?.length) {
+    const seen = new Set<string>();
+    const kept: any[] = [];
+    for (const it of toInsert) {
+      let dup = false;
+      for (const field of ctx.cfg.uniqueFields) {
+        const raw = it[field];
+        if (raw == null || String(raw).trim() === "") continue;
+        const key = `${field}:${String(raw).trim().toLowerCase()}`;
+        if (seen.has(key)) { dup = true; break; }
+      }
+      if (!dup && (await findUniqueConflict(ctx.cfg, it))) dup = true;
+      if (dup) continue;
+      for (const field of ctx.cfg.uniqueFields) {
+        const raw = it[field];
+        if (raw != null && String(raw).trim() !== "") seen.add(`${field}:${String(raw).trim().toLowerCase()}`);
+      }
+      kept.push(it);
+    }
+    if (!kept.length) return error(`All items are duplicates of existing ${entityName} records`, 409);
+    toInsert = kept;
+  }
+
   const res = await col(ctx.cfg.collection).insertMany(toInsert as any[]);
   const created = await col(ctx.cfg.collection)
     .find({ _id: { $in: Object.values(res.insertedIds) } })
@@ -153,6 +241,11 @@ export async function updateEntity(req: Request, entityName: string, id: string)
   const body: any = await req.json().catch(() => null);
   if (!body || typeof body !== "object") return error("Body must be a JSON object", 400);
   const data = withTimestamps(stripIncomingId(body), false);
+  // Uniqueness on update (e.g. changing a student's email to one already used).
+  const conflict = await findUniqueConflict(ctx.cfg, data, oid);
+  if (conflict) {
+    return error(`A ${entityName} with ${conflict.field} "${conflict.value}" already exists`, 409);
+  }
   await col(ctx.cfg.collection).updateOne({ _id: oid }, { $set: data });
   const doc = await col(ctx.cfg.collection).findOne({ _id: oid });
   if (!doc) return notFound();

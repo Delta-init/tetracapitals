@@ -6,8 +6,9 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { 
-  Brain, 
+import { isMentorRole } from "@/components/utils/roles";
+import {
+  Brain,
   TrendingUp, 
   TrendingDown, 
   AlertTriangle, 
@@ -268,7 +269,7 @@ Consider factors like:
   }
 
   const canViewAI = ['super_admin', 'broker_admin', 'academic_head'].includes(currentUser.app_role);
-  const isMentor = ['junior_mentor', 'senior_mentor'].includes(currentUser.app_role);
+  const isMentor = isMentorRole(currentUser.app_role);
 
   if (!canViewAI && !isMentor) {
     return (

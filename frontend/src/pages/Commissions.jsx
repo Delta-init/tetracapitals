@@ -6,6 +6,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Badge } from "@/components/ui/badge";
 import { DollarSign, TrendingUp, Award } from "lucide-react";
 import { format } from "date-fns";
+import { isMentorRole } from "@/components/utils/roles";
 
 export default function Commissions() {
   const [currentUser, setCurrentUser] = useState(null);
@@ -36,7 +37,7 @@ export default function Commissions() {
   }
 
   // Filter based on role
-  const filteredCommissions = ['junior_mentor', 'senior_mentor'].includes(currentUser.app_role)
+  const filteredCommissions = isMentorRole(currentUser.app_role)
     ? commissions.filter(c => c.mentor_id === currentUser.id)
     : commissions;
 

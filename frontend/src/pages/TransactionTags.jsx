@@ -17,6 +17,8 @@ const ADMIN_ROLES = ['super_admin', 'admin', 'broker_admin', 'academic_head', 'f
 export default function TransactionTags() {
   const [currentUser, setCurrentUser] = useState(null);
   const [name, setName] = useState('');
+  const [amount, setAmount] = useState('');
+  const [bonusType, setBonusType] = useState('with'); // 'with' = added to MT5, 'without' = not added
   const [color, setColor] = useState(PRESET_COLORS[0]);
   const queryClient = useQueryClient();
 
@@ -34,11 +36,13 @@ export default function TransactionTags() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['transaction-tags-all'] });
       queryClient.invalidateQueries({ queryKey: ['transaction-tags'] });
-      toast.success('Tag added');
+      toast.success('Product added');
       setName('');
+      setAmount('');
+      setBonusType('with');
       setColor(PRESET_COLORS[0]);
     },
-    onError: (e) => toast.error(e?.message || 'Failed to add tag'),
+    onError: (e) => toast.error(e?.message || 'Failed to add product'),
   });
 
   const updateMutation = useMutation({
@@ -55,7 +59,7 @@ export default function TransactionTags() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['transaction-tags-all'] });
       queryClient.invalidateQueries({ queryKey: ['transaction-tags'] });
-      toast.success('Tag deleted');
+      toast.success('Product deleted');
     },
     onError: (e) => toast.error(e?.message || 'Delete failed'),
   });
@@ -65,11 +69,11 @@ export default function TransactionTags() {
   const handleAdd = (e) => {
     e.preventDefault();
     const trimmed = name.trim();
-    if (!trimmed) { toast.error('Enter a tag name'); return; }
+    if (!trimmed) { toast.error('Enter a product name'); return; }
     if (tags.some(t => t.name.toLowerCase() === trimmed.toLowerCase())) {
-      toast.error('That tag already exists'); return;
+      toast.error('That product already exists'); return;
     }
-    createMutation.mutate({ name: trimmed, color, active: true });
+    createMutation.mutate({ name: trimmed, color, amount_usd: parseFloat(amount) || 0, bonus_type: bonusType, active: true });
   };
 
   if (!currentUser) {
@@ -79,7 +83,7 @@ export default function TransactionTags() {
   if (!canEdit) {
     return (
       <div className="p-8 text-center text-gray-500">
-        Only admins can manage transaction tags.
+        Only admins can manage products.
       </div>
     );
   }
@@ -89,25 +93,42 @@ export default function TransactionTags() {
       <div>
         <h1 className="text-3xl font-bold flex items-center gap-3">
           <TagIcon className="h-7 w-7 text-blue-600" />
-          Transaction Tags
+          Products
         </h1>
         <p className="text-gray-500 mt-1">
-          Manage the list of tags shown when a mentor logs a <strong>BONUS</strong> transaction.
+          Manage the products staff select when logging a <strong>BONUS</strong> — each carries its amount and With/Without-bonus type.
         </p>
       </div>
 
       <Card>
         <CardHeader>
-          <CardTitle className="text-lg">Add a new tag</CardTitle>
+          <CardTitle className="text-lg">Add a new product</CardTitle>
         </CardHeader>
         <CardContent>
           <form onSubmit={handleAdd} className="flex flex-col md:flex-row gap-3">
             <Input
-              placeholder="e.g. Promo, Deposit Match, Referral Bonus…"
+              placeholder="e.g. Starter Pack, Pro Course, VIP Signal…"
               value={name}
               onChange={(e) => setName(e.target.value)}
               className="md:flex-1"
             />
+            <Input
+              type="number"
+              step="0.01"
+              min="0"
+              placeholder="Amount (USD)"
+              value={amount}
+              onChange={(e) => setAmount(e.target.value)}
+              className="md:w-40"
+            />
+            <select
+              value={bonusType}
+              onChange={(e) => setBonusType(e.target.value)}
+              className="h-10 rounded-md border border-input bg-background px-2 text-sm md:w-44"
+            >
+              <option value="with">With Bonus (added to MT5)</option>
+              <option value="without">Without Bonus (not added)</option>
+            </select>
             <div className="flex items-center gap-2">
               {PRESET_COLORS.map(c => (
                 <button
@@ -122,7 +143,7 @@ export default function TransactionTags() {
             </div>
             <Button type="submit" disabled={createMutation.isPending} className="bg-blue-600 hover:bg-blue-700">
               <Plus className="h-4 w-4 mr-1" />
-              Add tag
+              Add product
             </Button>
           </form>
         </CardContent>
@@ -130,18 +151,21 @@ export default function TransactionTags() {
 
       <Card>
         <CardHeader>
-          <CardTitle className="text-lg">Existing tags ({tags.length})</CardTitle>
+          <CardTitle className="text-lg">Existing products ({tags.length})</CardTitle>
         </CardHeader>
         <CardContent className="p-0">
           {isLoading ? (
             <div className="p-6 text-center text-gray-500">Loading…</div>
           ) : tags.length === 0 ? (
-            <div className="p-6 text-center text-gray-500">No tags yet. Add one above to get started.</div>
+            <div className="p-6 text-center text-gray-500">No products yet. Add one above to get started.</div>
           ) : (
             <Table>
               <TableHeader>
                 <TableRow>
                   <TableHead>Name</TableHead>
+                  <TableHead>Amount (USD)</TableHead>
+                  <TableHead>Bonus type</TableHead>
+                  <TableHead>Includes (bundled)</TableHead>
                   <TableHead>Color</TableHead>
                   <TableHead>Active</TableHead>
                   <TableHead className="w-24"></TableHead>
@@ -157,6 +181,66 @@ export default function TransactionTags() {
                       >
                         {t.name}
                       </Badge>
+                    </TableCell>
+                    <TableCell>
+                      <Input
+                        type="number"
+                        step="0.01"
+                        min="0"
+                        key={`${t.id}-${t.amount_usd ?? 0}`}
+                        defaultValue={t.amount_usd ?? 0}
+                        onBlur={(e) => {
+                          const v = parseFloat(e.target.value) || 0;
+                          if (v !== (t.amount_usd ?? 0)) updateMutation.mutate({ id: t.id, data: { amount_usd: v } });
+                        }}
+                        className="w-28 h-8"
+                      />
+                    </TableCell>
+                    <TableCell>
+                      <select
+                        value={t.bonus_type || 'with'}
+                        onChange={(e) => updateMutation.mutate({ id: t.id, data: { bonus_type: e.target.value } })}
+                        className="h-8 rounded-md border border-input bg-background px-2 text-sm"
+                      >
+                        <option value="with">With Bonus</option>
+                        <option value="without">Without Bonus</option>
+                      </select>
+                    </TableCell>
+                    <TableCell>
+                      {/* Bundled products: picking THIS product in a bonus request
+                          auto-includes these, without adding to the amount. */}
+                      <details className="relative">
+                        <summary className="cursor-pointer text-sm text-blue-600 hover:underline list-none select-none">
+                          {Array.isArray(t.includes) && t.includes.length > 0
+                            ? t.includes.join(', ')
+                            : <span className="text-gray-400">None</span>}
+                          <span className="ml-1 text-gray-400">▾</span>
+                        </summary>
+                        <div className="absolute z-20 mt-1 bg-white border rounded-md shadow-lg p-2 space-y-1 max-h-56 overflow-auto min-w-48">
+                          {tags.filter(o => o.id !== t.id).length === 0 ? (
+                            <p className="text-xs text-gray-400 px-1">No other products</p>
+                          ) : tags.filter(o => o.id !== t.id).map(o => {
+                            const included = Array.isArray(t.includes) && t.includes.includes(o.name);
+                            return (
+                              <label key={o.id} className="flex items-center gap-2 text-sm cursor-pointer hover:bg-gray-50 rounded px-1 py-0.5">
+                                <input
+                                  type="checkbox"
+                                  checked={included}
+                                  onChange={(e) => {
+                                    const cur = Array.isArray(t.includes) ? t.includes : [];
+                                    const next = e.target.checked
+                                      ? [...new Set([...cur, o.name])]
+                                      : cur.filter(n => n !== o.name);
+                                    updateMutation.mutate({ id: t.id, data: { includes: next } });
+                                  }}
+                                />
+                                <span>{o.name}</span>
+                                <span className="text-gray-400 text-xs ml-auto">${o.amount_usd ?? 0}</span>
+                              </label>
+                            );
+                          })}
+                        </div>
+                      </details>
                     </TableCell>
                     <TableCell>
                       <span className="inline-flex items-center gap-2 text-sm font-mono text-gray-600">

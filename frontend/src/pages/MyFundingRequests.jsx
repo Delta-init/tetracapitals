@@ -91,6 +91,13 @@ export default function MyFundingRequests() {
     enabled: !!currentUser,
   });
 
+  // NEW level-based commission credits (bonus + deposit) for this staff member.
+  const { data: myCommissionCredits = [] } = useQuery({
+    queryKey: ['commission-credits'],
+    queryFn: () => base44.entities.CommissionCredit.list('-created_date'),
+    enabled: !!currentUser,
+  });
+
   const createMutation = useMutation({
     mutationFn: async (data) => {
       // Refetch current user to ensure we have the latest upline_commission_percentage
@@ -177,6 +184,24 @@ export default function MyFundingRequests() {
   const commission = calculateQuarterlyNetDepositAndCommission(myTransactions, currentUser, new Date(), selectedQuarterRange);
   const quarterLabel = `Q${selectedQuarter} ${selectedYear}`;
 
+  // NEW level-based commission (from the commission engine), split into Deposit
+  // and Bonus so staff can see each clearly. Only THIS staff's own credits, in
+  // the selected quarter. Deposit is the quarterly gross (with the $25k/student
+  // cap already applied at credit time); Bonus is shown separately.
+  const myQuarterCredits = myCommissionCredits.filter(c => {
+    if (c.recipient_id !== currentUser.id) return false;
+    const d = new Date(c.requested_at || c.created_date);
+    return d >= selectedQuarterRange.start && d <= selectedQuarterRange.end;
+  });
+  // NOT floored at $0 — a withdrawal clawback (deposit earned an earlier quarter)
+  // can make this negative and correctly reduce the release this quarter.
+  const depositCommission = myQuarterCredits
+    .filter(c => c.method === 'deposit' && !c.is_pool)
+    .reduce((s, c) => s + (c.commission_usd || 0), 0);
+  const bonusWith = myQuarterCredits.filter(c => c.method === 'bonus_with' && !c.is_pool).reduce((s, c) => s + (c.commission_usd || 0), 0);
+  const bonusWithout = myQuarterCredits.filter(c => c.method === 'bonus_without' && !c.is_pool).reduce((s, c) => s + (c.commission_usd || 0), 0);
+  const bonusTotal = bonusWith + bonusWithout;
+
   const myAdjustments = manualAdjustments.filter(a => {
     if (a.mentor_id !== currentUser.id) return false;
     // Attribute by effective_date (the quarter the admin chose), not when the
@@ -196,7 +221,8 @@ export default function MyFundingRequests() {
   );
   const bufferCarriedIn = prevLedger?.commission_buffer_usd || 0;
 
-  const adjustedGross = commission.grossCommissionUsd + adjustmentTotal + bufferCarriedIn;
+  // Deposit commission is the new level-based number (not the old flat rate).
+  const adjustedGross = depositCommission + adjustmentTotal + bufferCarriedIn;
   const adjustedRelease = adjustedGross * 0.75;
   const adjustedBuffer = adjustedGross * 0.25;
 
@@ -224,7 +250,7 @@ export default function MyFundingRequests() {
         netDeposit: commission.netDepositUsd,
         rawNetDeposit: commission.rawNetDepositUsd,
         rate: commission.commissionRate,
-        gross: commission.grossCommissionUsd,
+        gross: depositCommission,
         adjustmentTotal,
         bufferIn: bufferCarriedIn,
         adjustedGross,
@@ -376,72 +402,104 @@ export default function MyFundingRequests() {
                   </div>
                 </div>
               </CardHeader>
-              <CardContent className="p-6">
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                  <div className="bg-white rounded-lg p-4 border border-blue-100">
-                    <div className="flex items-center justify-between mb-2">
-                      <p className="text-sm text-gray-600">Net Deposit</p>
-                      <DollarSign className="h-5 w-5 text-blue-600" />
-                    </div>
-                    <p className="text-2xl font-bold text-gray-900">${view.netDeposit.toFixed(2)}</p>
-                    <p className="text-xs text-gray-500 mt-1">
-                      Actual: <span className={view.rawNetDeposit < 0 ? 'text-red-500 font-semibold' : 'text-gray-600'}>${view.rawNetDeposit.toFixed(2)}</span>
-                    </p>
+              <CardContent className="p-6 space-y-6">
+                {/* ── DEPOSIT COMMISSION (quarterly, level-based, with buffer) ── */}
+                <div>
+                  <div className="flex items-center gap-2 mb-3">
+                    <DollarSign className="h-4 w-4 text-blue-600" />
+                    <h3 className="text-sm font-bold text-blue-800 uppercase tracking-wide">Deposit Commission — Quarterly</h3>
+                    <span className="text-xs text-gray-400">released 75% now, 25% held as buffer</span>
                   </div>
-
-                  <div className="bg-white rounded-lg p-4 border border-emerald-100">
-                    <div className="flex items-center justify-between mb-2">
-                      <p className="text-sm text-gray-600">Gross Commission ({view.rate}%)</p>
-                      <Award className="h-5 w-5 text-emerald-600" />
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    <div className="bg-white rounded-lg p-4 border border-blue-100">
+                      <div className="flex items-center justify-between mb-2">
+                        <p className="text-sm text-gray-600">Net Deposit</p>
+                        <DollarSign className="h-5 w-5 text-blue-600" />
+                      </div>
+                      <p className="text-2xl font-bold text-gray-900">${view.netDeposit.toFixed(2)}</p>
+                      <p className="text-xs text-gray-500 mt-1">
+                        Actual: <span className={view.rawNetDeposit < 0 ? 'text-red-500 font-semibold' : 'text-gray-600'}>${view.rawNetDeposit.toFixed(2)}</span>
+                      </p>
                     </div>
-                    <p className="text-2xl font-bold text-emerald-600">${view.gross.toFixed(2)}</p>
+
+                    <div className="bg-white rounded-lg p-4 border border-emerald-100">
+                      <div className="flex items-center justify-between mb-2">
+                        <p className="text-sm text-gray-600">Deposit Commission</p>
+                        <Award className="h-5 w-5 text-emerald-600" />
+                      </div>
+                      <p className="text-2xl font-bold text-emerald-600">${view.gross.toFixed(2)}</p>
+                      <p className="text-xs text-gray-500 mt-1">level-based · capped at $25k/client</p>
+                    </div>
+
+                    <div className="bg-white rounded-lg p-4 border border-purple-100">
+                      <div className="flex items-center justify-between mb-2">
+                        <p className="text-sm text-gray-600">Manual Adjustments</p>
+                        <Wallet className="h-5 w-5 text-purple-600" />
+                      </div>
+                      <p className={`text-2xl font-bold ${view.adjustmentTotal >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                        {view.adjustmentTotal >= 0 ? '+' : ''}${view.adjustmentTotal.toFixed(2)}
+                      </p>
+                      <p className="text-xs text-gray-500 mt-1">{myAdjustments.length} adjustment(s)</p>
+                    </div>
+
+                    <div className="bg-white rounded-lg p-4 border border-orange-100">
+                      <div className="flex items-center justify-between mb-2">
+                        <p className="text-sm text-gray-600">Last Quarter Buffer In</p>
+                        <Wallet className="h-5 w-5 text-orange-600" />
+                      </div>
+                      <p className="text-2xl font-bold text-orange-600">${view.bufferIn.toFixed(2)}</p>
+                      <p className="text-xs text-gray-500 mt-1">Carried from Q{prevQuarterNum} {prevQuarterYear}</p>
+                    </div>
+
+                    <div className="bg-white rounded-lg p-4 border border-indigo-100">
+                      <div className="flex items-center justify-between mb-2">
+                        <p className="text-sm text-gray-600">Adjusted Gross</p>
+                        <Award className="h-5 w-5 text-indigo-600" />
+                      </div>
+                      <p className="text-2xl font-bold text-indigo-600">${view.adjustedGross.toFixed(2)}</p>
+                      {view.bufferIn > 0 && (
+                        <p className="text-xs text-gray-500 mt-1">incl. ${view.bufferIn.toFixed(2)} buffer in</p>
+                      )}
+                    </div>
+
+                    <div className="bg-white rounded-lg p-4 border border-green-100">
+                      <div className="flex items-center justify-between mb-2">
+                        <p className="text-sm text-gray-600">Release (75%)</p>
+                        <Wallet className="h-5 w-5 text-green-600" />
+                      </div>
+                      <p className="text-2xl font-bold text-green-600">${view.release.toFixed(2)}</p>
+                    </div>
+
+                    <div className="bg-white rounded-lg p-4 border border-amber-100">
+                      <div className="flex items-center justify-between mb-2">
+                        <p className="text-sm text-gray-600">Buffer (25%)</p>
+                        <Wallet className="h-5 w-5 text-amber-600" />
+                      </div>
+                      <p className="text-2xl font-bold text-amber-600">${view.buffer.toFixed(2)}</p>
+                    </div>
                   </div>
+                </div>
 
-                  <div className="bg-white rounded-lg p-4 border border-purple-100">
-                    <div className="flex items-center justify-between mb-2">
-                      <p className="text-sm text-gray-600">Manual Adjustments</p>
-                      <Wallet className="h-5 w-5 text-purple-600" />
-                    </div>
-                    <p className={`text-2xl font-bold ${view.adjustmentTotal >= 0 ? 'text-green-600' : 'text-red-600'}`}>
-                      {view.adjustmentTotal >= 0 ? '+' : ''}${view.adjustmentTotal.toFixed(2)}
-                    </p>
-                    <p className="text-xs text-gray-500 mt-1">{myAdjustments.length} adjustment(s)</p>
+                {/* ── BONUS COMMISSION (separate, released monthly) ── */}
+                <div className="pt-5 border-t border-blue-100">
+                  <div className="flex items-center gap-2 mb-3">
+                    <Award className="h-4 w-4 text-purple-600" />
+                    <h3 className="text-sm font-bold text-purple-800 uppercase tracking-wide">Bonus Commission — Monthly</h3>
+                    <span className="text-xs text-gray-400">tracked separately from deposits · released each month</span>
                   </div>
-
-                  <div className="bg-white rounded-lg p-4 border border-orange-100">
-                    <div className="flex items-center justify-between mb-2">
-                      <p className="text-sm text-gray-600">Last Quarter Buffer In</p>
-                      <Wallet className="h-5 w-5 text-orange-600" />
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    <div className="bg-white rounded-lg p-4 border border-green-100">
+                      <p className="text-sm text-gray-600 mb-2">With Bonus</p>
+                      <p className="text-2xl font-bold text-green-600">${bonusWith.toFixed(2)}</p>
                     </div>
-                    <p className="text-2xl font-bold text-orange-600">${view.bufferIn.toFixed(2)}</p>
-                    <p className="text-xs text-gray-500 mt-1">Carried from Q{prevQuarterNum} {prevQuarterYear}</p>
-                  </div>
-
-                  <div className="bg-white rounded-lg p-4 border border-indigo-100">
-                    <div className="flex items-center justify-between mb-2">
-                      <p className="text-sm text-gray-600">Adjusted Gross</p>
-                      <Award className="h-5 w-5 text-indigo-600" />
+                    <div className="bg-white rounded-lg p-4 border border-amber-100">
+                      <p className="text-sm text-gray-600 mb-2">Without Bonus</p>
+                      <p className="text-2xl font-bold text-amber-600">${bonusWithout.toFixed(2)}</p>
                     </div>
-                    <p className="text-2xl font-bold text-indigo-600">${view.adjustedGross.toFixed(2)}</p>
-                    {view.bufferIn > 0 && (
-                      <p className="text-xs text-gray-500 mt-1">incl. ${view.bufferIn.toFixed(2)} buffer in</p>
-                    )}
-                  </div>
-
-                  <div className="bg-white rounded-lg p-4 border border-green-100">
-                    <div className="flex items-center justify-between mb-2">
-                      <p className="text-sm text-gray-600">Release (75%)</p>
-                      <Wallet className="h-5 w-5 text-green-600" />
+                    <div className="bg-white rounded-lg p-4 border border-purple-100">
+                      <p className="text-sm text-gray-600 mb-2">Total Bonus</p>
+                      <p className="text-2xl font-bold text-purple-700">${bonusTotal.toFixed(2)}</p>
                     </div>
-                    <p className="text-2xl font-bold text-green-600">${view.release.toFixed(2)}</p>
-                  </div>
-
-                  <div className="bg-white rounded-lg p-4 border border-amber-100">
-                    <div className="flex items-center justify-between mb-2">
-                      <p className="text-sm text-gray-600">Buffer (25%)</p>
-                      <Wallet className="h-5 w-5 text-amber-600" />
-                    </div>
-                    <p className="text-2xl font-bold text-amber-600">${view.buffer.toFixed(2)}</p>
                   </div>
                 </div>
               </CardContent>
@@ -514,11 +572,12 @@ export default function MyFundingRequests() {
                         <TableHead className="font-semibold">Status</TableHead>
                         <TableHead className="font-semibold">Student</TableHead>
                         <TableHead className="font-semibold">Code</TableHead>
+                        <TableHead className="font-semibold">Meeting By</TableHead>
                         <TableHead className="font-semibold">MT5 Login</TableHead>
                         <TableHead className="font-semibold">Amount</TableHead>
                         {!isAssistance && <TableHead className="font-semibold">Commission</TableHead>}
                         <TableHead className="font-semibold">Payment Method</TableHead>
-                        <TableHead className="font-semibold">Tags</TableHead>
+                        <TableHead className="font-semibold">Product</TableHead>
                         <TableHead className="font-semibold">Rejection Reason</TableHead>
                         <TableHead className="font-semibold">Screenshot</TableHead>
                       </TableRow>
@@ -553,7 +612,7 @@ export default function MyFundingRequests() {
                         if (filteredTransactions.length === 0 && filteredReferrals.length === 0 && filteredAdjustments.length === 0) {
                           return (
                             <TableRow>
-                              <TableCell colSpan={!isAssistance ? 12 : 11} className="text-center py-8 text-gray-500">
+                              <TableCell colSpan={!isAssistance ? 13 : 12} className="text-center py-8 text-gray-500">
                                 {(dateFrom || dateTo) ? 'No transactions found for selected date range' : 'No funding requests yet'}
                               </TableCell>
                             </TableRow>
@@ -580,6 +639,7 @@ export default function MyFundingRequests() {
                                 </TableCell>
                                 <TableCell className="font-medium">{referral.student_name}</TableCell>
                                 <TableCell className="font-mono text-sm text-blue-600">{referral.student_code || '-'}</TableCell>
+                                <TableCell className="text-sm">{referral.meeting_mentor_name || '-'}</TableCell>
                                 <TableCell className="font-mono text-sm">{referral.mt5_login || '-'}</TableCell>
                                 <TableCell className="font-semibold text-gray-900">${parseFloat(referral.requested_deposit_amount || 0).toFixed(2)}</TableCell>
                                 {!isAssistance && <TableCell className="text-gray-400">-</TableCell>}
@@ -605,6 +665,7 @@ export default function MyFundingRequests() {
                                   </Badge>
                                 </TableCell>
                                 <TableCell className="font-medium">{adj.reason}</TableCell>
+                                <TableCell>-</TableCell>
                                 <TableCell>-</TableCell>
                                 <TableCell>-</TableCell>
                                 <TableCell className={`font-semibold ${adj.amount_usd >= 0 ? 'text-green-600' : 'text-red-600'}`}>
@@ -643,6 +704,7 @@ export default function MyFundingRequests() {
                                   </TableCell>
                                   <TableCell className="font-medium">{transaction.student_name}</TableCell>
                                   <TableCell className="font-mono text-sm text-blue-600">{transaction.student_code}</TableCell>
+                                  <TableCell className="text-sm">{transaction.meeting_mentor_name || '-'}</TableCell>
                                   <TableCell className="font-mono text-sm">{transaction.mt5_login || '-'}</TableCell>
                                   <TableCell className="font-semibold text-gray-900">${transaction.amount_usd?.toFixed(2)}</TableCell>
                                   {!isAssistance && (
@@ -759,6 +821,7 @@ export default function MyFundingRequests() {
                           <TableHead className="font-semibold">Student</TableHead>
                           <TableHead className="font-semibold">Code</TableHead>
                           <TableHead className="font-semibold">Junior Mentor</TableHead>
+                          <TableHead className="font-semibold">Meeting By</TableHead>
                           <TableHead className="font-semibold">MT5 Login</TableHead>
                           <TableHead className="font-semibold">Amount</TableHead>
                           <TableHead className="font-semibold">Upline Commission</TableHead>
@@ -768,7 +831,7 @@ export default function MyFundingRequests() {
                       <TableBody>
                         {teamTransactions.length === 0 ? (
                           <TableRow>
-                            <TableCell colSpan={10} className="text-center py-8 text-gray-500">
+                            <TableCell colSpan={11} className="text-center py-8 text-gray-500">
                               No team funding requests yet
                             </TableCell>
                           </TableRow>
@@ -814,6 +877,9 @@ export default function MyFundingRequests() {
                               </TableCell>
                               <TableCell className="font-medium text-purple-600">
                                 {transaction.primary_mentor_name}
+                              </TableCell>
+                              <TableCell className="text-sm">
+                                {transaction.meeting_mentor_name || '-'}
                               </TableCell>
                               <TableCell className="font-mono text-sm">
                                 {transaction.mt5_login || '-'}

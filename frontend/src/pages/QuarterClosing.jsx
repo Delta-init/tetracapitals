@@ -15,8 +15,21 @@ import {
   calculateReleaseDate
 } from "../components/utils/LedgerUtils";
 import { getQuarterRange } from "../components/utils/quarterRange";
+import { isMentorRole } from "../components/utils/roles";
 import { toast } from "sonner";
 import { logAction } from "../components/utils/AuditLogger";
+
+const money = (n) => `$${(n || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+
+// Friendly labels for a generated ledger's approval stage — so Quarter Closing
+// reads like Monthly Closing (clear release status per staff).
+const STATUS_LABEL = {
+  pending_broker_approval: { label: 'Pending Broker', cls: 'bg-amber-100 text-amber-800 border-amber-200' },
+  pending_academic_approval: { label: 'Pending Academic', cls: 'bg-amber-100 text-amber-800 border-amber-200' },
+  pending_finance_approval: { label: 'Pending Finance', cls: 'bg-amber-100 text-amber-800 border-amber-200' },
+  released: { label: 'Released', cls: 'bg-emerald-100 text-emerald-800 border-emerald-200' },
+  rejected: { label: 'Rejected', cls: 'bg-red-100 text-red-700 border-red-200' },
+};
 
 export default function QuarterClosing() {
   const [currentUser, setCurrentUser] = useState(null);
@@ -57,6 +70,14 @@ export default function QuarterClosing() {
     enabled: !!currentUser
   });
 
+  // Level-based deposit commission credits (the NEW engine) — Gross now comes
+  // from these, not the old flat net-deposit × rate.
+  const { data: commissionCredits = [] } = useQuery({
+    queryKey: ['commission-credits'],
+    queryFn: () => base44.entities.CommissionCredit.list('-created_date'),
+    enabled: !!currentUser
+  });
+
   const closeLedgerMutation = useMutation({
     mutationFn: async (data) => {
       const result = await base44.entities.CommissionLedger.create(data);
@@ -91,8 +112,8 @@ export default function QuarterClosing() {
   // Check if quarter has ended
   const isQuarterEnded = new Date() > quarterEnd;
 
-  // Get all mentors
-  const mentors = users.filter(u => ['junior_mentor', 'senior_mentor'].includes(u.app_role));
+  // Get all mentors (built-in mentors + custom staff-tier roles)
+  const mentors = users.filter(u => isMentorRole(u.app_role));
 
   // Calculate mentor data
   const mentorData = mentors.map(mentor => {
@@ -123,12 +144,21 @@ export default function QuarterClosing() {
     });
     const manualAdjustmentTotal = mentorAdjustments.reduce((sum, a) => sum + (a.amount_usd || 0), 0);
 
-    // Use mentor's individual commission rate (default 4%)
-    const commissionRate = mentor.commission_rate ?? 4;
-    const commission = calculateQuarterCommission(netDeposit, bufferCarriedIn, commissionRate);
+    // NEW: level-based deposit commission from the commission engine — the sum
+    // of this staff's DEPOSIT credits for the quarter (deposits add, withdrawals
+    // subtract). NOT floored at $0: a withdrawal clawback from a deposit earned
+    // in an earlier quarter must show negative and reduce the release, or staff
+    // could deposit one quarter and withdraw the next to keep the commission.
+    const grossCommission = commissionCredits.reduce((s, c) => {
+      if (c.method !== 'deposit' || c.is_pool || c.recipient_id !== mentor.id) return s;
+      const d = new Date(c.requested_at || c.created_date);
+      if (isNaN(d.getTime()) || d < quarterStart || d >= quarterEnd) return s;
+      return s + (c.commission_usd || 0);
+    }, 0);
+
     // Carry forward last quarter's held buffer: add it into adjusted gross, then
     // split 75/25 into this quarter's Release and Buffer.
-    const adjustedGross = commission.gross_commission_usd + manualAdjustmentTotal + bufferCarriedIn;
+    const adjustedGross = grossCommission + manualAdjustmentTotal + bufferCarriedIn;
     const adjustedRelease = adjustedGross * 0.75;
     const adjustedBuffer = adjustedGross * 0.25;
 
@@ -136,15 +166,48 @@ export default function QuarterClosing() {
       mentor,
       netDeposit,
       bufferCarriedIn,
-      ...commission,
+      gross_commission_usd: grossCommission,
+      commission_release_usd: adjustedRelease,
+      commission_buffer_usd: adjustedBuffer,
       manualAdjustmentTotal,
       adjustedGross,
       adjustedRelease,
       adjustedBuffer,
-      commissionRate,
       isClosed: false
     };
   });
+
+  // Roll up the quarter for the Monthly-Closing-style summary cards.
+  const totals = mentorData.reduce((a, d) => {
+    const net = d.isClosed ? (d.ledger.net_deposit_usd || 0) : d.netDeposit;
+    const rel = d.isClosed ? (d.ledger.commission_release_usd || 0) : d.adjustedRelease;
+    const buf = d.isClosed ? (d.ledger.commission_buffer_usd || 0) : d.adjustedBuffer;
+    const released = d.isClosed && d.ledger.overall_status === 'released';
+    return {
+      net: a.net + net,
+      rel: a.rel + rel,
+      buf: a.buf + buf,
+      closed: a.closed + (d.isClosed ? 1 : 0),
+      released: a.released + (released ? 1 : 0),
+    };
+  }, { net: 0, rel: 0, buf: 0, closed: 0, released: 0 });
+
+  // Junior+Senior deposit POOL, shown as its own line per Chief group so admins
+  // can see how much the pool holds this quarter (e.g. "Henry SEN/JUN POOL").
+  // Only accruals not yet distributed (status 'pooled') — once distributed, the
+  // amount flows into each member's own row instead. Informational (no ledger).
+  const poolRows = (() => {
+    const g = {};
+    for (const c of commissionCredits) {
+      if (c.method !== 'deposit' || !c.is_pool || c.status === 'distributed') continue;
+      const d = new Date(c.requested_at || c.created_date);
+      if (isNaN(d.getTime()) || d < quarterStart || d >= quarterEnd) continue;
+      const key = c.pool_group_id || c.pool_group_name || '—';
+      if (!g[key]) g[key] = { key, name: c.pool_group_name || 'SEN/JUN POOL', total: 0 };
+      g[key].total += c.commission_usd || 0;
+    }
+    return Object.values(g).sort((a, b) => b.total - a.total);
+  })();
 
   const handleGenerateLedger = (mentorInfo) => {
     const ledgerData = {
@@ -156,7 +219,7 @@ export default function QuarterClosing() {
       start_date,
       end_date,
       net_deposit_usd: mentorInfo.netDeposit,
-      commission_rate: mentorInfo.commissionRate,
+      commission_rate: null, // level-based now — commission comes from the engine, not a flat rate
       gross_commission_usd: mentorInfo.gross_commission_usd,
       manual_adjustment_usd: mentorInfo.manualAdjustmentTotal,
       adjusted_gross_commission_usd: mentorInfo.adjustedGross,
@@ -261,6 +324,27 @@ export default function QuarterClosing() {
           </CardContent>
         </Card>
 
+        {/* Summary cards — same layout as Monthly Closing */}
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+          <div className="bg-blue-50 border border-blue-200 rounded-xl p-4">
+            <p className="text-xs text-blue-600 font-medium uppercase">Total Net Deposit</p>
+            <p className="text-2xl font-bold text-blue-700 mt-1">{money(totals.net)}</p>
+          </div>
+          <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-4">
+            <p className="text-xs text-emerald-600 font-medium uppercase">Total Release (75%)</p>
+            <p className="text-2xl font-bold text-emerald-700 mt-1">{money(totals.rel)}</p>
+          </div>
+          <div className="bg-amber-50 border border-amber-200 rounded-xl p-4">
+            <p className="text-xs text-amber-600 font-medium uppercase">Total Buffer (25%)</p>
+            <p className="text-2xl font-bold text-amber-700 mt-1">{money(totals.buf)}</p>
+          </div>
+          <div className="bg-gray-50 border border-gray-200 rounded-xl p-4">
+            <p className="text-xs text-gray-500 font-medium uppercase">Released</p>
+            <p className="text-2xl font-bold text-gray-700 mt-1">{totals.released}/{mentorData.length}</p>
+            <p className="text-xs text-gray-400 mt-1">{totals.closed} ledger(s) generated</p>
+          </div>
+        </div>
+
         {/* Mentors Table */}
         <Card className="border-gray-200">
           <CardHeader className="border-b border-gray-100 bg-gradient-to-r from-gray-50 to-blue-50">
@@ -282,6 +366,20 @@ export default function QuarterClosing() {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
+                  {poolRows.map((p) => (
+                    <TableRow key={'pool-' + p.key} className="bg-purple-50/60 hover:bg-purple-50 border-b-2 border-purple-200">
+                      <TableCell className="font-semibold text-purple-800">{p.name}</TableCell>
+                      <TableCell className="text-gray-400">—</TableCell>
+                      <TableCell className="text-gray-400">—</TableCell>
+                      <TableCell className="font-bold text-purple-700">${p.total.toFixed(2)}<span className="text-xs text-gray-400 ml-1">(Jun+Sen pool)</span></TableCell>
+                      <TableCell className="text-gray-400">—</TableCell>
+                      <TableCell className="text-gray-400">—</TableCell>
+                      <TableCell>
+                        <Badge variant="outline" className="bg-purple-100 text-purple-800 border-purple-200">Pool</Badge>
+                      </TableCell>
+                      <TableCell className="text-right text-xs text-gray-400">Distribute in Deposit Commission</TableCell>
+                    </TableRow>
+                  ))}
                   {mentorData.map((data) => (
                     <TableRow key={data.mentor.id} className="hover:bg-gray-50 transition-colors">
                       <TableCell className="font-medium">{data.mentor.full_name}</TableCell>
@@ -296,9 +394,7 @@ export default function QuarterClosing() {
                           ${data.isClosed
                             ? (data.ledger.adjusted_gross_commission_usd ?? data.ledger.gross_commission_usd).toFixed(2)
                             : data.adjustedGross.toFixed(2)}
-                          <span className="text-xs text-gray-400 ml-1">
-                            ({data.isClosed ? (data.ledger.commission_rate ?? 4) : data.commissionRate}%)
-                          </span>
+                          <span className="text-xs text-gray-400 ml-1">(level-based)</span>
                         </div>
                         {(data.isClosed ? (data.ledger.manual_adjustment_usd || 0) : data.manualAdjustmentTotal) !== 0 && (
                           <div className="text-xs mt-0.5">
@@ -316,17 +412,23 @@ export default function QuarterClosing() {
                         ${data.isClosed ? data.ledger.commission_buffer_usd.toFixed(2) : data.adjustedBuffer.toFixed(2)}
                       </TableCell>
                       <TableCell>
-                        {data.isClosed ? (
-                          <Badge variant="outline" className="bg-emerald-100 text-emerald-800 border-emerald-200">
-                            <Lock className="h-3 w-3 mr-1" />
-                            CLOSED
-                          </Badge>
-                        ) : (
+                        {!data.isClosed ? (
                           <Badge variant="outline" className="bg-blue-100 text-blue-800 border-blue-200">
                             <AlertCircle className="h-3 w-3 mr-1" />
                             OPEN
                           </Badge>
-                        )}
+                        ) : (() => {
+                          // Once a ledger exists, show WHERE it is in the approval chain
+                          // (Broker -> Academic -> Finance -> Released), like Monthly Closing.
+                          const st = data.ledger.overall_status || 'pending_broker_approval';
+                          const info = STATUS_LABEL[st] || STATUS_LABEL.pending_broker_approval;
+                          return (
+                            <Badge variant="outline" className={info.cls}>
+                              {st === 'released' && <Lock className="h-3 w-3 mr-1" />}
+                              {info.label}
+                            </Badge>
+                          );
+                        })()}
                       </TableCell>
                       <TableCell className="text-right">
                         {!data.isClosed && currentUser.app_role !== 'finance_admin' && (

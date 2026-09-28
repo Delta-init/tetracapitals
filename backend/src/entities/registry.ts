@@ -47,6 +47,14 @@ export interface EntityConfig {
   ownerField?: string;
   /** Default sort if list/filter called without order. */
   defaultSort?: string;
+  /**
+   * Fields that must be unique across the collection (case-insensitive).
+   * Enforced server-side on create/update/bulkCreate, regardless of caller or
+   * data scope. Empty/blank values are exempt (so records without the field are
+   * allowed). This is the real guard — client-side checks can't see records
+   * outside the caller's data scope.
+   */
+  uniqueFields?: string[];
 }
 
 export const ENTITIES: Record<string, EntityConfig> = {
@@ -71,6 +79,8 @@ export const ENTITIES: Record<string, EntityConfig> = {
     update: ADMIN_ROLES,
     delete: ADMIN_ROLES,
     defaultSort: "-created_date",
+    // A student's email must be unique across ALL students (any mentor).
+    uniqueFields: ["email"],
   },
   StudentRequest: {
     collection: "student_requests",
@@ -120,6 +130,64 @@ export const ENTITIES: Record<string, EntityConfig> = {
     delete: ALL_ROLES,
     ownerField: "user_id",
     defaultSort: "-created_date",
+  },
+  // Configurable commission-hierarchy roles: a named position with a level
+  // order, an optional parent (the role above it), and a page-permission list.
+  // Distinct from the hard-coded auth app_role — this drives the commission
+  // hierarchy + (later) page visibility.
+  CommissionRole: {
+    collection: "commission_roles",
+    read: ALL_ROLES,
+    create: ["super_admin", "admin"],
+    update: ["super_admin", "admin"],
+    delete: ["super_admin"],
+    defaultSort: "name",
+  },
+  // Level-wise commission plans (Bonus With/Without MT5, Deposit). Each plan
+  // holds an ordered list of level percentages; the engine walks up the Up Head
+  // chain and pays each level its % of the transaction amount.
+  // One row per recipient per approved transaction — written by the crediting
+  // engine when a bonus is approved (Level 1 = initiator, up the Up Head chain).
+  CommissionCredit: {
+    collection: "commission_credits",
+    read: ALL_ROLES,
+    create: ADMIN_ROLES,
+    update: ADMIN_ROLES,
+    delete: ["super_admin"],
+    defaultSort: "-created_date",
+  },
+  CommissionPlan: {
+    collection: "commission_plans",
+    read: ALL_ROLES,
+    create: ["super_admin", "admin"],
+    update: ["super_admin", "admin"],
+    delete: ["super_admin"],
+    defaultSort: "name",
+  },
+  // Per-staff, per-period approval of the Bonus (monthly) / Deposit (quarterly)
+  // commission reports. Walks Broker -> Academic -> Finance, then releases that
+  // staff's credits for the period. Writes happen only through the
+  // approveCommissionPeriod function; reads are open so the report can show status.
+  CommissionPeriodApproval: {
+    collection: "commission_period_approvals",
+    read: ALL_ROLES,
+    create: ADMIN_ROLES,
+    update: ADMIN_ROLES,
+    delete: ["super_admin"],
+    defaultSort: "-created_date",
+  },
+  // Daily staff activity tracker (Mentor / PA-CSE). One row per staff per day.
+  // Staff create + edit only their own (ownerField); admins edit any. Reads are
+  // scoped by data_scope, so a staff sees only their own and a chief sees their
+  // team (see scope.ts).
+  ActivityLog: {
+    collection: "activity_logs",
+    read: ALL_ROLES,
+    create: ALL_ROLES,
+    update: ADMIN_ROLES,
+    delete: ADMIN_ROLES,
+    ownerField: "staff_id",
+    defaultSort: "-date",
   },
   FundingTransaction: {
     collection: "funding_transactions",

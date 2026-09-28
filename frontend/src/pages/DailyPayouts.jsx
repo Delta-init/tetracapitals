@@ -12,9 +12,9 @@ import { Calendar, DollarSign, CheckCircle, Send } from "lucide-react";
 import { toast } from "sonner";
 import { format } from "date-fns";
 import { getEffectiveUser } from "../components/utils/ImpersonationContext";
+import { isMentorRole } from "@/components/utils/roles";
 
 const RELEASE_ROLES = ['super_admin', 'admin', 'broker_admin', 'finance_admin'];
-const MENTOR_ROLES = ['senior_mentor', 'junior_mentor', 'subjunior_mentor'];
 
 function yesterdayString() {
   const d = new Date();
@@ -38,7 +38,7 @@ export default function DailyPayouts() {
   }, []);
 
   const canRelease = currentUser && RELEASE_ROLES.includes(currentUser.app_role);
-  const isMentor = currentUser && MENTOR_ROLES.includes(currentUser.app_role);
+  const isMentor = currentUser && isMentorRole(currentUser.app_role);
 
   const { data: transactions = [] } = useQuery({
     queryKey: ['funding-transactions'],

@@ -8,7 +8,7 @@ import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Search, TrendingUp, TrendingDown, Eye, Edit, Plus, Upload, Download, CheckSquare, XSquare, Trash2 } from "lucide-react";
+import { Search, TrendingUp, TrendingDown, Eye, Edit, Plus, Upload, Download, CheckSquare, XSquare, Trash2, Award } from "lucide-react";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
@@ -44,6 +44,7 @@ export default function FundingRequests() {
   const [showBulkImportDialog, setShowBulkImportDialog] = useState(false);
   const [selectedIds, setSelectedIds] = useState([]);
   const [isBulkProcessing, setIsBulkProcessing] = useState(false);
+  const [creditsTx, setCreditsTx] = useState(null); // transaction whose commission breakdown is open
 
   const queryClient = useQueryClient();
 
@@ -82,11 +83,25 @@ export default function FundingRequests() {
     enabled: !!currentUser,
   });
 
+  // Commission credits — used to show who got paid for a clicked transaction.
+  const { data: allCredits = [] } = useQuery({
+    queryKey: ['commission-credits'],
+    queryFn: () => base44.entities.CommissionCredit.list('-created_date'),
+    enabled: !!currentUser,
+  });
+  const txCredits = creditsTx ? allCredits.filter(c => c.transaction_id === creditsTx.id) : [];
+
   const updateMutation = useMutation({
     mutationFn: async ({ id, data }) => {
       const result = await base44.entities.FundingTransaction.update(id, data);
       const action = data.status === 'APPROVED' ? 'approve_funding_transaction' : 'reject_funding_transaction';
       await logAction(action, 'FundingTransaction', id, `${data.status} transaction for ${data.student_name}`, null, data);
+      // Level-wise commission: credit each level up the Up Head chain on approval
+      // (bonus and deposit both flow through the engine using the initiator's plan).
+      if (data.status === 'APPROVED' && ['BONUS', 'DEPOSIT', 'WITHDRAWAL'].includes(result?.type)) {
+        try { await base44.functions.invoke('creditCommission', { transaction_id: id }); }
+        catch (e) { console.error('commission credit failed', e); }
+      }
       return result;
     },
     onSuccess: () => {
@@ -205,6 +220,7 @@ export default function FundingRequests() {
         has(t.mt5_login) ||
         has(t.transaction_id) ||
         has(t.user_id) ||
+        has(t.meeting_mentor_name) ||
         has(student?.email);
     });
   }
@@ -436,7 +452,7 @@ export default function FundingRequests() {
     };
 
     const csvContent = [
-      ['Requested Date', 'Type', 'Status', 'Student Name', 'Student Email', 'Student Code', 'Primary Mentor', 'Added By', 'MT5 Login', 'Amount USD', 'Payment Method', 'Tags', 'User ID', 'Transaction ID', 'Approved By', 'Approved Date', 'Notes'].join(','),
+      ['Requested Date', 'Type', 'Status', 'Student Name', 'Student Email', 'Student Code', 'Primary Mentor', 'Added By', 'Meeting Conducted By', 'MT5 Login', 'Amount USD', 'Payment Method', 'Tags', 'User ID', 'Transaction ID', 'Approved By', 'Approved Date', 'Notes'].join(','),
       ...filteredTransactions.map(t => {
         const student = students.find(s => s.id === t.student_id);
         // Tags are stored as a string array; join with "; " so they fit in one CSV cell.
@@ -450,6 +466,7 @@ export default function FundingRequests() {
           escapeCSV(t.student_code || ''),
           escapeCSV(t.primary_mentor_name || ''),
           escapeCSV(t.initiating_mentor_name || t.requested_by_name || ''),
+          escapeCSV(t.meeting_mentor_name || ''),
           escapeCSV(t.mt5_login || ''),
           escapeCSV(t.amount_usd?.toFixed(2) || '0.00'),
           escapeCSV(t.payment_method || ''),
@@ -755,10 +772,11 @@ export default function FundingRequests() {
                     <TableHead className="font-semibold">Level</TableHead>
                     <TableHead className="font-semibold">Primary Mentor</TableHead>
                     <TableHead className="font-semibold">Added By</TableHead>
+                    <TableHead className="font-semibold">Meeting By</TableHead>
                     <TableHead className="font-semibold">MT5 Login</TableHead>
                     <TableHead className="font-semibold">Amount</TableHead>
                     <TableHead className="font-semibold">Payment</TableHead>
-                    <TableHead className="font-semibold">Tags</TableHead>
+                    <TableHead className="font-semibold">Product</TableHead>
                     <TableHead className="font-semibold">User ID</TableHead>
                     <TableHead className="font-semibold">Txn ID</TableHead>
                     <TableHead className="font-semibold">Approved By</TableHead>
@@ -769,7 +787,7 @@ export default function FundingRequests() {
                 <TableBody>
                   {filteredTransactions.length === 0 ? (
                     <TableRow>
-                      <TableCell colSpan={['super_admin', 'broker_admin'].includes(currentUser.app_role) ? 18 : 17} className="text-center py-8 text-gray-500">
+                      <TableCell colSpan={['super_admin', 'broker_admin'].includes(currentUser.app_role) ? 19 : 18} className="text-center py-8 text-gray-500">
                         No funding requests found
                       </TableCell>
                     </TableRow>
@@ -846,6 +864,9 @@ export default function FundingRequests() {
                             </>
                           ) : '-'}
                         </TableCell>
+                        <TableCell className="text-sm">
+                          {transaction.meeting_mentor_name || '-'}
+                        </TableCell>
                         <TableCell className="font-mono text-sm">
                           {transaction.mt5_login || '-'}
                         </TableCell>
@@ -904,6 +925,16 @@ export default function FundingRequests() {
                                 <Edit className="h-4 w-4" />
                               </Button>
                             )}
+                            {/* View who got commission credited for this transaction */}
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              onClick={(e) => { e.stopPropagation(); setCreditsTx(transaction); }}
+                              className="h-8 w-8 p-0 text-emerald-600 hover:text-emerald-700 hover:bg-emerald-50"
+                              title="View commission credited"
+                            >
+                              <Award className="h-4 w-4" />
+                            </Button>
                           </div>
                         </TableCell>
                       </TableRow>
@@ -927,6 +958,64 @@ export default function FundingRequests() {
           }}
           onProcess={handleProcessSubmit}
         />
+
+        {/* Commission credited breakdown for a clicked transaction */}
+        <Dialog open={!!creditsTx} onOpenChange={(o) => { if (!o) setCreditsTx(null); }}>
+          <DialogContent className="max-w-lg">
+            <DialogHeader>
+              <DialogTitle className="flex items-center gap-2">
+                <Award className="h-5 w-5 text-emerald-600" />
+                Commission Credited
+              </DialogTitle>
+            </DialogHeader>
+            {creditsTx && (
+              <div className="space-y-3">
+                <div className="text-sm text-gray-600 bg-gray-50 rounded-lg p-3">
+                  <span className="font-medium text-gray-900">{creditsTx.student_name}</span> · {creditsTx.type} · ${(creditsTx.amount_usd || 0).toFixed(2)}
+                  {creditsTx.transaction_id && <span className="ml-2 font-mono text-xs text-gray-400">Txn {creditsTx.transaction_id}</span>}
+                </div>
+                {txCredits.length === 0 ? (
+                  <p className="py-6 text-center text-sm text-gray-400">
+                    No commission credited for this transaction{creditsTx.status !== 'APPROVED' ? ' — it isn’t approved yet.' : '.'}
+                  </p>
+                ) : (
+                  <div className="rounded-lg border overflow-hidden">
+                    <table className="w-full text-sm">
+                      <thead>
+                        <tr className="bg-gray-50 border-b">
+                          <th className="text-left px-3 py-2 font-semibold text-gray-600">Staff</th>
+                          <th className="text-center px-3 py-2 font-semibold text-gray-600">Level</th>
+                          <th className="text-center px-3 py-2 font-semibold text-gray-600">%</th>
+                          <th className="text-right px-3 py-2 font-semibold text-gray-600">Commission</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {[...txCredits].sort((a, b) => (a.level || 0) - (b.level || 0)).map((c, i) => (
+                          <tr key={c.id || i} className="border-b last:border-0 hover:bg-gray-50">
+                            <td className="px-3 py-2 font-medium text-gray-900">{c.recipient_name || '—'}</td>
+                            <td className="px-3 py-2 text-center">L{c.level}</td>
+                            <td className="px-3 py-2 text-center text-gray-500">{c.percentage}%</td>
+                            <td className={`px-3 py-2 text-right font-bold ${(c.commission_usd || 0) < 0 ? 'text-red-600' : 'text-emerald-700'}`}>
+                              ${(c.commission_usd || 0).toFixed(2)}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                      <tfoot>
+                        <tr className="bg-gray-100 border-t-2 font-bold">
+                          <td colSpan={3} className="px-3 py-2 text-gray-700">Total ({txCredits.length})</td>
+                          <td className="px-3 py-2 text-right text-emerald-700">
+                            ${txCredits.reduce((s, c) => s + (c.commission_usd || 0), 0).toFixed(2)}
+                          </td>
+                        </tr>
+                      </tfoot>
+                    </table>
+                  </div>
+                )}
+              </div>
+            )}
+          </DialogContent>
+        </Dialog>
 
         {/* Add Transaction Dialog */}
         <AddTransactionDialog

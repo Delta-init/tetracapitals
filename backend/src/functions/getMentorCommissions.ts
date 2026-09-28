@@ -1,21 +1,20 @@
 import { col } from "../db";
 import { json, error, forbidden } from "../lib/response";
 import { serializeMany } from "../lib/id";
+import { isMentorRole, isAdminRole } from "../lib/roles";
 import type { AuthUser } from "../auth/middleware";
 
-const ALLOWED = new Set([
-  "super_admin", "broker_admin", "academic_head", "finance_admin",
-  "junior_mentor", "senior_mentor", "admin",
-]);
 const MAX_CAP = 25_000;
 
 export async function getMentorCommissions(req: Request, user: AuthUser): Promise<Response> {
-  if (!ALLOWED.has(user.app_role)) return forbidden();
+  // Admins (full view) and any mentor/staff-tier role (their own view). Custom
+  // Role-Management roles are staff-tier and land here as mentors.
+  if (!isAdminRole(user.app_role) && !isMentorRole(user.app_role)) return forbidden();
   const body: any = await req.json().catch(() => null);
   const { startDate, endDate } = body ?? {};
   if (!startDate || !endDate) return error("startDate and endDate are required", 400);
 
-  const isMentor = user.app_role === "junior_mentor" || user.app_role === "senior_mentor";
+  const isMentor = isMentorRole(user.app_role);
   const start = new Date(startDate);
   const end = new Date(endDate);
   end.setHours(23, 59, 59, 999);
@@ -90,7 +89,7 @@ export async function getMentorCommissions(req: Request, user: AuthUser): Promis
         studentNetDeposits[sid] += tx.amount_usd || 0;
         totalDeposit += tx.amount_usd || 0;
       } else if (tx.type === "BONUS") {
-        studentNetDeposits[sid] += tx.amount_usd || 0;
+        // Bonus is tracked for display only — it no longer feeds net deposit.
         totalBonus += tx.amount_usd || 0;
       } else if (tx.type === "WITHDRAWAL") {
         studentNetDeposits[sid] -= tx.amount_usd || 0;

@@ -13,6 +13,11 @@ import { getMentorCommissions } from "./getMentorCommissions";
 import { generateQuarterlyLedgers } from "./generateQuarterlyLedgers";
 import { autoCloseResolvedTickets, checkTicketEscalation, sendTicketNotification } from "./tickets";
 import { createReferralRequest, processReferralResponse, processWithdrawal, updateCoMentorContribution } from "./referrals";
+import { creditCommission } from "./creditCommission";
+import { releaseCommission } from "./releaseCommission";
+import { approveCommissionPeriod } from "./approveCommissionPeriod";
+import { distributeDepositPool } from "./distributeDepositPool";
+import { searchStudents } from "./searchStudents";
 import type { AuthUser } from "../auth/middleware";
 
 type AuthedHandler = (req: Request, user: AuthUser) => Promise<Response>;
@@ -35,6 +40,11 @@ const AUTHED: Record<string, AuthedHandler> = {
   masterEditTransaction,
   masterDeleteTransaction,
   masterBulkEditTransactions,
+  creditCommission,
+  releaseCommission,
+  approveCommissionPeriod,
+  distributeDepositPool,
+  searchStudents,
   wipeData,
 };
 

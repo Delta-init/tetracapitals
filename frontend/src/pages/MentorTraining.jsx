@@ -5,8 +5,9 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
-import { 
-  BookOpen, 
+import { isMentorRole } from "@/components/utils/roles";
+import {
+  BookOpen,
   Brain, 
   TrendingUp, 
   Users, 
@@ -316,7 +317,7 @@ Create 5 multiple-choice questions that test understanding of the key concepts. 
     );
   }
 
-  const isMentor = ['junior_mentor', 'senior_mentor'].includes(currentUser.app_role);
+  const isMentor = isMentorRole(currentUser.app_role);
 
   if (!isMentor) {
     return (

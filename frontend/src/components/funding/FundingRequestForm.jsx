@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { useQuery } from "@tanstack/react-query";
 import ReferralRequestPopup from './ReferralRequestPopup';
 import CoManageSearchModal from './CoManageSearchModal';
 import { base44 } from "@/api/base44Client";
@@ -9,7 +10,14 @@ import { Button } from "@/components/ui/button";
 import { Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import SearchableStudentSelect from '../common/SearchableStudentSelect';
+import SearchableSelect from '../common/SearchableSelect';
 import TagsPicker from './TagsPicker';
+import { isMentorRole } from '../utils/roles';
+import { teamMembersOf } from '../utils/teams';
+
+const NONE = '__none__';
+// "junior_mentor" -> "Junior Mentor"
+const roleLabel = (r) => String(r || '').replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
 
 const PAYMENT_METHODS = [
   'AED TRANSFER',
@@ -30,12 +38,38 @@ export default function FundingRequestForm({ students, allStudents = [], current
     mt5_login: '',
     screenshot_url: '',
     tags: [],          // only meaningful when type === 'BONUS'
+    meeting_mentor_id: '', // mentor who conducted the meeting with the client
   });
   const [uploading, setUploading] = useState(false);
   const [referralStudent, setReferralStudent] = useState(null);
   const [showCoManageModal, setShowCoManageModal] = useState(false);
 
-  const isMentor = ['junior_mentor', 'senior_mentor', 'subjunior_mentor'].includes(currentUser?.app_role);
+  // Tag catalog with per-tag amounts — for BONUS, the amount is driven by the tag.
+  const { data: bonusTags = [] } = useQuery({
+    queryKey: ['transaction-tags-catalog'],
+    queryFn: async () => (await base44.entities.TransactionTag.list('name')).filter(t => t.active !== false),
+    staleTime: 5 * 60_000,
+  });
+  const tagAmount = (tagName) => bonusTags.find(t => t.name === tagName)?.amount_usd;
+
+  // Mentors (junior / senior / sub-junior / chief) for the "meeting conducted by"
+  // picker — only from the submitter's own team (their Up Head chain). Admins
+  // aren't on a team, so they see every mentor. Everyone can read the user list,
+  // so staff roles like CS can load it.
+  const { data: allUsers = [] } = useQuery({
+    queryKey: ['users-mentor-options'],
+    queryFn: () => base44.entities.User.list(),
+    staleTime: 5 * 60_000,
+  });
+  const mentorOptions = React.useMemo(() => {
+    const pool = isMentorRole(currentUser?.app_role) ? teamMembersOf(currentUser, allUsers) : allUsers;
+    return pool
+      .filter(u => /mentor/.test(String(u.app_role || '')) && u.full_name)
+      .sort((a, b) => String(a.full_name).localeCompare(String(b.full_name)))
+      .map(u => ({ value: u.id, label: `${u.full_name} · ${roleLabel(u.app_role)}` }));
+  }, [allUsers, currentUser]);
+
+  const isMentor = isMentorRole(currentUser?.app_role);
 
   const handleStudentSelect = (studentId) => {
     const student = students.find(s => s.id === studentId);
@@ -81,7 +115,7 @@ export default function FundingRequestForm({ students, allStudents = [], current
     }
 
     if (formData.type === 'BONUS' && (!formData.tags || formData.tags.length === 0)) {
-      toast.error('Please pick a tag for the bonus');
+      toast.error('Please pick a product for the bonus');
       return;
     }
 
@@ -98,8 +132,14 @@ export default function FundingRequestForm({ students, allStudents = [], current
       seniorMentorName = selectedStudent.senior_mentor_name;
     }
 
+    const meetingMentor = formData.meeting_mentor_id && formData.meeting_mentor_id !== NONE
+      ? allUsers.find(u => u.id === formData.meeting_mentor_id)
+      : null;
+
     const dataToSubmit = {
       ...formData,
+      meeting_mentor_id: meetingMentor?.id || null,
+      meeting_mentor_name: meetingMentor?.full_name || null,
       amount_usd: parseFloat(formData.amount_usd),
       status: 'PENDING',
       student_name: selectedStudent.full_name,
@@ -153,7 +193,7 @@ export default function FundingRequestForm({ students, allStudents = [], current
             <Label htmlFor="type">Transaction Type *</Label>
             <Select
               value={formData.type}
-              onValueChange={(value) => setFormData({ ...formData, type: value })}
+              onValueChange={(value) => setFormData({ ...formData, type: value, tags: [], amount_usd: value === 'BONUS' ? '' : formData.amount_usd })}
               required
             >
               <SelectTrigger>
@@ -188,19 +228,40 @@ export default function FundingRequestForm({ students, allStudents = [], current
 
           {formData.type === 'BONUS' && (
             <div className="space-y-2 md:col-span-2">
-              <Label>Tag *</Label>
+              <Label>Product *</Label>
               <TagsPicker
                 value={formData.tags}
-                onChange={(tags) => setFormData({ ...formData, tags })}
+                onChange={(picked) => {
+                  // The picked product may BUNDLE lower products (e.g. buying the
+                  // higher course includes the lower one). Auto-add those to the
+                  // tags, but the amount stays the primary product's price — the
+                  // bundled items are included, not added on top.
+                  const primary = picked[0];
+                  const product = bonusTags.find(t => t.name === primary);
+                  const included = Array.isArray(product?.includes)
+                    ? product.includes.filter(n => n && n !== primary)
+                    : [];
+                  const allTags = primary ? [primary, ...included] : [];
+                  const amt = product?.amount_usd;
+                  setFormData({ ...formData, tags: allTags, amount_usd: amt != null ? String(amt) : '' });
+                }}
               />
+              {formData.tags.length > 1 && (
+                <p className="text-xs text-green-700 font-medium">
+                  ✓ Automatically included (no extra charge): {formData.tags.slice(1).join(', ')}
+                </p>
+              )}
               <p className="text-xs text-muted-foreground">
-                Pick the tag that categorizes this bonus. Tag names are managed by admins.
+                Pick the product — its amount fills in automatically. Bundled products come along at no extra charge. Products &amp; amounts are managed by admins.
               </p>
             </div>
           )}
 
           <div className="space-y-2">
-            <Label htmlFor="amount">Amount (USD) *</Label>
+            <Label htmlFor="amount">
+              Amount (USD) *
+              {formData.type === 'BONUS' && <span className="ml-1 text-xs font-normal text-gray-500">(set by tag)</span>}
+            </Label>
             <Input
               id="amount"
               type="number"
@@ -208,9 +269,13 @@ export default function FundingRequestForm({ students, allStudents = [], current
               min="0.01"
               value={formData.amount_usd}
               onChange={(e) => setFormData({ ...formData, amount_usd: e.target.value })}
-              placeholder="0.00"
+              placeholder={formData.type === 'BONUS' ? 'Select a tag first' : '0.00'}
+              disabled={formData.type === 'BONUS'}
               required
             />
+            {formData.type === 'BONUS' && (
+              <p className="text-xs text-muted-foreground">Auto-filled from the tag. An admin can adjust it when approving.</p>
+            )}
           </div>
 
           <div className="space-y-2">
@@ -231,6 +296,22 @@ export default function FundingRequestForm({ students, allStudents = [], current
                 ))}
               </SelectContent>
             </Select>
+          </div>
+
+          <div className="space-y-2">
+            <Label>Meeting Conducted By (Mentor)</Label>
+            <SearchableSelect
+              value={formData.meeting_mentor_id || undefined}
+              onValueChange={(v) => setFormData({ ...formData, meeting_mentor_id: v })}
+              options={mentorOptions}
+              placeholder="Select the mentor who took the meeting"
+              searchPlaceholder="Search mentor by name or role…"
+              noneLabel="— None —"
+              noneValue={NONE}
+            />
+            {isMentorRole(currentUser?.app_role) && mentorOptions.length === 0 && (
+              <p className="text-xs text-amber-600">No mentors on your team yet — ask an admin to set your Up Head in Personnel.</p>
+            )}
           </div>
 
           <div className="space-y-2">

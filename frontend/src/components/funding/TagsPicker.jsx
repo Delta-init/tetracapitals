@@ -38,7 +38,7 @@ export default function TagsPicker({ value = [], onChange, disabled }) {
   if (tags.length === 0) {
     return (
       <p className="text-sm text-muted-foreground">
-        No tags defined yet. An admin can add them on the <strong>Tags</strong> page.
+        No products defined yet. An admin can add them on the <strong>Products</strong> page.
       </p>
     );
   }
@@ -46,7 +46,7 @@ export default function TagsPicker({ value = [], onChange, disabled }) {
   return (
     <Select value={selected} onValueChange={handleChange} disabled={disabled}>
       <SelectTrigger>
-        <SelectValue placeholder="Select a tag…" />
+        <SelectValue placeholder="Select a product…" />
       </SelectTrigger>
       <SelectContent>
         {tags.map((t) => (

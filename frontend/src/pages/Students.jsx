@@ -11,6 +11,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import StudentForm from "../components/students/StudentForm";
 import StudentRequestForm from "../components/students/StudentRequestForm";
 import BulkImportStudentsDialog from "../components/students/BulkImportStudentsDialog";
+import { isMentorRole as isMentorTier } from "@/components/utils/roles";
 
 import { Plus, Search, Eye, Users, UserCheck, Upload, Download, Filter, ArrowUp, Share2, Trash2 } from "lucide-react";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -291,11 +292,11 @@ export default function Students() {
 
   // Must be defined before query usage above — hoisted via function declaration
   function isMentorRole(role) {
-    return ['junior_mentor', 'senior_mentor', 'subjunior_mentor'].includes(role);
+    return isMentorTier(role);
   }
 
   const canCreate = canSubmitStudentRequest(currentUser.app_role);
-  const isMentor = ['junior_mentor', 'senior_mentor', 'subjunior_mentor'].includes(currentUser.app_role);
+  const isMentor = isMentorTier(currentUser.app_role);
   const isSeniorMentor = currentUser.app_role === 'senior_mentor';
   const isAssistance = currentUser.app_role === 'assistance';
   const isAdmin = ['super_admin', 'broker_admin', 'academic_head'].includes(currentUser.app_role);

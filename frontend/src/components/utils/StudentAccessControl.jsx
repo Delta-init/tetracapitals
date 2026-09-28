@@ -1,7 +1,9 @@
 // Utility functions for student access control based on user role
+import { isMentorRole } from './roles';
 
 export const canSubmitStudentRequest = (userRole) => {
-  return ['junior_mentor', 'senior_mentor', 'subjunior_mentor', 'super_admin', 'admin', 'broker_admin', 'academic_head', 'academic_admin', 'assistance'].includes(userRole);
+  return ['super_admin', 'admin', 'broker_admin', 'academic_head', 'academic_admin'].includes(userRole)
+    || isMentorRole(userRole);
 };
 
 export const canEditStudent = (userRole) => {
@@ -80,14 +82,16 @@ export const filterStudentsByRole = (students, currentUser, allUsers = []) => {
     );
     const juniorMentorIds = myJuniorMentors.map(jm => jm.id);
     
-    return students.filter(s => 
+    return students.filter(s =>
       s.primary_mentor_id === id || // Their own students
       s.senior_mentor_id === id || // Students assigned to them as senior mentor
       juniorMentorIds.includes(s.primary_mentor_id) // Their junior mentors' students
     );
   }
-  
-  return [];
+
+  // Any other staff / custom Role-Management role: their own students only
+  // (the backend also enforces this via the role's data_scope).
+  return students.filter(s => s.primary_mentor_id === id || s.senior_mentor_id === id || s.created_by === id);
 };
 
 // Apply masking to a student object based on role

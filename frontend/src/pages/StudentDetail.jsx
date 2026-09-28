@@ -10,6 +10,7 @@ import { Link } from "react-router-dom";
 import { createPageUrl } from "../utils";
 import StudentForm from "../components/students/StudentForm";
 import MT5AccountSection from "../components/students/MT5AccountSection";
+import { isMentorRole as isMentorTier } from "@/components/utils/roles";
 import { 
   canEditStudent, 
   applyStudentMasking,
@@ -111,7 +112,7 @@ export default function StudentDetail() {
   }
 
   // Check if current user has access to this student
-  const isMentorRole = ['junior_mentor', 'senior_mentor', 'subjunior_mentor'].includes(currentUser.app_role);
+  const isMentorRole = isMentorTier(currentUser.app_role);
   const isAdminRole = ['super_admin', 'broker_admin', 'academic_head', 'academic_admin', 'admin_supervisor', 'assistance', 'draw_admin', 'finance_admin'].includes(currentUser.app_role);
 
   const isCoMentor = (() => {

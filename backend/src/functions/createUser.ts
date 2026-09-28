@@ -36,8 +36,12 @@ export async function createUser(req: Request, caller: AuthUser): Promise<Respon
   if (typeof password !== "string" || password.length < 8) {
     return error("Password must be at least 8 characters", 400);
   }
+  // Accept a built-in role OR any custom role defined in Role Management
+  // (commission_roles.role_key). This lets admins create roles like "Chief Admin"
+  // and assign them to staff.
   if (!(ALL_ROLES as readonly string[]).includes(app_role)) {
-    return error(`Invalid app_role '${app_role}'`, 400);
+    const customRole = await col("commission_roles").findOne({ role_key: app_role });
+    if (!customRole) return error(`Invalid app_role '${app_role}'`, 400);
   }
 
   const users = col("users");

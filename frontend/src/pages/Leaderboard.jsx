@@ -11,6 +11,7 @@ import PointsGuide from "../components/gamification/PointsGuide";
 import { calculateMentorPoints, calculateStreakBonus, awardBadges, calculateWeeklyStreak } from "../components/utils/GamificationUtils";
 import { toast } from "sonner";
 import { logAction } from "../components/utils/AuditLogger";
+import { isMentorRole } from "../components/utils/roles";
 
 export default function Leaderboard() {
   const [currentUser, setCurrentUser] = useState(null);
@@ -64,7 +65,7 @@ export default function Leaderboard() {
   const recalculateAllPoints = async () => {
     setIsRecalculating(true);
     try {
-      const mentors = users.filter(u => ['junior_mentor', 'senior_mentor'].includes(u.app_role));
+      const mentors = users.filter(u => isMentorRole(u.app_role));
       
       for (const mentor of mentors) {
         const points = calculateMentorPoints(mentor.id, transactions, settings);

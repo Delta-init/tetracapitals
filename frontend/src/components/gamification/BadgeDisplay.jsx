@@ -20,7 +20,17 @@ const BADGE_DEFINITIONS = {
 };
 
 export default function BadgeDisplay({ badges, size = "default" }) {
-  if (!badges || badges.length === 0) {
+  // Normalize to an array — `badges` can arrive as an actual array, a JSON
+  // string (how some records persist it), or null/undefined. Guarding only on
+  // `.length` let a string slip through and crash on `.map`, taking the whole
+  // page down since there's no error boundary above it.
+  let badgeList = badges;
+  if (typeof badgeList === 'string') {
+    try { badgeList = JSON.parse(badgeList); } catch { badgeList = []; }
+  }
+  if (!Array.isArray(badgeList)) badgeList = [];
+
+  if (badgeList.length === 0) {
     return <span className="text-sm text-gray-400">No badges yet</span>;
   }
 
@@ -32,7 +42,7 @@ export default function BadgeDisplay({ badges, size = "default" }) {
 
   return (
     <div className="flex flex-wrap gap-2">
-      {badges.map((badgeId) => {
+      {badgeList.map((badgeId) => {
         const badge = BADGE_DEFINITIONS[badgeId];
         if (!badge) return null;
         

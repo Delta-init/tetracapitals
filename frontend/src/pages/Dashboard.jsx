@@ -5,7 +5,8 @@ import StatsCard from "../components/dashboard/StatsCard";
 import { Users, TrendingUp, DollarSign, Target, AlertCircle, Award, Wallet, Activity } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import TransactionTable from "../components/transactions/TransactionTable";
-import { canViewAllStudents, isMentorRole, canApproveTransactions } from "../components/utils/DataMasking";
+import { canViewAllStudents, canApproveTransactions } from "../components/utils/DataMasking";
+import { isMentorRole } from "@/components/utils/roles";
 import { getEffectiveUser } from "../components/utils/ImpersonationContext";
 import { 
   filterFundingTransactionsByRole, 
@@ -100,8 +101,12 @@ export default function Dashboard() {
       })
     : [];
 
+  // A transaction belongs to whoever initiated it — co-managed transactions
+  // (raised by a co-mentor on another mentor's client) belong to that co-mentor,
+  // not the client's primary mentor. Legacy rows without an initiator fall back
+  // to the primary mentor.
   const filteredTransactions = isMentorRole(currentUser.app_role)
-    ? transactions.filter(t => t.primary_mentor_id === currentUser.id)
+    ? transactions.filter(t => (t.initiating_mentor_id || t.primary_mentor_id) === currentUser.id)
     : transactions;
 
   const pendingTransactions = filteredTransactions.filter(t => t.status === 'pending');
@@ -114,12 +119,11 @@ export default function Dashboard() {
   const totalNetDeposit = approvedFundingTransactions.filter(t => t.type === 'DEPOSIT').reduce((sum, t) => sum + (t.amount_usd || 0), 0)
     - approvedFundingTransactions.filter(t => t.type === 'WITHDRAWAL').reduce((sum, t) => sum + (t.amount_usd || 0), 0);
 
-  // For mentors: use same filter as Funding Activities page (initiating_mentor_id or primary_mentor_id)
+  // For mentors: transactions they initiated (co-managed ones belong to the
+  // co-mentor who raised them, not the client's primary mentor — matching how
+  // commission is attributed, so the primary's totals aren't inflated).
   const mentorOwnTransactions = isMentorRole(currentUser.app_role)
-    ? fundingTransactions.filter(t =>
-        t.initiating_mentor_id === currentUser.id ||
-        t.primary_mentor_id === currentUser.id
-      )
+    ? fundingTransactions.filter(t => (t.initiating_mentor_id || t.primary_mentor_id) === currentUser.id)
     : [];
 
   // Quarter commission — sourced from mentor's own transactions (matches Funding Activities)

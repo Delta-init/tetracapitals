@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { useQuery } from "@tanstack/react-query";
 import { base44 } from "@/api/base44Client";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
@@ -25,6 +26,14 @@ export default function ReferralRequestPopup({ student, currentUser, onClose, tr
   const [submitting, setSubmitting] = useState(false);
   const [tags, setTags] = useState(initialTags || []);
 
+  // Product catalog (with per-product amount + bundled "includes"), so BONUS
+  // amount auto-fills from the chosen product — same as the main funding form.
+  const { data: bonusTags = [] } = useQuery({
+    queryKey: ['transaction-tags-catalog'],
+    queryFn: async () => (await base44.entities.TransactionTag.list('name')).filter(t => t.active !== false),
+    staleTime: 5 * 60_000,
+  });
+
   const handleFileUpload = async (e) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -40,16 +49,16 @@ export default function ReferralRequestPopup({ student, currentUser, onClose, tr
   };
 
   const handleSubmit = async () => {
+    if (isBonus && (!tags || tags.length === 0)) {
+      toast.error('Please pick a product for the bonus');
+      return;
+    }
     if (!depositAmount || parseFloat(depositAmount) <= 0) {
-      toast.error(isBonus ? 'Please enter a valid bonus amount' : 'Please enter a valid deposit amount');
+      toast.error(isBonus ? 'The selected product has no amount set — ask an admin' : 'Please enter a valid deposit amount');
       return;
     }
     if (!paymentMethod) {
       toast.error('Please select a payment method');
-      return;
-    }
-    if (isBonus && (!tags || tags.length === 0)) {
-      toast.error('Please pick a tag for the bonus');
       return;
     }
     setSubmitting(true);
@@ -104,16 +113,52 @@ export default function ReferralRequestPopup({ student, currentUser, onClose, tr
             <p><span className="text-gray-500">Primary Mentor:</span> <span className="font-medium text-blue-700">{student.primary_mentor_name}</span></p>
           </div>
 
+          {isBonus && (
+            <div className="space-y-2">
+              <Label>Product *</Label>
+              <TagsPicker
+                value={tags}
+                onChange={(picked) => {
+                  // Auto-fill the amount from the chosen product, and pull in any
+                  // bundled products (amount stays the primary product's price).
+                  const primary = picked[0];
+                  const product = bonusTags.find(t => t.name === primary);
+                  const included = Array.isArray(product?.includes)
+                    ? product.includes.filter(n => n && n !== primary)
+                    : [];
+                  setTags(primary ? [primary, ...included] : []);
+                  const amt = product?.amount_usd;
+                  setDepositAmount(amt != null ? String(amt) : '');
+                }}
+              />
+              {tags.length > 1 && (
+                <p className="text-xs text-green-700 font-medium">
+                  ✓ Automatically included (no extra charge): {tags.slice(1).join(', ')}
+                </p>
+              )}
+              <p className="text-xs text-muted-foreground">
+                Pick the product — its amount fills in automatically. Products &amp; amounts are managed by admins.
+              </p>
+            </div>
+          )}
+
           <div className="space-y-2">
-            <Label>Amount (USD) *</Label>
+            <Label>
+              Amount (USD) *
+              {isBonus && <span className="ml-1 text-xs font-normal text-gray-500">(set by product)</span>}
+            </Label>
             <Input
               type="number"
               step="0.01"
               min="0.01"
               value={depositAmount}
               onChange={(e) => setDepositAmount(e.target.value)}
-              placeholder="0.00"
+              placeholder={isBonus ? 'Select a product first' : '0.00'}
+              disabled={isBonus}
             />
+            {isBonus && (
+              <p className="text-xs text-muted-foreground">Auto-filled from the product. An admin can adjust it when approving.</p>
+            )}
           </div>
 
           <div className="space-y-2">
@@ -129,16 +174,6 @@ export default function ReferralRequestPopup({ student, currentUser, onClose, tr
               </SelectContent>
             </Select>
           </div>
-
-          {isBonus && (
-            <div className="space-y-2">
-              <Label>Tag *</Label>
-              <TagsPicker value={tags} onChange={setTags} />
-              <p className="text-xs text-muted-foreground">
-                Categorize this bonus. Tag names are managed by admins on the Tags page.
-              </p>
-            </div>
-          )}
 
           <div className="space-y-2">
             <Label>MT5 Login (Optional)</Label>

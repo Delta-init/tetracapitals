@@ -7,8 +7,7 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { ArrowLeft, Download } from 'lucide-react';
 import { format } from 'date-fns';
-
-const MENTOR_ROLES = ['junior_mentor', 'senior_mentor'];
+import { isMentorRole } from '@/components/utils/roles';
 
 export default function ReportTransactionDetails() {
   const navigate = useNavigate();
@@ -18,7 +17,7 @@ export default function ReportTransactionDetails() {
     base44.auth.me().then((u) => setCurrentUser(getEffectiveUser(u)));
   }, []);
 
-  const isMentor = currentUser && MENTOR_ROLES.includes(currentUser.app_role);
+  const isMentor = currentUser && isMentorRole(currentUser.app_role);
   const params = new URLSearchParams(window.location.search);
   const filterType = params.get('filterType'); // 'mentor', 'student', 'added_by'
   const filterId = params.get('filterId');

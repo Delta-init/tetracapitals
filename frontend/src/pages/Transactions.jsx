@@ -10,7 +10,8 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import TransactionTable from "../components/transactions/TransactionTable";
 import { Plus, Upload } from "lucide-react";
-import { canApproveTransactions, isMentorRole } from "../components/utils/DataMasking";
+import { canApproveTransactions } from "../components/utils/DataMasking";
+import { isMentorRole } from "@/components/utils/roles";
 import { toast } from "sonner";
 
 export default function Transactions() {

@@ -8,8 +8,9 @@ import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Search, CheckCircle, Eye } from "lucide-react";
-import { 
-  filterLedgersByRole, 
+import { isMentorRole } from "@/components/utils/roles";
+import {
+  filterLedgersByRole,
   canTakeAction, 
   getApprovalStatusBadge,
   getNextApprovalStatus 
@@ -343,7 +344,7 @@ export default function CommissionReports() {
                     <TableHead className="font-semibold">Buffer In</TableHead>
                     <TableHead className="font-semibold">Buffer Out</TableHead>
                     <TableHead className="font-semibold">Status</TableHead>
-                    {!['junior_mentor', 'senior_mentor'].includes(currentUser.app_role) && (
+                    {!isMentorRole(currentUser.app_role) && (
                       <TableHead className="font-semibold text-right">Actions</TableHead>
                     )}
                   </TableRow>
@@ -351,7 +352,7 @@ export default function CommissionReports() {
                 <TableBody>
                   {filteredLedgers.length === 0 ? (
                     <TableRow>
-                      <TableCell colSpan={['junior_mentor', 'senior_mentor'].includes(currentUser.app_role) ? 9 : 10} className="text-center py-8 text-gray-500">
+                      <TableCell colSpan={isMentorRole(currentUser.app_role) ? 9 : 10} className="text-center py-8 text-gray-500">
                         No commission ledgers found
                       </TableCell>
                     </TableRow>
@@ -384,7 +385,7 @@ export default function CommissionReports() {
                               </div>
                             )}
                           </TableCell>
-                          {!['junior_mentor', 'senior_mentor'].includes(currentUser.app_role) && (
+                          {!isMentorRole(currentUser.app_role) && (
                             <TableCell className="text-right">
                               <div className="flex justify-end gap-2">
                                 <Button

@@ -10,6 +10,7 @@ import { toast } from "sonner";
 import { format } from "date-fns";
 import StudentLogForm from "../components/studentlogs/StudentLogForm";
 import StudentLogDetails from "../components/studentlogs/StudentLogDetails";
+import { isMentorRole as isMentorTier } from "@/components/utils/roles";
 import { getEffectiveUser } from "../components/utils/ImpersonationContext";
 import { detectChanges, getTabsFromChanges } from "../components/studentlogs/StudentLogHistoryUtils";
 
@@ -38,9 +39,8 @@ export default function StudentLogs() {
     enabled: !!currentUser
   });
 
-  // Define mentor roles
-  const mentorAppRoles = ['junior_mentor', 'senior_mentor', 'subjunior_mentor', 'assistance'];
-  const isMentorRole = currentUser && mentorAppRoles.includes(currentUser.app_role);
+  // Mentor / staff tier (includes custom Role-Management roles)
+  const isMentorRole = currentUser && isMentorTier(currentUser.app_role);
 
   const { data: students = [] } = useQuery({
     queryKey: ['students'],

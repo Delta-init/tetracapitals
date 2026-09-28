@@ -1,6 +1,7 @@
 import { col } from "../db";
 import { json } from "../lib/response";
 import { serializeMany } from "../lib/id";
+import { isMentorRole } from "../lib/roles";
 
 /**
  * Generate commission ledgers for all mentors for the previous quarter.
@@ -35,7 +36,9 @@ export async function generateQuarterlyLedgers(): Promise<Response> {
   const endDateStr = endDate.toISOString().split("T")[0];
 
   const allUsers = serializeMany(await col("users").find({}, { projection: { password_hash: 0 } }).toArray());
-  const mentors = allUsers.filter((u: any) => ["junior_mentor", "senior_mentor"].includes(u.app_role));
+  // Built-in mentors plus any custom Role-Management role (staff tier), so their
+  // quarterly ledgers get generated too. Admin/back-office roles are excluded.
+  const mentors = allUsers.filter((u: any) => isMentorRole(u.app_role));
 
   const allTransactions = serializeMany(await col("funding_transactions").find({}).toArray());
   const allAdjustments = serializeMany(await col("manual_commission_adjustments").find({}).toArray());
@@ -63,7 +66,7 @@ export async function generateQuarterlyLedgers(): Promise<Response> {
     });
 
     // DEPOSIT and BONUS both feed into the mentor's commissionable net.
-    const totalDeposits = relevant.filter((t: any) => t.type === "DEPOSIT" || t.type === "BONUS").reduce((s: number, t: any) => s + (t.amount_usd || 0), 0);
+    const totalDeposits = relevant.filter((t: any) => t.type === "DEPOSIT").reduce((s: number, t: any) => s + (t.amount_usd || 0), 0);
     const totalWithdrawals = relevant.filter((t: any) => t.type === "WITHDRAWAL").reduce((s: number, t: any) => s + (t.amount_usd || 0), 0);
     const netDeposit = totalDeposits - totalWithdrawals;
 
