@@ -68,6 +68,8 @@ export async function handleLogin(req: Request): Promise<Response> {
   if (!userDoc) return unauthorized("Invalid credentials");
   const ok = await bcrypt.compare(password, (userDoc as any).password_hash ?? "");
   if (!ok) return unauthorized("Invalid credentials");
+  // Switched off from the Root portal: no way in, whichever door.
+  if ((userDoc as any).status === "inactive") return unauthorized("This account has been switched off");
 
   const { password_hash, ...safe } = userDoc as any;
   const user = serialize(safe);

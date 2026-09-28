@@ -3,6 +3,8 @@ import { join, normalize, sep } from "node:path";
 import { config } from "./config";
 import { json, notFound, corsPreflight } from "./lib/response";
 import { handleRegister, handleLogin, handleMe, handleChangePassword } from "./auth/routes";
+import { handleSso } from "./auth/sso";
+import { handlePortalService } from "./portal/service";
 import {
   listEntity, filterEntity, getEntityById, createEntity,
   bulkCreateEntity, updateEntity, deleteEntity,
@@ -47,6 +49,11 @@ export async function route(req: Request): Promise<Response> {
   if (path === "/api/auth/login" && req.method === "POST") return handleLogin(req);
   if (path === "/api/auth/me" && req.method === "GET") return handleMe(req);
   if (path === "/api/auth/change-password" && req.method === "POST") return handleChangePassword(req);
+  // Signing in from the Root portal with the one-time token it hands over.
+  if (path === "/api/auth/sso" && req.method === "POST") return handleSso(req);
+
+  // ---- The Root portal asking about roles and people (shared secret) ----
+  if (path.startsWith("/api/v1/service/")) return handlePortalService(req, path.slice("/api/v1/service".length));
 
   // ---- Entities ----
   const entityMatch = path.match(/^\/api\/entities\/([A-Za-z0-9_]+)(?:\/([^/]+))?$/);

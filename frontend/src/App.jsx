@@ -12,6 +12,8 @@ import PageNotFound from './lib/PageNotFound';
 import { AuthProvider, useAuth } from '@/lib/AuthContext';
 import UserNotRegisteredError from '@/components/UserNotRegisteredError';
 import Login from './pages/Login';
+import Sso from './pages/Sso';
+import RootPortalHistoryBridge from '@/components/RootPortalHistoryBridge';
 
 const { Pages, Layout, mainPage } = pagesConfig;
 const mainPageKey = mainPage ?? Object.keys(Pages)[0];
@@ -41,6 +43,8 @@ const AuthenticatedApp = () => {
 
   // Login route is always reachable without auth.
   if (onLoginPage) return <Routes><Route path="*" element={<Login />} /></Routes>;
+  // So is the landing page for signing in from the Root portal.
+  if (location.pathname === '/sso') return <Routes><Route path="*" element={<Sso />} /></Routes>;
 
   if (isLoadingAuth) {
     return (
@@ -79,6 +83,7 @@ function App() {
       <QueryClientProvider client={queryClientInstance}>
         <Router>
           <NavigationTracker />
+          <RootPortalHistoryBridge />
           <AuthenticatedApp />
         </Router>
         <Toaster />

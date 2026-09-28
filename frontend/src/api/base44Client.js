@@ -166,6 +166,12 @@ const auth = {
     if (out?.token) setToken(out.token);
     return out;
   },
+  // Signing in from the Root portal: trade its one-time token for a session.
+  ssoLogin: async (token) => {
+    const out = await api("/api/auth/sso", { method: "POST", body: { token } });
+    if (out?.token) setToken(out.token);
+    return out;
+  },
   logout: (redirectTo) => {
     setToken(null);
     // Drop any active impersonation so the next session doesn't ship

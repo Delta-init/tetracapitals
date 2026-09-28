@@ -34,6 +34,9 @@ export async function getAuthUser(req: Request): Promise<AuthUser | null> {
   if (!oid) return null;
   const userDoc = await col("users").findOne({ _id: oid });
   if (!userDoc) return null;
+  // An account switched off from the Root portal stops working at once, not
+  // when its token next expires.
+  if ((userDoc as any).status === "inactive") return null;
   // Strip password before exposing.
   const { password_hash, ...safe } = userDoc as any;
   const realUser = serialize(safe) as AuthUser;

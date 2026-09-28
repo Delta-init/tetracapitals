@@ -15,4 +15,17 @@ export const config = {
     from: process.env.SMTP_FROM ?? "no-reply@example.com",
   },
   anthropicApiKey: process.env.ANTHROPIC_API_KEY ?? "",
+  /**
+   * The Root portal, which opens this app for people signed in there and
+   * manages who has an account here.
+   *
+   *   rootErpApiUrl  where to check a sign-in token the portal hands over
+   *                  (its API origin — the same value Media ERP is given)
+   *   rootErpSecret  what the portal presents when it asks about roles and
+   *                  people; must match the portal's COMMISSION_SSO_SECRET
+   *
+   * Either unset turns that half off. Never open, never a default host.
+   */
+  rootErpApiUrl: process.env.ROOT_ERP_API_URL ?? "",
+  rootErpSecret: process.env.ROOT_ERP_SECRET ?? "",
 };
