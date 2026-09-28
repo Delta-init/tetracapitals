@@ -28,4 +28,10 @@ export const config = {
    */
   rootErpApiUrl: process.env.ROOT_ERP_API_URL ?? "",
   rootErpSecret: process.env.ROOT_ERP_SECRET ?? "",
+  /**
+   * Delta finance, which sends each new Delta LMS student here once the LMS
+   * has them. What finance presents in `x-finance-secret`; must match its
+   * COMMISSION_S2S_SECRET. Unset turns the route off — never open.
+   */
+  financeS2sSecret: process.env.FINANCE_S2S_SECRET ?? "",
 };

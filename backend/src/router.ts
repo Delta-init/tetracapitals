@@ -5,6 +5,7 @@ import { json, notFound, corsPreflight } from "./lib/response";
 import { handleRegister, handleLogin, handleMe, handleChangePassword } from "./auth/routes";
 import { handleSso } from "./auth/sso";
 import { handlePortalService } from "./portal/service";
+import { handleFinanceStudents } from "./finance/students";
 import {
   listEntity, filterEntity, getEntityById, createEntity,
   bulkCreateEntity, updateEntity, deleteEntity,
@@ -54,6 +55,9 @@ export async function route(req: Request): Promise<Response> {
 
   // ---- The Root portal asking about roles and people (shared secret) ----
   if (path.startsWith("/api/v1/service/")) return handlePortalService(req, path.slice("/api/v1/service".length));
+
+  // ---- Delta finance sending a new Delta LMS student (its own shared secret) ----
+  if (path === "/api/v1/integrations/finance/students" && req.method === "POST") return handleFinanceStudents(req);
 
   // ---- Entities ----
   const entityMatch = path.match(/^\/api\/entities\/([A-Za-z0-9_]+)(?:\/([^/]+))?$/);

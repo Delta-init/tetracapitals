@@ -47,6 +47,12 @@ export async function ensureIndexes(): Promise<void> {
     d.collection("students").createIndex({ primary_mentor_id: 1 }),
     d.collection("students").createIndex({ senior_mentor_id: 1 }),
     d.collection("students").createIndex({ student_code: 1 }, { unique: false, sparse: true }),
+    // One student per finance invoice, even if the same delivery arrives twice at once.
+    // Partial: only students that came from finance carry the field.
+    d.collection("students").createIndex(
+      { finance_invoice_id: 1 },
+      { unique: true, partialFilterExpression: { finance_invoice_id: { $type: "string" } } },
+    ),
     d.collection("funding_transactions").createIndex({ student_id: 1, status: 1 }),
     d.collection("funding_transactions").createIndex({ primary_mentor_id: 1 }),
     d.collection("funding_transactions").createIndex({ initiating_mentor_id: 1 }),
