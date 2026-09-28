@@ -5,6 +5,7 @@ import { json, error, unauthorized } from "../lib/response";
 import { serialize, toObjectId } from "../lib/id";
 import { signJwt } from "./jwt";
 import { getAuthUser } from "./middleware";
+import { getConfiguredScope } from "../lib/scope";
 import { ALL_ROLES, type Role } from "../entities/registry";
 
 const registerSchema = z.object({
@@ -85,7 +86,9 @@ export async function handleLogin(req: Request): Promise<Response> {
 export async function handleMe(req: Request): Promise<Response> {
   const user = await getAuthUser(req);
   if (!user) return unauthorized();
-  return json(user);
+  // The UI filters students / funding / commission by the same visibility
+  // (own / downline / all) the backend enforces; null = legacy per-role rules.
+  return json({ ...user, data_scope: await getConfiguredScope(user) });
 }
 
 export async function handleChangePassword(req: Request): Promise<Response> {

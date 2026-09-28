@@ -93,17 +93,22 @@ export default function PersonnelForm({ user, onSubmit, onClose, allUsers }) {
   const BUILTIN_ROLES = [
     ['super_admin', 'Super Admin'], ['admin', 'Admin'], ['broker_admin', 'Broker Admin'],
     ['academic_head', 'Academic Head'], ['academic_admin', 'Academic Admin'], ['admin_supervisor', 'Admin Supervisor'],
-    ['senior_mentor', 'Senior Mentor'], ['junior_mentor', 'Junior Mentor'], ['subjunior_mentor', 'Sub Junior Mentor'],
+    ['chief_mentor', 'Chief Mentor'], ['senior_mentor', 'Senior Mentor'], ['junior_mentor', 'Junior Mentor'], ['subjunior_mentor', 'Sub Junior Mentor'],
     ['finance_admin', 'Finance Admin'], ['assistance', 'Assistance'], ['draw_admin', 'Draw Admin'],
   ];
-  // Role options come live from Role Management (so custom roles appear); fall
-  // back to the built-in list if none have been seeded yet.
-  const roleOptions = commissionRoles.length
-    ? commissionRoles.map(r => [r.role_key || slugify(r.name), r.name])
-    : BUILTIN_ROLES;
+  // Built-in roles, then custom roles from Role Management. Role Management also
+  // stores visibility settings for built-in roles (same role_key), so skip those
+  // to avoid listing a built-in role twice.
+  const builtinKeys = new Set(BUILTIN_ROLES.map(([k]) => k));
+  const roleOptions = [
+    ...BUILTIN_ROLES,
+    ...commissionRoles
+      .map(r => [r.role_key || slugify(r.name), r.name])
+      .filter(([k]) => k && !builtinKeys.has(k)),
+  ];
 
-  const seniorMentors = allUsers?.filter(u => u.app_role === 'senior_mentor') || [];
-  const allMentors = allUsers?.filter(u => ['senior_mentor', 'junior_mentor'].includes(u.app_role)) || [];
+  const seniorMentors = allUsers?.filter(u => ['chief_mentor', 'senior_mentor'].includes(u.app_role)) || [];
+  const allMentors = allUsers?.filter(u => ['chief_mentor', 'senior_mentor', 'junior_mentor'].includes(u.app_role)) || [];
 
   const handleSeniorMentorChange = (mentorId) => {
     const mentor = seniorMentors.find(m => m.id === mentorId);

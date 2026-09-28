@@ -9,6 +9,7 @@ import { Badge } from '@/components/ui/badge';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { DollarSign, Download, Users, Split } from 'lucide-react';
 import { getEffectiveUser } from '@/components/utils/ImpersonationContext';
+import { getScope } from '@/components/utils/roles';
 import PeriodApprovalCell from '@/components/commission/PeriodApprovalCell';
 
 const QUARTERS = [
@@ -36,7 +37,10 @@ export default function DepositCommissionReports() {
   });
   // Admins (built-in admin role, or a custom role scoped to "all") see everyone;
   // everyone else sees only their own commission credits.
-  const canSeeAll = !!currentUser && (ADMIN_ROLES.includes(currentUser.app_role) || myRole?.data_scope === 'all');
+  // Admins, and roles whose visibility is Team or Full system, see every staff
+  // row the backend returns (it already narrows commission to their team).
+  const scope = getScope(currentUser) ?? myRole?.data_scope;
+  const canSeeAll = !!currentUser && (ADMIN_ROLES.includes(currentUser.app_role) || scope === 'all' || scope === 'downline');
 
   const { data: credits = [], isLoading } = useQuery({
     queryKey: ['commission-credits'],

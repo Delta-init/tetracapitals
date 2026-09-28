@@ -6,7 +6,8 @@ import { Users, TrendingUp, DollarSign, Target, AlertCircle, Award, Wallet, Acti
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import TransactionTable from "../components/transactions/TransactionTable";
 import { canViewAllStudents, canApproveTransactions } from "../components/utils/DataMasking";
-import { isMentorRole } from "@/components/utils/roles";
+import { isMentorRole, getScope } from "@/components/utils/roles";
+import { filterStudentsByRole } from "../components/utils/StudentAccessControl";
 import { getEffectiveUser } from "../components/utils/ImpersonationContext";
 import { 
   filterFundingTransactionsByRole, 
@@ -93,14 +94,10 @@ export default function Dashboard() {
         return students.filter(s => approvedRequestStudentIds.includes(s.id));
       })()
     : isMentorRole(currentUser.app_role)
-    ? students.filter(s => {
-        if (currentUser.app_role === 'senior_mentor') {
-          // Senior mentors see their students + junior mentors' students
-          return s.senior_mentor_id === currentUser.id || 
-                 s.primary_mentor_id === currentUser.id;
-        }
-        return s.primary_mentor_id === currentUser.id;
-      })
+    ? (getScope(currentUser)
+        // Roles with a visibility setting (own / team / full system)
+        ? filterStudentsByRole(students, currentUser, allUsers)
+        : students.filter(s => s.primary_mentor_id === currentUser.id))
     : [];
 
   // A transaction belongs to whoever initiated it — co-managed transactions

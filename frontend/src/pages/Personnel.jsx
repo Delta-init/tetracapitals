@@ -229,7 +229,7 @@ export default function Personnel() {
   };
 
   const totalUsers = filteredUsers.length;
-  const mentorCount = filteredUsers.filter(u => ['senior_mentor', 'junior_mentor'].includes(u.app_role)).length;
+  const mentorCount = filteredUsers.filter(u => ['chief_mentor', 'senior_mentor', 'junior_mentor'].includes(u.app_role)).length;
   const adminCount = filteredUsers.filter(u => ['super_admin', 'admin', 'broker_admin'].includes(u.app_role)).length;
 
   return (
@@ -314,6 +314,7 @@ export default function Personnel() {
                 <SelectItem value="broker_admin">Broker Admin</SelectItem>
                 <SelectItem value="academic_head">Academic Head</SelectItem>
                 <SelectItem value="academic_admin">Academic Admin</SelectItem>
+                <SelectItem value="chief_mentor">Chief Mentor</SelectItem>
                 <SelectItem value="senior_mentor">Senior Mentor</SelectItem>
                 <SelectItem value="junior_mentor">Junior Mentor</SelectItem>
                 <SelectItem value="finance_admin">Finance Admin</SelectItem>

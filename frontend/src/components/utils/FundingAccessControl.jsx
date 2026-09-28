@@ -1,5 +1,5 @@
 // Utility functions for funding transaction access control
-import { isMentorRole } from './roles';
+import { isMentorRole, getScope, downlineIds } from './roles';
 
 export const canCreateFundingTransaction = (role) => {
   // Built-in admins that can raise requests, plus any mentor/staff-tier role
@@ -37,25 +37,27 @@ export const filterFundingTransactionsByRole = (currentUser, allTransactions, al
     return allTransactions;
   }
 
+  // Roles with a visibility setting (Chief / Senior / Junior Mentor by default,
+  // or any role configured in Role Management) follow it:
+  //   own      → requests they initiated or raised
+  //   downline → the same for everyone on their team (Up Head chain), in full
+  //   all      → every request
+  const scope = getScope(currentUser);
+  if (scope === 'all') return allTransactions;
+  if (scope === 'own') {
+    return allTransactions.filter(t => initiatorId(t) === id || t.requested_by_id === id);
+  }
+  if (scope === 'downline') {
+    const team = downlineIds(id, allUsers);
+    return allTransactions.filter(t =>
+      team.has(initiatorId(t)) || team.has(t.requested_by_id) || t.senior_mentor_id === id
+    );
+  }
+
   // Junior Mentor sees only transactions they initiated (incl. co-managed ones
   // they raised on another mentor's client).
   if (role === 'junior_mentor') {
     return allTransactions.filter(t => initiatorId(t) === id);
-  }
-
-  // Senior Mentor sees what they initiated + their junior mentors' transactions
-  if (role === 'senior_mentor') {
-    // Get all junior mentors assigned to this senior mentor
-    const myJuniorMentors = allUsers.filter(u =>
-      u.app_role === 'junior_mentor' && u.senior_mentor_id === id
-    );
-    const juniorMentorIds = myJuniorMentors.map(jm => jm.id);
-
-    return allTransactions.filter(t =>
-      initiatorId(t) === id || // Transactions they initiated
-      t.senior_mentor_id === id || // Students assigned to them as senior mentor
-      juniorMentorIds.includes(initiatorId(t)) // Their junior mentors' transactions
-    );
   }
 
   // Any other staff / custom Role-Management role: transactions they initiated

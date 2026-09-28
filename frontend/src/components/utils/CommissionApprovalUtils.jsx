@@ -1,3 +1,5 @@
+import { getScope, isMentorRole } from './roles';
+
 // Utility functions for commission approval workflow
 
 export const canApproveBrokerLevel = (role) => {
@@ -109,9 +111,11 @@ export const filterLedgersByRole = (ledgers, currentUser) => {
     );
   }
   
-  // Mentors see only their own ledgers
-  if (['senior_mentor', 'junior_mentor'].includes(role)) {
-    return ledgers.filter(l => l.mentor_id === currentUser.id);
+  // Mentors follow their visibility: own ledgers only, or (team / full) every
+  // ledger the backend returned — it already narrows commission to the scope.
+  const scope = getScope(currentUser);
+  if (isMentorRole(role) && scope) {
+    return scope === 'own' ? ledgers.filter(l => l.mentor_id === currentUser.id) : ledgers;
   }
   
   return [];

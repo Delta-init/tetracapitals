@@ -23,6 +23,7 @@ import {
   getQuarterDateRange
 } from "../components/utils/CommissionUtils";
 import { filterStudentsByRole } from "../components/utils/StudentAccessControl";
+import { getScope, downlineIds } from "../components/utils/roles";
 import { getEffectiveUser } from "../components/utils/ImpersonationContext";
 import { toast } from "sonner";
 import { format } from "date-fns";
@@ -144,7 +145,7 @@ export default function MyFundingRequests() {
   // Filter transactions based on user role
   const isAssistance = currentUser.app_role === 'assistance';
   
-  let myTransactions, myStudents, teamTransactions;
+  let myTransactions, myStudents, teamTransactions = [];
   
   if (isAssistance && currentUser.assigned_mentor_id) {
     // Assistance users see transactions and students of their assigned mentor
@@ -155,7 +156,7 @@ export default function MyFundingRequests() {
     // "My" transactions = transactions THIS user initiated. When a co-mentor
     // adds a deposit/bonus for someone else's student, only the co-mentor
     // should see it in their personal list — the primary mentor sees it via
-    // the Team Funding Requests tab (for senior mentors) or via reports.
+    // the Team Funding Requests tab (Team visibility) or via reports.
     // Falls back to primary_mentor_id only for legacy rows that don't have
     // initiating_mentor_id set, matching the commission-attribution rule.
     myTransactions = transactions.filter(t => {
@@ -171,12 +172,15 @@ export default function MyFundingRequests() {
       } catch (_) { return false; }
     });
 
-    // Filter TEAM transactions - transactions where I am senior mentor but NOT primary mentor
-    teamTransactions = transactions.filter(t => 
-      currentUser.app_role === 'senior_mentor' && 
-      t.senior_mentor_id === currentUser.id &&
-      t.primary_mentor_id !== currentUser.id
-    );
+    // Filter TEAM transactions - raised by people on my team (Up Head chain), or
+    // where I'm listed as senior mentor, but NOT my own
+    if (getScope(currentUser) === 'downline') {
+      const team = downlineIds(currentUser.id, users);
+      teamTransactions = transactions.filter(t => {
+        const by = t.initiating_mentor_id || t.primary_mentor_id;
+        return by !== currentUser.id && (team.has(by) || t.senior_mentor_id === currentUser.id);
+      });
+    }
   }
 
   // Calculate MY commission
@@ -323,7 +327,8 @@ export default function MyFundingRequests() {
   };
 
   const canCreate = canCreateFundingTransaction(currentUser.app_role);
-  const isSeniorMentor = currentUser.app_role === 'senior_mentor';
+  // Team tab: roles whose visibility is Team (Chief Mentor by default).
+  const hasTeamView = getScope(currentUser) === 'downline';
 
   const getReferralStatusColor = () => 'bg-orange-100 text-orange-800 border-orange-200';
 
@@ -361,9 +366,9 @@ export default function MyFundingRequests() {
 
         {/* Tabs */}
         <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-          <TabsList className="grid w-full max-w-md" style={{ gridTemplateColumns: isSeniorMentor ? '1fr 1fr' : '1fr' }}>
+          <TabsList className="grid w-full max-w-md" style={{ gridTemplateColumns: hasTeamView ? '1fr 1fr' : '1fr' }}>
             <TabsTrigger value="my">My Funding Requests</TabsTrigger>
-            {isSeniorMentor && (
+            {hasTeamView && (
               <TabsTrigger value="team">Team Funding Requests</TabsTrigger>
             )}
           </TabsList>
@@ -745,7 +750,7 @@ export default function MyFundingRequests() {
           </TabsContent>
 
           {/* Team Funding Requests Tab */}
-          {isSeniorMentor && (
+          {hasTeamView && (
             <TabsContent value="team" className="space-y-6">
               {/* Team Commission Summary */}
               <Card className="border-purple-200 bg-gradient-to-br from-purple-50 to-pink-50">

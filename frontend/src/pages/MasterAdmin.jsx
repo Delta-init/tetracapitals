@@ -453,7 +453,7 @@ export default function MasterAdmin() {
                         <TableCell className="font-medium">{u.full_name}</TableCell>
                         <TableCell className="text-sm">{u.email}</TableCell>
                         <TableCell><Badge className={userRoleBadge(u.app_role)}>{u.app_role?.replace(/_/g, ' ')}</Badge></TableCell>
-                        <TableCell>{['junior_mentor','senior_mentor'].includes(u.app_role) ? `${u.commission_rate ?? 4}%` : '-'}</TableCell>
+                        <TableCell>{['junior_mentor','chief_mentor', 'senior_mentor'].includes(u.app_role) ? `${u.commission_rate ?? 4}%` : '-'}</TableCell>
                         <TableCell className="text-right">
                           <div className="flex justify-end gap-1">
                             <Button size="sm" variant="ghost" onClick={() => setPersonnelForm({ open: true, user: u })} title="Edit user">

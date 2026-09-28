@@ -10,6 +10,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/u
 import { Award, Download, Users, Split } from 'lucide-react';
 import { format } from 'date-fns';
 import { getEffectiveUser } from '@/components/utils/ImpersonationContext';
+import { getScope } from '@/components/utils/roles';
 import PeriodApprovalCell from '@/components/commission/PeriodApprovalCell';
 
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
@@ -32,7 +33,10 @@ export default function BonusCommissionReports() {
   });
   // Admins (built-in admin role, or a custom role scoped to "all") see everyone;
   // everyone else sees only their own commission credits.
-  const canSeeAll = !!currentUser && (ADMIN_ROLES.includes(currentUser.app_role) || myRole?.data_scope === 'all');
+  // Admins, and roles whose visibility is Team or Full system, see every staff
+  // row the backend returns (it already narrows commission to their team).
+  const scope = getScope(currentUser) ?? myRole?.data_scope;
+  const canSeeAll = !!currentUser && (ADMIN_ROLES.includes(currentUser.app_role) || scope === 'all' || scope === 'downline');
 
   const { data: credits = [], isLoading } = useQuery({
     queryKey: ['commission-credits'],

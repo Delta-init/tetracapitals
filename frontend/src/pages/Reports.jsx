@@ -21,7 +21,7 @@ const QUARTERS = [
     { label: 'Q4 (Oct–Dec)', value: 4 },
 ];
 
-const MENTOR_ROLES = ['junior_mentor', 'senior_mentor'];
+const MENTOR_ROLES = ['junior_mentor', 'chief_mentor', 'senior_mentor'];
 
 const ADMIN_REPORT_TABS = [
     { key: 'student_wise', label: 'Student-Wise Transactions' },

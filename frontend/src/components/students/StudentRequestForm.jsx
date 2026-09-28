@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
+import { isSeniorTier } from '@/components/utils/roles';
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -25,7 +26,7 @@ export default function StudentRequestForm({ onSubmit, onCancel, isSubmitting, u
   useEffect(() => {
     if (currentUser && primaryMentorId === currentUser.id) {
       // Only senior mentors should have senior mentor info (not junior or subjunior)
-      if (currentUser.app_role === 'senior_mentor') {
+      if (isSeniorTier(currentUser.app_role)) {
         const seniorMentor = users.find(u => u.id === currentUser.senior_mentor_id);
         setSeniorMentorInfo({
           id: currentUser.senior_mentor_id || null,

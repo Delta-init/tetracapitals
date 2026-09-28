@@ -12,6 +12,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '
 import { Plus, Pencil, Trash2, Layers, ShieldAlert } from 'lucide-react';
 import { toast } from 'sonner';
 import { getEffectiveUser } from '@/components/utils/ImpersonationContext';
+import { DEFAULT_SCOPES, SCOPE_LABELS, BUILTIN_ROLES } from '@/components/utils/roles';
 
 // The set of pages a role's access can be toggled for. Keep in sync with the
 // sidebar in Layout.jsx (plus the new commission pages).
@@ -28,7 +29,21 @@ const PAGES = [
 
 const emptyForm = { name: '', page_permissions: [], data_scope: 'own', active: true };
 
-const SCOPE_LABEL = { all: 'All students', downline: 'Downline', own: 'Own only' };
+const SCOPE_LABEL = SCOPE_LABELS;
+
+// Built-in roles whose visibility can be set here. Their setting is stored as a
+// commission_roles doc with the built-in role_key and NO page_permissions, so
+// it changes visibility only — the sidebar keeps its built-in pages.
+const BUILTIN_VISIBILITY = [
+  { key: 'chief_mentor', name: 'Chief Mentor' },
+  { key: 'senior_mentor', name: 'Senior Mentor' },
+  { key: 'junior_mentor', name: 'Junior Mentor' },
+];
+const SCOPE_OPTIONS = [
+  { value: 'own', label: 'Own students', hint: 'Only students they are the primary mentor for (or created)' },
+  { value: 'downline', label: 'Team students', hint: 'Their students plus everyone on their team (via Up Head)' },
+  { value: 'all', label: 'Full system', hint: 'Every student in the system' },
+];
 
 export default function RolesManagement() {
   const [currentUser, setCurrentUser] = useState(null);
@@ -58,12 +73,31 @@ export default function RolesManagement() {
       // Generate a stable key from the name on create — this becomes the user's
       // app_role value, so it must not change when the name is later edited.
       const role_key = form.name.trim().toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '');
+      if (BUILTIN_ROLES.includes(role_key)) {
+        throw new Error(`"${form.name.trim()}" is a built-in role — set its visibility in Built-in roles above.`);
+      }
       return base44.entities.CommissionRole.create({ ...payload, role_key });
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['commission-roles'] });
       toast.success(editing?.id ? 'Role updated' : 'Role created');
       setEditing(null);
+    },
+    onError: (e) => toast.error(e?.message || 'Save failed'),
+  });
+
+  // Save a built-in role's visibility (creates its settings doc the first time).
+  const [savedKey, setSavedKey] = useState(null);
+  const visibilityMutation = useMutation({
+    mutationFn: async ({ key, name, scope }) => {
+      const doc = roles.find(r => r.role_key === key);
+      if (doc) return base44.entities.CommissionRole.update(doc.id, { data_scope: scope });
+      return base44.entities.CommissionRole.create({ name, role_key: key, data_scope: scope, builtin: true, active: true });
+    },
+    onSuccess: (_d, { key }) => {
+      queryClient.invalidateQueries({ queryKey: ['commission-roles'] });
+      setSavedKey(key);
+      setTimeout(() => setSavedKey(k => (k === key ? null : k)), 2000);
     },
     onError: (e) => toast.error(e?.message || 'Save failed'),
   });
@@ -95,6 +129,7 @@ export default function RolesManagement() {
   }));
 
   const isSuper = ['super_admin', 'admin'].includes(currentUser?.app_role);
+  const customRoles = roles.filter(r => !r.builtin && !BUILTIN_ROLES.includes(r.role_key));
   if (!currentUser) return <div className="p-8 text-center text-gray-500">Loading…</div>;
   if (!isSuper) {
     return (
@@ -123,25 +158,71 @@ export default function RolesManagement() {
 
         <Card>
           <CardContent className="p-0">
+            <div className="border-b border-slate-100 px-5 py-4">
+              <h2 className="text-base font-semibold text-brand-navy">Built-in roles · visibility</h2>
+              <p className="mt-1 text-sm text-slate-500">
+                Which students, funding requests and commission each role can see.
+              </p>
+            </div>
+            <div className="divide-y divide-slate-100">
+              {BUILTIN_VISIBILITY.map(({ key, name }) => {
+                const current = roles.find(r => r.role_key === key)?.data_scope || DEFAULT_SCOPES[key];
+                const busy = visibilityMutation.isPending && visibilityMutation.variables?.key === key;
+                return (
+                  <div key={key} className="flex flex-col gap-3 px-5 py-3.5 sm:flex-row sm:items-center sm:justify-between">
+                    <div>
+                      <p className="font-medium text-slate-900">{name}</p>
+                      <p className="text-xs text-slate-400">{SCOPE_OPTIONS.find(o => o.value === current)?.hint}</p>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      {savedKey === key && <span className="text-xs font-medium text-emerald-600">Saved</span>}
+                      <div className="inline-flex rounded-xl bg-slate-100/80 p-1">
+                        {SCOPE_OPTIONS.map(o => (
+                          <button
+                            key={o.value}
+                            type="button"
+                            disabled={busy}
+                            onClick={() => o.value !== current && visibilityMutation.mutate({ key, name, scope: o.value })}
+                            className={`rounded-lg px-3 py-1.5 text-xs font-semibold transition-all ${
+                              current === o.value ? 'bg-white text-brand-navy shadow-soft' : 'text-slate-500 hover:text-brand-navy'
+                            }`}
+                          >
+                            {o.label}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardContent className="p-0">
+            <div className="border-b border-slate-100 px-5 py-4">
+              <h2 className="text-base font-semibold text-brand-navy">Custom roles</h2>
+            </div>
             <div className="overflow-x-auto">
               <Table>
                 <TableHeader>
                   <TableRow className="bg-gray-50">
                     <TableHead>Role</TableHead>
                     <TableHead>Pages allowed</TableHead>
-                    <TableHead>Data scope</TableHead>
+                    <TableHead>Visibility</TableHead>
                     <TableHead>Status</TableHead>
                     <TableHead className="text-right">Actions</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {roles.length === 0 ? (
+                  {customRoles.length === 0 ? (
                     <TableRow><TableCell colSpan={5} className="text-center py-10 text-gray-400">No roles yet. Create your first role.</TableCell></TableRow>
-                  ) : roles.map(r => (
+                  ) : customRoles.map(r => (
                     <TableRow key={r.id} className="hover:bg-gray-50">
                       <TableCell className="font-medium">{r.name}</TableCell>
                       <TableCell className="text-sm text-gray-600">{Array.isArray(r.page_permissions) ? r.page_permissions.length : 0} page(s)</TableCell>
-                      <TableCell className="text-sm text-gray-600">{SCOPE_LABEL[r.data_scope] || 'Own only'}</TableCell>
+                      <TableCell className="text-sm text-gray-600">{SCOPE_LABEL[r.data_scope] || SCOPE_LABEL.own}</TableCell>
                       <TableCell>
                         <Badge variant="outline" className={r.active !== false ? 'bg-green-100 text-green-800 border-green-200' : 'bg-gray-100 text-gray-600'}>
                           {r.active !== false ? 'Active' : 'Inactive'}
@@ -189,17 +270,15 @@ export default function RolesManagement() {
                 </div>
               </div>
               <div className="space-y-2">
-                <Label>Data scope</Label>
+                <Label>Visibility</Label>
                 <select
                   value={form.data_scope}
                   onChange={e => setForm(f => ({ ...f, data_scope: e.target.value }))}
                   className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm focus:outline-none focus:ring-1 focus:ring-ring"
                 >
-                  <option value="all">All students (see everything)</option>
-                  <option value="downline">Downline (students of staff under them, via Up Head)</option>
-                  <option value="own">Own only (students they created / are primary for)</option>
+                  {SCOPE_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label} — {o.hint}</option>)}
                 </select>
-                <p className="text-xs text-gray-400">Which records this role sees inside pages. (Takes effect once permission enforcement is wired.)</p>
+                <p className="text-xs text-gray-400">Which students, funding requests and commission this role can see.</p>
               </div>
 
               <label className="flex items-center gap-2 text-sm cursor-pointer">

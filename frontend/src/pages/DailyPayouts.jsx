@@ -13,7 +13,7 @@ import { Calendar, DollarSign, CheckCircle, Send } from "lucide-react";
 import { toast } from "sonner";
 import { format } from "date-fns";
 import { getEffectiveUser } from "../components/utils/ImpersonationContext";
-import { isMentorRole } from "@/components/utils/roles";
+import { isMentorRole, getScope, downlineIds } from "@/components/utils/roles";
 
 const RELEASE_ROLES = ['super_admin', 'admin', 'broker_admin', 'finance_admin'];
 
@@ -56,10 +56,11 @@ export default function DailyPayouts() {
   const { data: users = [] } = useQuery({
     queryKey: ['all-users-daily-payouts'],
     queryFn: async () => {
+      if (!canRelease) return base44.entities.User.list(); // Team view: to find their team
       const r = await base44.functions.invoke('getAllUsers', {});
       return r.data?.users || [];
     },
-    enabled: !!currentUser && canRelease,
+    enabled: !!currentUser && (canRelease || getScope(currentUser) === 'downline'),
   });
 
   const releaseMutation = useMutation({
@@ -82,13 +83,18 @@ export default function DailyPayouts() {
     const dayStart = new Date(`${selectedDate}T00:00:00.000Z`);
     const dayEnd   = new Date(`${selectedDate}T23:59:59.999Z`);
     const byMentor = new Map();
+    // Mentors see their own payouts, or their team's when visibility is Team.
+    const scope = getScope(currentUser);
+    const visibleIds = isMentor && scope !== 'all'
+      ? (scope === 'downline' ? downlineIds(currentUser.id, users) : new Set([currentUser.id]))
+      : null;
     for (const t of transactions) {
       if (t.status !== 'APPROVED') continue;
       const ts = new Date(t.requested_at || t.created_date);
       if (ts < dayStart || ts > dayEnd) continue;
       const mid = t.initiating_mentor_id || t.primary_mentor_id;
       if (!mid) continue;
-      if (isMentor && mid !== currentUser.id) continue;     // mentors see only their own
+      if (visibleIds && !visibleIds.has(mid)) continue;
       let row = byMentor.get(mid);
       if (!row) {
         const u = users.find(x => x.id === mid);

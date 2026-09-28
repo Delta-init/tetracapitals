@@ -17,7 +17,7 @@ import SearchableStudentSelect from "../components/common/SearchableStudentSelec
 
 const ADMIN_ROLES = ['super_admin', 'academic_head', 'academic_admin', 'admin_supervisor'];
 const ALL_TABS = ['Contact', 'Basic Info', 'Payment', 'Induction', 'Academic', 'Upgrade', 'Convocation', 'Traders Day', 'Live Trade', 'SSF', 'Rejoining', 'Seminar', 'Practice Tracking', 'Feedback & Review', 'Pips Craft', 'Trading'];
-const ALL_ROLES = ['super_admin', 'academic_head', 'academic_admin', 'admin_supervisor', 'junior_mentor', 'senior_mentor', 'subjunior_mentor', 'assistance', 'broker_admin'];
+const ALL_ROLES = ['super_admin', 'academic_head', 'academic_admin', 'admin_supervisor', 'junior_mentor', 'chief_mentor', 'senior_mentor', 'subjunior_mentor', 'assistance', 'broker_admin'];
 
 function FieldChangesDetail({ fieldsChanged }) {
   const [expanded, setExpanded] = useState(false);

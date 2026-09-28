@@ -36,7 +36,7 @@ export default function AIInsights() {
       const user = await base44.auth.me();
       setCurrentUser(user);
       // Auto-select current user for mentors
-      if (['junior_mentor', 'senior_mentor'].includes(user.app_role)) {
+      if (['junior_mentor', 'chief_mentor', 'senior_mentor'].includes(user.app_role)) {
         setSelectedMentor(user.id);
       }
     };
@@ -73,7 +73,7 @@ export default function AIInsights() {
     enabled: !!currentUser
   });
 
-  const mentors = users.filter(u => ['junior_mentor', 'senior_mentor'].includes(u.app_role));
+  const mentors = users.filter(u => ['junior_mentor', 'chief_mentor', 'senior_mentor'].includes(u.app_role));
 
   const analyzeMentorPerformance = async (mentorId) => {
     setIsAnalyzing(true);

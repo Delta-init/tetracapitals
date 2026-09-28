@@ -14,7 +14,7 @@ export default function BulkImportDialog({ open, onClose, onImport, students, us
   const [file, setFile] = useState(null);
   const [uploading, setUploading] = useState(false);
 
-  const mentors = users.filter(u => u.app_role === 'junior_mentor' || u.app_role === 'senior_mentor');
+  const mentors = users.filter(u => ['junior_mentor', 'senior_mentor', 'chief_mentor'].includes(u.app_role));
 
   const generateCSVTemplate = () => {
     let csvContent = '';

@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
+import { isSeniorTier } from '@/components/utils/roles';
 import { base44 } from "@/api/base44Client";
 import { useQuery } from "@tanstack/react-query";
 import { Input } from "@/components/ui/input";
@@ -46,7 +47,7 @@ export default function StudentForm({ student, onSubmit, onCancel, isSubmitting,
   }, [student]);
 
   const juniorMentors = users.filter(u => u.app_role === 'junior_mentor');
-  const seniorMentors = users.filter(u => u.app_role === 'senior_mentor');
+  const seniorMentors = users.filter(u => isSeniorTier(u.app_role));
   const subJuniorMentors = users.filter(u => u.app_role === 'subjunior_mentor');
   const allMentors = [...juniorMentors, ...seniorMentors, ...subJuniorMentors];
 
@@ -70,7 +71,7 @@ export default function StudentForm({ student, onSubmit, onCancel, isSubmitting,
     if (primaryMentor?.app_role === 'junior_mentor' && primaryMentor.senior_mentor_id) {
       finalSeniorMentorId = primaryMentor.senior_mentor_id;
       finalSeniorMentorName = primaryMentor.senior_mentor_name || '';
-    } else if (primaryMentor?.app_role === 'senior_mentor') {
+    } else if (isSeniorTier(primaryMentor?.app_role)) {
       // If primary is senior, clear senior mentor field
       finalSeniorMentorId = '';
       finalSeniorMentorName = '';
@@ -167,11 +168,11 @@ export default function StudentForm({ student, onSubmit, onCancel, isSubmitting,
             value={
               (() => {
                 const primaryMentor = users.find(u => u.id === formData.primary_mentor_id);
-                if (primaryMentor?.app_role === 'senior_mentor' && primaryMentor.senior_mentor_name) {
+                if (isSeniorTier(primaryMentor?.app_role) && primaryMentor.senior_mentor_name) {
                   return primaryMentor.senior_mentor_name;
                 } else if (['junior_mentor', 'subjunior_mentor'].includes(primaryMentor?.app_role)) {
                   return 'None';
-                } else if (primaryMentor?.app_role === 'senior_mentor') {
+                } else if (isSeniorTier(primaryMentor?.app_role)) {
                   return 'None (Primary is Senior)';
                 }
                 return 'None';

@@ -1,5 +1,5 @@
 // Utility functions for student access control based on user role
-import { isMentorRole } from './roles';
+import { isMentorRole, getScope, downlineIds } from './roles';
 
 export const canSubmitStudentRequest = (userRole) => {
   return ['super_admin', 'admin', 'broker_admin', 'academic_head', 'academic_admin'].includes(userRole)
@@ -69,26 +69,26 @@ export const filterStudentsByRole = (students, currentUser, allUsers = []) => {
     return students;
   }
   
-  // Junior Mentor and Sub Junior Mentor see only their own students
+  // Roles with a visibility setting (Chief / Senior / Junior Mentor by default,
+  // or any role configured in Role Management) follow it:
+  //   own      → students they are the primary mentor of (or created)
+  //   downline → the same for everyone on their team (Up Head chain)
+  //   all      → every student
+  const scope = getScope(currentUser);
+  if (scope === 'all') return students;
+  if (scope === 'own') return students.filter(s => s.primary_mentor_id === id || s.created_by === id);
+  if (scope === 'downline') {
+    const team = downlineIds(id, allUsers);
+    return students.filter(s =>
+      team.has(s.primary_mentor_id) || team.has(s.created_by) || s.senior_mentor_id === id
+    );
+  }
+
+  // Sub Junior Mentor sees only their own students
   if (role === 'junior_mentor' || role === 'subjunior_mentor') {
     return students.filter(s => s.primary_mentor_id === id);
   }
   
-  // Senior Mentor sees their own students + their junior mentors' students
-  if (role === 'senior_mentor') {
-    // Get all junior mentors assigned to this senior mentor
-    const myJuniorMentors = allUsers.filter(u => 
-      u.app_role === 'junior_mentor' && u.senior_mentor_id === id
-    );
-    const juniorMentorIds = myJuniorMentors.map(jm => jm.id);
-    
-    return students.filter(s =>
-      s.primary_mentor_id === id || // Their own students
-      s.senior_mentor_id === id || // Students assigned to them as senior mentor
-      juniorMentorIds.includes(s.primary_mentor_id) // Their junior mentors' students
-    );
-  }
-
   // Any other staff / custom Role-Management role: their own students only
   // (the backend also enforces this via the role's data_scope).
   return students.filter(s => s.primary_mentor_id === id || s.senior_mentor_id === id || s.created_by === id);

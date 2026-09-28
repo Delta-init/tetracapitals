@@ -66,8 +66,11 @@ export default function TeamDialog({ open, onOpenChange, mode, team, users, unas
   }, [unassigned, mode, team]);
 
   const option = (u) => ({ value: u.id, label: `${u.full_name} — ${roleLabel(u.app_role)}` });
-  const leaderOptions = pool.map(option);
-  const addOptions = pool.filter(u => !inDialog.has(u.id)).map(option);
+  // Only a Chief Mentor can lead a team, and a Chief always tops their own team,
+  // so Chiefs are offered as leaders but never as plain members.
+  const isChief = (u) => u.app_role === 'chief_mentor';
+  const leaderOptions = pool.filter(isChief).map(option);
+  const addOptions = pool.filter(u => !isChief(u) && !inDialog.has(u.id)).map(option);
 
   const chooseLeader = (id) => {
     if (!id || id === '__none__' || id === leaderId) return;
@@ -200,7 +203,7 @@ export default function TeamDialog({ open, onOpenChange, mode, team, users, unas
                   value={leaderId}
                   onValueChange={chooseLeader}
                   options={leaderOptions}
-                  placeholder="Choose a leader…"
+                  placeholder={leaderOptions.length ? 'Choose a Chief Mentor…' : 'No unassigned Chief Mentors'}
                   searchPlaceholder="Search by name…"
                 />
               </div>

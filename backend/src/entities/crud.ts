@@ -8,7 +8,7 @@ import { getAuthUser, type AuthUser } from "../auth/middleware";
 import { buildScopeFilter, applyScope, docMatchesScope } from "../lib/scope";
 
 // The built-in roles the registry policies are written in terms of. Roles
-// created at runtime via Role Management (e.g. "chief_mentor") are NOT in this
+// created at runtime via Role Management (e.g. "cs_manager") are NOT in this
 // set, so they'd fail every hardcoded role check below.
 const BUILTIN_ROLES = new Set<string>(ALL_ROLES);
 // junior_mentor is the "all staff" tier — it appears in ALL_ROLES (which grants

@@ -90,6 +90,8 @@ export default function Teams() {
   const visibleUnassigned = needle ? unassigned.filter(match) : unassigned;
 
   const totalMembers = teams.reduce((s, t) => s + t.members.length, 0);
+  // Only super admins create, edit or delete teams.
+  const canManage = currentUser?.app_role === 'super_admin';
 
   const refresh = () => queryClient.invalidateQueries();
 
@@ -138,7 +140,7 @@ export default function Teams() {
               <Search className="h-4 w-4 text-gray-400 absolute left-3 top-1/2 -translate-y-1/2" />
               <Input value={q} onChange={e => setQ(e.target.value)} placeholder="Search name, email, role…" className="pl-9 h-9" />
             </div>
-            {isAdmin && (
+            {canManage && (
               <Button onClick={() => setDialog({ open: true, mode: 'create', team: null })} className="whitespace-nowrap">
                 <Plus className="h-4 w-4" /> Create team
               </Button>
@@ -184,7 +186,7 @@ export default function Teams() {
                           {' · '}{team.members.length} member{team.members.length !== 1 ? 's' : ''}
                         </p>
                       </div>
-                      {isAdmin && (
+                      {canManage && (
                         <div className="flex flex-shrink-0 items-center gap-1">
                           <Button
                             variant="ghost" size="icon" className="h-8 w-8 text-slate-500 hover:text-brand-navy"

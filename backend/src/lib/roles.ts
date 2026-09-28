@@ -2,7 +2,7 @@
  * Single source of truth for role TIERS on the backend.
  *
  * Mirrors frontend/src/components/utils/roles.js. Roles created at runtime via
- * Role Management (e.g. "chief_mentor") are not part of the built-in Role union
+ * Role Management (e.g. "cs_manager") are not part of the built-in Role union
  * the registry policies are written in terms of. The rule: any role that is not
  * a known built-in is treated as STAFF / mentor tier — it can use the app like a
  * mentor (own students / funding / commissions), while admin-only capabilities
@@ -16,7 +16,7 @@ export const BUILTIN_ADMIN_ROLES = [
 ] as const;
 
 export const BUILTIN_MENTOR_ROLES = [
-  "junior_mentor", "senior_mentor", "subjunior_mentor", "assistance",
+  "chief_mentor", "junior_mentor", "senior_mentor", "subjunior_mentor", "assistance",
 ] as const;
 
 export const BUILTIN_ROLES = [

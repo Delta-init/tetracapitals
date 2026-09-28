@@ -175,7 +175,7 @@ export default function CommissionTools() {
     queryKey: ['mentor-users-for-tools'],
     queryFn: async () => {
       const res = await base44.functions.invoke('getAllUsers', {});
-      return (res.data?.users || []).filter(u => ['junior_mentor', 'senior_mentor', 'subjunior_mentor'].includes(u.app_role));
+      return (res.data?.users || []).filter(u => ['junior_mentor', 'chief_mentor', 'senior_mentor', 'subjunior_mentor'].includes(u.app_role));
     },
     enabled: !!currentUser,
   });

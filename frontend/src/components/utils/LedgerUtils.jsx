@@ -1,3 +1,5 @@
+import { getScope, isMentorRole } from './roles';
+
 // Utility functions for commission ledger calculations
 
 export const getQuarterDates = (date) => {
@@ -117,9 +119,11 @@ export const filterLedgersByRole = (currentUser, allLedgers) => {
     return allLedgers;
   }
   
-  // Mentors see only their own
-  if (['senior_mentor', 'junior_mentor'].includes(role)) {
-    return allLedgers.filter(l => l.mentor_id === id);
+  // Mentors follow their visibility: own ledgers only, or (team / full) every
+  // ledger the backend returned — it already narrows commission to the scope.
+  const scope = getScope(currentUser);
+  if (isMentorRole(role) && scope) {
+    return scope === 'own' ? allLedgers.filter(l => l.mentor_id === id) : allLedgers;
   }
   
   return [];

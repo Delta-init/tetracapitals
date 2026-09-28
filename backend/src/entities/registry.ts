@@ -18,6 +18,7 @@ export type Role =
   | "academic_admin"
   | "admin_supervisor"
   | "finance_admin"
+  | "chief_mentor"
   | "senior_mentor"
   | "junior_mentor";
 
@@ -31,7 +32,7 @@ export const ADMIN_ROLES: Role[] = [
   "finance_admin",
 ];
 
-export const ALL_ROLES: Role[] = [...ADMIN_ROLES, "senior_mentor", "junior_mentor"];
+export const ALL_ROLES: Role[] = [...ADMIN_ROLES, "chief_mentor", "senior_mentor", "junior_mentor"];
 
 export interface EntityConfig {
   collection: string;

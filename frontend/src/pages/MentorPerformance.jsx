@@ -70,7 +70,7 @@ export default function MentorPerformance() {
   const isMentor = isMentorRole(currentUser.app_role);
 
   // Get all mentors
-  let mentors = users.filter(u => ['junior_mentor', 'senior_mentor'].includes(u.app_role));
+  let mentors = users.filter(u => ['junior_mentor', 'chief_mentor', 'senior_mentor'].includes(u.app_role));
 
   // Filter to current user if they're a mentor
   if (isMentor) {
@@ -265,6 +265,7 @@ export default function MentorPerformance() {
                     <SelectItem value="all">All Roles</SelectItem>
                     <SelectItem value="junior_mentor">Junior Mentor</SelectItem>
                     <SelectItem value="senior_mentor">Senior Mentor</SelectItem>
+                    <SelectItem value="chief_mentor">Chief Mentor</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
@@ -313,11 +314,13 @@ export default function MentorPerformance() {
                         </TableCell>
                         <TableCell>
                           <Badge variant="outline" className={
-                            data.mentor.app_role === 'senior_mentor'
+                            data.mentor.app_role === 'chief_mentor'
+                              ? 'bg-amber-100 text-amber-800 border-amber-200'
+                              : data.mentor.app_role === 'senior_mentor'
                               ? 'bg-purple-100 text-purple-800 border-purple-200'
                               : 'bg-blue-100 text-blue-800 border-blue-200'
                           }>
-                            {data.mentor.app_role === 'senior_mentor' ? 'Senior' : 'Junior'}
+                            {data.mentor.app_role === 'chief_mentor' ? 'Chief' : data.mentor.app_role === 'senior_mentor' ? 'Senior' : 'Junior'}
                           </Badge>
                         </TableCell>
                         <TableCell>

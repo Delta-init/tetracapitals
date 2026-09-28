@@ -8,6 +8,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { DollarSign, TrendingUp, Calendar } from "lucide-react";
 import { filterLedgersByRole } from "../components/utils/LedgerUtils";
 import { getEffectiveUser } from "../components/utils/ImpersonationContext";
+import { getScope } from "../components/utils/roles";
 import { format } from "date-fns";
 
 export default function MyCommissionHistory() {
@@ -39,6 +40,9 @@ export default function MyCommissionHistory() {
   }
 
   const myLedgers = filterLedgersByRole(currentUser, ledgers);
+  // A Chief (Team visibility) also sees their team's statements.
+  const showMentor = getScope(currentUser) !== 'own' && myLedgers.some(l => l.mentor_id !== currentUser.id);
+  const ownLedgers = myLedgers.filter(l => l.mentor_id === currentUser.id);
 
   // Calculate totals
   const totalReleased = myLedgers
@@ -50,7 +54,7 @@ export default function MyCommissionHistory() {
     .reduce((sum, l) => sum + (l.commission_release_usd || 0), 0);
 
   // Get buffer from last released commission statement
-  const releasedLedgers = myLedgers.filter(l => l.overall_status === 'released');
+  const releasedLedgers = ownLedgers.filter(l => l.overall_status === 'released');
   const lastReleasedLedger = releasedLedgers.length > 0 ? releasedLedgers[0] : null;
   const totalBuffer = lastReleasedLedger ? (lastReleasedLedger.buffer_carried_out_usd || 0) : 0;
 
@@ -118,6 +122,7 @@ export default function MyCommissionHistory() {
               <Table>
                 <TableHeader>
                   <TableRow className="bg-gray-50">
+                    {showMentor && <TableHead className="font-semibold">Mentor</TableHead>}
                     <TableHead className="font-semibold">Quarter</TableHead>
                     <TableHead className="font-semibold">Net Deposit</TableHead>
                     <TableHead className="font-semibold">Gross Commission</TableHead>
@@ -132,13 +137,14 @@ export default function MyCommissionHistory() {
                 <TableBody>
                   {myLedgers.length === 0 ? (
                     <TableRow>
-                      <TableCell colSpan={9} className="text-center py-8 text-gray-500">
+                      <TableCell colSpan={showMentor ? 10 : 9} className="text-center py-8 text-gray-500">
                         No commission records yet
                       </TableCell>
                     </TableRow>
                   ) : (
                     myLedgers.map((ledger) => (
                       <TableRow key={ledger.id} className="hover:bg-gray-50 transition-colors">
+                        {showMentor && <TableCell className="font-medium">{ledger.mentor_name || '—'}</TableCell>}
                         <TableCell className="font-semibold text-blue-600">{ledger.quarter}</TableCell>
                         <TableCell className="font-semibold">${ledger.net_deposit_usd?.toFixed(2)}</TableCell>
                         <TableCell className="font-semibold">${ledger.gross_commission_usd?.toFixed(2)}</TableCell>

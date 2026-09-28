@@ -26,7 +26,7 @@ export const filterPersonnelByRole = (currentUser, allUsers) => {
   if (['academic_head', 'academic_admin'].includes(role)) {
     return allUsers.filter(u => {
       const userRole = String(u.app_role || u.data?.app_role || '').toLowerCase();
-      return ['academic_head', 'academic_admin', 'senior_mentor', 'junior_mentor', 'subjunior_mentor', 'assistance', 'draw_admin'].includes(userRole);
+      return ['academic_head', 'academic_admin', 'chief_mentor', 'senior_mentor', 'junior_mentor', 'subjunior_mentor', 'assistance', 'draw_admin'].includes(userRole);
     });
   }
   

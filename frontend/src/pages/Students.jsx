@@ -12,7 +12,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import StudentForm from "../components/students/StudentForm";
 import StudentRequestForm from "../components/students/StudentRequestForm";
 import BulkImportStudentsDialog from "../components/students/BulkImportStudentsDialog";
-import { isMentorRole as isMentorTier } from "@/components/utils/roles";
+import { isMentorRole as isMentorTier, getScope, downlineIds } from "@/components/utils/roles";
 
 import { Plus, Search, Eye, Users, UserCheck, Upload, Download, Filter, ArrowUp, Share2, Trash2 } from "lucide-react";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -298,7 +298,8 @@ export default function Students() {
 
   const canCreate = canSubmitStudentRequest(currentUser.app_role);
   const isMentor = isMentorTier(currentUser.app_role);
-  const isSeniorMentor = currentUser.app_role === 'senior_mentor';
+  // Team tab: roles whose visibility is Team (Chief Mentor by default).
+  const hasTeamView = getScope(currentUser) === 'downline';
   const isAssistance = currentUser.app_role === 'assistance';
   const isAdmin = ['super_admin', 'broker_admin', 'academic_head'].includes(currentUser.app_role);
   const isSuperAdmin = currentUser.app_role === 'super_admin';
@@ -342,7 +343,7 @@ export default function Students() {
 
   // Get mentor users for bulk import
   const mentorUsers = users.filter(u => 
-    ['junior_mentor', 'senior_mentor', 'subjunior_mentor'].includes(u.app_role)
+    ['junior_mentor', 'chief_mentor', 'senior_mentor', 'subjunior_mentor'].includes(u.app_role)
   );
 
   // For mentors: filter students into My, Team, and Open Pool
@@ -361,12 +362,13 @@ export default function Students() {
     // Filter MY students - students where I am the primary mentor
     myStudents = students.filter(s => s.primary_mentor_id === currentUser.id);
     
-    // Filter TEAM students - students where I am the senior mentor but NOT the primary mentor
-    teamStudents = students.filter(s => 
-      currentUser.app_role === 'senior_mentor' && 
-      s.senior_mentor_id === currentUser.id &&
-      s.primary_mentor_id !== currentUser.id
-    );
+    // Filter TEAM students - students of people on my team (Up Head chain), or
+    // where I'm listed as their senior mentor, but NOT my own students
+    const team = hasTeamView ? downlineIds(currentUser.id, users) : null;
+    teamStudents = hasTeamView ? students.filter(s =>
+      s.primary_mentor_id !== currentUser.id &&
+      (team.has(s.primary_mentor_id) || s.senior_mentor_id === currentUser.id)
+    ) : [];
     
     // Filter OPEN POOL students - students without assigned mentors
     openPoolStudents = students.filter(s => s.assignment_status === 'open_pool');
@@ -675,9 +677,9 @@ export default function Students() {
         {/* Tabs for mentors and admins, single table for assistance/others */}
         {isMentor || isAdmin ? (
           <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-            <TabsList className="flex h-auto w-full max-w-5xl justify-start overflow-x-auto sm:grid" style={{ gridTemplateColumns: isMentor ? (isSeniorMentor ? '1fr 1fr 1fr 1fr' : '1fr 1fr 1fr') : (['broker_admin', 'super_admin'].includes(currentUser.app_role) ? '1fr 1fr 1fr 1fr' : (currentUser.app_role === 'academic_head' ? '1fr 1fr' : '1fr')) }}>
+            <TabsList className="flex h-auto w-full max-w-5xl justify-start overflow-x-auto sm:grid" style={{ gridTemplateColumns: isMentor ? (hasTeamView ? '1fr 1fr 1fr 1fr' : '1fr 1fr 1fr') : (['broker_admin', 'super_admin'].includes(currentUser.app_role) ? '1fr 1fr 1fr 1fr' : (currentUser.app_role === 'academic_head' ? '1fr 1fr' : '1fr')) }}>
               {isMentor && <TabsTrigger value="my">My Students</TabsTrigger>}
-              {isSeniorMentor && <TabsTrigger value="team">Team Students</TabsTrigger>}
+              {hasTeamView && <TabsTrigger value="team">Team Students</TabsTrigger>}
               {isMentor && (
                 <TabsTrigger value="co_managed" className="flex items-center gap-1">
                   <Share2 className="h-3.5 w-3.5" />
@@ -779,8 +781,8 @@ export default function Students() {
               </TabsContent>
             )}
 
-            {/* Team Students Tab (Senior Mentors Only) */}
-            {isSeniorMentor && (
+            {/* Team Students Tab (Team visibility, e.g. Chief Mentors) */}
+            {hasTeamView && (
             <TabsContent value="team">
               <div className="rounded-2xl border border-slate-200/70 bg-white overflow-hidden shadow-soft">
                 <div className="p-4 bg-gradient-to-r from-purple-50 to-pink-50 border-b border-purple-200">
