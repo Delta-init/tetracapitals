@@ -34,4 +34,10 @@ export const config = {
    * COMMISSION_S2S_SECRET. Unset turns the route off — never open.
    */
   financeS2sSecret: process.env.FINANCE_S2S_SECRET ?? "",
+  /**
+   * The Delta LMS, which sends every other new student here (the ones finance
+   * did not enrol). What the LMS presents in `x-lms-secret`; must match its
+   * COMMISSION_S2S_SECRET. Unset turns the route off — never open.
+   */
+  lmsS2sSecret: process.env.LMS_S2S_SECRET ?? "",
 };

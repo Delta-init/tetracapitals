@@ -73,4 +73,14 @@ export async function ensureIndexes(): Promise<void> {
     d.collection("mentor_targets").createIndex({ mentor_id: 1, period: 1 }),
     d.collection("mentor_points").createIndex({ total_points: -1 }),
   ]);
+
+  // One student per LMS account, even if two deliveries of it arrive at once.
+  // Partial: only students that came from the LMS (or finance) carry the id.
+  // Built apart from the rest and never fatal: it is new over existing data,
+  // and the intake refuses a repeat without it — only the same-instant race
+  // relies on it. A failure is logged rather than keeping the API down.
+  await d.collection("students").createIndex(
+    { lms_user_id: 1 },
+    { unique: true, partialFilterExpression: { lms_user_id: { $gt: "" } } },
+  ).catch((err) => console.error("[indexes] students.lms_user_id was not built:", (err as Error).message));
 }

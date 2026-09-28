@@ -64,7 +64,7 @@ await db.collection("users").insertMany([
   { email: "mentor@e2e-commission.test", full_name: "Mentor", app_role: "junior_mentor", password_hash: hash, created_date: now, updated_date: now },
 ]);
 await db.collection("commission_roles").insertMany([
-  { name: "Chief Mentor", role_key: "chief_mentor", page_permissions: ["Dashboard", "Students"], data_scope: "team", active: true },
+  { name: "CS Manager", role_key: "cs_manager", page_permissions: ["Dashboard", "Students"], data_scope: "own", active: true },
   { name: "Old Role", role_key: "old_role", page_permissions: [], data_scope: "own", active: false },
 ]);
 console.log("  2 accounts, 2 custom roles");
@@ -78,7 +78,9 @@ const roles = await service("GET", "/roles");
 const keys = (roles.body?.data?.roles ?? []).map((r: any) => r.key);
 check("answers in the portal's envelope", roles.status === 200 && roles.body?.success === true && roles.body?.data?.organization === "Tetra Commission", JSON.stringify(roles.body).slice(0, 160));
 check("built-in roles, marked as such", keys.includes("super_admin") && roles.body.data.roles.find((r: any) => r.key === "super_admin")?.isSystem === true);
-check("custom roles from Role Management", roles.body.data.roles.find((r: any) => r.key === "chief_mentor")?.isSystem === false);
+check("custom roles from Role Management", roles.body.data.roles.find((r: any) => r.key === "cs_manager")?.isSystem === false);
+check("Chief Mentor is built in now, and listed once", roles.body.data.roles.filter((r: any) => r.key === "chief_mentor").length === 1 &&
+  roles.body.data.roles.find((r: any) => r.key === "chief_mentor")?.isSystem === true);
 check("...but not a switched-off one", !keys.includes("old_role"));
 check("a friendly name", roles.body.data.roles.find((r: any) => r.key === "senior_mentor")?.name === "Senior Mentor");
 

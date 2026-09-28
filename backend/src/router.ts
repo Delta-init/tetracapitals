@@ -6,6 +6,7 @@ import { handleRegister, handleLogin, handleMe, handleChangePassword } from "./a
 import { handleSso } from "./auth/sso";
 import { handlePortalService } from "./portal/service";
 import { handleFinanceStudents } from "./finance/students";
+import { handleLmsStudents } from "./lms/students";
 import {
   listEntity, filterEntity, getEntityById, createEntity,
   bulkCreateEntity, updateEntity, deleteEntity,
@@ -58,6 +59,8 @@ export async function route(req: Request): Promise<Response> {
 
   // ---- Delta finance sending a new Delta LMS student (its own shared secret) ----
   if (path === "/api/v1/integrations/finance/students" && req.method === "POST") return handleFinanceStudents(req);
+  // ---- The Delta LMS sending every other new student (its own shared secret) ----
+  if (path === "/api/v1/integrations/lms/students" && req.method === "POST") return handleLmsStudents(req);
 
   // ---- Entities ----
   const entityMatch = path.match(/^\/api\/entities\/([A-Za-z0-9_]+)(?:\/([^/]+))?$/);
