@@ -3,65 +3,12 @@ import { Link, useLocation } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { createPageUrl } from './utils';
 import { base44 } from '@/api/base44Client';
-import {
-        LayoutDashboard,
-        LayoutGrid,
-        UsersRound,
-        Activity,
-        Sparkles,
-        GraduationCap,
-        Trophy,
-        Gauge,
-        ShieldCheck,
-        Contact,
-        KeyRound,
-        Network,
-        BookUser,
-        Users,
-        ClipboardList,
-        History,
-        UserPlus,
-        UserCheck,
-        RefreshCcw,
-        CandlestickChart,
-        Wallet,
-        HandCoins,
-        Target,
-        Crosshair,
-        ReceiptText,
-        CalendarCheck,
-        CalendarRange,
-        Banknote,
-        Layers,
-        Gift,
-        PiggyBank,
-        Wrench,
-        FileBarChart,
-        Gamepad2,
-        ArrowLeftRight,
-        Package,
-        Percent,
-        Ticket,
-        BarChart3,
-        ScrollText,
-        Menu,
-        X,
-        LogOut,
-        PanelLeftClose,
-        PanelLeftOpen,
-      } from 'lucide-react';
+import { Menu, X, LogOut, PanelLeftClose, PanelLeftOpen } from 'lucide-react';
 import ImpersonationBanner from './components/utils/ImpersonationBanner';
 import NotificationBell from './components/utils/NotificationBell';
 import { getEffectiveUser } from './components/utils/ImpersonationContext';
 import { EASE } from '@/components/motion';
-
-// "StudentLogHistoryPage" -> "Student Log History", "AIInsights" -> "AI Insights"
-const humanize = (name = '') =>
-  name
-    .replace(/Page$/, '')
-    .replace(/([a-z0-9])([A-Z])/g, '$1 $2')
-    .replace(/([A-Z]+)([A-Z][a-z])/g, '$1 $2')
-    .trim();
+import { NAV_ITEMS, NAV_GROUPS, GROUP_OF, humanize } from '@/components/utils/navigation';
 
 const initials = (name = '') =>
   name.split(/\s+/).filter(Boolean).slice(0, 2).map(p => p[0]?.toUpperCase()).join('') || 'D';
@@ -183,66 +130,15 @@ export default function Layout({ children, currentPageName }) {
     base44.auth.logout();
   };
 
-  const navigation = [
-    { name: 'Dashboard', href: createPageUrl('Dashboard'), icon: LayoutDashboard, roles: ['super_admin', 'admin', 'broker_admin', 'academic_head', 'admin_supervisor', 'junior_mentor', 'chief_mentor', 'senior_mentor', 'finance_admin'] },
-    { name: 'TeamDashboard', href: createPageUrl('TeamDashboard'), icon: LayoutGrid, roles: ['super_admin', 'admin', 'broker_admin', 'academic_head', 'chief_mentor'] },
-    { name: 'Teams', href: createPageUrl('Teams'), icon: UsersRound, roles: ['all'] },
-    { name: 'ActivityTracker', href: createPageUrl('ActivityTracker'), icon: Activity, roles: ['all'] },
-    { name: 'AIInsights', href: createPageUrl('AIInsights'), icon: Sparkles, roles: ['super_admin', 'broker_admin', 'academic_head'] },
-    { name: 'MentorTraining', href: createPageUrl('MentorTraining'), icon: GraduationCap, roles: ['junior_mentor', 'chief_mentor', 'senior_mentor'] },
-    { name: 'Leaderboard', href: createPageUrl('Leaderboard'), icon: Trophy, roles: ['super_admin', 'admin', 'broker_admin', 'academic_head', 'junior_mentor', 'chief_mentor', 'senior_mentor', 'finance_admin'] },
-    { name: 'MentorPerformance', href: createPageUrl('MentorPerformance'), icon: Gauge, roles: ['super_admin', 'admin', 'broker_admin', 'academic_head', 'junior_mentor', 'chief_mentor', 'senior_mentor', 'finance_admin'] },
-    { name: 'MasterAdmin', href: createPageUrl('MasterAdmin'), icon: ShieldCheck, roles: ['super_admin'] },
-    { name: 'Personnel', href: createPageUrl('Personnel'), icon: Contact, roles: ['super_admin', 'admin', 'broker_admin', 'academic_head', 'admin_supervisor'] },
-    { name: 'RolesManagement', href: createPageUrl('RolesManagement'), icon: KeyRound, roles: ['super_admin', 'admin'] },
-    { name: 'Hierarchy', href: createPageUrl('Hierarchy'), icon: Network, roles: ['super_admin', 'admin', 'broker_admin', 'academic_head'] },
-    { name: 'AcademicCounselors', href: createPageUrl('AcademicCounselors'), icon: BookUser, roles: ['academic_head', 'super_admin'] },
-    { name: 'Students', href: createPageUrl('Students'), icon: Users, roles: ['super_admin', 'admin', 'broker_admin', 'academic_head', 'academic_admin', 'junior_mentor', 'chief_mentor', 'senior_mentor', 'subjunior_mentor', 'assistance'] },
-    { name: 'StudentLogs', href: createPageUrl('StudentLogs'), icon: ClipboardList, roles: ['super_admin', 'admin', 'broker_admin', 'academic_head', 'academic_admin', 'junior_mentor', 'chief_mentor', 'senior_mentor', 'subjunior_mentor', 'assistance'] },
-    { name: 'StudentLogHistoryPage', href: createPageUrl('StudentLogHistoryPage'), icon: History, roles: ['super_admin', 'academic_head', 'academic_admin', 'admin_supervisor', 'junior_mentor', 'chief_mentor', 'senior_mentor', 'subjunior_mentor', 'assistance'] },
-    { name: 'MyStudentRequests', href: createPageUrl('MyStudentRequests'), icon: UserPlus, roles: ['junior_mentor', 'chief_mentor', 'senior_mentor', 'academic_head'] },
-    { name: 'StudentRequestApprovals', href: createPageUrl('StudentRequestApprovals'), icon: UserCheck, roles: ['super_admin', 'academic_head', 'broker_admin'] },
-    { name: 'RetentionManagement', href: createPageUrl('RetentionManagement'), icon: RefreshCcw, roles: ['academic_head'] },
-    { name: 'DrawAdminStudents', href: createPageUrl('DrawAdminStudents'), icon: Users, roles: ['draw_admin'] },
-    { name: 'MT5Accounts', href: createPageUrl('MT5Accounts'), icon: CandlestickChart, roles: ['super_admin', 'admin', 'broker_admin', 'academic_head', 'junior_mentor', 'chief_mentor', 'senior_mentor'] },
-    { name: 'FundingActivities', href: createPageUrl('MyFundingRequests'), icon: Wallet, roles: ['chief_mentor', 'senior_mentor', 'junior_mentor', 'assistance'] },
-    { name: 'FundingRequests', href: createPageUrl('FundingRequests'), icon: HandCoins, roles: ['super_admin', 'broker_admin', 'academic_head', 'finance_admin'] },
-    { name: 'MyTargets', href: createPageUrl('MyTargets'), icon: Target, roles: ['chief_mentor', 'senior_mentor', 'junior_mentor'] },
-    { name: 'TargetsManagement', href: createPageUrl('TargetsManagement'), icon: Crosshair, roles: ['super_admin', 'broker_admin', 'academic_head'] },
-    { name: 'MyCommissionHistory', href: createPageUrl('MyCommissionHistory'), icon: ReceiptText, roles: ['chief_mentor', 'senior_mentor', 'junior_mentor'] },
-    { name: 'QuarterClosing', href: createPageUrl('QuarterClosing'), icon: CalendarCheck, roles: ['super_admin', 'broker_admin', 'finance_admin'] },
-    { name: 'MonthlyClosing', href: createPageUrl('MonthlyClosing'), icon: CalendarRange, roles: ['super_admin', 'admin', 'broker_admin', 'finance_admin'] },
-    { name: 'DailyPayouts', href: createPageUrl('DailyPayouts'), icon: Banknote, roles: ['super_admin', 'admin', 'broker_admin', 'finance_admin', 'chief_mentor', 'senior_mentor', 'junior_mentor', 'subjunior_mentor'] },
-    { name: 'CommissionPlans', href: createPageUrl('CommissionPlans'), icon: Layers, roles: ['super_admin', 'admin', 'broker_admin', 'finance_admin'] },
-    { name: 'BonusCommissionReports', href: createPageUrl('BonusCommissionReports'), icon: Gift, roles: ['super_admin', 'admin', 'broker_admin', 'finance_admin'] },
-    { name: 'DepositCommissionReports', href: createPageUrl('DepositCommissionReports'), icon: PiggyBank, roles: ['super_admin', 'admin', 'broker_admin', 'finance_admin'] },
-    { name: 'CommissionTools', href: createPageUrl('CommissionTools'), icon: Wrench, roles: ['super_admin', 'broker_admin', 'finance_admin'] },
-    { name: 'CommissionReports', href: createPageUrl('CommissionReports'), icon: FileBarChart, roles: ['super_admin', 'broker_admin', 'academic_head', 'finance_admin'] },
-    { name: 'GamificationSettings', href: createPageUrl('GamificationSettings'), icon: Gamepad2, roles: ['super_admin', 'academic_head'] },
-    { name: 'Transactions', href: createPageUrl('Transactions'), icon: ArrowLeftRight, roles: ['super_admin', 'admin', 'broker_admin', 'academic_head'] },
-    { name: 'TransactionTags', label: 'Products', href: createPageUrl('TransactionTags'), icon: Package, roles: ['super_admin', 'admin', 'broker_admin', 'academic_head', 'finance_admin'] },
-    { name: 'Commissions', href: createPageUrl('Commissions'), icon: Percent, roles: ['super_admin', 'broker_admin', 'academic_head'] },
-    { name: 'Tickets', href: createPageUrl('Tickets'), icon: Ticket, roles: ['super_admin', 'broker_admin', 'academic_head', 'chief_mentor', 'senior_mentor', 'junior_mentor'] },
-    { name: 'Reports', href: createPageUrl('Reports'), icon: BarChart3, roles: ['super_admin', 'broker_admin', 'academic_head', 'junior_mentor', 'chief_mentor', 'senior_mentor'] },
-    { name: 'AuditLogs', href: createPageUrl('AuditLogs'), icon: ScrollText, roles: ['super_admin', 'admin_supervisor', 'academic_head'] }
-  ];
+  const navigation = NAV_ITEMS.map(item => ({ ...item, href: createPageUrl(item.page) }));
 
-  // Sidebar section grouping (page name -> group). Rendered as labelled groups.
-  const NAV_GROUPS = ['Overview', 'People & Access', 'Students', 'Funding', 'Commission', 'More'];
-  const GROUP_OF = {
-    Dashboard: 'Overview', TeamDashboard: 'Overview', Teams: 'Overview', ActivityTracker: 'Overview', AIInsights: 'Overview', Leaderboard: 'Overview', MentorPerformance: 'Overview', MentorTraining: 'Overview',
-    Personnel: 'People & Access', RolesManagement: 'People & Access', Hierarchy: 'People & Access', AcademicCounselors: 'People & Access', MasterAdmin: 'People & Access',
-    Students: 'Students', StudentLogs: 'Students', StudentLogHistoryPage: 'Students', MyStudentRequests: 'Students', StudentRequestApprovals: 'Students', RetentionManagement: 'Students', DrawAdminStudents: 'Students', MT5Accounts: 'Students',
-    FundingActivities: 'Funding', FundingRequests: 'Funding', Transactions: 'Funding', TransactionTags: 'Funding',
-    CommissionPlans: 'Commission', BonusCommissionReports: 'Commission', DepositCommissionReports: 'Commission', CommissionReports: 'Commission', CommissionTools: 'Commission', Commissions: 'Commission', QuarterClosing: 'Commission', MonthlyClosing: 'Commission', DailyPayouts: 'Commission', MyCommissionHistory: 'Commission', MyTargets: 'Commission', TargetsManagement: 'Commission',
-    Tickets: 'More', Reports: 'More', AuditLogs: 'More', GamificationSettings: 'More',
-  };
 
-  // Sidebar now respects the role's page permissions (from Role Management).
-  // Falls back to the legacy per-item role list when the role isn't configured
-  // yet. super_admin/admin always keep RolesManagement so an admin can't
-  // accidentally lock themselves out of re-enabling pages.
-  const allowedPages = myRole?.page_permissions;
+  // Sidebar respects the role's page permissions (from Role Management, for
+  // custom and built-in roles alike). Falls back to the built-in per-item role
+  // list when the role has no page list. Super admin always gets the full
+  // default sidebar, and super_admin/admin always keep RolesManagement, so an
+  // admin can't lock themselves out of re-enabling pages.
+  const allowedPages = currentUser?.app_role === 'super_admin' ? null : myRole?.page_permissions;
   const filteredNavigation = navigation.filter(item => {
     if (item.name === 'RolesManagement' && ['super_admin', 'admin'].includes(currentUser?.app_role)) return true;
     if (Array.isArray(allowedPages)) return allowedPages.includes(item.name);

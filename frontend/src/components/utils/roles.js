@@ -24,6 +24,23 @@ export const BUILTIN_MENTOR_ROLES = [
 // Every role name the codebase historically knew about.
 export const BUILTIN_ROLES = [...BUILTIN_ADMIN_ROLES, ...BUILTIN_MENTOR_ROLES, 'draw_admin'];
 
+// Display names for the built-in roles, in the order Role Management lists them.
+export const BUILTIN_ROLE_NAMES = {
+  super_admin: 'Super Admin',
+  admin: 'Admin',
+  broker_admin: 'Broker Admin',
+  academic_head: 'Academic Head',
+  academic_admin: 'Academic Admin',
+  admin_supervisor: 'Admin Supervisor',
+  finance_admin: 'Finance Admin',
+  chief_mentor: 'Chief Mentor',
+  senior_mentor: 'Senior Mentor',
+  junior_mentor: 'Junior Mentor',
+  subjunior_mentor: 'Sub Junior Mentor',
+  assistance: 'Assistance',
+  draw_admin: 'Draw Admin',
+};
+
 export const isBuiltinRole = (role) => BUILTIN_ROLES.includes(role);
 
 export const isAdminRole = (role) => BUILTIN_ADMIN_ROLES.includes(role);
