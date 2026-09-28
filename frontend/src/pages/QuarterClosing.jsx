@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { PageTitle } from '@/components/common/PageHeader';
 import { base44 } from "@/api/base44Client";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
@@ -259,13 +260,13 @@ export default function QuarterClosing() {
       <div className="max-w-7xl mx-auto space-y-6">
         {/* Header */}
         <div>
-          <h1 className="text-4xl font-bold text-gray-900 tracking-tight">Quarter Closing</h1>
-          <p className="text-gray-600 mt-2 text-base">Generate commission ledgers for completed quarters</p>
+          <PageTitle eyebrow="Commission">Quarter Closing</PageTitle>
+          <p className="mt-2 max-w-3xl text-sm text-slate-500 sm:text-base">Generate commission ledgers for completed quarters</p>
         </div>
 
         {/* Quarter Selection */}
         <Card className="border-gray-200">
-          <CardHeader className="border-b border-gray-100 bg-gradient-to-r from-gray-50 to-blue-50">
+          <CardHeader className="border-b border-gray-100 bg-slate-50/70">
             <CardTitle className="text-lg font-semibold tracking-tight">Select Quarter</CardTitle>
           </CardHeader>
           <CardContent className="p-4">
@@ -347,7 +348,7 @@ export default function QuarterClosing() {
 
         {/* Mentors Table */}
         <Card className="border-gray-200">
-          <CardHeader className="border-b border-gray-100 bg-gradient-to-r from-gray-50 to-blue-50">
+          <CardHeader className="border-b border-gray-100 bg-slate-50/70">
             <CardTitle className="text-lg font-semibold tracking-tight">Mentor Commission Summary - {quarterLabel}</CardTitle>
           </CardHeader>
           <CardContent className="p-0">

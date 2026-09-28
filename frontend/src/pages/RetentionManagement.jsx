@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { PageTitle } from '@/components/common/PageHeader';
 import { base44 } from '@/api/base44Client';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Button } from '@/components/ui/button';
@@ -128,8 +129,8 @@ export default function RetentionManagement() {
     <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100 p-6">
       <div className="max-w-6xl mx-auto">
         <div className="mb-8">
-          <h1 className="text-4xl font-bold text-gray-900">Retention Management</h1>
-          <p className="text-gray-600 mt-2">Assign students who reached 25K deposit threshold to Draw Admin team</p>
+          <PageTitle eyebrow="Students">Retention Management</PageTitle>
+          <p className="mt-2 max-w-3xl text-sm text-slate-500 sm:text-base">Assign students who reached 25K deposit threshold to Draw Admin team</p>
         </div>
 
         {pendingAssignments.length === 0 && eligibleStudents.length === 0 ? (

@@ -65,7 +65,7 @@ export default function TicketChat({ ticket, messages = [], currentUser, onSendM
   return (
     <div className="flex flex-col h-full min-h-0 bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
       {/* Header */}
-      <div className="p-4 border-b border-gray-100 bg-gradient-to-r from-gray-50 to-blue-50 flex-shrink-0">
+      <div className="p-4 border-b border-gray-100 bg-slate-50/70 flex-shrink-0">
         <div className="flex items-start justify-between gap-4">
           <div className="space-y-2 flex-1 min-w-0">
             <div className="flex flex-wrap items-center gap-2">

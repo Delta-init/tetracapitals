@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { PageTitle } from '@/components/common/PageHeader';
 import { base44 } from "@/api/base44Client";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
@@ -91,11 +92,8 @@ export default function TransactionTags() {
   return (
     <div className="p-6 max-w-4xl mx-auto space-y-6">
       <div>
-        <h1 className="text-3xl font-bold flex items-center gap-3">
-          <TagIcon className="h-7 w-7 text-blue-600" />
-          Products
-        </h1>
-        <p className="text-gray-500 mt-1">
+        <PageTitle eyebrow="Funding" icon={TagIcon}>Products</PageTitle>
+        <p className="mt-2 max-w-3xl text-sm text-slate-500 sm:text-base">
           Manage the products staff select when logging a <strong>BONUS</strong> — each carries its amount and With/Without-bonus type.
         </p>
       </div>

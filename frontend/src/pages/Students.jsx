@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import PageHeader from '@/components/common/PageHeader';
 import { Link } from 'react-router-dom';
 import { base44 } from "@/api/base44Client";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
@@ -521,9 +522,11 @@ export default function Students() {
     <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100 p-6">
       <div className="max-w-7xl mx-auto space-y-6">
         {/* Header */}
-        <div className="flex items-center justify-between">
-          <h1 className="text-4xl font-bold text-gray-900 tracking-tight">Students</h1>
-          <div className="flex gap-3">
+        <PageHeader
+          eyebrow="Students"
+          title="Students"
+          description="Profiles, mentors, levels and funding activity for every student."
+          actions={<>
             {isSuperAdmin && selectedLevel1Students.length > 0 && (
               <Button 
                 onClick={handleBulkUpgrade}
@@ -551,8 +554,8 @@ export default function Students() {
                 {isMentor ? 'Request Student' : isAssistance ? 'Add Student' : 'Add Student'}
               </Button>
             )}
-          </div>
-        </div>
+          </>}
+        />
 
         {/* Search and Filters */}
         <Card className="border-gray-200">
@@ -672,7 +675,7 @@ export default function Students() {
         {/* Tabs for mentors and admins, single table for assistance/others */}
         {isMentor || isAdmin ? (
           <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-            <TabsList className="grid w-full max-w-5xl" style={{ gridTemplateColumns: isMentor ? (isSeniorMentor ? '1fr 1fr 1fr 1fr' : '1fr 1fr 1fr') : (['broker_admin', 'super_admin'].includes(currentUser.app_role) ? '1fr 1fr 1fr 1fr' : (currentUser.app_role === 'academic_head' ? '1fr 1fr' : '1fr')) }}>
+            <TabsList className="flex h-auto w-full max-w-5xl justify-start overflow-x-auto sm:grid" style={{ gridTemplateColumns: isMentor ? (isSeniorMentor ? '1fr 1fr 1fr 1fr' : '1fr 1fr 1fr') : (['broker_admin', 'super_admin'].includes(currentUser.app_role) ? '1fr 1fr 1fr 1fr' : (currentUser.app_role === 'academic_head' ? '1fr 1fr' : '1fr')) }}>
               {isMentor && <TabsTrigger value="my">My Students</TabsTrigger>}
               {isSeniorMentor && <TabsTrigger value="team">Team Students</TabsTrigger>}
               {isMentor && (
@@ -697,7 +700,7 @@ export default function Students() {
             {/* My Students Tab (Mentors Only) */}
             {isMentor && (
               <TabsContent value="my">
-                <div className="rounded-xl border border-gray-200 bg-white overflow-hidden">
+                <div className="rounded-2xl border border-slate-200/70 bg-white overflow-hidden shadow-soft">
                   <div className="p-4 bg-gradient-to-r from-blue-50 to-indigo-50 border-b border-gray-200">
                     <h3 className="text-lg font-semibold flex items-center gap-2 tracking-tight">
                       <UserCheck className="h-5 w-5 text-blue-600" />
@@ -779,7 +782,7 @@ export default function Students() {
             {/* Team Students Tab (Senior Mentors Only) */}
             {isSeniorMentor && (
             <TabsContent value="team">
-              <div className="rounded-xl border border-gray-200 bg-white overflow-hidden">
+              <div className="rounded-2xl border border-slate-200/70 bg-white overflow-hidden shadow-soft">
                 <div className="p-4 bg-gradient-to-r from-purple-50 to-pink-50 border-b border-purple-200">
                   <h3 className="text-lg font-semibold flex items-center gap-2 tracking-tight">
                     <Users className="h-5 w-5 text-purple-600" />
@@ -861,8 +864,8 @@ export default function Students() {
           {/* All Students Tab (Admins Only) */}
           {isAdmin && (
             <TabsContent value="all">
-              <div className="rounded-xl border border-gray-200 bg-white overflow-hidden">
-                <div className="p-4 bg-gradient-to-r from-gray-50 to-blue-50 border-b border-gray-200">
+              <div className="rounded-2xl border border-slate-200/70 bg-white overflow-hidden shadow-soft">
+                <div className="p-4 bg-slate-50/70 border-b border-gray-200">
                   <h3 className="text-lg font-semibold flex items-center gap-2 tracking-tight">
                     <Users className="h-5 w-5 text-blue-600" />
                     All Students ({displayStudents.length})
@@ -1044,7 +1047,7 @@ export default function Students() {
 
           {/* Open Pool Students Tab */}
           <TabsContent value="open_pool">
-            <div className="rounded-xl border border-gray-200 bg-white overflow-hidden">
+            <div className="rounded-2xl border border-slate-200/70 bg-white overflow-hidden shadow-soft">
               <div className="p-4 bg-gradient-to-r from-green-50 to-emerald-50 border-b border-green-200">
                 <h3 className="text-lg font-semibold flex items-center gap-2 tracking-tight">
                   <Users className="h-5 w-5 text-green-600" />
@@ -1201,8 +1204,8 @@ export default function Students() {
           </Tabs>
         ) : (
           /* Admin view - all students in one table */
-          <div className="rounded-xl border border-gray-200 bg-white overflow-hidden">
-            <div className="p-4 bg-gradient-to-r from-gray-50 to-blue-50 border-b border-gray-200">
+          <div className="rounded-2xl border border-slate-200/70 bg-white overflow-hidden shadow-soft">
+            <div className="p-4 bg-slate-50/70 border-b border-gray-200">
               <h3 className="text-lg font-semibold flex items-center gap-2 tracking-tight">
                 <Users className="h-5 w-5 text-blue-600" />
                 All Students ({displayStudents.length})

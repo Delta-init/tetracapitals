@@ -75,40 +75,41 @@ button:focus-visible {
 
 
 @layer base {
+  /* Delta light theme — navy #002950, cyan #1ED2DE, mint #7CF0B5 */
   :root {
-    --background: 0 0% 100%;
-    --foreground: 0 0% 3.9%;
+    --background: 210 40% 98%;
+    --foreground: 210 60% 11%;
     --card: 0 0% 100%;
-    --card-foreground: 0 0% 3.9%;
+    --card-foreground: 210 60% 11%;
     --popover: 0 0% 100%;
-    --popover-foreground: 0 0% 3.9%;
-    --primary: 0 0% 9%;
-    --primary-foreground: 0 0% 98%;
-    --secondary: 0 0% 96.1%;
-    --secondary-foreground: 0 0% 9%;
-    --muted: 0 0% 96.1%;
-    --muted-foreground: 0 0% 45.1%;
-    --accent: 0 0% 96.1%;
-    --accent-foreground: 0 0% 9%;
-    --destructive: 0 84.2% 60.2%;
-    --destructive-foreground: 0 0% 98%;
-    --border: 0 0% 89.8%;
-    --input: 0 0% 89.8%;
-    --ring: 0 0% 3.9%;
-    --chart-1: 12 76% 61%;
-    --chart-2: 173 58% 39%;
-    --chart-3: 197 37% 24%;
-    --chart-4: 43 74% 66%;
-    --chart-5: 27 87% 67%;
-    --radius: 0.5rem;
-    --sidebar-background: 0 0% 98%;
-    --sidebar-foreground: 240 5.3% 26.1%;
-    --sidebar-primary: 240 5.9% 10%;
-    --sidebar-primary-foreground: 0 0% 98%;
-    --sidebar-accent: 240 4.8% 95.9%;
-    --sidebar-accent-foreground: 240 5.9% 10%;
-    --sidebar-border: 220 13% 91%;
-    --sidebar-ring: 217.2 91.2% 59.8%;
+    --popover-foreground: 210 60% 11%;
+    --primary: 209 100% 16%;
+    --primary-foreground: 0 0% 100%;
+    --secondary: 210 40% 95.5%;
+    --secondary-foreground: 209 100% 16%;
+    --muted: 210 40% 96%;
+    --muted-foreground: 213 15% 44%;
+    --accent: 186 72% 95%;
+    --accent-foreground: 209 100% 16%;
+    --destructive: 0 78% 56%;
+    --destructive-foreground: 0 0% 100%;
+    --border: 214 32% 90%;
+    --input: 214 32% 88%;
+    --ring: 184 76% 45%;
+    --chart-1: 184 76% 45%;
+    --chart-2: 150 62% 48%;
+    --chart-3: 209 100% 24%;
+    --chart-4: 38 92% 55%;
+    --chart-5: 262 55% 60%;
+    --radius: 0.85rem;
+    --sidebar-background: 209 100% 16%;
+    --sidebar-foreground: 0 0% 100%;
+    --sidebar-primary: 184 76% 49%;
+    --sidebar-primary-foreground: 209 100% 16%;
+    --sidebar-accent: 209 60% 22%;
+    --sidebar-accent-foreground: 0 0% 100%;
+    --sidebar-border: 209 50% 24%;
+    --sidebar-ring: 184 76% 49%;
   }
   .dark {
     --background: 0 0% 3.9%;
@@ -152,7 +153,71 @@ button:focus-visible {
   * {
     @apply border-border outline-ring/50;
   }
+  html {
+    -webkit-text-size-adjust: 100%;
+  }
   body {
-    @apply bg-background text-foreground;
+    @apply bg-background text-foreground font-sans antialiased;
+    font-feature-settings: "ss01", "cv11";
+    text-rendering: optimizeLegibility;
+  }
+  h1, h2, h3 {
+    letter-spacing: -0.02em;
+  }
+  ::selection {
+    background: rgba(30, 210, 222, 0.3);
+    color: #002950;
+  }
+  /* Slim, brand-tinted scrollbars */
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: rgba(0, 41, 80, 0.18) transparent;
+  }
+  *::-webkit-scrollbar { width: 8px; height: 8px; }
+  *::-webkit-scrollbar-thumb { background: rgba(0, 41, 80, 0.16); border-radius: 999px; }
+  *::-webkit-scrollbar-thumb:hover { background: rgba(0, 41, 80, 0.3); }
+  *::-webkit-scrollbar-track { background: transparent; }
+}
+
+@layer utilities {
+  .text-gradient {
+    @apply bg-brand-gradient bg-clip-text text-transparent;
+  }
+  .tabular {
+    font-variant-numeric: tabular-nums;
+  }
+  /* Faint dotted grid used behind page content and on the login screen */
+  .bg-dot-grid {
+    background-image: radial-gradient(rgba(0, 41, 80, 0.07) 1px, transparent 1px);
+    background-size: 22px 22px;
+  }
+  .glass {
+    @apply bg-white/70 backdrop-blur-xl backdrop-saturate-150;
   }
 }
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+/* Page entrance: each top-level section of a page rises in, one after another.
+   Ends on `transform: none` so no lasting containing block is created for
+   fixed-position children. */
+@keyframes page-rise {
+  from { opacity: 0; transform: translateY(14px); }
+  to   { opacity: 1; transform: none; }
+}
+.page-stagger > .min-h-screen > div > *,
+.page-stagger > div:not(.min-h-screen) > * {
+  animation: page-rise 0.6s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+.page-stagger > .min-h-screen > div > :nth-child(1), .page-stagger > div:not(.min-h-screen) > :nth-child(1) { animation-delay: 0.02s; }
+.page-stagger > .min-h-screen > div > :nth-child(2), .page-stagger > div:not(.min-h-screen) > :nth-child(2) { animation-delay: 0.08s; }
+.page-stagger > .min-h-screen > div > :nth-child(3), .page-stagger > div:not(.min-h-screen) > :nth-child(3) { animation-delay: 0.14s; }
+.page-stagger > .min-h-screen > div > :nth-child(4), .page-stagger > div:not(.min-h-screen) > :nth-child(4) { animation-delay: 0.20s; }
+.page-stagger > .min-h-screen > div > :nth-child(5), .page-stagger > div:not(.min-h-screen) > :nth-child(5) { animation-delay: 0.26s; }
+.page-stagger > .min-h-screen > div > :nth-child(6), .page-stagger > div:not(.min-h-screen) > :nth-child(6) { animation-delay: 0.32s; }
+.page-stagger > .min-h-screen > div > :nth-child(n+7), .page-stagger > div:not(.min-h-screen) > :nth-child(n+7) { animation-delay: 0.38s; }

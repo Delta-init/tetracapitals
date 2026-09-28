@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { PageTitle } from '@/components/common/PageHeader';
 import { base44 } from "@/api/base44Client";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
@@ -193,8 +194,8 @@ export default function StudentDetail() {
               </Button>
             </Link>
             <div>
-              <h1 className="text-4xl font-bold text-gray-900 tracking-tight">Student Details</h1>
-              <p className="text-gray-600 mt-2 text-base">
+              <PageTitle eyebrow="Students">Student Details</PageTitle>
+              <p className="mt-2 max-w-3xl text-sm text-slate-500 sm:text-base">
                 <span className="font-mono font-semibold text-blue-600">
                   {displayStudent.student_code}
                 </span>
@@ -211,7 +212,7 @@ export default function StudentDetail() {
 
         {/* Student Information Card */}
         <Card className="border-gray-200">
-          <CardHeader className="border-b border-gray-100 bg-gradient-to-r from-gray-50 to-blue-50">
+          <CardHeader className="border-b border-gray-100 bg-slate-50/70">
             <div className="flex items-center justify-between">
               <CardTitle className="text-xl font-semibold tracking-tight">Student Information</CardTitle>
               <Badge variant="outline" className={getStatusColor(displayStudent.status)}>

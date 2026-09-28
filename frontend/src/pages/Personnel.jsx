@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { PageTitle } from '@/components/common/PageHeader';
 import { base44 } from '@/api/base44Client';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Button } from '@/components/ui/button';
@@ -235,10 +236,10 @@ export default function Personnel() {
     <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50/30 to-indigo-100/20 p-6">
       <div className="max-w-7xl mx-auto space-y-8">
         {/* Header */}
-        <div className="flex justify-between items-center">
+        <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
           <div>
-            <h1 className="text-4xl font-bold text-gray-900 tracking-tight">Personnel Directory</h1>
-            <p className="text-gray-600 mt-2 text-base">Manage users and roles</p>
+            <PageTitle eyebrow="People & Access">Personnel Directory</PageTitle>
+            <p className="mt-2 max-w-3xl text-sm text-slate-500 sm:text-base">Manage users and roles</p>
           </div>
           {canCreate && (
             <Button

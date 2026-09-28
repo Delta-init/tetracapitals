@@ -1,4 +1,5 @@
 import React, { useState, useMemo } from 'react';
+import { PageTitle } from '@/components/common/PageHeader';
 import { base44 } from '@/api/base44Client';
 import { useQuery } from '@tanstack/react-query';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -147,12 +148,10 @@ export default function TeamDashboard() {
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 to-indigo-100/20 p-6">
       <div className="w-full max-w-7xl mx-auto space-y-6">
-        <div className="flex items-center justify-between flex-wrap gap-3">
+        <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
           <div>
-            <h1 className="text-3xl font-bold tracking-tight flex items-center gap-2">
-              <LayoutDashboard className="h-7 w-7 text-indigo-600" /> Team Dashboard
-            </h1>
-            <p className="text-gray-600 mt-1 text-sm">Your whole team’s activity, rolled up for the selected date range.</p>
+            <PageTitle eyebrow="Overview" icon={LayoutDashboard}>Team Dashboard</PageTitle>
+            <p className="mt-2 max-w-3xl text-sm text-slate-500 sm:text-base">Your whole team’s activity, rolled up for the selected date range.</p>
           </div>
           <div className="flex items-center gap-2 text-sm">
             <input type="date" value={start} onChange={e => setStart(e.target.value)} className="h-9 rounded-md border border-input bg-white px-3" />

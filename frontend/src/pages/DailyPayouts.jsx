@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
+import { PageTitle } from '@/components/common/PageHeader';
 import { base44 } from "@/api/base44Client";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
@@ -150,13 +151,10 @@ export default function DailyPayouts() {
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 to-blue-50/30 p-6">
       <div className="max-w-6xl mx-auto space-y-6">
-        <div className="flex items-center justify-between gap-3 flex-wrap">
+        <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
           <div>
-            <h1 className="text-3xl font-bold text-gray-900 tracking-tight flex items-center gap-2">
-              <DollarSign className="h-7 w-7 text-blue-600" />
-              Daily 1% Payouts
-            </h1>
-            <p className="text-gray-600 mt-1 text-sm">
+            <PageTitle eyebrow="Commission" icon={DollarSign}>Daily 1% Payouts</PageTitle>
+            <p className="mt-2 max-w-3xl text-sm text-slate-500 sm:text-base">
               {isMentor
                 ? 'Your daily 1% deposit-commission advance — released by admins each day.'
                 : 'Release 1% of yesterday\'s net deposits as an advance against each mentor\'s quarterly commission.'}

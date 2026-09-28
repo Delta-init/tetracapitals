@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
+import { PageTitle } from '@/components/common/PageHeader';
 import { base44 } from "@/api/base44Client";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
@@ -313,11 +314,8 @@ export default function MasterAdmin() {
     <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50/30 to-indigo-100/20 p-6">
       <div className="max-w-7xl mx-auto space-y-6">
         <div>
-          <h1 className="text-3xl font-bold tracking-tight flex items-center gap-2">
-            <ShieldAlert className="h-7 w-7 text-red-600" />
-            Master Admin
-          </h1>
-          <p className="text-gray-600 mt-1 text-sm">
+          <PageTitle eyebrow="People & Access" icon={ShieldAlert}>Master Admin</PageTitle>
+          <p className="mt-2 max-w-3xl text-sm text-slate-500 sm:text-base">
             Full edit access to any transaction and any user. Every change is audit-logged with before/after snapshots.
           </p>
         </div>

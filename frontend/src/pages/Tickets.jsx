@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { PageTitle } from '@/components/common/PageHeader';
 import { base44 } from "@/api/base44Client";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
@@ -343,11 +344,8 @@ export default function Tickets() {
   return (
     <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100 p-6">
       <div className="max-w-7xl mx-auto space-y-6">
-        <div className="flex items-center justify-between">
-          <h1 className="text-4xl font-bold text-gray-900 tracking-tight flex items-center gap-3">
-            <TicketIcon className="h-9 w-9 text-blue-600" />
-            Support Tickets
-          </h1>
+        <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
+          <PageTitle eyebrow="Support" icon={TicketIcon}>Support Tickets</PageTitle>
           {canCreateTicket(currentUser.app_role) && (
             <Button onClick={() => setShowCreateDialog(true)} className="bg-blue-600 hover:bg-blue-700">
               <Plus className="h-4 w-4 mr-2" /> Create Ticket
@@ -411,7 +409,7 @@ export default function Tickets() {
         </Card>
 
         <Card className="border-gray-200">
-          <CardHeader className="border-b border-gray-100 bg-gradient-to-r from-gray-50 to-blue-50">
+          <CardHeader className="border-b border-gray-100 bg-slate-50/70">
             <CardTitle className="text-lg font-semibold">Tickets ({visibleTickets.length})</CardTitle>
           </CardHeader>
           <CardContent className="p-0">

@@ -1,36 +1,106 @@
 import React, { useState, useEffect } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useLocation } from 'react-router-dom';
+import { motion, AnimatePresence } from 'framer-motion';
 import { createPageUrl } from './utils';
 import { base44 } from '@/api/base44Client';
-import { 
-        LayoutDashboard, 
-        Users, 
-        TrendingUp, 
-        Award, 
-        Target, 
+import {
+        LayoutDashboard,
+        LayoutGrid,
+        UsersRound,
+        Activity,
+        Sparkles,
+        GraduationCap,
+        Trophy,
+        Gauge,
+        ShieldCheck,
+        Contact,
+        KeyRound,
+        Network,
+        BookUser,
+        Users,
+        ClipboardList,
+        History,
+        UserPlus,
+        UserCheck,
+        RefreshCcw,
+        CandlestickChart,
+        Wallet,
+        HandCoins,
+        Target,
+        Crosshair,
+        ReceiptText,
+        CalendarCheck,
+        CalendarRange,
+        Banknote,
+        Layers,
+        Gift,
+        PiggyBank,
+        Wrench,
+        FileBarChart,
+        Gamepad2,
+        ArrowLeftRight,
+        Package,
+        Percent,
         Ticket,
-        DollarSign,
+        BarChart3,
+        ScrollText,
         Menu,
         X,
         LogOut,
-        Shield,
-        UserPlus
+        PanelLeftClose,
+        PanelLeftOpen,
       } from 'lucide-react';
 import ImpersonationBanner from './components/utils/ImpersonationBanner';
 import NotificationBell from './components/utils/NotificationBell';
-import { getEffectiveUser, isImpersonating } from './components/utils/ImpersonationContext';
-import { Button } from '@/components/ui/button';
+import { getEffectiveUser } from './components/utils/ImpersonationContext';
+import { EASE } from '@/components/motion';
+
+// "StudentLogHistoryPage" -> "Student Log History", "AIInsights" -> "AI Insights"
+const humanize = (name = '') =>
+  name
+    .replace(/Page$/, '')
+    .replace(/([a-z0-9])([A-Z])/g, '$1 $2')
+    .replace(/([A-Z]+)([A-Z][a-z])/g, '$1 $2')
+    .trim();
+
+const initials = (name = '') =>
+  name.split(/\s+/).filter(Boolean).slice(0, 2).map(p => p[0]?.toUpperCase()).join('') || 'D';
+
+const SIDEBAR_KEY = 'delta.sidebar.collapsed';
+const SIDEBAR_W = { open: 272, collapsed: 84 };
 
 export default function Layout({ children, currentPageName }) {
+  const location = useLocation();
   const [currentUser, setCurrentUser] = useState(null);
   const [myRole, setMyRole] = useState(null); // current user's role (drives page visibility)
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [collapsed, setCollapsed] = useState(() => {
+    try { return localStorage.getItem(SIDEBAR_KEY) === '1'; } catch { return false; }
+  });
   const [pendingCounts, setPendingCounts] = useState({
     fundingRequests: 0,
     studentRequests: 0,
     tickets: 0,
     retention: 0
   });
+
+  // Tablets (md..lg) always get the icon-only sidebar so content has room.
+  const [isTablet, setIsTablet] = useState(() =>
+    typeof window !== 'undefined' && window.matchMedia('(min-width: 768px) and (max-width: 1023px)').matches
+  );
+  useEffect(() => {
+    const mq = window.matchMedia('(min-width: 768px) and (max-width: 1023px)');
+    const onChange = (e) => setIsTablet(e.matches);
+    mq.addEventListener('change', onChange);
+    return () => mq.removeEventListener('change', onChange);
+  }, []);
+
+  useEffect(() => {
+    try { localStorage.setItem(SIDEBAR_KEY, collapsed ? '1' : '0'); } catch { /* ignore */ }
+  }, [collapsed]);
+
+  // Close the mobile drawer whenever the route changes.
+  useEffect(() => { setMobileMenuOpen(false); }, [location.pathname]);
 
   useEffect(() => {
     const fetchUser = async () => {
@@ -66,7 +136,7 @@ export default function Layout({ children, currentPageName }) {
         ]);
 
         const role = currentUser.app_role;
-        
+
         // Count pending funding requests
         let pendingFunding = 0;
         if (['super_admin', 'broker_admin', 'academic_head', 'academic_admin'].includes(role)) {
@@ -115,46 +185,46 @@ export default function Layout({ children, currentPageName }) {
 
   const navigation = [
     { name: 'Dashboard', href: createPageUrl('Dashboard'), icon: LayoutDashboard, roles: ['super_admin', 'admin', 'broker_admin', 'academic_head', 'admin_supervisor', 'junior_mentor', 'senior_mentor', 'finance_admin'] },
-    { name: 'TeamDashboard', href: createPageUrl('TeamDashboard'), icon: LayoutDashboard, roles: ['super_admin', 'admin', 'broker_admin', 'academic_head', 'chief_mentor'] },
-    { name: 'Teams', href: createPageUrl('Teams'), icon: Users, roles: ['all'] },
-    { name: 'ActivityTracker', href: createPageUrl('ActivityTracker'), icon: TrendingUp, roles: ['all'] },
-    { name: 'AIInsights', href: createPageUrl('AIInsights'), icon: TrendingUp, roles: ['super_admin', 'broker_admin', 'academic_head'] },
-    { name: 'MentorTraining', href: createPageUrl('MentorTraining'), icon: TrendingUp, roles: ['junior_mentor', 'senior_mentor'] },
-    { name: 'Leaderboard', href: createPageUrl('Leaderboard'), icon: Award, roles: ['super_admin', 'admin', 'broker_admin', 'academic_head', 'junior_mentor', 'senior_mentor', 'finance_admin'] },
-    { name: 'MentorPerformance', href: createPageUrl('MentorPerformance'), icon: Award, roles: ['super_admin', 'admin', 'broker_admin', 'academic_head', 'junior_mentor', 'senior_mentor', 'finance_admin'] },
-    { name: 'MasterAdmin', href: createPageUrl('MasterAdmin'), icon: Shield, roles: ['super_admin'] },
-    { name: 'Personnel', href: createPageUrl('Personnel'), icon: Users, roles: ['super_admin', 'admin', 'broker_admin', 'academic_head', 'admin_supervisor'] },
-    { name: 'RolesManagement', href: createPageUrl('RolesManagement'), icon: Shield, roles: ['super_admin', 'admin'] },
-    { name: 'Hierarchy', href: createPageUrl('Hierarchy'), icon: Users, roles: ['super_admin', 'admin', 'broker_admin', 'academic_head'] },
-    { name: 'AcademicCounselors', href: createPageUrl('AcademicCounselors'), icon: Users, roles: ['academic_head', 'super_admin'] },
+    { name: 'TeamDashboard', href: createPageUrl('TeamDashboard'), icon: LayoutGrid, roles: ['super_admin', 'admin', 'broker_admin', 'academic_head', 'chief_mentor'] },
+    { name: 'Teams', href: createPageUrl('Teams'), icon: UsersRound, roles: ['all'] },
+    { name: 'ActivityTracker', href: createPageUrl('ActivityTracker'), icon: Activity, roles: ['all'] },
+    { name: 'AIInsights', href: createPageUrl('AIInsights'), icon: Sparkles, roles: ['super_admin', 'broker_admin', 'academic_head'] },
+    { name: 'MentorTraining', href: createPageUrl('MentorTraining'), icon: GraduationCap, roles: ['junior_mentor', 'senior_mentor'] },
+    { name: 'Leaderboard', href: createPageUrl('Leaderboard'), icon: Trophy, roles: ['super_admin', 'admin', 'broker_admin', 'academic_head', 'junior_mentor', 'senior_mentor', 'finance_admin'] },
+    { name: 'MentorPerformance', href: createPageUrl('MentorPerformance'), icon: Gauge, roles: ['super_admin', 'admin', 'broker_admin', 'academic_head', 'junior_mentor', 'senior_mentor', 'finance_admin'] },
+    { name: 'MasterAdmin', href: createPageUrl('MasterAdmin'), icon: ShieldCheck, roles: ['super_admin'] },
+    { name: 'Personnel', href: createPageUrl('Personnel'), icon: Contact, roles: ['super_admin', 'admin', 'broker_admin', 'academic_head', 'admin_supervisor'] },
+    { name: 'RolesManagement', href: createPageUrl('RolesManagement'), icon: KeyRound, roles: ['super_admin', 'admin'] },
+    { name: 'Hierarchy', href: createPageUrl('Hierarchy'), icon: Network, roles: ['super_admin', 'admin', 'broker_admin', 'academic_head'] },
+    { name: 'AcademicCounselors', href: createPageUrl('AcademicCounselors'), icon: BookUser, roles: ['academic_head', 'super_admin'] },
     { name: 'Students', href: createPageUrl('Students'), icon: Users, roles: ['super_admin', 'admin', 'broker_admin', 'academic_head', 'academic_admin', 'junior_mentor', 'senior_mentor', 'subjunior_mentor', 'assistance'] },
-    { name: 'StudentLogs', href: createPageUrl('StudentLogs'), icon: Users, roles: ['super_admin', 'admin', 'broker_admin', 'academic_head', 'academic_admin', 'junior_mentor', 'senior_mentor', 'subjunior_mentor', 'assistance'] },
-    { name: 'StudentLogHistoryPage', href: createPageUrl('StudentLogHistoryPage'), icon: Shield, roles: ['super_admin', 'academic_head', 'academic_admin', 'admin_supervisor', 'junior_mentor', 'senior_mentor', 'subjunior_mentor', 'assistance'] },
+    { name: 'StudentLogs', href: createPageUrl('StudentLogs'), icon: ClipboardList, roles: ['super_admin', 'admin', 'broker_admin', 'academic_head', 'academic_admin', 'junior_mentor', 'senior_mentor', 'subjunior_mentor', 'assistance'] },
+    { name: 'StudentLogHistoryPage', href: createPageUrl('StudentLogHistoryPage'), icon: History, roles: ['super_admin', 'academic_head', 'academic_admin', 'admin_supervisor', 'junior_mentor', 'senior_mentor', 'subjunior_mentor', 'assistance'] },
     { name: 'MyStudentRequests', href: createPageUrl('MyStudentRequests'), icon: UserPlus, roles: ['junior_mentor', 'senior_mentor', 'academic_head'] },
-    { name: 'StudentRequestApprovals', href: createPageUrl('StudentRequestApprovals'), icon: UserPlus, roles: ['super_admin', 'academic_head', 'broker_admin'] },
-    { name: 'RetentionManagement', href: createPageUrl('RetentionManagement'), icon: Users, roles: ['academic_head'] },
+    { name: 'StudentRequestApprovals', href: createPageUrl('StudentRequestApprovals'), icon: UserCheck, roles: ['super_admin', 'academic_head', 'broker_admin'] },
+    { name: 'RetentionManagement', href: createPageUrl('RetentionManagement'), icon: RefreshCcw, roles: ['academic_head'] },
     { name: 'DrawAdminStudents', href: createPageUrl('DrawAdminStudents'), icon: Users, roles: ['draw_admin'] },
-    { name: 'MT5Accounts', href: createPageUrl('MT5Accounts'), icon: TrendingUp, roles: ['super_admin', 'admin', 'broker_admin', 'academic_head', 'junior_mentor', 'senior_mentor'] },
-    { name: 'FundingActivities', href: createPageUrl('MyFundingRequests'), icon: DollarSign, roles: ['senior_mentor', 'junior_mentor', 'assistance'] },
-    { name: 'FundingRequests', href: createPageUrl('FundingRequests'), icon: DollarSign, roles: ['super_admin', 'broker_admin', 'academic_head', 'finance_admin'] },
+    { name: 'MT5Accounts', href: createPageUrl('MT5Accounts'), icon: CandlestickChart, roles: ['super_admin', 'admin', 'broker_admin', 'academic_head', 'junior_mentor', 'senior_mentor'] },
+    { name: 'FundingActivities', href: createPageUrl('MyFundingRequests'), icon: Wallet, roles: ['senior_mentor', 'junior_mentor', 'assistance'] },
+    { name: 'FundingRequests', href: createPageUrl('FundingRequests'), icon: HandCoins, roles: ['super_admin', 'broker_admin', 'academic_head', 'finance_admin'] },
     { name: 'MyTargets', href: createPageUrl('MyTargets'), icon: Target, roles: ['senior_mentor', 'junior_mentor'] },
-    { name: 'TargetsManagement', href: createPageUrl('TargetsManagement'), icon: Target, roles: ['super_admin', 'broker_admin', 'academic_head'] },
-    { name: 'MyCommissionHistory', href: createPageUrl('MyCommissionHistory'), icon: Award, roles: ['senior_mentor', 'junior_mentor'] },
-    { name: 'QuarterClosing', href: createPageUrl('QuarterClosing'), icon: Award, roles: ['super_admin', 'broker_admin', 'finance_admin'] },
-    { name: 'MonthlyClosing', href: createPageUrl('MonthlyClosing'), icon: Award, roles: ['super_admin', 'admin', 'broker_admin', 'finance_admin'] },
-    { name: 'DailyPayouts', href: createPageUrl('DailyPayouts'), icon: DollarSign, roles: ['super_admin', 'admin', 'broker_admin', 'finance_admin', 'senior_mentor', 'junior_mentor', 'subjunior_mentor'] },
-    { name: 'CommissionPlans', href: createPageUrl('CommissionPlans'), icon: Award, roles: ['super_admin', 'admin', 'broker_admin', 'finance_admin'] },
-    { name: 'BonusCommissionReports', href: createPageUrl('BonusCommissionReports'), icon: Award, roles: ['super_admin', 'admin', 'broker_admin', 'finance_admin'] },
-    { name: 'DepositCommissionReports', href: createPageUrl('DepositCommissionReports'), icon: DollarSign, roles: ['super_admin', 'admin', 'broker_admin', 'finance_admin'] },
-    { name: 'CommissionTools', href: createPageUrl('CommissionTools'), icon: DollarSign, roles: ['super_admin', 'broker_admin', 'finance_admin'] },
-    { name: 'CommissionReports', href: createPageUrl('CommissionReports'), icon: Award, roles: ['super_admin', 'broker_admin', 'academic_head', 'finance_admin'] },
-    { name: 'GamificationSettings', href: createPageUrl('GamificationSettings'), icon: Target, roles: ['super_admin', 'academic_head'] },
-    { name: 'Transactions', href: createPageUrl('Transactions'), icon: TrendingUp, roles: ['super_admin', 'admin', 'broker_admin', 'academic_head'] },
-    { name: 'TransactionTags', label: 'Products', href: createPageUrl('TransactionTags'), icon: Award, roles: ['super_admin', 'admin', 'broker_admin', 'academic_head', 'finance_admin'] },
-    { name: 'Commissions', href: createPageUrl('Commissions'), icon: Award, roles: ['super_admin', 'broker_admin', 'academic_head'] },
+    { name: 'TargetsManagement', href: createPageUrl('TargetsManagement'), icon: Crosshair, roles: ['super_admin', 'broker_admin', 'academic_head'] },
+    { name: 'MyCommissionHistory', href: createPageUrl('MyCommissionHistory'), icon: ReceiptText, roles: ['senior_mentor', 'junior_mentor'] },
+    { name: 'QuarterClosing', href: createPageUrl('QuarterClosing'), icon: CalendarCheck, roles: ['super_admin', 'broker_admin', 'finance_admin'] },
+    { name: 'MonthlyClosing', href: createPageUrl('MonthlyClosing'), icon: CalendarRange, roles: ['super_admin', 'admin', 'broker_admin', 'finance_admin'] },
+    { name: 'DailyPayouts', href: createPageUrl('DailyPayouts'), icon: Banknote, roles: ['super_admin', 'admin', 'broker_admin', 'finance_admin', 'senior_mentor', 'junior_mentor', 'subjunior_mentor'] },
+    { name: 'CommissionPlans', href: createPageUrl('CommissionPlans'), icon: Layers, roles: ['super_admin', 'admin', 'broker_admin', 'finance_admin'] },
+    { name: 'BonusCommissionReports', href: createPageUrl('BonusCommissionReports'), icon: Gift, roles: ['super_admin', 'admin', 'broker_admin', 'finance_admin'] },
+    { name: 'DepositCommissionReports', href: createPageUrl('DepositCommissionReports'), icon: PiggyBank, roles: ['super_admin', 'admin', 'broker_admin', 'finance_admin'] },
+    { name: 'CommissionTools', href: createPageUrl('CommissionTools'), icon: Wrench, roles: ['super_admin', 'broker_admin', 'finance_admin'] },
+    { name: 'CommissionReports', href: createPageUrl('CommissionReports'), icon: FileBarChart, roles: ['super_admin', 'broker_admin', 'academic_head', 'finance_admin'] },
+    { name: 'GamificationSettings', href: createPageUrl('GamificationSettings'), icon: Gamepad2, roles: ['super_admin', 'academic_head'] },
+    { name: 'Transactions', href: createPageUrl('Transactions'), icon: ArrowLeftRight, roles: ['super_admin', 'admin', 'broker_admin', 'academic_head'] },
+    { name: 'TransactionTags', label: 'Products', href: createPageUrl('TransactionTags'), icon: Package, roles: ['super_admin', 'admin', 'broker_admin', 'academic_head', 'finance_admin'] },
+    { name: 'Commissions', href: createPageUrl('Commissions'), icon: Percent, roles: ['super_admin', 'broker_admin', 'academic_head'] },
     { name: 'Tickets', href: createPageUrl('Tickets'), icon: Ticket, roles: ['super_admin', 'broker_admin', 'academic_head', 'senior_mentor', 'junior_mentor'] },
-    { name: 'Reports', href: createPageUrl('Reports'), icon: TrendingUp, roles: ['super_admin', 'broker_admin', 'academic_head', 'junior_mentor', 'senior_mentor'] },
-    { name: 'AuditLogs', href: createPageUrl('AuditLogs'), icon: Shield, roles: ['super_admin', 'admin_supervisor', 'academic_head'] }
+    { name: 'Reports', href: createPageUrl('Reports'), icon: BarChart3, roles: ['super_admin', 'broker_admin', 'academic_head', 'junior_mentor', 'senior_mentor'] },
+    { name: 'AuditLogs', href: createPageUrl('AuditLogs'), icon: ScrollText, roles: ['super_admin', 'admin_supervisor', 'academic_head'] }
   ];
 
   // Sidebar section grouping (page name -> group). Rendered as labelled groups.
@@ -184,184 +254,277 @@ export default function Layout({ children, currentPageName }) {
     .map(group => ({ group, items: filteredNavigation.filter(i => (GROUP_OF[i.name] || 'More') === group) }))
     .filter(section => section.items.length > 0);
 
+  const hasBadge = (name) =>
+    (name === 'FundingRequests' && pendingCounts.fundingRequests > 0) ||
+    (name === 'StudentRequestApprovals' && pendingCounts.studentRequests > 0) ||
+    (name === 'Tickets' && pendingCounts.tickets > 0) ||
+    (name === 'RetentionManagement' && pendingCounts.retention > 0);
+
+  // The "FundingActivities" nav item routes to the MyFundingRequests page.
+  const isActiveItem = (item) =>
+    currentPageName === item.name || (item.name === 'FundingActivities' && currentPageName === 'MyFundingRequests');
+
+  const activeItem = navigation.find(isActiveItem);
+  const pageTitle = activeItem ? (activeItem.label || humanize(activeItem.name)) : humanize(currentPageName);
+  const pageGroup = activeItem ? (GROUP_OF[activeItem.name] || 'More') : null;
+
   if (!currentUser) {
     return (
-      <div className="flex items-center justify-center h-screen bg-gradient-to-br from-blue-50 to-indigo-100">
-        <div className="text-center">
-          <div className="animate-spin rounded-full h-16 w-16 border-b-4 border-blue-600 mx-auto" />
-          <p className="mt-4 text-gray-600 font-medium">Loading...</p>
-        </div>
+      <div className="flex h-screen items-center justify-center bg-background bg-dot-grid">
+        <motion.div
+          initial={{ opacity: 0, scale: 0.96 }}
+          animate={{ opacity: 1, scale: 1 }}
+          transition={{ duration: 0.5, ease: EASE }}
+          className="flex flex-col items-center"
+        >
+          <img src="/brand/delta-logo.png" alt="Delta" className="h-10 w-auto" />
+          <div className="mt-6 h-1 w-40 overflow-hidden rounded-full bg-slate-200">
+            <motion.div
+              className="h-full w-1/2 rounded-full bg-brand-gradient"
+              animate={{ x: ['-100%', '200%'] }}
+              transition={{ duration: 1.2, repeat: Infinity, ease: 'easeInOut' }}
+            />
+          </div>
+        </motion.div>
       </div>
     );
   }
 
-  return (
-    <div className="min-h-screen bg-gray-50">
-      <ImpersonationBanner />
-      <style>{`
-        :root {
-          --color-primary: 30 58 138;
-          --color-secondary: 16 185 129;
-          --color-accent: 245 158 11;
-        }
-      `}</style>
+  const roleLabel = currentUser.app_role?.replace(/_/g, ' ');
 
-      {/* Sidebar - Desktop */}
-      <aside className="hidden md:fixed md:inset-y-0 md:flex md:w-64 md:flex-col bg-gradient-to-b from-white via-blue-50/30 to-indigo-50/30 border-r border-gray-200 shadow-lg">
-        <div className="flex flex-col flex-grow pt-6 pb-4 overflow-y-auto">
-          <div className="flex items-center justify-between flex-shrink-0 px-6 mb-10">
-            <Link to={createPageUrl('Dashboard')} className="flex items-center space-x-3 hover:opacity-80 transition-opacity">
-              <div className="w-11 h-11 bg-gradient-to-br from-blue-600 to-indigo-700 rounded-xl flex items-center justify-center shadow-lg">
-                <Award className="h-6 w-6 text-white" />
-              </div>
-              <div>
-                <h1 className="text-xl font-bold text-gray-900 tracking-tight">Commission Portal</h1>
-              </div>
-            </Link>
-            <NotificationBell currentUser={currentUser} />
-          </div>
-
-          <div className="px-4 mb-6">
-            <div className="bg-gradient-to-br from-blue-600 to-indigo-600 rounded-2xl p-5 border-none shadow-xl">
-              <p className="text-sm font-bold text-white tracking-wide">{currentUser.full_name}</p>
-              <p className="text-xs text-blue-100 mt-1.5">{currentUser.email}</p>
-              <div className="mt-3">
-                <span className="inline-flex items-center px-3 py-1 rounded-full text-xs font-semibold bg-white/25 text-white backdrop-blur-sm">
-                  {currentUser.app_role?.replace(/_/g, ' ')}
-                </span>
-              </div>
-            </div>
-          </div>
-
-          <nav className="flex-1 px-3 space-y-0.5 overflow-y-auto">
-            {groupedNav.map((section) => (
-              <div key={section.group} className="pt-3 first:pt-1">
-                <p className="px-3 pb-1 text-[10px] font-bold uppercase tracking-wider text-gray-400/90">{section.group}</p>
-                {section.items.map((item) => {
-                  const isActive = currentPageName === item.name;
-                  const showBadge =
-                    (item.name === 'FundingRequests' && pendingCounts.fundingRequests > 0) ||
-                    (item.name === 'StudentRequestApprovals' && pendingCounts.studentRequests > 0) ||
-                    (item.name === 'Tickets' && pendingCounts.tickets > 0) ||
-                    (item.name === 'RetentionManagement' && pendingCounts.retention > 0);
-                  return (
-                    <Link
-                      key={item.name}
-                      to={item.href}
-                      className={`
-                        group flex items-center justify-between px-3 py-2 mb-0.5 text-sm font-medium rounded-xl transition-all duration-300 ease-in-out
-                        ${isActive
-                          ? 'bg-gradient-to-r from-blue-600 to-indigo-600 text-white shadow-lg shadow-blue-500/40'
-                          : 'text-gray-700 hover:bg-white/80 hover:shadow-md hover:-translate-x-1'
-                        }
-                      `}
+  // Render helpers (plain functions, not components, so the nav isn't
+  // remounted on every re-render — keeps scroll position and the active pill).
+  const renderNav = (compact, layoutKey) => (
+    <nav className="flex-1 space-y-5 overflow-y-auto overflow-x-hidden px-3 pb-4 [scrollbar-color:rgba(255,255,255,0.15)_transparent]">
+      {groupedNav.map((section) => (
+        <div key={section.group}>
+          {compact ? (
+            <div className="mx-auto mb-2 h-px w-6 bg-white/10" />
+          ) : (
+            <p className="px-3 pb-2 text-[10px] font-semibold uppercase tracking-[0.2em] text-white/35">{section.group}</p>
+          )}
+          <div className="space-y-0.5">
+            {section.items.map((item) => {
+              const isActive = isActiveItem(item);
+              const label = item.label || humanize(item.name);
+              return (
+                <Link
+                  key={item.name}
+                  to={item.href}
+                  title={compact ? label : undefined}
+                  className={`group relative flex items-center rounded-xl py-2 text-[13.5px] font-medium transition-colors duration-200
+                    ${compact ? 'justify-center px-0' : 'px-3'}
+                    ${isActive ? 'text-white' : 'text-white/60 hover:bg-white/[0.04] hover:text-white'}`}
+                >
+                  {isActive && (
+                    <motion.span
+                      layoutId={`nav-active-${layoutKey}`}
+                      className="absolute inset-0 rounded-xl bg-white/[0.09] ring-1 ring-inset ring-white/10"
+                      transition={{ type: 'spring', stiffness: 380, damping: 32 }}
                     >
-                      <div className="flex items-center">
-                        <item.icon
-                          className={`mr-3 h-5 w-5 flex-shrink-0 ${isActive ? 'text-white' : 'text-gray-400 group-hover:text-gray-600'}`}
-                        />
-                        {item.label || item.name}
-                      </div>
-                      {showBadge && (
-                        <span className="flex h-2 w-2 relative">
-                          <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75"></span>
-                          <span className="relative inline-flex rounded-full h-2 w-2 bg-red-500"></span>
-                        </span>
-                      )}
-                    </Link>
-                  );
-                })}
-              </div>
-            ))}
-          </nav>
-
-          <div className="flex-shrink-0 px-3 pb-4">
-            <Button
-              onClick={handleLogout}
-              variant="ghost"
-              className="w-full justify-start text-gray-700 hover:bg-gray-100"
-            >
-              <LogOut className="mr-3 h-5 w-5" />
-              Logout
-            </Button>
+                      <span className="absolute left-0 top-1/2 h-5 w-[3px] -translate-y-1/2 rounded-r-full bg-brand-gradient" />
+                    </motion.span>
+                  )}
+                  <span className={`relative flex min-w-0 items-center ${compact ? '' : 'gap-3'}`}>
+                    <item.icon
+                      className={`h-[18px] w-[18px] flex-shrink-0 transition-colors ${isActive ? 'text-brand-cyan' : 'text-white/45 group-hover:text-white/80'}`}
+                    />
+                    {!compact && <span className="truncate">{label}</span>}
+                  </span>
+                  {hasBadge(item.name) && (
+                    <span className={`${compact ? 'absolute right-2 top-1.5' : 'relative ml-auto'} flex h-2 w-2`}>
+                      <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-brand-mint opacity-75" />
+                      <span className="relative inline-flex h-2 w-2 rounded-full bg-brand-mint" />
+                    </span>
+                  )}
+                </Link>
+              );
+            })}
           </div>
         </div>
-      </aside>
+      ))}
+    </nav>
+  );
 
-      {/* Mobile header */}
-      <div className="md:hidden bg-white/95 backdrop-blur-md border-b border-gray-200 sticky top-0 z-40 shadow-sm">
-        <div className="flex items-center justify-between p-4">
-          <Link to={createPageUrl('Dashboard')} className="flex items-center space-x-3 hover:opacity-80 transition-opacity">
-            <div className="w-8 h-8 bg-gradient-to-br from-blue-600 to-blue-800 rounded-lg flex items-center justify-center">
-              <Award className="h-5 w-5 text-white" />
-            </div>
-            <h1 className="text-lg font-bold text-gray-900">Commission Portal</h1>
-          </Link>
-          <Button
-            variant="ghost"
-            size="icon"
-            onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
-          >
-            {mobileMenuOpen ? <X className="h-6 w-6" /> : <Menu className="h-6 w-6" />}
-          </Button>
+  const renderUserCard = (compact) => (
+    <div className="border-t border-white/10 p-3">
+      <div className={`flex items-center ${compact ? 'flex-col gap-2' : 'gap-3 rounded-xl bg-white/[0.04] p-2.5'}`}>
+        <div
+          className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-full bg-brand-gradient text-xs font-bold text-brand-navy"
+          title={compact ? currentUser.full_name : undefined}
+        >
+          {initials(currentUser.full_name)}
         </div>
-
-        {/* Mobile menu */}
-        {mobileMenuOpen && (
-          <div className="px-2 pt-2 pb-3 space-y-0.5">
-            {groupedNav.map((section) => (
-              <div key={section.group} className="pt-2 first:pt-0">
-                <p className="px-3 pb-1 text-[10px] font-bold uppercase tracking-wider text-gray-400">{section.group}</p>
-                {section.items.map((item) => {
-                  const isActive = currentPageName === item.name;
-                  const showBadge =
-                    (item.name === 'FundingRequests' && pendingCounts.fundingRequests > 0) ||
-                    (item.name === 'StudentRequestApprovals' && pendingCounts.studentRequests > 0) ||
-                    (item.name === 'Tickets' && pendingCounts.tickets > 0) ||
-                    (item.name === 'RetentionManagement' && pendingCounts.retention > 0);
-                  return (
-                    <Link
-                      key={item.name}
-                      to={item.href}
-                      onClick={() => setMobileMenuOpen(false)}
-                      className={`
-                        group flex items-center justify-between px-3 py-2 text-sm font-medium rounded-lg
-                        ${isActive
-                          ? 'bg-blue-600 text-white'
-                          : 'text-gray-700 hover:bg-gray-100'
-                        }
-                      `}
-                    >
-                      <div className="flex items-center">
-                        <item.icon className={`mr-3 h-5 w-5 ${isActive ? 'text-white' : 'text-gray-400'}`} />
-                        {item.label || item.name}
-                      </div>
-                      {showBadge && (
-                        <span className="flex h-2 w-2 relative">
-                          <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75"></span>
-                          <span className="relative inline-flex rounded-full h-2 w-2 bg-red-500"></span>
-                        </span>
-                      )}
-                    </Link>
-                  );
-                })}
-              </div>
-            ))}
-            <Button
-              onClick={handleLogout}
-              variant="ghost"
-              className="w-full justify-start text-gray-700 hover:bg-gray-100"
-            >
-              <LogOut className="mr-3 h-5 w-5" />
-              Logout
-            </Button>
+        {!compact && (
+          <div className="min-w-0 flex-1">
+            <p className="truncate text-sm font-semibold text-white">{currentUser.full_name}</p>
+            <p className="truncate text-[11px] capitalize text-white/50">{roleLabel}</p>
           </div>
         )}
+        <button
+          onClick={handleLogout}
+          title="Logout"
+          aria-label="Logout"
+          className="flex h-8 w-8 items-center justify-center rounded-lg text-white/50 transition-colors hover:bg-white/10 hover:text-white"
+        >
+          <LogOut className="h-4 w-4" />
+        </button>
       </div>
+    </div>
+  );
 
-      {/* Main content */}
-      <div className="md:pl-64">
-        <main>{children}</main>
+  const compact = collapsed || isTablet;
+  const sidebarWidth = compact ? SIDEBAR_W.collapsed : SIDEBAR_W.open;
+
+  return (
+    <div className="min-h-screen bg-background" style={{ '--sidebar-w': `${sidebarWidth}px` }}>
+      {/* Sidebar - Desktop */}
+      <motion.aside
+        initial={false}
+        animate={{ width: sidebarWidth }}
+        transition={{ duration: 0.35, ease: EASE }}
+        className="fixed inset-y-0 left-0 z-40 hidden flex-col overflow-hidden bg-brand-navy md:flex"
+      >
+        {/* ambient glow */}
+        <div className="pointer-events-none absolute -left-24 -top-24 h-64 w-64 rounded-full bg-brand-cyan/20 blur-3xl" />
+        <div className="pointer-events-none absolute -bottom-32 -right-24 h-72 w-72 rounded-full bg-brand-mint/10 blur-3xl" />
+
+        <div className={`relative flex h-16 flex-shrink-0 items-center ${compact ? 'justify-center' : 'px-5'}`}>
+          <Link to={createPageUrl('Dashboard')} className="flex items-center gap-2.5">
+            {compact ? (
+              <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-white">
+                <img src="/icon-192.png" alt="Delta" className="h-8 w-8" />
+              </span>
+            ) : (
+              <>
+                <img src="/brand/delta-logo-white.png" alt="Delta" className="h-7 w-auto" />
+                <span className="rounded-md border border-white/15 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-widest text-white/60">
+                  Portal
+                </span>
+              </>
+            )}
+          </Link>
+        </div>
+
+        <div className="relative flex min-h-0 flex-1 flex-col pt-2">
+          {renderNav(compact, 'desktop')}
+          {renderUserCard(compact)}
+        </div>
+      </motion.aside>
+
+      {/* Mobile drawer */}
+      <AnimatePresence>
+        {mobileMenuOpen && (
+          <>
+            <motion.div
+              key="backdrop"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              onClick={() => setMobileMenuOpen(false)}
+              className="fixed inset-0 z-50 bg-brand-ink/50 backdrop-blur-sm md:hidden"
+            />
+            <motion.aside
+              key="drawer"
+              initial={{ x: '-100%' }}
+              animate={{ x: 0 }}
+              exit={{ x: '-100%' }}
+              transition={{ duration: 0.4, ease: EASE }}
+              className="fixed inset-y-0 left-0 z-50 flex w-[84vw] max-w-[300px] flex-col overflow-hidden bg-brand-navy md:hidden"
+            >
+              <div className="pointer-events-none absolute -left-24 -top-24 h-64 w-64 rounded-full bg-brand-cyan/20 blur-3xl" />
+              <div className="relative flex h-16 flex-shrink-0 items-center justify-between px-5">
+                <img src="/brand/delta-logo-white.png" alt="Delta" className="h-7 w-auto" />
+                <button
+                  onClick={() => setMobileMenuOpen(false)}
+                  className="flex h-9 w-9 items-center justify-center rounded-lg text-white/70 hover:bg-white/10 hover:text-white"
+                  aria-label="Close menu"
+                >
+                  <X className="h-5 w-5" />
+                </button>
+              </div>
+              <div className="relative flex min-h-0 flex-1 flex-col pt-2">
+                {renderNav(false, 'mobile')}
+                {renderUserCard(false)}
+              </div>
+            </motion.aside>
+          </>
+        )}
+      </AnimatePresence>
+
+      {/* Main column */}
+      <div className="flex min-h-screen min-w-0 flex-col transition-[padding] duration-300 ease-out md:pl-[var(--sidebar-w)]">
+        <ImpersonationBanner />
+
+        {/* Top bar */}
+        <header className="glass sticky top-0 z-30 border-b border-slate-200/70">
+          <div className="flex h-16 items-center gap-3 px-4 sm:px-6 lg:px-8">
+            <button
+              onClick={() => setMobileMenuOpen(true)}
+              className="-ml-1 flex h-9 w-9 items-center justify-center rounded-lg text-brand-navy hover:bg-slate-100 md:hidden"
+              aria-label="Open menu"
+            >
+              <Menu className="h-5 w-5" />
+            </button>
+            <button
+              onClick={() => setCollapsed(c => !c)}
+              className="-ml-2 hidden h-9 w-9 items-center justify-center rounded-lg text-slate-500 transition-colors hover:bg-slate-100 hover:text-brand-navy lg:flex"
+              aria-label={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+            >
+              {collapsed ? <PanelLeftOpen className="h-[18px] w-[18px]" /> : <PanelLeftClose className="h-[18px] w-[18px]" />}
+            </button>
+            <Link to={createPageUrl('Dashboard')} className="md:hidden">
+              <img src="/brand/delta-logo.png" alt="Delta" className="h-6 w-auto" />
+            </Link>
+
+            <div className="hidden min-w-0 items-center gap-2 text-sm md:flex">
+              {pageGroup && <span className="text-slate-400">{pageGroup}</span>}
+              {pageGroup && <span className="text-slate-300">/</span>}
+              <AnimatePresence mode="wait" initial={false}>
+                <motion.span
+                  key={pageTitle}
+                  initial={{ opacity: 0, y: 6 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, y: -6 }}
+                  transition={{ duration: 0.25, ease: EASE }}
+                  className="truncate font-semibold text-brand-navy"
+                >
+                  {pageTitle}
+                </motion.span>
+              </AnimatePresence>
+            </div>
+
+            <div className="ml-auto flex items-center gap-2">
+              <span className="hidden text-xs font-medium text-slate-400 lg:inline">
+                {new Date().toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })}
+              </span>
+              <NotificationBell currentUser={currentUser} />
+              <div className="hidden items-center gap-2.5 border-l border-slate-200 pl-3 sm:flex">
+                <div className="flex h-8 w-8 items-center justify-center rounded-full bg-brand-navy text-[11px] font-bold text-white">
+                  {initials(currentUser.full_name)}
+                </div>
+                <div className="hidden leading-tight lg:block">
+                  <p className="max-w-[160px] truncate text-sm font-semibold text-brand-navy">{currentUser.full_name}</p>
+                  <p className="text-[11px] capitalize text-slate-400">{roleLabel}</p>
+                </div>
+              </div>
+            </div>
+          </div>
+        </header>
+
+        {/* Page content. Pages ship their own full-height gradient wrapper;
+            neutralise it so every page sits on the same canvas and spacing. */}
+        <main className="relative min-w-0 flex-1">
+          <motion.div
+            key={location.pathname}
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            transition={{ duration: 0.35, ease: EASE }}
+            className="page-stagger [&>.min-h-screen]:!min-h-0 [&>.min-h-screen]:!bg-none [&>.min-h-screen]:!bg-transparent [&>.min-h-screen]:!p-4 sm:[&>.min-h-screen]:!p-6 lg:[&>.min-h-screen]:!p-8"
+          >
+            {children}
+          </motion.div>
+        </main>
       </div>
     </div>
   );

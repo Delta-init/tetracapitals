@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
+import { PageTitle } from '@/components/common/PageHeader';
 import { base44 } from "@/api/base44Client";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
@@ -256,7 +257,7 @@ export default function CommissionTools() {
   return (
     <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100 p-6">
       <div className="max-w-7xl mx-auto space-y-8">
-        <h1 className="text-4xl font-bold text-gray-900 tracking-tight">Commission Tools</h1>
+        <PageTitle eyebrow="Commission">Commission Tools</PageTitle>
 
         {/* Pro-Rata Calculator */}
         <Card className="border-blue-200 bg-blue-50">

@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { PageTitle } from '@/components/common/PageHeader';
 import { base44 } from '@/api/base44Client';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Card, CardContent } from '@/components/ui/card';
@@ -128,12 +129,10 @@ export default function CommissionPlans() {
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 to-indigo-100/20 p-6">
       <div className="w-full max-w-6xl mx-auto space-y-6">
-        <div className="flex items-center justify-between">
+        <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
           <div>
-            <h1 className="text-3xl font-bold tracking-tight flex items-center gap-2">
-              <Layers className="h-7 w-7 text-indigo-600" /> Commission Plans
-            </h1>
-            <p className="text-gray-600 mt-1 text-sm">
+            <PageTitle eyebrow="Commission" icon={Layers}>Commission Plans</PageTitle>
+            <p className="mt-2 max-w-3xl text-sm text-slate-500 sm:text-base">
               Define each position from the initiator up the chain, with an editable %. Positions can be marked <strong>Pool</strong> — those accrue to a shared pool paid at closing (bonus monthly, deposit quarterly). Assign a plan to the base staff (the CS) in Personnel.
             </p>
           </div>

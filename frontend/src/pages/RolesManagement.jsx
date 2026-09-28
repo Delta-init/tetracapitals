@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { PageTitle } from '@/components/common/PageHeader';
 import { base44 } from '@/api/base44Client';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Card, CardContent } from '@/components/ui/card';
@@ -110,12 +111,10 @@ export default function RolesManagement() {
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 to-indigo-100/20 p-6">
       <div className="w-full space-y-6">
-        <div className="flex items-center justify-between">
+        <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
           <div>
-            <h1 className="text-3xl font-bold tracking-tight flex items-center gap-2">
-              <Layers className="h-7 w-7 text-indigo-600" /> Roles
-            </h1>
-            <p className="text-gray-600 mt-1 text-sm">
+            <PageTitle eyebrow="People & Access" icon={Layers}>Roles</PageTitle>
+            <p className="mt-2 max-w-3xl text-sm text-slate-500 sm:text-base">
               Create roles and tick the pages each role can access. Assign a role to each staff in Personnel; the hierarchy (who reports to whom) is set per-staff there.
             </p>
           </div>

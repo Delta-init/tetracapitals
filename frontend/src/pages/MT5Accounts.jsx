@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { PageTitle } from '@/components/common/PageHeader';
 import { base44 } from "@/api/base44Client";
 import { useQuery } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
@@ -82,8 +83,8 @@ export default function MT5Accounts() {
     <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100 p-6">
       <div className="max-w-7xl mx-auto space-y-6">
         {/* Header */}
-        <div className="flex items-center justify-between">
-          <h1 className="text-4xl font-bold text-gray-900 tracking-tight">MT5 Accounts</h1>
+        <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
+          <PageTitle eyebrow="Students">MT5 Accounts</PageTitle>
         </div>
 
         {/* Search */}
@@ -118,7 +119,7 @@ export default function MT5Accounts() {
         </div>
 
         {/* Table */}
-        <div className="rounded-xl border border-gray-200 bg-white overflow-hidden">
+        <div className="rounded-2xl border border-slate-200/70 bg-white overflow-hidden shadow-soft">
           <Table>
             <TableHeader>
               <TableRow className="bg-gray-50">

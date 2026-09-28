@@ -1,4 +1,6 @@
 import React, { useState, useEffect } from 'react';
+import PageHeader from '@/components/common/PageHeader';
+import StatsCard from '@/components/dashboard/StatsCard';
 import { base44 } from "@/api/base44Client";
 import { useQuery } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -65,45 +67,21 @@ export default function Commissions() {
     <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100 p-6">
       <div className="max-w-7xl mx-auto space-y-6">
         {/* Header */}
-        <div className="flex items-center justify-between">
-          <h1 className="text-3xl font-bold text-gray-900">Commission History</h1>
-        </div>
+        <PageHeader
+          eyebrow="Commission"
+          title="Commission History"
+          description="Every commission record, what was earned and what is payable."
+        />
 
         {/* Summary Cards */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-          <Card className="border-gray-200">
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium text-gray-600">Total Records</CardTitle>
-              <Award className="h-4 w-4 text-blue-600" />
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold text-gray-900">{filteredCommissions.length}</div>
-            </CardContent>
-          </Card>
-
-          <Card className="border-gray-200">
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium text-gray-600">Total Commission</CardTitle>
-              <DollarSign className="h-4 w-4 text-emerald-600" />
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold text-gray-900">${totalCommission.toFixed(2)}</div>
-            </CardContent>
-          </Card>
-
-          <Card className="border-gray-200">
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium text-gray-600">Total Payable</CardTitle>
-              <TrendingUp className="h-4 w-4 text-purple-600" />
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold text-gray-900">${totalPayable.toFixed(2)}</div>
-            </CardContent>
-          </Card>
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-3 lg:gap-6">
+          <StatsCard title="Total Records" value={filteredCommissions.length} icon={Award} color="blue" delay={0.05} />
+          <StatsCard title="Total Commission" value={`$${totalCommission.toFixed(2)}`} icon={DollarSign} color="emerald" delay={0.12} />
+          <StatsCard title="Total Payable" value={`$${totalPayable.toFixed(2)}`} icon={TrendingUp} color="cyan" delay={0.19} />
         </div>
 
         {/* Commission Table */}
-        <div className="rounded-xl border border-gray-200 bg-white overflow-hidden">
+        <div className="overflow-hidden rounded-2xl border border-slate-200/70 bg-white shadow-soft">
           <Table>
             <TableHeader>
               <TableRow className="bg-gray-50">

@@ -25,7 +25,7 @@ export default function TransactionTable({ transactions, currentUser, onApprove,
   };
 
   return (
-    <div className="rounded-xl border border-gray-200 bg-white overflow-hidden">
+    <div className="rounded-2xl border border-slate-200/70 bg-white overflow-hidden shadow-soft">
       <Table>
         <TableHeader>
           <TableRow className="bg-gray-50">

@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { PageTitle } from '@/components/common/PageHeader';
 import { base44 } from '@/api/base44Client';
 import { useQuery } from '@tanstack/react-query';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -48,8 +49,8 @@ export default function DrawAdminStudents() {
     <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100 p-6">
       <div className="max-w-6xl mx-auto">
         <div className="mb-8">
-          <h1 className="text-4xl font-bold text-gray-900">My Retention Students</h1>
-          <p className="text-gray-600 mt-2">Students assigned to you for retention efforts</p>
+          <PageTitle eyebrow="Students">My Retention Students</PageTitle>
+          <p className="mt-2 max-w-3xl text-sm text-slate-500 sm:text-base">Students assigned to you for retention efforts</p>
         </div>
 
         {isLoading ? (

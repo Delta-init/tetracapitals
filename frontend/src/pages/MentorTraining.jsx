@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { PageTitle } from '@/components/common/PageHeader';
 import { base44 } from "@/api/base44Client";
 import { useQuery } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
@@ -360,13 +361,10 @@ Create 5 multiple-choice questions that test understanding of the key concepts. 
     <div className="min-h-screen bg-gradient-to-br from-blue-50/50 via-indigo-50/40 to-purple-100/30 p-6">
       <div className="max-w-7xl mx-auto space-y-6">
         {/* Header */}
-        <div className="flex items-center justify-between">
+        <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
           <div>
-            <h1 className="text-4xl font-bold text-gray-900 tracking-tight flex items-center gap-3">
-              <BookOpen className="h-9 w-9 text-blue-600" />
-              Mentor Training Resources
-            </h1>
-            <p className="text-gray-600 mt-2 text-base">AI-powered personalized training modules</p>
+            <PageTitle eyebrow="Overview" icon={BookOpen}>Mentor Training Resources</PageTitle>
+            <p className="mt-2 max-w-3xl text-sm text-slate-500 sm:text-base">AI-powered personalized training modules</p>
           </div>
         </div>
 
@@ -529,7 +527,7 @@ Create 5 multiple-choice questions that test understanding of the key concepts. 
               </div>
             ) : (
               <Card className="border-gray-200">
-                <CardHeader className="border-b border-gray-100 bg-gradient-to-r from-gray-50 to-blue-50">
+                <CardHeader className="border-b border-gray-100 bg-slate-50/70">
                   <CardTitle className="text-lg font-semibold tracking-tight">No Modules Yet</CardTitle>
                 </CardHeader>
                 <CardContent className="p-12 text-center">

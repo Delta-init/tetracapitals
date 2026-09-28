@@ -1,4 +1,7 @@
 import React, { useState, useEffect } from 'react';
+import PageHeader from '@/components/common/PageHeader';
+import StatsCard from '@/components/dashboard/StatsCard';
+import { Clock as PendingIcon, CheckCircle2 as ApprovedIcon, XCircle as RejectedIcon, DollarSign as AmountIcon } from 'lucide-react';
 import { base44 } from "@/api/base44Client";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
@@ -504,12 +507,11 @@ export default function FundingRequests() {
     <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100 p-6">
       <div className="w-full space-y-6">
         {/* Header */}
-        <div className="flex items-center justify-between">
-          <div>
-            <h1 className="text-4xl font-bold text-gray-900 tracking-tight">Funding Requests</h1>
-            <p className="text-gray-600 mt-2 text-base">Review and process deposit and withdrawal requests</p>
-          </div>
-          <div className="flex gap-2">
+        <PageHeader
+          eyebrow="Funding"
+          title="Funding Requests"
+          description="Review and process deposit and withdrawal requests"
+          actions={<>
             <Button onClick={handleExportFundingRequests} variant="outline" className="border-green-600 text-green-600 hover:bg-green-50">
               <Download className="h-4 w-4 mr-2" />
               Export
@@ -526,41 +528,21 @@ export default function FundingRequests() {
                 </Button>
               </>
             )}
-          </div>
-        </div>
+          </>}
+        />
 
         {/* Stats Summary */}
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-          <Card className="border-none bg-gradient-to-br from-amber-100 to-orange-100 shadow-lg">
-            <CardContent className="p-4">
-              <p className="text-sm font-medium text-gray-700 uppercase tracking-wide">Pending Requests</p>
-              <p className="text-3xl font-bold text-amber-700 mt-1">{pendingCount}</p>
-            </CardContent>
-          </Card>
-          <Card className="border-none bg-gradient-to-br from-emerald-100 to-teal-100 shadow-lg">
-            <CardContent className="p-4">
-              <p className="text-sm font-medium text-gray-700 uppercase tracking-wide">Approved</p>
-              <p className="text-3xl font-bold text-emerald-700 mt-1">{approvedCount}</p>
-            </CardContent>
-          </Card>
-          <Card className="border-none bg-gradient-to-br from-red-100 to-pink-100 shadow-lg">
-            <CardContent className="p-4">
-              <p className="text-sm font-medium text-gray-700 uppercase tracking-wide">Rejected</p>
-              <p className="text-3xl font-bold text-red-700 mt-1">{rejectedCount}</p>
-            </CardContent>
-          </Card>
-          <Card className="border-none bg-gradient-to-br from-blue-100 to-indigo-100 shadow-lg">
-            <CardContent className="p-4">
-              <p className="text-sm font-medium text-gray-700 uppercase tracking-wide">Pending Amount</p>
-              <p className="text-3xl font-bold text-blue-700 mt-1">${totalPendingAmount.toFixed(2)}</p>
-            </CardContent>
-          </Card>
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+          <StatsCard title="Pending Requests" value={pendingCount} icon={PendingIcon} color="amber" trend="Awaiting review" delay={0.05} />
+          <StatsCard title="Approved" value={approvedCount} icon={ApprovedIcon} color="emerald" delay={0.12} />
+          <StatsCard title="Rejected" value={rejectedCount} icon={RejectedIcon} color="red" delay={0.19} />
+          <StatsCard title="Pending Amount" value={`$${totalPendingAmount.toFixed(2)}`} icon={AmountIcon} color="cyan" delay={0.26} />
         </div>
 
         {/* Filters */}
         <Card className="border-gray-200">
-          <CardHeader className="border-b border-gray-100 bg-gradient-to-r from-gray-50 to-blue-50">
-            <CardTitle className="text-lg font-semibold tracking-tight">Filters</CardTitle>
+          <CardHeader className="border-b border-slate-100 py-4">
+            <CardTitle className="text-base font-semibold text-brand-navy">Filters</CardTitle>
           </CardHeader>
           <CardContent className="p-4">
             <div className="flex flex-col gap-3">
@@ -685,7 +667,7 @@ export default function FundingRequests() {
 
         {/* Transactions Table */}
         <Card className="border-gray-200">
-          <CardHeader className="border-b border-gray-100 bg-gradient-to-r from-gray-50 to-blue-50">
+          <CardHeader className="border-b border-gray-100 bg-slate-50/70">
             <div className="flex items-center justify-between">
               <CardTitle className="text-lg font-semibold tracking-tight">Funding Requests</CardTitle>
               {/* Bulk Action Buttons */}

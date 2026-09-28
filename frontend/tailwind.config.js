@@ -9,7 +9,27 @@ module.exports = {
   			md: 'calc(var(--radius) - 2px)',
   			sm: 'calc(var(--radius) - 4px)'
   		},
+  		fontFamily: {
+  			sans: ['"Plus Jakarta Sans"', 'ui-sans-serif', 'system-ui', 'sans-serif'],
+  			serif: ['"Instrument Serif"', 'ui-serif', 'Georgia', 'serif']
+  		},
   		colors: {
+  			// Delta brand. `blue` and `indigo` are re-tuned to the Delta navy so
+  			// every existing page picks up the brand without per-page edits.
+  			brand: {
+  				navy: '#002950',
+  				ink: '#001a33',
+  				cyan: '#1ED2DE',
+  				mint: '#7CF0B5'
+  			},
+  			blue: {
+  				50: '#eff7fd', 100: '#dbecf9', 200: '#bfdcf3', 300: '#93c4ea', 400: '#5fa4dc',
+  				500: '#3a86cb', 600: '#1f6aae', 700: '#18558e', 800: '#154676', 900: '#0f3862', 950: '#002950'
+  			},
+  			indigo: {
+  				50: '#eef4fa', 100: '#d8e5f2', 200: '#b3cbe4', 300: '#83a7cf', 400: '#5580b5',
+  				500: '#35629a', 600: '#1d4a80', 700: '#153b69', 800: '#0e3057', 900: '#082645', 950: '#031a32'
+  			},
   			background: 'hsl(var(--background))',
   			foreground: 'hsl(var(--foreground))',
   			card: {
@@ -82,6 +102,15 @@ module.exports = {
   		animation: {
   			'accordion-down': 'accordion-down 0.2s ease-out',
   			'accordion-up': 'accordion-up 0.2s ease-out'
+  		},
+  		backgroundImage: {
+  			'brand-gradient': 'linear-gradient(90deg, #1ED2DE 0%, #7CF0B5 100%)',
+  			'navy-gradient': 'linear-gradient(135deg, #002950 0%, #00396b 55%, #0a4d80 100%)'
+  		},
+  		boxShadow: {
+  			soft: '0 1px 2px rgba(0,41,80,0.04), 0 4px 16px -4px rgba(0,41,80,0.08)',
+  			lift: '0 2px 4px rgba(0,41,80,0.05), 0 16px 40px -12px rgba(0,41,80,0.18)',
+  			glow: '0 8px 30px -8px rgba(30,210,222,0.55)'
   		}
   	}
   },

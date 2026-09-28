@@ -1,4 +1,5 @@
 import React, { useMemo, useState, useEffect } from 'react';
+import { PageTitle } from '@/components/common/PageHeader';
 import { getEffectiveUser } from '../components/utils/ImpersonationContext';
 import { useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
@@ -148,7 +149,7 @@ export default function ReportTransactionDetails() {
                     <ArrowLeft className="h-4 w-4 mr-1" /> Back
                 </Button>
                 <div>
-                    <h1 className="text-2xl font-bold text-gray-900">Transaction Details</h1>
+                    <PageTitle eyebrow="Reports">Transaction Details</PageTitle>
                     <p className="text-sm text-gray-500 mt-0.5">
                         {filterName} · {dateLabel}
                     </p>

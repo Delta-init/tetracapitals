@@ -1,4 +1,5 @@
 import React, { useState, useMemo } from 'react';
+import { PageTitle } from '@/components/common/PageHeader';
 import { base44 } from '@/api/base44Client';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
@@ -128,12 +129,10 @@ export default function BonusCommissionReports() {
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 to-indigo-100/20 p-6">
       <div className="w-full max-w-6xl mx-auto space-y-6">
-        <div className="flex items-center justify-between flex-wrap gap-3">
+        <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
           <div>
-            <h1 className="text-3xl font-bold tracking-tight flex items-center gap-2">
-              <Award className="h-7 w-7 text-purple-600" /> Bonus Commission
-            </h1>
-            <p className="text-gray-600 mt-1 text-sm">Bonus commission {canSeeAll ? 'per staff' : '— your earnings'} — released <strong>monthly</strong>. Split into With Bonus and Without Bonus.</p>
+            <PageTitle eyebrow="Commission" icon={Award}>Bonus Commission</PageTitle>
+            <p className="mt-2 max-w-3xl text-sm text-slate-500 sm:text-base">Bonus commission {canSeeAll ? 'per staff' : '— your earnings'} — released <strong>monthly</strong>. Split into With Bonus and Without Bonus.</p>
           </div>
           <div className="flex items-center gap-2">
             <select value={month} onChange={e => setMonth(Number(e.target.value))} className="h-9 rounded-md border border-input bg-white px-3 text-sm">

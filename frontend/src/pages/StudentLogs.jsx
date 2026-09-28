@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { PageTitle } from '@/components/common/PageHeader';
 import { base44 } from "@/api/base44Client";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
@@ -247,10 +248,10 @@ export default function StudentLogs() {
     <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100 p-6">
       <div className="max-w-7xl mx-auto space-y-6">
         {/* Header */}
-        <div className="flex items-center justify-between">
+        <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
           <div>
-            <h1 className="text-4xl font-bold text-gray-900 tracking-tight">Student Logs</h1>
-            <p className="text-gray-600 mt-2 text-base">Comprehensive student information and tracking</p>
+            <PageTitle eyebrow="Students">Student Logs</PageTitle>
+            <p className="mt-2 max-w-3xl text-sm text-slate-500 sm:text-base">Comprehensive student information and tracking</p>
           </div>
           <div className="flex gap-2">
             <Button onClick={handleExport} variant="outline" className="border-green-600 text-green-600 hover:bg-green-50">
@@ -281,7 +282,7 @@ export default function StudentLogs() {
 
         {/* Logs Table */}
         <Card className="border-gray-200">
-          <CardHeader className="border-b border-gray-100 bg-gradient-to-r from-gray-50 to-blue-50">
+          <CardHeader className="border-b border-gray-100 bg-slate-50/70">
             <CardTitle className="text-lg font-semibold tracking-tight">Student Logs ({filteredLogs.length})</CardTitle>
           </CardHeader>
           <CardContent className="p-0">

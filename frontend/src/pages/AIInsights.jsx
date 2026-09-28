@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { PageTitle } from '@/components/common/PageHeader';
 import { base44 } from "@/api/base44Client";
 import { useQuery } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
@@ -287,13 +288,10 @@ Consider factors like:
     <div className="min-h-screen bg-gradient-to-br from-indigo-50 via-purple-50 to-pink-50 p-6">
       <div className="max-w-7xl mx-auto space-y-6">
         {/* Header */}
-        <div className="flex items-center justify-between">
+        <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
           <div>
-            <h1 className="text-4xl font-bold text-gray-900 flex items-center gap-3 tracking-tight">
-              <Brain className="h-9 w-9 text-purple-600" />
-              AI Performance Insights
-            </h1>
-            <p className="text-gray-600 mt-2 text-base">AI-powered analysis and predictions for mentor performance</p>
+            <PageTitle eyebrow="Overview" icon={Brain}>AI Performance Insights</PageTitle>
+            <p className="mt-2 max-w-3xl text-sm text-slate-500 sm:text-base">AI-powered analysis and predictions for mentor performance</p>
           </div>
           {canViewAI && (
             <Button 
