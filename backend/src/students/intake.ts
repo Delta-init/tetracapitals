@@ -51,7 +51,7 @@ const escapeRegex = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
    finance was the only intake, so the round carries on where it is. */
 const TURN = "finance_student_team_turn";
 /* Each team's own round of its CS people, one record per team. */
-const csTurn = (teamId: string) => `team_cs_turn:${teamId}`;
+export const csTurn = (teamId: string) => `team_cs_turn:${teamId}`;
 
 type Keyed = { key: string };
 
@@ -61,7 +61,7 @@ type Keyed = { key: string };
  * added or sitting out neither skips a turn nor gives one two in a row.
  * Compare-and-set, so two students arriving at once cannot take the same turn.
  */
-async function takeNext<T extends Keyed>(recordId: string, inTurn: T[], extra: (next: T) => Record<string, unknown>): Promise<T | null> {
+export async function takeNext<T extends Keyed>(recordId: string, inTurn: T[], extra: (next: T) => Record<string, unknown>): Promise<T | null> {
   const counters = col<{ _id: string; last_key?: string }>("counters");
   const state = await counters.findOne({ _id: recordId });
   const last = state?.last_key ?? "";
@@ -172,6 +172,8 @@ export async function createStudent(input: {
     first_assignee_name: cs?.name ?? "",
     first_assignee_role: cs ? "cs" : "",
     first_assigned_at: cs ? now : "",
+    // When they were given to their current mentor — the inactivity rule's clock.
+    assigned_at: cs ? now : "",
     ...input.trace,
     auto_assigned_team_id: team?.id ?? "",
     auto_assigned_team_name: team?.name ?? "",

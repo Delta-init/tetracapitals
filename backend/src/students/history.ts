@@ -63,7 +63,9 @@ export function describePerson(index: TeamIndex, id: unknown, fallbackName: unkn
   return `${name}${role}${team ? ` of team ${team.name}` : ""}`;
 }
 
-const SERVER_OWNED = ["team_id", "team_name", "first_assignee_id", "first_assignee_name", "first_assignee_role", "first_assigned_at"];
+// `assigned_at` is when they were given to their current mentor — the clock the
+// inactivity rule (inactivity.ts) counts from. Never set by a client.
+const SERVER_OWNED = ["team_id", "team_name", "first_assignee_id", "first_assignee_name", "first_assignee_role", "first_assigned_at", "assigned_at"];
 
 /**
  * Before a student is made in Tetra Commission itself (the Students page, or
@@ -85,6 +87,7 @@ export async function stampNewStudents(items: Record<string, any>[], index?: Tea
       s.first_assignee_name = String(s.primary_mentor_name || u?.full_name || "");
       s.first_assignee_role = String(u?.app_role ?? "");
       s.first_assigned_at = s.created_date ?? new Date().toISOString();
+      s.assigned_at = s.first_assigned_at;
     }
   }
   return teams;
@@ -138,6 +141,7 @@ export async function prepareStudentUpdate(existing: any, data: Record<string, a
     }
 
     if (mentorChanged) {
+      data.assigned_at = mentorId ? now : "";
       const toName = data.primary_mentor_name ?? index.userById.get(mentorId)?.full_name ?? "";
       if (mentorId && !existing.first_assignee_id) {
         const u = index.userById.get(mentorId);

@@ -3,6 +3,7 @@ import { connectDb, ensureIndexes, closeDb } from "./db";
 import { route } from "./router";
 import { error as errorResponse } from "./lib/response";
 import { startFinanceFundingWorker } from "./finance/funding";
+import { startInactivityWorker } from "./students/inactivity";
 
 async function main() {
   await connectDb();
@@ -24,6 +25,8 @@ async function main() {
   console.log(`[student-tracker] API listening on http://localhost:${server.port}`);
   // New deposit requests to Delta finance for approval, retried until it has them.
   startFinanceFundingWorker();
+  // Students held by a CS with no approved deposit for 90 days move team (off until switched on).
+  startInactivityWorker();
 }
 
 const shutdown = async (signal: string) => {

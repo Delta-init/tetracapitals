@@ -1,5 +1,7 @@
 import './App.css'
 import { Toaster } from "@/components/ui/toaster"
+// Most screens call toast() from sonner; its Toaster must be mounted for them to show.
+import { Toaster as SonnerToaster } from "@/components/ui/sonner"
 import { QueryClientProvider } from '@tanstack/react-query'
 import { queryClientInstance } from '@/lib/query-client'
 import VisualEditAgent from '@/lib/VisualEditAgent'
@@ -87,6 +89,7 @@ function App() {
           <AuthenticatedApp />
         </Router>
         <Toaster />
+        <SonnerToaster theme="light" position="top-right" richColors closeButton />
         <VisualEditAgent />
       </QueryClientProvider>
     </AuthProvider>
