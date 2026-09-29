@@ -1,0 +1,199 @@
+import React, { useMemo, useState } from 'react';
+import { Link, useNavigate } from 'react-router-dom';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { base44 } from '@/api/base44Client';
+import { PageTitle } from '@/components/common/PageHeader';
+import StatsCard from '@/components/dashboard/StatsCard';
+import { Card, CardContent, CardHeader } from '@/components/ui/card';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { AlarmClock, CalendarCheck, CheckCircle2, DollarSign, Download, ListChecks, PhoneCall, Plus, Search, TrendingUp, XCircle } from 'lucide-react';
+import { getEffectiveUser } from '@/components/utils/ImpersonationContext';
+import { createPageUrl } from '@/utils';
+import {
+  OUTCOMES, STAGES, StatusBadge, StageBadge, CallLink, LogFollowupDialog, NewFollowupDialog, fmtDate, money,
+} from '@/components/followups/followupUi';
+
+const TABS = {
+  overdue: { label: 'Overdue', test: (f) => f.followup_status === 'OVERDUE' },
+  today: { label: 'Due today', test: (f) => f.followup_status === 'DUE TODAY' },
+  upcoming: { label: 'Upcoming', test: (f) => f.followup_status === 'On Track' || f.followup_status === '-' },
+  closed: { label: 'Closed', test: (f) => f.followup_status === 'Closed' },
+  all: { label: 'All', test: () => true },
+};
+
+/**
+ * Student follow-ups — the CSE Follow-up Tracker inside the portal. A CS sees
+ * and works their own students; CS Managers and Chief Mentors also see the
+ * people under them; admin roles see everyone (the server enforces all of it).
+ */
+export default function StudentFollowups() {
+  const queryClient = useQueryClient();
+  const navigate = useNavigate();
+  const { data: currentUser } = useQuery({ queryKey: ['me-effective'], queryFn: async () => getEffectiveUser(await base44.auth.me()) });
+  const { data, isLoading, error } = useQuery({
+    queryKey: ['followups'],
+    queryFn: async () => (await base44.functions.invoke('getFollowups', {})).data,
+    enabled: !!currentUser,
+    refetchInterval: 60_000,
+  });
+  const canEditAny = ['super_admin', 'admin'].includes(currentUser?.app_role);
+  const { data: students = [] } = useQuery({
+    queryKey: ['followup-students', currentUser?.id],
+    queryFn: () => base44.entities.Student.list('-created_date'),
+    enabled: !!currentUser,
+  });
+  const myStudents = useMemo(
+    () => students.filter(s => canEditAny || s.primary_mentor_id === currentUser?.id).sort((a, b) => String(a.full_name || '').localeCompare(String(b.full_name || ''))),
+    [students, canEditAny, currentUser?.id],
+  );
+
+  const followups = data?.followups || [];
+  const stats = data?.stats || {};
+  const [tab, setTab] = useState('today');
+  const [stage, setStage] = useState('all');
+  const [outcome, setOutcome] = useState('all');
+  const [team, setTeam] = useState('all');
+  const [q, setQ] = useState('');
+  const [logging, setLogging] = useState(null);
+  const [creating, setCreating] = useState(false);
+
+  const teams = useMemo(() => [...new Set(followups.map(f => f.team_name).filter(Boolean))].sort(), [followups]);
+  const needle = q.trim().toLowerCase();
+  const base = followups.filter(f =>
+    (stage === 'all' || f.stage === stage) &&
+    (outcome === 'all' || f.target_outcome === outcome) &&
+    (team === 'all' || f.team_name === team) &&
+    (!needle || [f.student_name, f.student_code, f.phone, f.mentor_name, f.client_said].some(v => String(v || '').toLowerCase().includes(needle)))
+  );
+  const counts = Object.fromEntries(Object.entries(TABS).map(([k, t]) => [k, base.filter(t.test).length]));
+  const rows = base.filter(TABS[tab].test);
+  const refresh = () => queryClient.invalidateQueries({ queryKey: ['followups'] });
+  const showMentor = new Set(followups.map(f => f.mentor_id)).size > 1;
+
+  const exportCsv = () => {
+    const head = ['Student', 'Code', 'Phone', 'Mentor', 'Team', 'Target Outcome', 'Stage', 'Last Contact Date', 'Next Follow-up Due', 'Follow-up Status', 'Follow-up Count', 'What Client Said', 'Objection / Lost Reason', 'Converted Date', 'Deal Value', 'Notes'];
+    const lines = [head, ...rows.map(f => [f.student_name, f.student_code, f.phone, f.mentor_name, f.team_name, f.target_outcome, f.stage, f.last_contact_date, f.next_followup_date, f.followup_status, f.followup_count, f.client_said, f.objection_reason, f.converted_date, f.deal_value ?? '', f.notes])];
+    const csv = lines.map(r => r.map(v => `"${String(v ?? '').replace(/"/g, '""')}"`).join(',')).join('\n');
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv' }));
+    a.download = `followups_${TABS[tab].label.toLowerCase().replace(/\s+/g, '_')}_${data?.today || ''}.csv`;
+    a.click();
+  };
+
+  const TH = ({ children, right }) => <th className={`whitespace-nowrap px-3 py-3 text-[11px] font-semibold uppercase tracking-wider text-slate-500 ${right ? 'text-right' : 'text-left'}`}>{children}</th>;
+
+  return (
+    <div className="min-h-screen p-6">
+      <div className="mx-auto max-w-[1600px] space-y-6">
+        <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
+          <div>
+            <PageTitle eyebrow="Students" icon={PhoneCall}>Follow-ups</PageTitle>
+            <p className="mt-2 max-w-3xl text-sm text-slate-500 sm:text-base">
+              Your students’ follow-ups — call, log what they said and set the next date. Converted automatically when a matching approved deposit arrives.
+            </p>
+          </div>
+          <Button onClick={() => setCreating(true)} disabled={!myStudents.length}><Plus className="h-4 w-4" /> New follow-up</Button>
+        </div>
+
+        <div className="grid grid-cols-2 gap-4 md:grid-cols-4 xl:grid-cols-8">
+          <StatsCard title="Total" value={stats.total ?? 0} icon={ListChecks} color="blue" delay={0.02} />
+          <StatsCard title="Converted" value={stats.converted ?? 0} icon={CheckCircle2} color="emerald" delay={0.05} />
+          <StatsCard title="Lost" value={stats.lost ?? 0} icon={XCircle} color="red" delay={0.08} />
+          <StatsCard title="In progress" value={stats.in_progress ?? 0} icon={TrendingUp} color="cyan" delay={0.11} />
+          <StatsCard title="Conversion" value={`${Math.round((stats.conversion_rate || 0) * 100)}%`} icon={TrendingUp} color="purple" delay={0.14} />
+          <StatsCard title="Overdue" value={stats.overdue ?? 0} icon={AlarmClock} color="red" delay={0.17} />
+          <StatsCard title="Due today" value={stats.due_today ?? 0} icon={CalendarCheck} color="amber" delay={0.2} />
+          <StatsCard title="Revenue" value={`$${(stats.revenue || 0).toLocaleString('en-US')}`} icon={DollarSign} color="emerald" delay={0.23} />
+        </div>
+
+        <Card className="overflow-hidden">
+          <CardHeader className="space-y-3 border-b">
+            <Tabs value={tab} onValueChange={setTab}>
+              <TabsList className="h-auto flex-wrap">
+                {Object.entries(TABS).map(([k, t]) => (
+                  <TabsTrigger key={k} value={k}>{t.label} <span className="ml-1.5 rounded-full bg-slate-200/70 px-1.5 text-[11px] tabular">{counts[k]}</span></TabsTrigger>
+                ))}
+              </TabsList>
+            </Tabs>
+            <div className="flex flex-wrap items-center gap-2">
+              <Select value={stage} onValueChange={(v) => v && setStage(v)}>
+                <SelectTrigger className="h-9 w-44"><SelectValue /></SelectTrigger>
+                <SelectContent><SelectItem value="all">All stages</SelectItem>{STAGES.map(s => <SelectItem key={s} value={s}>{s}</SelectItem>)}</SelectContent>
+              </Select>
+              <Select value={outcome} onValueChange={(v) => v && setOutcome(v)}>
+                <SelectTrigger className="h-9 w-52"><SelectValue /></SelectTrigger>
+                <SelectContent><SelectItem value="all">All target outcomes</SelectItem>{OUTCOMES.map(o => <SelectItem key={o} value={o}>{o}</SelectItem>)}</SelectContent>
+              </Select>
+              {teams.length > 1 && (
+                <Select value={team} onValueChange={(v) => v && setTeam(v)}>
+                  <SelectTrigger className="h-9 w-44"><SelectValue /></SelectTrigger>
+                  <SelectContent><SelectItem value="all">All teams</SelectItem>{teams.map(t => <SelectItem key={t} value={t}>{t}</SelectItem>)}</SelectContent>
+                </Select>
+              )}
+              <div className="relative">
+                <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+                <Input value={q} onChange={e => setQ(e.target.value)} placeholder="Student, phone, what they said…" className="h-9 w-64 pl-9" />
+              </div>
+              <Button variant="outline" size="sm" onClick={exportCsv} disabled={!rows.length}><Download className="h-4 w-4" /> CSV</Button>
+            </div>
+          </CardHeader>
+          <CardContent className="p-0">
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b bg-slate-50/80">
+                    <TH>Student</TH><TH>Phone</TH>{showMentor && <TH>Mentor</TH>}<TH>Target Outcome</TH><TH>Stage</TH>
+                    <TH>Last Contact</TH><TH>Next Follow-up</TH><TH>Status</TH><TH right>Count</TH>
+                    <TH>What Client Said</TH><TH>Objection / Lost Reason</TH><TH>Converted</TH><TH right>Deal Value</TH><TH>Notes</TH><TH />
+                  </tr>
+                </thead>
+                <tbody>
+                  {isLoading ? (
+                    <tr><td colSpan={15} className="py-12 text-center text-slate-400">Loading follow-ups…</td></tr>
+                  ) : error ? (
+                    <tr><td colSpan={15} className="py-12 text-center text-rose-600">{error.message || 'Could not load follow-ups'}</td></tr>
+                  ) : rows.length === 0 ? (
+                    <tr><td colSpan={15} className="py-12 text-center text-slate-400">
+                      {followups.length ? `Nothing ${TABS[tab].label.toLowerCase()}.` : 'No follow-ups yet — open one with New follow-up.'}
+                    </td></tr>
+                  ) : rows.map(f => (
+                    <tr key={f.id}
+                      className="cursor-pointer border-b border-slate-100 align-top hover:bg-brand-cyan/[0.04]"
+                      onClick={(e) => { if (!e.target.closest('button, a')) navigate(`${createPageUrl('StudentDetail')}?id=${f.student_id}`); }}>
+                      <td className="px-3 py-2.5">
+                        <Link to={`${createPageUrl('StudentDetail')}?id=${f.student_id}`} className="font-medium text-slate-900 hover:text-blue-600">{f.student_name}</Link>
+                        <div className="font-mono text-xs text-slate-400">{f.student_code}</div>
+                      </td>
+                      <td className="px-3 py-2.5"><CallLink phone={f.phone} /></td>
+                      {showMentor && <td className="px-3 py-2.5 text-slate-600">{f.mentor_name}<div className="text-xs text-slate-400">{f.team_name}</div></td>}
+                      <td className="whitespace-nowrap px-3 py-2.5 text-slate-700">{f.target_outcome}</td>
+                      <td className="px-3 py-2.5"><StageBadge stage={f.stage} /></td>
+                      <td className="whitespace-nowrap px-3 py-2.5 text-slate-600">{fmtDate(f.last_contact_date)}</td>
+                      <td className="whitespace-nowrap px-3 py-2.5 text-slate-600">{fmtDate(f.next_followup_date)}</td>
+                      <td className="px-3 py-2.5"><StatusBadge status={f.followup_status} /></td>
+                      <td className="tabular px-3 py-2.5 text-right text-slate-700">{f.followup_count}</td>
+                      <td className="max-w-[260px] px-3 py-2.5 text-slate-600">{f.client_said || <span className="text-slate-300">—</span>}</td>
+                      <td className="max-w-[200px] px-3 py-2.5 text-slate-600">{f.objection_reason || <span className="text-slate-300">—</span>}</td>
+                      <td className="whitespace-nowrap px-3 py-2.5 text-slate-600">{f.converted_date ? <>{fmtDate(f.converted_date)}{f.auto_converted && <div className="text-[11px] text-emerald-600">automatic</div>}</> : <span className="text-slate-300">—</span>}</td>
+                      <td className="tabular whitespace-nowrap px-3 py-2.5 text-right font-medium text-slate-800">{money(f.deal_value)}</td>
+                      <td className="max-w-[220px] px-3 py-2.5 text-slate-500">{f.notes || <span className="text-slate-300">—</span>}</td>
+                      <td className="px-3 py-2.5 text-right">
+                        {f.can_edit && <Button size="sm" variant="outline" onClick={() => setLogging(f)}>Log</Button>}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+
+      <LogFollowupDialog followup={logging} onClose={() => setLogging(null)} onSaved={refresh} />
+      <NewFollowupDialog open={creating} onClose={() => setCreating(false)} onSaved={refresh} students={myStudents} />
+    </div>
+  );
+}

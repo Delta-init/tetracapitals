@@ -21,6 +21,7 @@ import { searchStudents } from "./searchStudents";
 import { getStudentHistory } from "./getStudentHistory";
 import { reassignStudents } from "./reassignStudents";
 import { getStudentMoves } from "./getStudentMoves";
+import { getFollowups, createFollowup, logFollowup, getFollowupTeams } from "./studentFollowups";
 import { getInactivityTransfer, setInactivityTransfer, runInactivityTransfer } from "./inactivityTransfer";
 import { financeFundingConfigured } from "../finance/funding";
 import type { AuthUser } from "../auth/middleware";
@@ -32,6 +33,10 @@ const AUTHED: Record<string, AuthedHandler> = {
   getAllUsers,
   reassignStudents,
   getStudentMoves,
+  getFollowups,
+  createFollowup,
+  logFollowup,
+  getFollowupTeams,
   getInactivityTransfer,
   setInactivityTransfer,
   runInactivityTransfer,
