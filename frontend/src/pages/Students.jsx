@@ -14,7 +14,9 @@ import StudentRequestForm from "../components/students/StudentRequestForm";
 import BulkImportStudentsDialog from "../components/students/BulkImportStudentsDialog";
 import { isMentorRole as isMentorTier, getScope, downlineIds } from "@/components/utils/roles";
 
-import { Plus, Search, Eye, Users, UserCheck, Upload, Download, Filter, ArrowUp, Share2, Trash2 } from "lucide-react";
+import { Plus, Search, Eye, Users, UserCheck, Upload, Download, Filter, ArrowUp, Share2, Trash2, ArrowRightLeft } from "lucide-react";
+import TransferStudentsDialog from "../components/students/TransferStudentsDialog";
+import { listTeams } from "@/components/utils/teams";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
@@ -43,6 +45,8 @@ export default function Students() {
   const [filterMentor, setFilterMentor] = useState('all');
   const [filterStatus, setFilterStatus] = useState('all');
   const [filterLevel, setFilterLevel] = useState('all');
+  const [filterTeam, setFilterTeam] = useState('all');
+  const [showTransferDialog, setShowTransferDialog] = useState(false);
   const [filterDateRange, setFilterDateRange] = useState('all');
   const [customDateFrom, setCustomDateFrom] = useState(null);
   const [customDateTo, setCustomDateTo] = useState(null);
@@ -324,10 +328,7 @@ export default function Students() {
 
   const handleSelectAll = (checked, currentFilteredStudents) => {
     if (checked) {
-      const level1StudentIds = currentFilteredStudents
-        .filter(s => (s.student_level || 'LEVEL_1') === 'LEVEL_1')
-        .map(s => s.id);
-      setSelectedStudentIds(level1StudentIds);
+      setSelectedStudentIds(currentFilteredStudents.map(s => s.id));
     } else {
       setSelectedStudentIds([]);
     }
@@ -434,6 +435,11 @@ export default function Students() {
     filteredStudents = filteredStudents.filter(s => s.status === filterStatus);
   }
 
+  // Apply team filter
+  if (filterTeam !== 'all') {
+    filteredStudents = filteredStudents.filter(s => (filterTeam === 'none' ? !s.team_id : s.team_id === filterTeam));
+  }
+
   // Apply level filter
   if (filterLevel !== 'all') {
     filteredStudents = filteredStudents.filter(s => (s.student_level || 'LEVEL_1') === filterLevel);
@@ -468,6 +474,9 @@ export default function Students() {
   };
   
   const canEdit = canEditStudent(currentUser.app_role);
+  // Selected rows for Transfer (any level); Upgrade still uses only Level 1.
+  const selectedStudents = students.filter(s => selectedStudentIds.includes(s.id));
+  const teamOptions = listTeams(users);
   const canDelete = canDeleteStudent(currentUser.app_role);
   
   const getStatusColor = (status) => {
@@ -529,6 +538,12 @@ export default function Students() {
           title="Students"
           description="Profiles, mentors, levels and funding activity for every student."
           actions={<>
+            {canEdit && selectedStudents.length > 0 && (
+              <Button onClick={() => setShowTransferDialog(true)}>
+                <ArrowRightLeft className="h-4 w-4 mr-2" />
+                Transfer {selectedStudents.length}
+              </Button>
+            )}
             {isSuperAdmin && selectedLevel1Students.length > 0 && (
               <Button 
                 onClick={handleBulkUpgrade}
@@ -603,6 +618,18 @@ export default function Students() {
                       <SelectItem value="all">All Status</SelectItem>
                       <SelectItem value="ACTIVE">Active</SelectItem>
                       <SelectItem value="INACTIVE">Inactive</SelectItem>
+                    </SelectContent>
+                  </Select>
+
+                  {/* Team Filter */}
+                  <Select value={filterTeam} onValueChange={setFilterTeam}>
+                    <SelectTrigger className="w-44">
+                      <SelectValue placeholder="Team" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">All Teams</SelectItem>
+                      {teamOptions.map(t => <SelectItem key={t.id} value={t.id}>{t.name}</SelectItem>)}
+                      <SelectItem value="none">No team</SelectItem>
                     </SelectContent>
                   </Select>
 
@@ -880,12 +907,10 @@ export default function Students() {
                 <Table>
                   <TableHeader>
                     <TableRow className="bg-gray-50">
-                      {isSuperAdmin && (
+                      {canEdit && (
                         <TableHead className="w-12">
                           <Checkbox
-                            checked={selectedStudentIds.length > 0 && 
-                              filteredStudents.filter(s => (s.student_level || 'LEVEL_1') === 'LEVEL_1').length > 0 &&
-                              filteredStudents.filter(s => (s.student_level || 'LEVEL_1') === 'LEVEL_1').every(s => selectedStudentIds.includes(s.id))}
+                            checked={filteredStudents.length > 0 && filteredStudents.every(s => selectedStudentIds.includes(s.id))}
                             onCheckedChange={(checked) => handleSelectAll(checked, filteredStudents)}
                           />
                         </TableHead>
@@ -906,19 +931,18 @@ export default function Students() {
                   <TableBody>
                     {displayStudents.length === 0 ? (
                       <TableRow>
-                        <TableCell colSpan={isSuperAdmin ? 12 : 11} className="text-center py-8 text-gray-500">
+                        <TableCell colSpan={canEdit ? 12 : 11} className="text-center py-8 text-gray-500">
                           No students found
                         </TableCell>
                       </TableRow>
                     ) : (
                       displayStudents.map((student) => (
                         <TableRow key={student.id} className="hover:bg-gray-50 transition-colors">
-                          {isSuperAdmin && (
+                          {canEdit && (
                             <TableCell>
                               <Checkbox
                                 checked={selectedStudentIds.includes(student.id)}
                                 onCheckedChange={(checked) => handleSelectStudent(student.id, checked)}
-                                disabled={(student.student_level || 'LEVEL_1') !== 'LEVEL_1'}
                               />
                             </TableCell>
                           )}
@@ -1321,6 +1345,19 @@ export default function Students() {
             )}
           </DialogContent>
         </Dialog>
+
+        {/* Transfer to team / CS */}
+        <TransferStudentsDialog
+          open={showTransferDialog}
+          onOpenChange={setShowTransferDialog}
+          students={selectedStudents}
+          users={users}
+          onDone={() => {
+            queryClient.invalidateQueries({ queryKey: ['students'] });
+            queryClient.invalidateQueries({ queryKey: ['all-students-co-managed'] });
+            setSelectedStudentIds([]);
+          }}
+        />
 
         {/* Bulk Import Dialog */}
         <BulkImportStudentsDialog

@@ -1,5 +1,6 @@
-import React, { useState, useEffect, useRef } from 'react';
-import { isSeniorTier } from '@/components/utils/roles';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
+import { isSeniorTier, isMentorRole, BUILTIN_ROLE_NAMES } from '@/components/utils/roles';
+import { listTeams, teamOfUser } from '@/components/utils/teams';
 import { base44 } from "@/api/base44Client";
 import { useQuery } from "@tanstack/react-query";
 import { Input } from "@/components/ui/input";
@@ -46,10 +47,20 @@ export default function StudentForm({ student, onSubmit, onCancel, isSubmitting,
     }
   }, [student]);
 
-  const juniorMentors = users.filter(u => u.app_role === 'junior_mentor');
-  const seniorMentors = users.filter(u => isSeniorTier(u.app_role));
-  const subJuniorMentors = users.filter(u => u.app_role === 'subjunior_mentor');
-  const allMentors = [...juniorMentors, ...seniorMentors, ...subJuniorMentors];
+  // Team first, then the person in it (anyone on the team; CS listed first).
+  // The server works the student's team out from the mentor, so only the
+  // mentor is saved. "No team" lists staff not on any team yet.
+  const NO_TEAM = '__none__';
+  const teams = useMemo(() => listTeams(users), [users]);
+  const noTeamStaff = useMemo(() =>
+    users.filter(u => isMentorRole(u.app_role) && u.status !== 'inactive' && !teamOfUser(u.id, teams))
+      .sort((a, b) => String(a.full_name || '').localeCompare(String(b.full_name || ''))),
+  [users, teams]);
+  const [teamChoice, setTeamChoice] = useState(null);
+  const derivedTeam = teamOfUser(formData.primary_mentor_id, teams)?.id || NO_TEAM;
+  const selectedTeam = teamChoice ?? derivedTeam;
+  const people = selectedTeam === NO_TEAM ? noTeamStaff : (teams.find(t => t.id === selectedTeam)?.members || []);
+  const roleName = (r) => BUILTIN_ROLE_NAMES[r] || ({ cs: 'CS', cs_manager: 'CS Manager' }[r]) || String(r || '').replace(/_/g, ' ');
 
   // Synchronous double-submit guard — `isSubmitting` only flips after React
   // re-renders, so a fast second click could fire onSubmit twice.
@@ -144,18 +155,46 @@ export default function StudentForm({ student, onSubmit, onCancel, isSubmitting,
         </div>
         
         <div className="space-y-2">
-          <Label htmlFor="primary_mentor">Primary Mentor</Label>
+          <Label htmlFor="team">Team</Label>
           <Select
-            value={formData.primary_mentor_id}
-            onValueChange={(value) => setFormData({ ...formData, primary_mentor_id: value })}
+            value={selectedTeam}
+            onValueChange={(value) => {
+              // Radix reports "" when its option list changes under it (e.g. the
+              // user list is still loading) — never treat that as a choice.
+              if (!value) return;
+              setTeamChoice(value);
+              // Keep the person only if they're on the newly picked team.
+              const inTeam = value === NO_TEAM
+                ? noTeamStaff.some(u => u.id === formData.primary_mentor_id)
+                : teams.find(t => t.id === value)?.members.some(m => m.id === formData.primary_mentor_id);
+              if (!inTeam) setFormData({ ...formData, primary_mentor_id: '' });
+            }}
           >
             <SelectTrigger>
-              <SelectValue placeholder="Select Mentor" />
+              <SelectValue placeholder="Select team" />
             </SelectTrigger>
             <SelectContent>
-              {allMentors.map((mentor) => (
-                <SelectItem key={mentor.id} value={mentor.id}>
-                  {mentor.full_name} ({mentor.app_role === 'junior_mentor' ? 'Junior' : mentor.app_role === 'subjunior_mentor' ? 'Sub Junior' : 'Senior'})
+              {teams.map(t => (
+                <SelectItem key={t.id} value={t.id}>{t.name} · {t.members.length}</SelectItem>
+              ))}
+              <SelectItem value={NO_TEAM}>No team</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
+
+        <div className="space-y-2">
+          <Label htmlFor="primary_mentor">Primary Mentor</Label>
+          <Select
+            value={formData.primary_mentor_id || undefined}
+            onValueChange={(value) => { if (value) setFormData(f => ({ ...f, primary_mentor_id: value })); }}
+          >
+            <SelectTrigger>
+              <SelectValue placeholder={people.length ? 'Select person' : 'Nobody here yet'} />
+            </SelectTrigger>
+            <SelectContent>
+              {people.map((p) => (
+                <SelectItem key={p.id} value={p.id}>
+                  {p.full_name} ({roleName(p.app_role)})
                 </SelectItem>
               ))}
             </SelectContent>
