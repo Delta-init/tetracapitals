@@ -22,8 +22,10 @@ import TagChips from "../components/funding/TagChips";
 import { 
   canProcessFundingTransaction,
   canCreateFundingTransaction,
-  filterFundingTransactionsByRole 
+  filterFundingTransactionsByRole,
+  isWithAccounts
 } from "../components/utils/FundingAccessControl";
+import { useFinanceLink, WithAccountsBadge, FinanceApprovalNote } from "../components/funding/FinanceApproval";
 import { toast } from "sonner";
 import { format } from "date-fns";
 import { logAction } from "../components/utils/AuditLogger";
@@ -50,6 +52,10 @@ export default function FundingRequests() {
   const [creditsTx, setCreditsTx] = useState(null); // transaction whose commission breakdown is open
 
   const queryClient = useQueryClient();
+  // New deposits are approved by Delta Finance's accountants: while they have
+  // one it shows "With accounts" here, and cannot be approved or rejected.
+  const financeOn = useFinanceLink();
+  const withAccounts = (t) => isWithAccounts(t, financeOn);
 
   useEffect(() => {
     const fetchUser = async () => {
@@ -258,7 +264,7 @@ export default function FundingRequests() {
   };
 
   // Bulk approval handlers
-  const pendingTransactions = filteredTransactions.filter(t => t.status === 'PENDING');
+  const pendingTransactions = filteredTransactions.filter(t => t.status === 'PENDING' && !withAccounts(t));
   const selectedPendingIds = selectedIds.filter(id => 
     pendingTransactions.some(t => t.id === id)
   );
@@ -402,9 +408,17 @@ export default function FundingRequests() {
       return;
     }
 
+    // Deposits with the accountants are rejected there, not deleted here.
+    const deletable = selectedIds.filter(id => !withAccounts(transactions.find(t => t.id === id)));
+    const kept = selectedIds.length - deletable.length;
+    if (deletable.length === 0) {
+      toast.error('Those are with Delta Finance for approval — they are rejected there, not deleted');
+      return;
+    }
+
     setIsBulkProcessing(true);
     try {
-      const deletePromises = selectedIds.map(id => {
+      const deletePromises = deletable.map(id => {
         const transaction = transactions.find(t => t.id === id);
         return base44.entities.FundingTransaction.delete(id).then(() => 
           logAction('delete_funding_transaction', 'FundingTransaction', id, 
@@ -416,7 +430,8 @@ export default function FundingRequests() {
       queryClient.invalidateQueries({ queryKey: ['funding-transactions'] });
       setSelectedIds([]);
       setShowBulkDeleteDialog(false);
-      toast.success(`Successfully deleted ${selectedIds.length} transactions`);
+      toast.success(`Successfully deleted ${deletable.length} transactions` +
+        (kept ? ` — ${kept} left alone, being with Delta Finance for approval` : ''));
     } catch (error) {
       toast.error('Failed to bulk delete transactions');
     } finally {
@@ -787,7 +802,7 @@ export default function FundingRequests() {
                                 onCheckedChange={(checked) => handleSelectOne(transaction.id, checked)}
                               />
                             ) : (
-                              transaction.status === 'PENDING' && (
+                              transaction.status === 'PENDING' && !withAccounts(transaction) && (
                                 <Checkbox
                                   checked={selectedIds.includes(transaction.id)}
                                   onCheckedChange={(checked) => handleSelectOne(transaction.id, checked)}
@@ -814,9 +829,14 @@ export default function FundingRequests() {
                           </div>
                         </TableCell>
                         <TableCell>
-                          <Badge variant="outline" className={getStatusColor(transaction.status)}>
-                            {transaction.status}
-                          </Badge>
+                          {withAccounts(transaction) ? (
+                            <WithAccountsBadge transaction={transaction} />
+                          ) : (
+                            <Badge variant="outline" className={getStatusColor(transaction.status)}>
+                              {transaction.status}
+                            </Badge>
+                          )}
+                          <FinanceApprovalNote transaction={transaction} />
                         </TableCell>
                         <TableCell className="font-medium">{transaction.student_name}</TableCell>
                         <TableCell className="text-sm">
@@ -897,7 +917,10 @@ export default function FundingRequests() {
                                 </Button>
                               </a>
                             )}
-                            {canProcess && transaction.status === 'PENDING' && (
+                            {canProcess && withAccounts(transaction) && (
+                              <span className="self-center text-xs text-sky-700 whitespace-nowrap">Waiting for accounts</span>
+                            )}
+                            {canProcess && transaction.status === 'PENDING' && !withAccounts(transaction) && (
                               <Button
                                 size="sm"
                                 variant="ghost"

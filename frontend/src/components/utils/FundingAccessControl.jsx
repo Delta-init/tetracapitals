@@ -11,6 +11,21 @@ export const canProcessFundingTransaction = (role) => {
   return ['broker_admin', 'super_admin', 'admin'].includes(role);
 };
 
+/**
+ * A deposit request Delta Finance's accountants are deciding. New deposits go
+ * there for approval (backend/src/finance/funding.ts); until the decision
+ * comes back, nobody here approves, rejects or deletes them — the server
+ * refuses, and the pages show "With accounts" instead of the actions. One
+ * still waiting to be sent counts only while the link is on (`linkOn`, from
+ * useFinanceLink): switched off, it never reached finance and is approved here.
+ */
+export const isWithAccounts = (t, linkOn = true) =>
+  t?.status === 'PENDING' &&
+  (t?.finance_approval?.state === 'sent' || (t?.finance_approval?.state === 'queued' && linkOn));
+
+/** A deposit finance would not take — handed back, and approved here as before. */
+export const isHandedBack = (t) => t?.status === 'PENDING' && t?.finance_approval?.state === 'refused';
+
 export const canViewAllFundingTransactions = (role) => {
   return ['super_admin', 'admin', 'broker_admin', 'academic_head', 'academic_admin', 'finance_admin'].includes(role);
 };

@@ -134,6 +134,7 @@ from forging `_id`. Role-based access is enforced by `entities/registry.ts`.
 | `processReferralResponse`      | receiving mentor only                                                        | `{ referral_id, action: "approve"|"reject", rejection_reason? }`. Approval also creates a `PENDING` FundingTransaction. |
 | `processWithdrawal`            | super/broker/academic                                                       | Stub kept for parity with frontend |
 | `updateCoMentorContribution`   | any authenticated                                                            | `{ student_id, mentor_id }` — recalculates a co-mentor's `net_deposit_contribution_usd` |
+| `getFinanceLink`               | any authenticated                                                            | `{ depositsToFinance }` — whether new deposit requests go to Delta finance for approval (see `src/finance/funding.ts`) |
 
 ### Integrations
 

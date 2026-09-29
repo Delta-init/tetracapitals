@@ -35,6 +35,24 @@ export const config = {
    */
   financeS2sSecret: process.env.FINANCE_S2S_SECRET ?? "",
   /**
+   * Delta finance's approvals, where each new deposit request is sent for the
+   * accountants to approve or reject — the same signed door the sales CRM and
+   * Media ERP use, with the same client id and secret they are given. The
+   * decision comes back on the route FINANCE_S2S_SECRET guards.
+   *
+   *   financeApiUrl             finance's API origin
+   *   financeClientId           its INBOUND_CLIENT_ID
+   *   financeIntegrationSecret  its INBOUND_INTEGRATION_SECRET
+   *   financeOrgId              the organization the deposits land in (Delta HQ)
+   *
+   * All four set turns it on. Any of them unset and deposits are approved here,
+   * as before.
+   */
+  financeApiUrl: process.env.FINANCE_API_URL ?? "",
+  financeClientId: process.env.FINANCE_CLIENT_ID ?? "",
+  financeIntegrationSecret: process.env.FINANCE_INTEGRATION_SECRET ?? "",
+  financeOrgId: process.env.FINANCE_ORG_ID ?? "",
+  /**
    * The Delta LMS, which sends every other new student here (the ones finance
    * did not enrol). What the LMS presents in `x-lms-secret`; must match its
    * COMMISSION_S2S_SECRET. Unset turns the route off — never open.

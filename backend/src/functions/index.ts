@@ -19,6 +19,7 @@ import { approveCommissionPeriod } from "./approveCommissionPeriod";
 import { distributeDepositPool } from "./distributeDepositPool";
 import { searchStudents } from "./searchStudents";
 import { getStudentHistory } from "./getStudentHistory";
+import { financeFundingConfigured } from "../finance/funding";
 import type { AuthUser } from "../auth/middleware";
 
 type AuthedHandler = (req: Request, user: AuthUser) => Promise<Response>;
@@ -47,6 +48,8 @@ const AUTHED: Record<string, AuthedHandler> = {
   distributeDepositPool,
   searchStudents,
   getStudentHistory,
+  // Whether new deposits go to Delta finance for approval — the pages follow the server's switch.
+  getFinanceLink: async () => json({ depositsToFinance: financeFundingConfigured() }),
   wipeData,
 };
 

@@ -2,6 +2,7 @@ import { col } from "../db";
 import { json, error, forbidden, notFound } from "../lib/response";
 import { serialize, toObjectId } from "../lib/id";
 import type { AuthUser } from "../auth/middleware";
+import { financeLock, withFinance, WITH_FINANCE_MESSAGE } from "../finance/funding";
 
 /**
  * POST /api/functions/masterEditTransaction
@@ -91,6 +92,9 @@ export async function masterEditTransaction(req: Request, caller: AuthUser): Pro
   if (Object.keys(patch).length === 0) {
     return error("Nothing to update — patch was empty after whitelisting", 400);
   }
+  // Not even here: a deposit Delta finance is deciding is decided there.
+  const locked = financeLock(before, patch);
+  if (locked) return error(locked, 409);
 
   const now = new Date().toISOString();
   patch.updated_date = now;
@@ -147,6 +151,7 @@ export async function masterDeleteTransaction(req: Request, caller: AuthUser): P
 
   const doc = await col("funding_transactions").findOne({ _id: oid });
   if (!doc) return notFound("Transaction not found");
+  if (withFinance(doc)) return error(WITH_FINANCE_MESSAGE, 409);
 
   await col("funding_transactions").deleteOne({ _id: oid });
 
@@ -192,6 +197,10 @@ export async function masterBulkEditTransactions(req: Request, caller: AuthUser)
 
   const oids = ids.map((id) => toObjectId(id)).filter((o): o is NonNullable<typeof o> => !!o);
   if (!oids.length) return error("No valid ids", 400);
+  for (const doc of await col("funding_transactions").find({ _id: { $in: oids } }).toArray()) {
+    const locked = financeLock(doc, { ...patch });
+    if (locked) return error(`${(doc as any).student_name ?? "One of them"}: ${locked}`, 409);
+  }
 
   const now = new Date().toISOString();
   patch.updated_date = now;

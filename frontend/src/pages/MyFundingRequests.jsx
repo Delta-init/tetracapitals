@@ -12,9 +12,11 @@ import { Plus, TrendingUp, TrendingDown, DollarSign, Award, Wallet, Eye, Users, 
 import { Input } from "@/components/ui/input";
 import FundingRequestForm from "../components/funding/FundingRequestForm";
 import TagChips from "../components/funding/TagChips";
+import { useFinanceLink, WithAccountsBadge, FinanceApprovalNote } from "../components/funding/FinanceApproval";
 import {
   canCreateFundingTransaction,
-  filterFundingTransactionsByRole 
+  filterFundingTransactionsByRole,
+  isWithAccounts
 } from "../components/utils/FundingAccessControl";
 import { 
   calculateQuarterlyNetDepositAndCommission,
@@ -43,6 +45,8 @@ export default function MyFundingRequests() {
   const [selectedYear, setSelectedYear] = useState(currentYear);
 
   const queryClient = useQueryClient();
+  // A deposit Delta Finance's accountants are deciding shows "With accounts".
+  const financeOn = useFinanceLink();
 
   useEffect(() => {
     const fetchUser = async () => {
@@ -704,9 +708,14 @@ export default function MyFundingRequests() {
                                     </div>
                                   </TableCell>
                                   <TableCell>
-                                    <Badge variant="outline" className={getStatusColor(transaction.status)}>
-                                      {transaction.status}
-                                    </Badge>
+                                    {isWithAccounts(transaction, financeOn) ? (
+                                      <WithAccountsBadge transaction={transaction} />
+                                    ) : (
+                                      <Badge variant="outline" className={getStatusColor(transaction.status)}>
+                                        {transaction.status}
+                                      </Badge>
+                                    )}
+                                    <FinanceApprovalNote transaction={transaction} />
                                   </TableCell>
                                   <TableCell className="font-medium">{transaction.student_name}</TableCell>
                                   <TableCell className="font-mono text-sm text-blue-600">{transaction.student_code}</TableCell>
@@ -873,9 +882,14 @@ export default function MyFundingRequests() {
                                 </div>
                               </TableCell>
                               <TableCell>
-                                <Badge variant="outline" className={getStatusColor(transaction.status)}>
-                                  {transaction.status}
-                                </Badge>
+                                {isWithAccounts(transaction, financeOn) ? (
+                                  <WithAccountsBadge transaction={transaction} />
+                                ) : (
+                                  <Badge variant="outline" className={getStatusColor(transaction.status)}>
+                                    {transaction.status}
+                                  </Badge>
+                                )}
+                                <FinanceApprovalNote transaction={transaction} />
                               </TableCell>
                               <TableCell className="font-medium">{transaction.student_name}</TableCell>
                               <TableCell className="font-mono text-sm text-blue-600">

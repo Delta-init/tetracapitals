@@ -57,6 +57,12 @@ export async function ensureIndexes(): Promise<void> {
     d.collection("funding_transactions").createIndex({ primary_mentor_id: 1 }),
     d.collection("funding_transactions").createIndex({ initiating_mentor_id: 1 }),
     d.collection("funding_transactions").createIndex({ requested_at: -1 }),
+    // Deposits waiting to go to Delta finance, and the transaction-ID check its decisions make.
+    d.collection("funding_transactions").createIndex(
+      { "finance_approval.state": 1, "finance_approval.next_attempt_at": 1 },
+      { partialFilterExpression: { "finance_approval.state": { $exists: true } } },
+    ),
+    d.collection("funding_transactions").createIndex({ transaction_id: 1 }),
     d.collection("tickets").createIndex({ ticket_number: 1 }, { unique: true, sparse: true }),
     d.collection("tickets").createIndex({ status: 1, escalated: 1, created_date: -1 }),
     d.collection("ticket_messages").createIndex({ ticket_id: 1, created_date: 1 }),

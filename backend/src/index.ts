@@ -2,6 +2,7 @@ import { config } from "./config";
 import { connectDb, ensureIndexes, closeDb } from "./db";
 import { route } from "./router";
 import { error as errorResponse } from "./lib/response";
+import { startFinanceFundingWorker } from "./finance/funding";
 
 async function main() {
   await connectDb();
@@ -21,6 +22,8 @@ async function main() {
     },
   });
   console.log(`[student-tracker] API listening on http://localhost:${server.port}`);
+  // New deposit requests to Delta finance for approval, retried until it has them.
+  startFinanceFundingWorker();
 }
 
 const shutdown = async (signal: string) => {

@@ -18,18 +18,30 @@ export async function creditCommission(req: Request, _user: AuthUser): Promise<R
   const body: any = await req.json().catch(() => null);
   const txId: string | undefined = body?.transaction_id;
   if (!txId) return error("transaction_id required", 400);
+  if (!toObjectId(txId)) return error("Invalid transaction_id", 400);
+  const result = await creditCommissionFor(txId);
+  if (!result) return error("Transaction not found", 404);
+  return json(result);
+}
+
+/**
+ * The same, called by the server itself — a deposit approved in Delta finance
+ * is credited when the decision arrives (finance/funding.ts), with nobody's
+ * browser involved. Null when there is no such transaction.
+ */
+export async function creditCommissionFor(txId: string): Promise<Record<string, unknown> | null> {
   const oid = toObjectId(txId);
-  if (!oid) return error("Invalid transaction_id", 400);
+  if (!oid) return null;
 
   const tx: any = await col("funding_transactions").findOne({ _id: oid });
-  if (!tx) return error("Transaction not found", 404);
+  if (!tx) return null;
   if (!["BONUS", "DEPOSIT", "WITHDRAWAL"].includes(tx.type) || tx.status !== "APPROVED") {
-    return json({ ok: true, skipped: true, reason: "Not an approved bonus/deposit/withdrawal" });
+    return { ok: true, skipped: true, reason: "Not an approved bonus/deposit/withdrawal" };
   }
 
   // Idempotency: never double-credit the same transaction.
   const already = await col("commission_credits").countDocuments({ transaction_id: txId });
-  if (already > 0) return json({ ok: true, skipped: true, reason: "Already credited", count: already });
+  if (already > 0) return { ok: true, skipped: true, reason: "Already credited", count: already };
 
   // Which method? Bonus type comes from the tag.
   let methodKey: "bonus_with" | "bonus_without" | "deposit" = "deposit";
@@ -50,13 +62,13 @@ export async function creditCommission(req: Request, _user: AuthUser): Promise<R
   const startId: string | null = tx.initiating_mentor_id || tx.primary_mentor_id || null;
   const startOid = startId ? toObjectId(startId) : null;
   const initiator: any = startOid ? await col("users").findOne({ _id: startOid }, { projection: { password_hash: 0 } }) : null;
-  if (!initiator) return json({ ok: true, skipped: true, reason: "No initiating staff on transaction" });
+  if (!initiator) return { ok: true, skipped: true, reason: "No initiating staff on transaction" };
   if (!initiator.commission_plan_id) {
-    return json({ ok: true, skipped: true, reason: "Initiator has no commission plan assigned" });
+    return { ok: true, skipped: true, reason: "Initiator has no commission plan assigned" };
   }
   const planOid = toObjectId(initiator.commission_plan_id);
   const plan: any = planOid ? await col("commission_plans").findOne({ _id: planOid, active: { $ne: false } }) : null;
-  if (!plan) return json({ ok: true, skipped: true, reason: "Assigned plan not found or inactive" });
+  if (!plan) return { ok: true, skipped: true, reason: "Assigned plan not found or inactive" };
 
   // Resolve this method's levels (new per-method arrays; fall back to the legacy
   // single `levels` array with three % columns).
@@ -66,7 +78,7 @@ export async function creditCommission(req: Request, _user: AuthUser): Promise<R
     levels = plan.levels.map((l: any, i: number) => ({ level: i + 1, percentage: l[legacyPct] ?? 0 }));
   }
   if (!levels.length) {
-    return json({ ok: true, skipped: true, reason: `Plan has no levels configured for ${methodKey}` });
+    return { ok: true, skipped: true, reason: `Plan has no levels configured for ${methodKey}` };
   }
 
   // Build the chain of people from the initiator up, following up_head_id.
@@ -173,11 +185,11 @@ export async function creditCommission(req: Request, _user: AuthUser): Promise<R
   }
 
   if (credits.length) await col("commission_credits").insertMany(credits as any[]);
-  return json({
+  return {
     ok: true,
     credited: credits.length,
     plan: plan.name,
     method: methodKey,
     breakdown: credits.map((c) => ({ level: c.level, recipient: c.recipient_name, pct: c.percentage, amount: c.commission_usd })),
-  });
+  };
 }

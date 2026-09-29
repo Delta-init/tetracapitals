@@ -8,6 +8,7 @@ import { getAuthUser, type AuthUser } from "../auth/middleware";
 import { buildScopeFilter, applyScope, docMatchesScope } from "../lib/scope";
 import { stampNewStudents, recordCreated, prepareStudentUpdate, recordHistory, type HistoryEntry } from "../students/history";
 import type { TeamIndex } from "../students/teams";
+import { stampFundingForFinance, kickFinanceFunding, financeLock, withFinance, WITH_FINANCE_MESSAGE } from "../finance/funding";
 
 // The built-in roles the registry policies are written in terms of. Roles
 // created at runtime via Role Management (e.g. "cs_manager") are NOT in this
@@ -190,10 +191,13 @@ export async function createEntity(req: Request, entityName: string): Promise<Re
 
   // A student's team and who received them first are the server's to set; so is their history.
   const teams: TeamIndex | null = entityName === "Student" ? await stampNewStudents([data]) : null;
+  // A new deposit request goes to Delta finance for approval (finance/funding.ts).
+  const toFinance = entityName === "FundingTransaction" && stampFundingForFinance(data);
 
   const res = await col(ctx.cfg.collection).insertOne(data as any);
   const created = await col(ctx.cfg.collection).findOne({ _id: res.insertedId });
   if (teams && created) await recordCreated([created], ctx.user, "created", teams);
+  if (toFinance) kickFinanceFunding();
   return json(serialize(created));
 }
 
@@ -232,12 +236,14 @@ export async function bulkCreateEntity(req: Request, entityName: string): Promis
   }
 
   const teams: TeamIndex | null = entityName === "Student" ? await stampNewStudents(toInsert) : null;
+  const toFinance = entityName === "FundingTransaction" && toInsert.map((it) => stampFundingForFinance(it)).some(Boolean);
 
   const res = await col(ctx.cfg.collection).insertMany(toInsert as any[]);
   const created = await col(ctx.cfg.collection)
     .find({ _id: { $in: Object.values(res.insertedIds) } })
     .toArray();
   if (teams) await recordCreated(created, ctx.user, "imported", teams);
+  if (toFinance) kickFinanceFunding();
   return json(serializeMany(created));
 }
 
@@ -269,6 +275,13 @@ export async function updateEntity(req: Request, entityName: string, id: string)
     if (!existing) return notFound();
     history = await prepareStudentUpdate(existing, data, ctx.user);
   }
+  // A deposit Delta finance is deciding is decided there, not here.
+  if (entityName === "FundingTransaction") {
+    const existing = await col(ctx.cfg.collection).findOne({ _id: oid });
+    if (!existing) return notFound();
+    const locked = financeLock(existing, data);
+    if (locked) return error(locked, 409);
+  }
   await col(ctx.cfg.collection).updateOne({ _id: oid }, { $set: data });
   const doc = await col(ctx.cfg.collection).findOne({ _id: oid });
   if (!doc) return notFound();
@@ -282,6 +295,11 @@ export async function deleteEntity(req: Request, entityName: string, id: string)
   if (!rolesAllow(ctx.cfg.delete, ctx.user.app_role)) return forbidden();
   const oid = toObjectId(id);
   if (!oid) return notFound();
+  // Finance would be left deciding a request that no longer exists: it is
+  // rejected there instead.
+  if (entityName === "FundingTransaction" && withFinance(await col(ctx.cfg.collection).findOne({ _id: oid }))) {
+    return error(WITH_FINANCE_MESSAGE, 409);
+  }
   const res = await col(ctx.cfg.collection).deleteOne({ _id: oid });
   if (!res.deletedCount) return notFound();
   return json({ ok: true });

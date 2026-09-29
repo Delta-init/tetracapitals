@@ -2,6 +2,7 @@ import { col } from "../db";
 import { json, error, forbidden, notFound } from "../lib/response";
 import { serialize, serializeMany, toObjectId } from "../lib/id";
 import type { AuthUser } from "../auth/middleware";
+import { stampFundingForFinance, kickFinanceFunding } from "../finance/funding";
 
 /**
  * Mentor asks to be added as a co-mentor for another mentor's student.
@@ -164,7 +165,7 @@ export async function processReferralResponse(req: Request, user: AuthUser): Pro
     const iOid = toObjectId((referral as any).initiating_mentor_id);
     const iUser = iOid ? await col("users").findOne({ _id: iOid }, { projection: { password_hash: 0 } }) : null;
 
-    await col("funding_transactions").insertOne({
+    const funding: Record<string, any> = {
       type: (referral as any).transaction_type || "DEPOSIT",
       // Carry the tags from the referral so a BONUS keeps its category when the
       // approval converts the referral into a real FundingTransaction.
@@ -194,7 +195,11 @@ export async function processReferralResponse(req: Request, user: AuthUser): Pro
       requested_at: (referral as any).created_at || (referral as any).created_date || now,
       created_date: now,
       updated_date: now,
-    } as any);
+    };
+    // A deposit goes to Delta finance for approval, like one raised directly.
+    const toFinance = stampFundingForFinance(funding);
+    await col("funding_transactions").insertOne(funding as any);
+    if (toFinance) kickFinanceFunding();
 
     await col("mentor_referrals").updateOne(
       { _id: rid },
@@ -244,12 +249,26 @@ export async function updateCoMentorContribution(req: Request, _user: AuthUser):
   if (!body) return error("Body required", 400);
   const { student_id, mentor_id } = body;
   if (!student_id || !mentor_id) return error("Missing student_id or mentor_id", 400);
+  const result = await recomputeCoMentorContribution(student_id, mentor_id);
+  if (result.status === 404) return notFound(result.message);
+  if (result.status === 500) return error(result.message!, 500);
+  return json(result.body);
+}
 
+/**
+ * The same, called by the server itself — for a deposit approved in Delta
+ * finance (finance/funding.ts). Worked out from the student's approved
+ * transactions, so running it twice changes nothing.
+ */
+export async function recomputeCoMentorContribution(
+  student_id: string,
+  mentor_id: string,
+): Promise<{ status: 200 | 404 | 500; message?: string; body?: Record<string, unknown> }> {
   const sid = toObjectId(student_id);
-  if (!sid) return notFound("Student not found");
+  if (!sid) return { status: 404, message: "Student not found" };
   const student = await col("students").findOne({ _id: sid });
-  if (!student) return notFound("Student not found");
-  if (!(student as any).co_mentors_details) return json({ success: true, message: "No co_mentors_details on student" });
+  if (!student) return { status: 404, message: "Student not found" };
+  if (!(student as any).co_mentors_details) return { status: 200, body: { success: true, message: "No co_mentors_details on student" } };
 
   let coMentors: any[] = [];
   try {
@@ -257,10 +276,10 @@ export async function updateCoMentorContribution(req: Request, _user: AuthUser):
       ? JSON.parse((student as any).co_mentors_details)
       : (student as any).co_mentors_details;
   } catch {
-    return error("Invalid co_mentors_details format", 500);
+    return { status: 500, message: "Invalid co_mentors_details format" };
   }
   const match = coMentors.find((cm) => cm.mentor_id === mentor_id);
-  if (!match) return json({ success: true, message: "Co-mentor not found — no update needed" });
+  if (!match) return { status: 200, body: { success: true, message: "Co-mentor not found — no update needed" } };
 
   const isPrimary = match.role === "primary" || mentor_id === (student as any).primary_mentor_id;
   let txs: any[];
@@ -286,7 +305,7 @@ export async function updateCoMentorContribution(req: Request, _user: AuthUser):
     { _id: sid },
     { $set: { co_mentors_details: JSON.stringify(updated), updated_date: new Date().toISOString() } },
   );
-  return json({ success: true, netContribution, updatedCoMentors: updated });
+  return { status: 200, body: { success: true, netContribution, updatedCoMentors: updated } };
 }
 
 /** Stub kept for parity with frontend calls. */
