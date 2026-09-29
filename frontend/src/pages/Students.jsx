@@ -1,6 +1,7 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import PageHeader from '@/components/common/PageHeader';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
+import { courseLabel, productsByStudent, courseProductOptions, matchesCourseProduct } from '@/components/utils/studentProducts';
 import { base44 } from "@/api/base44Client";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
@@ -46,6 +47,8 @@ export default function Students() {
   const [filterStatus, setFilterStatus] = useState('all');
   const [filterLevel, setFilterLevel] = useState('all');
   const [filterTeam, setFilterTeam] = useState('all');
+  const [filterCourse, setFilterCourse] = useState('all');
+  const navigate = useNavigate();
   const [showTransferDialog, setShowTransferDialog] = useState(false);
   const [filterDateRange, setFilterDateRange] = useState('all');
   const [customDateFrom, setCustomDateFrom] = useState(null);
@@ -73,6 +76,14 @@ export default function Students() {
     queryFn: () => base44.entities.Student.list('-created_date'),
     enabled: !!currentUser
   });
+
+  // Approved deposits → each student's products (tags such as DSLP, MMC).
+  const { data: productTransactions = [] } = useQuery({
+    queryKey: ['student-product-transactions'],
+    queryFn: () => base44.entities.FundingTransaction.list('-requested_at'),
+    enabled: !!currentUser,
+  });
+  const studentProducts = useMemo(() => productsByStudent(productTransactions), [productTransactions]);
 
   const { data: users = [] } = useQuery({
     queryKey: ['users'],
@@ -435,6 +446,11 @@ export default function Students() {
     filteredStudents = filteredStudents.filter(s => s.status === filterStatus);
   }
 
+  // Apply course / product filter
+  if (filterCourse !== 'all') {
+    filteredStudents = filteredStudents.filter(s => matchesCourseProduct(s, studentProducts, filterCourse));
+  }
+
   // Apply team filter
   if (filterTeam !== 'all') {
     filteredStudents = filteredStudents.filter(s => (filterTeam === 'none' ? !s.team_id : s.team_id === filterTeam));
@@ -474,6 +490,12 @@ export default function Students() {
   };
   
   const canEdit = canEditStudent(currentUser.app_role);
+  // Row click opens the student; clicks on buttons, links and checkboxes do their own thing.
+  const openStudent = (e, id) => {
+    if (e.target.closest('button, a, input, [role="checkbox"], [role="menuitem"]')) return;
+    navigate(`${createPageUrl('StudentDetail')}?id=${id}`);
+  };
+  const courseOptions = courseProductOptions(students, studentProducts);
   // Selected rows for Transfer (any level); Upgrade still uses only Level 1.
   const selectedStudents = students.filter(s => selectedStudentIds.includes(s.id));
   const teamOptions = listTeams(users);
@@ -501,7 +523,7 @@ export default function Students() {
     };
 
     const csvContent = [
-      ['Student Code', 'Full Name', 'Email', 'Phone', 'Country', 'User ID', 'Primary Mentor', 'Senior Mentor', 'Status', 'Created Date', 'Notes'].join(','),
+      ['Student Code', 'Full Name', 'Email', 'Phone', 'Country', 'User ID', 'Primary Mentor', 'Senior Mentor', 'Team', 'Course', 'Products', 'Status', 'Created Date', 'Notes'].join(','),
       ...filteredStudents.map(s => [
         escapeCSV(s.student_code || ''),
         escapeCSV(s.full_name || ''),
@@ -511,6 +533,9 @@ export default function Students() {
         escapeCSV(s.user_id || ''),
         escapeCSV(s.primary_mentor_name || ''),
         escapeCSV(s.senior_mentor_name || ''),
+        escapeCSV(s.team_name || ''),
+        escapeCSV(courseLabel(s.lms_course)),
+        escapeCSV((studentProducts[s.id] || []).join(' / ')),
         escapeCSV(s.status || ''),
         escapeCSV(s.created_date ? format(new Date(s.created_date), 'yyyy-MM-dd') : ''),
         escapeCSV(s.notes || '')
@@ -633,6 +658,19 @@ export default function Students() {
                     </SelectContent>
                   </Select>
 
+                  {/* Course / Product Filter */}
+                  <Select value={filterCourse} onValueChange={(v) => v && setFilterCourse(v)}>
+                    <SelectTrigger className="w-52">
+                      <SelectValue placeholder="Course / Product" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">All courses &amp; products</SelectItem>
+                      <SelectItem value="none">No course or product</SelectItem>
+                      {courseOptions.courses.map(c => <SelectItem key={'c' + c} value={'course:' + c}>Course · {c}</SelectItem>)}
+                      {courseOptions.products.map(p => <SelectItem key={'p' + p} value={'product:' + p}>Product · {p}</SelectItem>)}
+                    </SelectContent>
+                  </Select>
+
                   {/* Level Filter */}
                   <Select value={filterLevel} onValueChange={setFilterLevel}>
                     <SelectTrigger className="w-36">
@@ -747,6 +785,8 @@ export default function Students() {
                         <TableHead className="font-semibold">User ID</TableHead>
                         <TableHead className="font-semibold">Primary Mentor</TableHead>
                         <TableHead className="font-semibold">Team</TableHead>
+                      <TableHead className="font-semibold">Course</TableHead>
+                      <TableHead className="font-semibold">Products</TableHead>
                         <TableHead className="font-semibold">Status</TableHead>
                         <TableHead className="font-semibold">Created</TableHead>
                         <TableHead className="font-semibold text-right">Actions</TableHead>
@@ -755,13 +795,13 @@ export default function Students() {
                     <TableBody>
                       {displayStudents.length === 0 ? (
                         <TableRow>
-                          <TableCell colSpan={11} className="text-center py-8 text-gray-500">
+                          <TableCell colSpan={13} className="text-center py-8 text-gray-500">
                             No students found
                           </TableCell>
                         </TableRow>
                       ) : (
                         displayStudents.map((student) => (
-                          <TableRow key={student.id} className="hover:bg-gray-50 transition-colors">
+                          <TableRow key={student.id} className="cursor-pointer hover:bg-gray-50 transition-colors" onClick={(e) => openStudent(e, student.id)}>
                             <TableCell className="font-mono text-sm font-medium text-blue-600">
                               {student.student_code}
                             </TableCell>
@@ -772,6 +812,8 @@ export default function Students() {
                             <TableCell className="text-sm font-mono">{student.user_id || '-'}</TableCell>
                             <TableCell className="text-sm">{student.primary_mentor_name}</TableCell>
                             <TableCell className="text-sm">{student.team_name || '-'}</TableCell>
+                            <TableCell className="max-w-[220px] text-sm">{courseLabel(student.lms_course) || <span className="text-slate-300">—</span>}</TableCell>
+                            <TableCell className="text-sm">{(studentProducts[student.id] || []).length ? <div className="flex flex-wrap gap-1">{studentProducts[student.id].map(p => <Badge key={p} variant="outline" className="border-violet-200 bg-violet-50 text-violet-700">{p}</Badge>)}</div> : <span className="text-slate-300">—</span>}</TableCell>
                             <TableCell>
                               <Badge variant="outline" className={getStatusColor(student.status)}>
                                 {student.status}
@@ -831,6 +873,8 @@ export default function Students() {
                       <TableHead className="font-semibold">User ID</TableHead>
                       <TableHead className="font-semibold">Primary Mentor</TableHead>
                       <TableHead className="font-semibold">Team</TableHead>
+                      <TableHead className="font-semibold">Course</TableHead>
+                      <TableHead className="font-semibold">Products</TableHead>
                       <TableHead className="font-semibold">Status</TableHead>
                       <TableHead className="font-semibold">Created</TableHead>
                       <TableHead className="font-semibold text-right">Actions</TableHead>
@@ -839,13 +883,13 @@ export default function Students() {
                   <TableBody>
                     {displayStudents.length === 0 ? (
                      <TableRow>
-                       <TableCell colSpan={11} className="text-center py-8 text-gray-500">
+                       <TableCell colSpan={13} className="text-center py-8 text-gray-500">
                          No team students found
                        </TableCell>
                      </TableRow>
                     ) : (
                      displayStudents.map((student) => (
-                       <TableRow key={student.id} className="hover:bg-gray-50 transition-colors">
+                       <TableRow key={student.id} className="cursor-pointer hover:bg-gray-50 transition-colors" onClick={(e) => openStudent(e, student.id)}>
                          <TableCell className="font-mono text-sm font-medium text-blue-600">
                            {student.student_code}
                          </TableCell>
@@ -856,6 +900,8 @@ export default function Students() {
                          <TableCell className="text-sm font-mono">{student.user_id || '-'}</TableCell>
                          <TableCell className="text-sm text-purple-600 font-medium">{student.primary_mentor_name}</TableCell>
                          <TableCell className="text-sm">{student.team_name || '-'}</TableCell>
+                            <TableCell className="max-w-[220px] text-sm">{courseLabel(student.lms_course) || <span className="text-slate-300">—</span>}</TableCell>
+                            <TableCell className="text-sm">{(studentProducts[student.id] || []).length ? <div className="flex flex-wrap gap-1">{studentProducts[student.id].map(p => <Badge key={p} variant="outline" className="border-violet-200 bg-violet-50 text-violet-700">{p}</Badge>)}</div> : <span className="text-slate-300">—</span>}</TableCell>
                          <TableCell>
                            <Badge variant="outline" className={getStatusColor(student.status)}>
                              {student.status}
@@ -923,6 +969,8 @@ export default function Students() {
                       <TableHead className="font-semibold">User ID</TableHead>
                       <TableHead className="font-semibold">Primary Mentor</TableHead>
                       <TableHead className="font-semibold">Team</TableHead>
+                      <TableHead className="font-semibold">Course</TableHead>
+                      <TableHead className="font-semibold">Products</TableHead>
                       <TableHead className="font-semibold">Status</TableHead>
                       <TableHead className="font-semibold">Created</TableHead>
                       <TableHead className="font-semibold text-right">Actions</TableHead>
@@ -931,13 +979,13 @@ export default function Students() {
                   <TableBody>
                     {displayStudents.length === 0 ? (
                       <TableRow>
-                        <TableCell colSpan={canEdit ? 12 : 11} className="text-center py-8 text-gray-500">
+                        <TableCell colSpan={canEdit ? 14 : 13} className="text-center py-8 text-gray-500">
                           No students found
                         </TableCell>
                       </TableRow>
                     ) : (
                       displayStudents.map((student) => (
-                        <TableRow key={student.id} className="hover:bg-gray-50 transition-colors">
+                        <TableRow key={student.id} className="cursor-pointer hover:bg-gray-50 transition-colors" onClick={(e) => openStudent(e, student.id)}>
                           {canEdit && (
                             <TableCell>
                               <Checkbox
@@ -956,6 +1004,8 @@ export default function Students() {
                           <TableCell className="text-sm font-mono">{student.user_id || '-'}</TableCell>
                           <TableCell className="text-sm">{student.primary_mentor_name}</TableCell>
                           <TableCell className="text-sm">{student.team_name || '-'}</TableCell>
+                            <TableCell className="max-w-[220px] text-sm">{courseLabel(student.lms_course) || <span className="text-slate-300">—</span>}</TableCell>
+                            <TableCell className="text-sm">{(studentProducts[student.id] || []).length ? <div className="flex flex-wrap gap-1">{studentProducts[student.id].map(p => <Badge key={p} variant="outline" className="border-violet-200 bg-violet-50 text-violet-700">{p}</Badge>)}</div> : <span className="text-slate-300">—</span>}</TableCell>
                           <TableCell>
                             <Badge variant="outline" className={getStatusColor(student.status)}>
                               {student.status}
@@ -1012,6 +1062,8 @@ export default function Students() {
                       <TableHead className="font-semibold">Code</TableHead>
                       <TableHead className="font-semibold">Primary Mentor</TableHead>
                       <TableHead className="font-semibold">Team</TableHead>
+                      <TableHead className="font-semibold">Course</TableHead>
+                      <TableHead className="font-semibold">Products</TableHead>
                       <TableHead className="font-semibold">My Net Deposits</TableHead>
                       <TableHead className="font-semibold">Primary Net Deposits</TableHead>
                       <TableHead className="font-semibold">Combined Total</TableHead>
@@ -1022,7 +1074,7 @@ export default function Students() {
                   <TableBody>
                     {coManagedStudents.length === 0 ? (
                       <TableRow>
-                        <TableCell colSpan={9} className="text-center py-8 text-gray-500">
+                        <TableCell colSpan={11} className="text-center py-8 text-gray-500">
                           No co-managed clients yet. Send a referral request from a Fund Request to get started.
                         </TableCell>
                       </TableRow>
@@ -1036,11 +1088,13 @@ export default function Students() {
         const primaryNet = combinedNet - myNet;
         const myEntry = _coMentors.find(cm => cm.mentor_id === currentUser?.id);
                         return (
-                          <TableRow key={student.id} className="hover:bg-gray-50 transition-colors">
+                          <TableRow key={student.id} className="cursor-pointer hover:bg-gray-50 transition-colors" onClick={(e) => openStudent(e, student.id)}>
                             <TableCell className="font-medium">{student.full_name}</TableCell>
                             <TableCell className="font-mono text-sm text-blue-600">{student.student_code || '-'}</TableCell>
                             <TableCell className="text-sm">{student.primary_mentor_name}</TableCell>
                             <TableCell className="text-sm">{student.team_name || '-'}</TableCell>
+                            <TableCell className="max-w-[220px] text-sm">{courseLabel(student.lms_course) || <span className="text-slate-300">—</span>}</TableCell>
+                            <TableCell className="text-sm">{(studentProducts[student.id] || []).length ? <div className="flex flex-wrap gap-1">{studentProducts[student.id].map(p => <Badge key={p} variant="outline" className="border-violet-200 bg-violet-50 text-violet-700">{p}</Badge>)}</div> : <span className="text-slate-300">—</span>}</TableCell>
                             <TableCell className="text-sm font-semibold text-green-700">${myNet.toLocaleString()}</TableCell>
                             <TableCell className="text-sm text-gray-600">${primaryNet.toLocaleString()}</TableCell>
                             <TableCell className="text-sm font-semibold">${combinedNet.toLocaleString()}</TableCell>
@@ -1098,6 +1152,8 @@ export default function Students() {
                     <TableHead className="font-semibold">Phone</TableHead>
                     <TableHead className="font-semibold">Country</TableHead>
                     <TableHead className="font-semibold">User ID</TableHead>
+                      <TableHead className="font-semibold">Course</TableHead>
+                      <TableHead className="font-semibold">Products</TableHead>
                     <TableHead className="font-semibold">Status</TableHead>
                     <TableHead className="font-semibold">Created</TableHead>
                     <TableHead className="font-semibold text-right">Actions</TableHead>
@@ -1106,13 +1162,13 @@ export default function Students() {
                 <TableBody>
                   {displayStudents.length === 0 ? (
                     <TableRow>
-                      <TableCell colSpan={9} className="text-center py-8 text-gray-500">
+                      <TableCell colSpan={11} className="text-center py-8 text-gray-500">
                         No open pool students available
                       </TableCell>
                     </TableRow>
                   ) : (
                     displayStudents.map((student) => (
-                      <TableRow key={student.id} className="hover:bg-gray-50 transition-colors">
+                      <TableRow key={student.id} className="cursor-pointer hover:bg-gray-50 transition-colors" onClick={(e) => openStudent(e, student.id)}>
                         <TableCell className="font-mono text-sm font-medium text-blue-600">
                           {student.student_code}
                         </TableCell>
@@ -1121,6 +1177,8 @@ export default function Students() {
                         <TableCell className="text-sm font-mono">{student.phone}</TableCell>
                         <TableCell className="text-sm">{student.country || '-'}</TableCell>
                         <TableCell className="text-sm font-mono">{student.user_id || '-'}</TableCell>
+                            <TableCell className="max-w-[220px] text-sm">{courseLabel(student.lms_course) || <span className="text-slate-300">—</span>}</TableCell>
+                            <TableCell className="text-sm">{(studentProducts[student.id] || []).length ? <div className="flex flex-wrap gap-1">{studentProducts[student.id].map(p => <Badge key={p} variant="outline" className="border-violet-200 bg-violet-50 text-violet-700">{p}</Badge>)}</div> : <span className="text-slate-300">—</span>}</TableCell>
                         <TableCell>
                           <Badge variant="outline" className={getStatusColor(student.status)}>
                             {student.status}
@@ -1186,6 +1244,8 @@ export default function Students() {
                       <TableHead className="font-semibold">Code</TableHead>
                       <TableHead className="font-semibold">Primary Mentor</TableHead>
                       <TableHead className="font-semibold">Team</TableHead>
+                      <TableHead className="font-semibold">Course</TableHead>
+                      <TableHead className="font-semibold">Products</TableHead>
                       <TableHead className="font-semibold">Co-Mentor</TableHead>
                       <TableHead className="font-semibold">Primary Net Deposits</TableHead>
                       <TableHead className="font-semibold">Co-Mentor Net Deposits</TableHead>
@@ -1197,7 +1257,7 @@ export default function Students() {
                   <TableBody>
                     {allCoManagedStudents.length === 0 ? (
                       <TableRow>
-                        <TableCell colSpan={10} className="text-center py-8 text-gray-500">
+                        <TableCell colSpan={12} className="text-center py-8 text-gray-500">
                           No co-managed clients found
                         </TableCell>
                       </TableRow>
@@ -1210,11 +1270,13 @@ export default function Students() {
                           const coNet = co.net_deposit_contribution_usd || 0;
                           const primaryNet = Math.max(0, combined - coNet);
                           return (
-                            <TableRow key={`${student.id}-${idx}`} className="hover:bg-gray-50 transition-colors">
+                            <TableRow key={`${student.id}-${idx}`} className="cursor-pointer hover:bg-gray-50 transition-colors" onClick={(e) => openStudent(e, student.id)}>
                               <TableCell className="font-medium">{student.full_name}</TableCell>
                               <TableCell className="font-mono text-sm text-blue-600">{student.student_code || '-'}</TableCell>
                               <TableCell className="text-sm">{student.primary_mentor_name}</TableCell>
                               <TableCell className="text-sm">{student.team_name || '-'}</TableCell>
+                            <TableCell className="max-w-[220px] text-sm">{courseLabel(student.lms_course) || <span className="text-slate-300">—</span>}</TableCell>
+                            <TableCell className="text-sm">{(studentProducts[student.id] || []).length ? <div className="flex flex-wrap gap-1">{studentProducts[student.id].map(p => <Badge key={p} variant="outline" className="border-violet-200 bg-violet-50 text-violet-700">{p}</Badge>)}</div> : <span className="text-slate-300">—</span>}</TableCell>
                               <TableCell className="text-sm font-medium text-purple-700">{co.mentor_name}</TableCell>
                               <TableCell className="text-sm text-gray-700">${primaryNet.toLocaleString()}</TableCell>
                               <TableCell className="text-sm font-semibold text-green-700">${coNet.toLocaleString()}</TableCell>
@@ -1258,6 +1320,8 @@ export default function Students() {
                   <TableHead className="font-semibold">User ID</TableHead>
                   <TableHead className="font-semibold">Primary Mentor</TableHead>
                   <TableHead className="font-semibold">Team</TableHead>
+                      <TableHead className="font-semibold">Course</TableHead>
+                      <TableHead className="font-semibold">Products</TableHead>
                   <TableHead className="font-semibold">Status</TableHead>
                   <TableHead className="font-semibold">Created</TableHead>
                   <TableHead className="font-semibold text-right">Actions</TableHead>
@@ -1266,13 +1330,13 @@ export default function Students() {
               <TableBody>
                 {displayStudents.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={11} className="text-center py-8 text-gray-500">
+                    <TableCell colSpan={13} className="text-center py-8 text-gray-500">
                       No students found
                     </TableCell>
                   </TableRow>
                 ) : (
                   displayStudents.map((student) => (
-                    <TableRow key={student.id} className="hover:bg-gray-50 transition-colors">
+                    <TableRow key={student.id} className="cursor-pointer hover:bg-gray-50 transition-colors" onClick={(e) => openStudent(e, student.id)}>
                       <TableCell className="font-mono text-sm font-medium text-blue-600">
                         {student.student_code}
                       </TableCell>
@@ -1283,6 +1347,8 @@ export default function Students() {
                       <TableCell className="text-sm font-mono">{student.user_id || '-'}</TableCell>
                       <TableCell className="text-sm">{student.primary_mentor_name}</TableCell>
                       <TableCell className="text-sm">{student.team_name || '-'}</TableCell>
+                            <TableCell className="max-w-[220px] text-sm">{courseLabel(student.lms_course) || <span className="text-slate-300">—</span>}</TableCell>
+                            <TableCell className="text-sm">{(studentProducts[student.id] || []).length ? <div className="flex flex-wrap gap-1">{studentProducts[student.id].map(p => <Badge key={p} variant="outline" className="border-violet-200 bg-violet-50 text-violet-700">{p}</Badge>)}</div> : <span className="text-slate-300">—</span>}</TableCell>
                       <TableCell>
                         <Badge variant="outline" className={getStatusColor(student.status)}>
                           {student.status}
