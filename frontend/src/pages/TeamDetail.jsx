@@ -17,6 +17,8 @@ import { getEffectiveUser } from '@/components/utils/ImpersonationContext';
 import { BUILTIN_ROLE_NAMES, isAdminRole } from '@/components/utils/roles';
 import { listTeams } from '@/components/utils/teams';
 import { createPageUrl } from '@/utils';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import StudentMovesPanel from '@/components/students/StudentMovesPanel';
 
 const ROUND_ROBIN = '__round_robin__';
 const REASSIGNERS = ['super_admin', 'admin'];
@@ -147,6 +149,14 @@ export default function TeamDetail() {
           <StatsCard title="Active" value={teamStudents.filter(s => s.status === 'ACTIVE').length} icon={UserCheck} color="emerald" delay={0.19} />
         </div>
 
+        <Tabs defaultValue="students" className="w-full">
+          {seesAll && (
+            <TabsList className="mb-4">
+              <TabsTrigger value="students">Members &amp; students</TabsTrigger>
+              <TabsTrigger value="moves">Transfers &amp; new</TabsTrigger>
+            </TabsList>
+          )}
+          <TabsContent value="students" className="mt-0">
         <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
           {/* Members */}
           <Card className="lg:col-span-1">
@@ -248,6 +258,14 @@ export default function TeamDetail() {
             </CardContent>
           </Card>
         </div>
+          </TabsContent>
+          {seesAll && (
+            <TabsContent value="moves" className="mt-0">
+              {/* Students moved in / out / inside this team, and new students it was given */}
+              <StudentMovesPanel teamId={team.id} title="Transfers & new students" />
+            </TabsContent>
+          )}
+        </Tabs>
       </div>
 
       <ReassignDialog

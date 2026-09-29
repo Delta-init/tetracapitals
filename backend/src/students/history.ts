@@ -34,6 +34,8 @@ export interface HistoryEntry {
   by_name: string;
   from?: unknown;
   to?: unknown;
+  /** What made the change, when it wasn't a plain edit: "reassign" (Team page) or "inactivity" (the 90-day rule). */
+  via?: string;
 }
 
 export async function recordHistory(entries: HistoryEntry[]): Promise<void> {

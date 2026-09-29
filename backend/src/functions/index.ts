@@ -20,6 +20,7 @@ import { distributeDepositPool } from "./distributeDepositPool";
 import { searchStudents } from "./searchStudents";
 import { getStudentHistory } from "./getStudentHistory";
 import { reassignStudents } from "./reassignStudents";
+import { getStudentMoves } from "./getStudentMoves";
 import { getInactivityTransfer, setInactivityTransfer, runInactivityTransfer } from "./inactivityTransfer";
 import { financeFundingConfigured } from "../finance/funding";
 import type { AuthUser } from "../auth/middleware";
@@ -30,6 +31,7 @@ type AnonHandler = (req: Request) => Promise<Response>;
 const AUTHED: Record<string, AuthedHandler> = {
   getAllUsers,
   reassignStudents,
+  getStudentMoves,
   getInactivityTransfer,
   setInactivityTransfer,
   runInactivityTransfer,

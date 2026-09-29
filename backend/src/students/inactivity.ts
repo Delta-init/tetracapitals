@@ -147,7 +147,7 @@ export async function runInactivity(by: AuthUser = SYSTEM): Promise<{ moved: num
     };
     const history = await prepareStudentUpdate(existing, data, by);
     const reason = `No approved deposit in ${settings.days} days`;
-    for (const h of history) h.text = `${reason} — ${h.text}`;
+    for (const h of history) { h.text = `${reason} — ${h.text}`; h.via = "inactivity"; }
     // Only if still with the same mentor: a second run or a manual move in between wins.
     const res = await col("students").updateOne({ _id: existing._id, primary_mentor_id: d.mentorId }, { $set: data });
     if (res.modifiedCount !== 1) continue;

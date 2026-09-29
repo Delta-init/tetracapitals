@@ -14,6 +14,7 @@ import { Eye, Hourglass, Loader2, Play, ShieldAlert, UserCheck } from 'lucide-re
 import { getEffectiveUser } from '@/components/utils/ImpersonationContext';
 import { isAdminRole } from '@/components/utils/roles';
 import { createPageUrl } from '@/utils';
+import StudentMovesPanel from '@/components/students/StudentMovesPanel';
 
 const fmt = (iso) => (iso ? new Date(iso).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }) : '—');
 
@@ -176,6 +177,9 @@ export default function InactivityTransfers() {
             </div>
           </CardContent>
         </Card>
+
+        {/* Every move — inactivity, transfers, reassigns and new students — as a list and a team map */}
+        <StudentMovesPanel title="All student moves" />
       </div>
     </div>
   );

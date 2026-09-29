@@ -74,6 +74,7 @@ export async function reassignStudents(req: Request, user: AuthUser): Promise<Re
       updated_date: now,
     };
     const history = await prepareStudentUpdate(student, data, user);
+    for (const h of history) h.via = "reassign";
     await col("students").updateOne({ _id: student._id }, { $set: data });
     await recordHistory(history);
     await col("logs").insertOne({
