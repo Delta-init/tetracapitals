@@ -1,4 +1,6 @@
 import React, { useState, useMemo } from 'react';
+import { Link } from 'react-router-dom';
+import { createPageUrl } from '@/utils';
 import { PageTitle } from '@/components/common/PageHeader';
 import { base44 } from '@/api/base44Client';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
@@ -179,7 +181,7 @@ export default function Teams() {
                       <div className="min-w-0">
                         <CardTitle className="flex items-center gap-2 text-lg text-brand-navy">
                           <UserCircle2 className="h-5 w-5 flex-shrink-0 text-blue-600" />
-                          <span className="truncate">{team.name}</span>
+                          <Link to={`${createPageUrl('TeamDetail')}?id=${team.rootId}`} className="truncate hover:text-blue-600 hover:underline">{team.name}</Link>
                         </CardTitle>
                         <p className="mt-1 text-xs text-slate-500">
                           Led by <span className="font-semibold text-slate-700">{team.root?.full_name}</span>

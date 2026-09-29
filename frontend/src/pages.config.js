@@ -87,6 +87,7 @@ import StudentRequestApprovals from './pages/StudentRequestApprovals';
 import Students from './pages/Students';
 import TargetsManagement from './pages/TargetsManagement';
 import Teams from './pages/Teams';
+import TeamDetail from './pages/TeamDetail';
 import Tickets from './pages/Tickets';
 import Transactions from './pages/Transactions';
 import TransactionTags from './pages/TransactionTags';
@@ -134,6 +135,7 @@ export const PAGES = {
     "Students": Students,
     "TargetsManagement": TargetsManagement,
     "Teams": Teams,
+    "TeamDetail": TeamDetail,
     "Tickets": Tickets,
     "Transactions": Transactions,
     "TransactionTags": TransactionTags,
