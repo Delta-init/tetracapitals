@@ -38,6 +38,22 @@ export const config = {
     clientId: process.env.THREECX_CLIENT_ID ?? "",
     apiKey: process.env.THREECX_API_KEY ?? "",
   },
+  /**
+   * The Delta LMS's service API, for the Mentor Calendar — who is free, what is
+   * booked, booking time with a mentor. The same door and the same values the
+   * Sales CRM uses:
+   *
+   *   apiUrl        LMS_API_URL (a trailing /api/v1 is fine)
+   *   serviceSecret LMS_SERVICE_SECRET — the Sales CRM's secret for the LMS
+   *   remoteOrgId   LMS_REMOTE_ORG_ID — which academy's mentors
+   *
+   * Either of the first two unset: the calendar says it is not configured.
+   */
+  lms: {
+    apiUrl: (process.env.LMS_API_URL ?? "").replace(/\/+$/, "").replace(/\/api\/v1$/, ""),
+    serviceSecret: process.env.LMS_SERVICE_SECRET ?? "",
+    remoteOrgId: process.env.LMS_REMOTE_ORG_ID ?? "",
+  },
   anthropicApiKey: process.env.ANTHROPIC_API_KEY ?? "",
   /**
    * The Root portal, which opens this app for people signed in there and

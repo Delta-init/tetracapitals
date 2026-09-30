@@ -17,8 +17,9 @@ import {
 import { NAV_ITEMS, NAV_GROUPS, GROUP_OF, navLabel, defaultPagesFor } from '@/components/utils/navigation';
 
 // Every page a role's access can be toggled for — the sidebar's pages (a
-// `sameAccessAs` page comes with its partner: Calls with Follow-ups).
-const PAGES = NAV_ITEMS.filter(i => !i.hidden && !i.sameAccessAs).map(i => i.name);
+// `sameAccessAs` page comes with its partner: Calls with Follow-ups; an
+// `everyone` page, like the Mentor Calendar, is for every role).
+const PAGES = NAV_ITEMS.filter(i => !i.hidden && !i.sameAccessAs && !i.everyone).map(i => i.name);
 // Hidden pages aren't offered here, but a role that already lists one keeps it
 // on save, so un-hiding a page later restores it for those roles.
 const keptHidden = (doc) => (Array.isArray(doc?.page_permissions) ? doc.page_permissions : []).filter(p => !PAGES.includes(p));

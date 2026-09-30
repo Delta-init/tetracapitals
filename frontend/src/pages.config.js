@@ -91,6 +91,7 @@ import TeamDetail from './pages/TeamDetail';
 import InactivityTransfers from './pages/InactivityTransfers';
 import StudentFollowups from './pages/StudentFollowups';
 import StudentCalls from './pages/StudentCalls';
+import MentorCalendar from './pages/MentorCalendar';
 import Tickets from './pages/Tickets';
 import Transactions from './pages/Transactions';
 import TransactionTags from './pages/TransactionTags';
@@ -142,6 +143,7 @@ export const PAGES = {
     "InactivityTransfers": InactivityTransfers,
     "StudentFollowups": StudentFollowups,
     "StudentCalls": StudentCalls,
+    "MentorCalendar": MentorCalendar,
     "Tickets": Tickets,
     "Transactions": Transactions,
     "TransactionTags": TransactionTags,

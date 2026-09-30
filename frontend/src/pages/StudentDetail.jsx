@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { ArrowLeft, Edit, TrendingUp, TrendingDown } from "lucide-react";
+import { ArrowLeft, CalendarPlus, Edit, TrendingUp, TrendingDown } from "lucide-react";
 import { Link } from "react-router-dom";
 import { createPageUrl } from "../utils";
 import StudentForm from "../components/students/StudentForm";
@@ -213,6 +213,13 @@ export default function StudentDetail() {
           <div className="flex items-center gap-2">
             {/* Call with 3CX, then log it against the student's follow-up */}
             <CallButton student={displayStudent} className="h-9 px-4 text-sm" />
+            {/* Time with a mentor, in the LMS's diary — the Mentor Calendar, filled in for this student */}
+            <Link to={`${createPageUrl('MentorCalendar')}?student=${displayStudent.id}`}>
+              <Button variant="outline" className="h-9">
+                <CalendarPlus className="h-4 w-4 mr-2" />
+                Book mentor session
+              </Button>
+            </Link>
             {canEdit && (
               <Button onClick={() => setShowEditDialog(true)} className="bg-blue-600 hover:bg-blue-700">
                 <Edit className="h-4 w-4 mr-2" />
