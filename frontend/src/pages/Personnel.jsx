@@ -348,7 +348,10 @@ export default function Personnel() {
               ) : (
                 filteredUsers.map((user) => (
                   <TableRow key={user.id}>
-                    <TableCell className="font-medium">{user.full_name}</TableCell>
+                    <TableCell className="font-medium">
+                      {user.full_name}
+                      {user.extension && <div className="text-xs font-normal text-gray-500">Ext {user.extension}</div>}
+                    </TableCell>
                     <TableCell>{user.email}</TableCell>
                     <TableCell>
                       <Badge className={getRoleBadgeColor(user.app_role)}>

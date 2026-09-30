@@ -23,6 +23,21 @@ export const config = {
     pass: process.env.SMTP_PASS ?? "",
     from: process.env.SMTP_FROM ?? "no-reply@example.com",
   },
+  /**
+   * The 3CX phone system — call history and recordings through its API
+   * (XAPI), matched to students by phone number.
+   *
+   *   url       e.g. https://deltainstitutions.3cx.ae:5002
+   *   clientId  / apiKey — 3CX Admin Console > Integrations > API: a client
+   *             with "3CX Configuration API Access", role System Owner
+   *
+   * Any unset: no call sync (the Call button still dials).
+   */
+  threecx: {
+    url: (process.env.THREECX_URL ?? "").replace(/\/+$/, ""),
+    clientId: process.env.THREECX_CLIENT_ID ?? "",
+    apiKey: process.env.THREECX_API_KEY ?? "",
+  },
   anthropicApiKey: process.env.ANTHROPIC_API_KEY ?? "",
   /**
    * The Root portal, which opens this app for people signed in there and

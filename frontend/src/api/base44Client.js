@@ -23,6 +23,9 @@
 //     tunnel URL — no per-device or per-tunnel configuration needed.
 const API_URL = (import.meta.env.VITE_API_URL || "").replace(/\/$/, "");
 const TOKEN_KEY = "st_token";
+
+/** A backend path as a full address, for what the browser loads by itself (an <audio> src) rather than through api(). */
+export const apiUrl = (path) => `${API_URL}${path}`;
 const IMPERSONATION_KEY = "impersonated_user";   // keep in sync with ImpersonationContext.jsx
 
 function getToken() {

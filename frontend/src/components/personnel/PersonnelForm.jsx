@@ -32,6 +32,8 @@ export default function PersonnelForm({ user, onSubmit, onClose, allUsers }) {
     up_head_id: '',      // the person directly above this user (A is under this head)
     up_head_name: '',
     commission_plan_id: '',  // commission plan applied when this staff submits
+    extension: '',           // their 3CX extension — links their calls to them
+    extension_source: '',    // "manual" once typed here: the 3CX sync then leaves it alone
     password: '',
   });
   const [showPassword, setShowPassword] = useState(false);
@@ -62,12 +64,25 @@ export default function PersonnelForm({ user, onSubmit, onClose, allUsers }) {
         up_head_id: user.up_head_id || '',
         up_head_name: user.up_head_name || '',
         commission_plan_id: user.commission_plan_id || '',
+        extension: user.extension || '',
+        extension_source: user.extension_source || '',
       });
     }
   }, [user]);
 
   const handleSubmit = (e) => {
     e.preventDefault();
+    if (formData.extension) {
+      if (!/^\d{2,6}$/.test(formData.extension)) {
+        alert('The 3CX extension is 2 to 6 digits.');
+        return;
+      }
+      const other = allUsers?.find(u => u.id !== user?.id && String(u.extension || '') === formData.extension);
+      if (other) {
+        alert(`Extension ${formData.extension} is already ${other.full_name}'s.`);
+        return;
+      }
+    }
     if (isCreate) {
       if (!formData.password || formData.password.length < 8) {
         alert('Initial password is required and must be at least 8 characters.');
@@ -157,6 +172,20 @@ export default function PersonnelForm({ user, onSubmit, onClose, allUsers }) {
               disabled={!!user}
             />
             {user && <p className="text-xs text-gray-500 mt-1">Email cannot be changed</p>}
+          </div>
+
+          <div>
+            <Label htmlFor="extension">3CX Extension</Label>
+            <Input
+              id="extension"
+              inputMode="numeric"
+              placeholder="e.g. 101"
+              value={formData.extension}
+              onChange={(e) => setFormData({ ...formData, extension: e.target.value.replace(/\D/g, '').slice(0, 6), extension_source: 'manual' })}
+            />
+            <p className="text-xs text-gray-500 mt-1">
+              Links their 3CX calls to them.{formData.extension_source === '3cx' ? ' Filled in from 3CX (same email).' : !formData.extension ? ' Left empty, it is filled in from 3CX when their email matches.' : ''}
+            </p>
           </div>
 
           {isCreate && (

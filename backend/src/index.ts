@@ -5,6 +5,7 @@ import { error as errorResponse } from "./lib/response";
 import { startFinanceFundingWorker } from "./finance/funding";
 import { startInactivityWorker } from "./students/inactivity";
 import { startReminderWorker } from "./students/followupReminders";
+import { startCallSyncWorker } from "./students/calls";
 
 async function main() {
   await connectDb();
@@ -30,6 +31,8 @@ async function main() {
   startInactivityWorker();
   // Follow-up reminder emails, 10:00 UAE each day (FOLLOWUP_REMINDERS=off to keep a server out of it).
   startReminderWorker();
+  // Calls with students (and their recordings) from 3CX, every 5 minutes — once THREECX_* is set.
+  startCallSyncWorker();
 }
 
 const shutdown = async (signal: string) => {

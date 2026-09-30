@@ -85,6 +85,18 @@ export async function getFollowups(req: Request, user: AuthUser): Promise<Respon
       };
     });
 
+  // Each student's latest 3CX call, next to what was logged.
+  const sids = [...new Set(rows.map((r) => r.student_id))];
+  const lastCalls = sids.length
+    ? await col("student_calls").aggregate([
+      { $match: { student_id: { $in: sids } } },
+      { $sort: { started_at: -1 } },
+      { $group: { _id: "$student_id", at: { $first: "$started_at" }, direction: { $first: "$direction" }, status: { $first: "$status" }, talk_seconds: { $first: "$talk_seconds" }, by: { $first: "$user_name" }, agent: { $first: "$agent_name" } } },
+    ]).toArray()
+    : [];
+  const lastCallOf = new Map(lastCalls.map((c: any) => [String(c._id), { at: c.at, direction: c.direction, status: c.status, talk_seconds: c.talk_seconds ?? 0, by: c.by || c.agent || "" }]));
+  for (const r of rows as any[]) r.last_call = lastCallOf.get(r.student_id) ?? null;
+
   const converted = rows.filter((r) => r.stage === "Converted");
   const lost = rows.filter((r) => r.stage === "Lost").length;
   const stats = {

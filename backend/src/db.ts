@@ -84,6 +84,12 @@ export async function ensureIndexes(): Promise<void> {
     d.collection("followup_reminders").createIndex({ followup_ids: 1 }),
     d.collection("followup_reminders").createIndex({ token: 1 }),
     d.collection("student_followups").createIndex({ next_followup_date: 1 }),
+    // Calls from 3CX: one per call (key = its main segment), found by student, by person, by time.
+    d.collection("student_calls").createIndex({ key: 1 }, { unique: true }),
+    d.collection("student_calls").createIndex({ student_id: 1, started_at: -1 }),
+    d.collection("student_calls").createIndex({ started_at: -1 }),
+    d.collection("student_calls").createIndex({ user_id: 1, started_at: -1 }),
+    d.collection("student_calls").createIndex({ extension: 1, user_id: 1 }),
     d.collection("students").createIndex({ team_id: 1 }),
     d.collection("retention_assignments").createIndex({ student_id: 1 }),
     d.collection("mentor_targets").createIndex({ mentor_id: 1, period: 1 }),

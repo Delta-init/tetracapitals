@@ -17,6 +17,7 @@ import {
 } from '@/components/followups/followupUi';
 import { CallButton, useCallFlow } from '@/components/followups/CallFlow';
 import ReminderLog from '@/components/followups/ReminderLog';
+import { LastCallLine } from '@/components/calls/callUi';
 
 const TABS = {
   overdue: { label: 'Overdue', test: (f) => f.followup_status === 'OVERDUE' },
@@ -181,7 +182,7 @@ export default function StudentFollowups() {
                       {showMentor && <td className="px-3 py-2.5 text-slate-600">{f.mentor_name}<div className="text-xs text-slate-400">{f.team_name}</div></td>}
                       <td className="whitespace-nowrap px-3 py-2.5 text-slate-700">{f.target_outcome}</td>
                       <td className="px-3 py-2.5"><StageBadge stage={f.stage} /></td>
-                      <td className="whitespace-nowrap px-3 py-2.5 text-slate-600">{fmtDate(f.last_contact_date)}</td>
+                      <td className="whitespace-nowrap px-3 py-2.5 text-slate-600">{fmtDate(f.last_contact_date)}<LastCallLine call={f.last_call} /></td>
                       <td className="whitespace-nowrap px-3 py-2.5 text-slate-600">{fmtDate(f.next_followup_date)}</td>
                       <td className="px-3 py-2.5"><StatusBadge status={f.followup_status} /></td>
                       <td className="px-3 py-2.5"><ReminderBadge reminder={f.reminder} status={f.followup_status} /></td>

@@ -45,6 +45,7 @@ import {
   ScrollText,
   Hourglass,
   PhoneCall,
+  PhoneIncoming,
 } from 'lucide-react';
 
 // "StudentLogHistoryPage" -> "Student Log History", "AIInsights" -> "AI Insights"
@@ -60,7 +61,9 @@ export const navLabel = (item) => item.label || humanize(item.name);
 // `page` is the route the item opens; `roles` are the built-in roles that see it
 // by default ('all' = everyone). `hidden` pages are left out of the sidebar and
 // Role Management for everyone (the page itself still opens by address) —
-// remove the flag to bring one back.
+// remove the flag to bring one back. `sameAccessAs` pages show exactly when
+// that page does, so Role Management doesn't list them on their own.
+const FOLLOWUP_ROLES = ['super_admin', 'admin', 'broker_admin', 'academic_head', 'academic_admin', 'admin_supervisor', 'finance_admin', 'chief_mentor', 'senior_mentor', 'junior_mentor', 'subjunior_mentor', 'assistance'];
 export const NAV_ITEMS = [
   { name: 'Dashboard', page: 'Dashboard', icon: LayoutDashboard, roles: ['super_admin', 'admin', 'broker_admin', 'academic_head', 'admin_supervisor', 'junior_mentor', 'chief_mentor', 'senior_mentor', 'finance_admin'] },
   { name: 'TeamDashboard', page: 'TeamDashboard', icon: LayoutGrid, roles: ['super_admin', 'admin', 'broker_admin', 'academic_head', 'chief_mentor'] },
@@ -76,7 +79,8 @@ export const NAV_ITEMS = [
   { name: 'Hierarchy', hidden: true, page: 'Hierarchy', icon: Network, roles: ['super_admin', 'admin', 'broker_admin', 'academic_head'] },
   { name: 'AcademicCounselors', hidden: true, page: 'AcademicCounselors', icon: BookUser, roles: ['academic_head', 'super_admin'] },
   { name: 'Students', page: 'Students', icon: Users, roles: ['super_admin', 'admin', 'broker_admin', 'academic_head', 'academic_admin', 'junior_mentor', 'chief_mentor', 'senior_mentor', 'subjunior_mentor', 'assistance'] },
-  { name: 'StudentFollowups', label: 'Follow-ups', page: 'StudentFollowups', icon: PhoneCall, roles: ['super_admin', 'admin', 'broker_admin', 'academic_head', 'academic_admin', 'admin_supervisor', 'finance_admin', 'chief_mentor', 'senior_mentor', 'junior_mentor', 'subjunior_mentor', 'assistance'] },
+  { name: 'StudentFollowups', label: 'Follow-ups', page: 'StudentFollowups', icon: PhoneCall, roles: FOLLOWUP_ROLES },
+  { name: 'StudentCalls', label: 'Calls', page: 'StudentCalls', icon: PhoneIncoming, roles: FOLLOWUP_ROLES, sameAccessAs: 'StudentFollowups' },
   { name: 'StudentLogs', page: 'StudentLogs', icon: ClipboardList, roles: ['super_admin', 'admin', 'broker_admin', 'academic_head', 'academic_admin', 'junior_mentor', 'chief_mentor', 'senior_mentor', 'subjunior_mentor', 'assistance'] },
   { name: 'StudentLogHistoryPage', page: 'StudentLogHistoryPage', icon: History, roles: ['super_admin', 'academic_head', 'academic_admin', 'admin_supervisor', 'junior_mentor', 'chief_mentor', 'senior_mentor', 'subjunior_mentor', 'assistance'] },
   { name: 'MyStudentRequests', page: 'MyStudentRequests', icon: UserPlus, roles: ['junior_mentor', 'chief_mentor', 'senior_mentor', 'academic_head'] },
@@ -112,7 +116,7 @@ export const NAV_GROUPS = ['Overview', 'People & Access', 'Students', 'Funding',
 export const GROUP_OF = {
   Dashboard: 'Overview', TeamDashboard: 'Overview', Teams: 'Overview', ActivityTracker: 'Overview', AIInsights: 'Overview', Leaderboard: 'Overview', MentorPerformance: 'Overview', MentorTraining: 'Overview',
   Personnel: 'People & Access', RolesManagement: 'People & Access', Hierarchy: 'People & Access', AcademicCounselors: 'People & Access', MasterAdmin: 'People & Access',
-  Students: 'Students', StudentFollowups: 'Students', StudentLogs: 'Students', StudentLogHistoryPage: 'Students', MyStudentRequests: 'Students', StudentRequestApprovals: 'Students', RetentionManagement: 'Students', DrawAdminStudents: 'Students', MT5Accounts: 'Students', InactivityTransfers: 'Students',
+  Students: 'Students', StudentFollowups: 'Students', StudentCalls: 'Students', StudentLogs: 'Students', StudentLogHistoryPage: 'Students', MyStudentRequests: 'Students', StudentRequestApprovals: 'Students', RetentionManagement: 'Students', DrawAdminStudents: 'Students', MT5Accounts: 'Students', InactivityTransfers: 'Students',
   FundingActivities: 'Funding', FundingRequests: 'Funding', Transactions: 'Funding', TransactionTags: 'Funding',
   CommissionPlans: 'Commission', BonusCommissionReports: 'Commission', DepositCommissionReports: 'Commission', CommissionReports: 'Commission', CommissionTools: 'Commission', Commissions: 'Commission', QuarterClosing: 'Commission', MonthlyClosing: 'Commission', DailyPayouts: 'Commission', MyCommissionHistory: 'Commission', MyTargets: 'Commission', TargetsManagement: 'Commission',
   Tickets: 'More', Reports: 'More', AuditLogs: 'More', GamificationSettings: 'More',
@@ -120,4 +124,4 @@ export const GROUP_OF = {
 
 /** Page names a built-in role sees when it has no override. */
 export const defaultPagesFor = (role) =>
-  NAV_ITEMS.filter(i => !i.hidden && (i.roles.includes('all') || i.roles.includes(role))).map(i => i.name);
+  NAV_ITEMS.filter(i => !i.hidden && !i.sameAccessAs && (i.roles.includes('all') || i.roles.includes(role))).map(i => i.name);

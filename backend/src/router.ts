@@ -18,6 +18,7 @@ import {
 } from "./integrations/core";
 import { invokeFunction, listFunctions } from "./functions/index";
 import { handleReminderOpen } from "./functions/followupReminders";
+import { streamRecording } from "./students/calls";
 
 /**
  * Main HTTP router. The API is namespaced under /api.
@@ -39,6 +40,7 @@ import { handleReminderOpen } from "./functions/followupReminders";
  *   POST   /api/integrations/SendEmail | SendSMS | InvokeLLM | GenerateImage | ExtractDataFromUploadedFile
  *
  *   GET    /api/reminders/open/:token             (reminder email button → portal)
+ *   GET    /api/calls/recording?…                 (call recording, signed link)
  *   GET    /uploads/:filename                     (static file)
  *   GET    /health
  */
@@ -70,6 +72,9 @@ export async function route(req: Request): Promise<Response> {
   // ---- The button in a follow-up reminder email: noted as seen, then on to the portal ----
   const reminderOpen = path.match(/^\/api\/reminders\/open\/([A-Za-z0-9_-]{16,64})$/);
   if (reminderOpen && req.method === "GET") return handleReminderOpen(reminderOpen[1]);
+
+  // ---- A call recording, played from 3CX on a short-lived signed link (getCallRecording) ----
+  if (path === "/api/calls/recording" && req.method === "GET") return streamRecording(req, url);
 
   // ---- Entities ----
   const entityMatch = path.match(/^\/api\/entities\/([A-Za-z0-9_]+)(?:\/([^/]+))?$/);

@@ -13,6 +13,7 @@ import StudentForm from "../components/students/StudentForm";
 import MT5AccountSection from "../components/students/MT5AccountSection";
 import StudentHistory, { useStudentHistory } from "../components/students/StudentHistory";
 import StudentFollowupsSection from "@/components/followups/StudentFollowupsSection";
+import StudentCallsSection from "@/components/calls/StudentCallsSection";
 import { CallButton } from "@/components/followups/CallFlow";
 import { isMentorRole as isMentorTier } from "@/components/utils/roles";
 import { 
@@ -350,6 +351,9 @@ export default function StudentDetail() {
 
         {/* Follow-ups: stage, what they said, next date, click-to-call */}
         <StudentFollowupsSection student={displayStudent} />
+
+        {/* Calls with them through 3CX, with the recordings */}
+        <StudentCallsSection student={displayStudent} />
 
         {/* Everything that happened to this student */}
         <StudentHistory studentId={studentId} enabled={!!currentUser} />
