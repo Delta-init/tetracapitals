@@ -9,7 +9,8 @@ import { Badge } from '@/components/ui/badge';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import SearchableSelect from '@/components/common/SearchableSelect';
-import { AlertTriangle, Loader2, Phone } from 'lucide-react';
+import { AlertTriangle, Clock, Eye, Loader2, MailCheck, MailMinus, MailX, Phone } from 'lucide-react';
+import { dialInfo } from './phone';
 
 // Same lists as the CSE Follow-up Tracker sheet (the server checks them too).
 export const OUTCOMES = ['DSLP', 'DQMP', 'DGMP', 'Additional Deposit / Top-up', 'Other'];
@@ -40,20 +41,73 @@ export const StatusBadge = ({ status }) => <Badge variant="outline" className={S
 export const StageBadge = ({ stage }) => <Badge variant="outline" className={`border-transparent ${STAGE_CLS[stage] || ''}`}>{stage}</Badge>;
 
 export const fmtDate = (d) => (d ? new Date(`${d.slice(0, 10)}T12:00:00Z`).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric', timeZone: 'UTC' }) : '—');
+/* ── Reminder emails (10:00 UAE, one per person per day) ─────────────────── */
+
+const UAE_MS = 4 * 3600e3;
+export const uaeToday = () => new Date(Date.now() + UAE_MS).toISOString().slice(0, 10);
+const uaeHour = () => new Date(Date.now() + UAE_MS).getUTCHours();
+export const hhmm = (iso) => (iso ? new Date(iso).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' }) : '');
+const shortDay = (d) => (d ? new Date(`${d.slice(0, 10)}T12:00:00Z`).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', timeZone: 'UTC' }) : '');
+
+export const REMINDER = {
+  seen: { label: 'Seen', cls: 'border-emerald-200 bg-emerald-50 text-emerald-700', icon: Eye },
+  sent: { label: 'Sent', cls: 'border-sky-200 bg-sky-50 text-sky-700', icon: MailCheck },
+  failed: { label: 'Failed', cls: 'border-rose-200 bg-rose-50 text-rose-700', icon: MailX },
+  skipped: { label: 'Not sent', cls: 'border-slate-200 bg-slate-50 text-slate-500', icon: MailMinus },
+  sending: { label: 'Sending', cls: 'border-amber-200 bg-amber-50 text-amber-700', icon: Loader2 },
+};
+/** sent + opened from the email = "seen". */
+export const reminderKind = (r) => (r?.status === 'sent' && r.seen_at ? 'seen' : r?.status);
+
+export function reminderTitle(r) {
+  const day = r.date === uaeToday() ? 'Today' : shortDay(r.date);
+  if (r.status === 'sent') return `${day}: reminder email sent to ${r.to} at ${hhmm(r.at)}${r.seen_at ? ` · opened from the email at ${hhmm(r.seen_at)}` : ' · not opened from the email yet'}`;
+  if (r.status === 'failed') return `${day}: reminder email failed — ${r.reason}`;
+  if (r.status === 'skipped') return `${day}: reminder email not sent — ${r.reason}`;
+  return `${day}: reminder email being sent`;
+}
+
+/**
+ * A follow-up's latest reminder email: Sent / Seen / Failed / Not sent (why,
+ * on hover). Due or overdue before 10:00 UAE with none yet today: "At 10:00".
+ */
+export function ReminderBadge({ reminder, status }) {
+  const today = uaeToday();
+  if ((!reminder || reminder.date !== today) && (status === 'DUE TODAY' || status === 'OVERDUE') && uaeHour() < 10) {
+    return (
+      <span title="Today's reminder email goes out at 10:00 UAE time" className="inline-flex items-center gap-1 whitespace-nowrap text-xs text-slate-400">
+        <Clock className="h-3 w-3" /> At 10:00
+      </span>
+    );
+  }
+  if (!reminder) return <span className="text-slate-300">—</span>;
+  const k = REMINDER[reminderKind(reminder)] || REMINDER.skipped;
+  const Icon = k.icon;
+  const isToday = reminder.date === today;
+  return (
+    <span title={reminderTitle(reminder)} className="inline-flex flex-col items-start gap-0.5">
+      <Badge variant="outline" className={`gap-1 whitespace-nowrap ${k.cls} ${isToday ? '' : 'opacity-60'}`}>
+        <Icon className={`h-3 w-3 ${reminder.status === 'sending' ? 'animate-spin' : ''}`} />{k.label}
+      </Badge>
+      <span className="whitespace-nowrap text-[11px] text-slate-400">{isToday ? (reminder.status === 'sent' ? hhmm(reminder.at) : 'Today') : shortDay(reminder.date)}</span>
+    </span>
+  );
+}
+
 export const money = (n) => (n === null || n === undefined || n === '' ? '—' : `$${Number(n).toLocaleString('en-US', { maximumFractionDigits: 2 })}`);
 
 /** Phone as a click-to-call link — 3CX (desktop app / web client / extension) dials tel: links. */
 export function CallLink({ phone, className = '' }) {
-  if (!phone) return <span className="text-slate-300">—</span>;
-  const dial = String(phone).replace(/[^\d+]/g, '');
+  const info = dialInfo(phone);
+  if (!info.ok) return <span className="text-slate-400" title={info.reason}>{String(phone || '').replace(/^[\s'`"]+/, '') || '—'}</span>;
   return (
     <a
-      href={`tel:${dial}`}
+      href={`tel:${info.dial}`}
       onClick={(e) => e.stopPropagation()}
       className={`inline-flex items-center gap-1.5 whitespace-nowrap font-medium text-blue-700 hover:text-blue-900 hover:underline ${className}`}
-      title="Call with 3CX"
+      title={`Call ${info.dial} with 3CX${info.note ? ` — ${info.note}` : ''}`}
     >
-      <Phone className="h-3.5 w-3.5" /> {phone}
+      <Phone className="h-3.5 w-3.5" /> {info.dial}
     </a>
   );
 }
@@ -179,7 +233,7 @@ export function LogFollowupDialog({ followup, onClose, onSaved }) {
 }
 
 /** Open a follow-up: pick a student (fixed when opened from a student's page) and a target outcome. */
-export function NewFollowupDialog({ open, onClose, onSaved, student = null, students = [] }) {
+export function NewFollowupDialog({ open, onClose, onSaved, student = null, students = [], title = null, description = null }) {
   const [studentId, setStudentId] = useState('');
   const [outcome, setOutcome] = useState('');
   const [next, setNext] = useState('');
@@ -201,9 +255,9 @@ export function NewFollowupDialog({ open, onClose, onSaved, student = null, stud
     if (!outcome) { setError('Pick a target outcome.'); return; }
     setBusy(true); setError(null);
     try {
-      await base44.functions.invoke('createFollowup', { studentId, targetOutcome: outcome, nextFollowupDate: next, clientSaid, notes });
+      const res = await base44.functions.invoke('createFollowup', { studentId, targetOutcome: outcome, nextFollowupDate: next, clientSaid, notes });
       toast.success('Follow-up opened');
-      onSaved?.();
+      onSaved?.(res?.data?.id, { studentId, targetOutcome: outcome, nextFollowupDate: next, clientSaid, notes });
       onClose();
     } catch (e) {
       setError(e?.message || 'Could not open the follow-up');
@@ -216,8 +270,8 @@ export function NewFollowupDialog({ open, onClose, onSaved, student = null, stud
     <Dialog open={open} onOpenChange={(o) => { if (!o && !busy) onClose(); }}>
       <DialogContent className="max-w-lg">
         <DialogHeader>
-          <DialogTitle className="text-brand-navy">New follow-up{student ? ` · ${student.full_name}` : ''}</DialogTitle>
-          <DialogDescription>One per target outcome — a student can have several open at once.</DialogDescription>
+          <DialogTitle className="text-brand-navy">{title || `New follow-up${student ? ` · ${student.full_name}` : ''}`}</DialogTitle>
+          <DialogDescription>{description || 'One per target outcome — a student can have several open at once.'}</DialogDescription>
         </DialogHeader>
         <div className="grid gap-4 sm:grid-cols-2">
           {!student && (

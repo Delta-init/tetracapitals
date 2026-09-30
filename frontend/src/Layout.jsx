@@ -9,6 +9,7 @@ import NotificationBell from './components/utils/NotificationBell';
 import { getEffectiveUser } from './components/utils/ImpersonationContext';
 import { EASE } from '@/components/motion';
 import { NAV_ITEMS, NAV_GROUPS, GROUP_OF, humanize } from '@/components/utils/navigation';
+import { CallFlowProvider } from '@/components/followups/CallFlow';
 
 const initials = (name = '') =>
   name.split(/\s+/).filter(Boolean).slice(0, 2).map(p => p[0]?.toUpperCase()).join('') || 'D';
@@ -419,7 +420,8 @@ export default function Layout({ children, currentPageName }) {
             transition={{ duration: 0.35, ease: EASE }}
             className="page-stagger [&>.min-h-screen]:!min-h-0 [&>.min-h-screen]:!bg-none [&>.min-h-screen]:!bg-transparent [&>.min-h-screen]:!p-4 sm:[&>.min-h-screen]:!p-6 lg:[&>.min-h-screen]:!p-8"
           >
-            {children}
+            {/* Call (3CX) then log — one set of dialogs for every page */}
+            <CallFlowProvider>{children}</CallFlowProvider>
           </motion.div>
         </main>
       </div>

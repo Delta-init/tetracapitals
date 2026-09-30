@@ -13,6 +13,7 @@ import StudentForm from "../components/students/StudentForm";
 import MT5AccountSection from "../components/students/MT5AccountSection";
 import StudentHistory, { useStudentHistory } from "../components/students/StudentHistory";
 import StudentFollowupsSection from "@/components/followups/StudentFollowupsSection";
+import { CallButton } from "@/components/followups/CallFlow";
 import { isMentorRole as isMentorTier } from "@/components/utils/roles";
 import { 
   canEditStudent, 
@@ -208,12 +209,16 @@ export default function StudentDetail() {
               </p>
             </div>
           </div>
-          {canEdit && (
-            <Button onClick={() => setShowEditDialog(true)} className="bg-blue-600 hover:bg-blue-700">
-              <Edit className="h-4 w-4 mr-2" />
-              Edit Student
-            </Button>
-          )}
+          <div className="flex items-center gap-2">
+            {/* Call with 3CX, then log it against the student's follow-up */}
+            <CallButton student={displayStudent} className="h-9 px-4 text-sm" />
+            {canEdit && (
+              <Button onClick={() => setShowEditDialog(true)} className="bg-blue-600 hover:bg-blue-700">
+                <Edit className="h-4 w-4 mr-2" />
+                Edit Student
+              </Button>
+            )}
+          </div>
         </div>
 
         {/* Student Information Card */}

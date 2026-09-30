@@ -13,8 +13,10 @@ import { AlarmClock, CalendarCheck, CheckCircle2, DollarSign, Download, ListChec
 import { getEffectiveUser } from '@/components/utils/ImpersonationContext';
 import { createPageUrl } from '@/utils';
 import {
-  OUTCOMES, STAGES, StatusBadge, StageBadge, CallLink, LogFollowupDialog, NewFollowupDialog, fmtDate, money,
+  OUTCOMES, STAGES, StatusBadge, StageBadge, ReminderBadge, NewFollowupDialog, fmtDate, money,
 } from '@/components/followups/followupUi';
+import { CallButton, useCallFlow } from '@/components/followups/CallFlow';
+import ReminderLog from '@/components/followups/ReminderLog';
 
 const TABS = {
   overdue: { label: 'Overdue', test: (f) => f.followup_status === 'OVERDUE' },
@@ -57,7 +59,7 @@ export default function StudentFollowups() {
   const [outcome, setOutcome] = useState('all');
   const [team, setTeam] = useState('all');
   const [q, setQ] = useState('');
-  const [logging, setLogging] = useState(null);
+  const callFlow = useCallFlow();
   const [creating, setCreating] = useState(false);
 
   const teams = useMemo(() => [...new Set(followups.map(f => f.team_name).filter(Boolean))].sort(), [followups]);
@@ -74,8 +76,9 @@ export default function StudentFollowups() {
   const showMentor = new Set(followups.map(f => f.mentor_id)).size > 1;
 
   const exportCsv = () => {
-    const head = ['Student', 'Code', 'Phone', 'Mentor', 'Team', 'Target Outcome', 'Stage', 'Last Contact Date', 'Next Follow-up Due', 'Follow-up Status', 'Follow-up Count', 'What Client Said', 'Objection / Lost Reason', 'Converted Date', 'Deal Value', 'Notes'];
-    const lines = [head, ...rows.map(f => [f.student_name, f.student_code, f.phone, f.mentor_name, f.team_name, f.target_outcome, f.stage, f.last_contact_date, f.next_followup_date, f.followup_status, f.followup_count, f.client_said, f.objection_reason, f.converted_date, f.deal_value ?? '', f.notes])];
+    const head = ['Student', 'Code', 'Phone', 'Mentor', 'Team', 'Target Outcome', 'Stage', 'Last Contact Date', 'Next Follow-up Due', 'Follow-up Status', 'Reminder Email', 'Follow-up Count', 'What Client Said', 'Objection / Lost Reason', 'Converted Date', 'Deal Value', 'Notes'];
+    const reminder = (r) => (r ? `${r.status === 'sent' && r.seen_at ? 'seen' : r.status} ${r.date}${r.status === 'skipped' || r.status === 'failed' ? ` (${r.reason})` : ''}` : '');
+    const lines = [head, ...rows.map(f => [f.student_name, f.student_code, f.phone, f.mentor_name, f.team_name, f.target_outcome, f.stage, f.last_contact_date, f.next_followup_date, f.followup_status, reminder(f.reminder), f.followup_count, f.client_said, f.objection_reason, f.converted_date, f.deal_value ?? '', f.notes])];
     const csv = lines.map(r => r.map(v => `"${String(v ?? '').replace(/"/g, '""')}"`).join(',')).join('\n');
     const a = document.createElement('a');
     a.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv' }));
@@ -145,44 +148,49 @@ export default function StudentFollowups() {
               <table className="w-full text-sm">
                 <thead>
                   <tr className="border-b bg-slate-50/80">
+                    <th className="sticky left-0 z-10 bg-slate-50 px-3 py-3 text-left text-[11px] font-semibold uppercase tracking-wider text-slate-500 shadow-[1px_0_0_#e2e8f0]">Call · Log</th>
                     <TH>Student</TH><TH>Phone</TH>{showMentor && <TH>Mentor</TH>}<TH>Target Outcome</TH><TH>Stage</TH>
-                    <TH>Last Contact</TH><TH>Next Follow-up</TH><TH>Status</TH><TH right>Count</TH>
-                    <TH>What Client Said</TH><TH>Objection / Lost Reason</TH><TH>Converted</TH><TH right>Deal Value</TH><TH>Notes</TH><TH />
+                    <TH>Last Contact</TH><TH>Next Follow-up</TH><TH>Status</TH><TH>Reminder</TH><TH right>Count</TH>
+                    <TH>What Client Said</TH><TH>Objection / Lost Reason</TH><TH>Converted</TH><TH right>Deal Value</TH><TH>Notes</TH>
                   </tr>
                 </thead>
                 <tbody>
                   {isLoading ? (
-                    <tr><td colSpan={15} className="py-12 text-center text-slate-400">Loading follow-ups…</td></tr>
+                    <tr><td colSpan={16} className="py-12 text-center text-slate-400">Loading follow-ups…</td></tr>
                   ) : error ? (
-                    <tr><td colSpan={15} className="py-12 text-center text-rose-600">{error.message || 'Could not load follow-ups'}</td></tr>
+                    <tr><td colSpan={16} className="py-12 text-center text-rose-600">{error.message || 'Could not load follow-ups'}</td></tr>
                   ) : rows.length === 0 ? (
-                    <tr><td colSpan={15} className="py-12 text-center text-slate-400">
+                    <tr><td colSpan={16} className="py-12 text-center text-slate-400">
                       {followups.length ? `Nothing ${TABS[tab].label.toLowerCase()}.` : 'No follow-ups yet — open one with New follow-up.'}
                     </td></tr>
                   ) : rows.map(f => (
                     <tr key={f.id}
-                      className="cursor-pointer border-b border-slate-100 align-top hover:bg-brand-cyan/[0.04]"
+                      className="group cursor-pointer border-b border-slate-100 align-top hover:bg-cyan-50/40"
                       onClick={(e) => { if (!e.target.closest('button, a')) navigate(`${createPageUrl('StudentDetail')}?id=${f.student_id}`); }}>
+                      <td className="sticky left-0 z-10 bg-white px-3 py-2.5 shadow-[1px_0_0_#e2e8f0] group-hover:bg-cyan-50">
+                        <div className="flex items-center gap-1.5">
+                          <CallButton student={{ id: f.student_id, full_name: f.student_name, phone: f.phone }} followup={f} />
+                          {f.can_edit && <Button size="sm" variant="outline" className="h-8" onClick={() => callFlow?.openLog(f)}>Log</Button>}
+                        </div>
+                      </td>
                       <td className="px-3 py-2.5">
                         <Link to={`${createPageUrl('StudentDetail')}?id=${f.student_id}`} className="font-medium text-slate-900 hover:text-blue-600">{f.student_name}</Link>
                         <div className="font-mono text-xs text-slate-400">{f.student_code}</div>
                       </td>
-                      <td className="px-3 py-2.5"><CallLink phone={f.phone} /></td>
+                      <td className="whitespace-nowrap px-3 py-2.5 text-slate-600">{String(f.phone || '').replace(/^[\s'`"]+/, '') || '—'}</td>
                       {showMentor && <td className="px-3 py-2.5 text-slate-600">{f.mentor_name}<div className="text-xs text-slate-400">{f.team_name}</div></td>}
                       <td className="whitespace-nowrap px-3 py-2.5 text-slate-700">{f.target_outcome}</td>
                       <td className="px-3 py-2.5"><StageBadge stage={f.stage} /></td>
                       <td className="whitespace-nowrap px-3 py-2.5 text-slate-600">{fmtDate(f.last_contact_date)}</td>
                       <td className="whitespace-nowrap px-3 py-2.5 text-slate-600">{fmtDate(f.next_followup_date)}</td>
                       <td className="px-3 py-2.5"><StatusBadge status={f.followup_status} /></td>
+                      <td className="px-3 py-2.5"><ReminderBadge reminder={f.reminder} status={f.followup_status} /></td>
                       <td className="tabular px-3 py-2.5 text-right text-slate-700">{f.followup_count}</td>
                       <td className="max-w-[260px] px-3 py-2.5 text-slate-600">{f.client_said || <span className="text-slate-300">—</span>}</td>
                       <td className="max-w-[200px] px-3 py-2.5 text-slate-600">{f.objection_reason || <span className="text-slate-300">—</span>}</td>
                       <td className="whitespace-nowrap px-3 py-2.5 text-slate-600">{f.converted_date ? <>{fmtDate(f.converted_date)}{f.auto_converted && <div className="text-[11px] text-emerald-600">automatic</div>}</> : <span className="text-slate-300">—</span>}</td>
                       <td className="tabular whitespace-nowrap px-3 py-2.5 text-right font-medium text-slate-800">{money(f.deal_value)}</td>
                       <td className="max-w-[220px] px-3 py-2.5 text-slate-500">{f.notes || <span className="text-slate-300">—</span>}</td>
-                      <td className="px-3 py-2.5 text-right">
-                        {f.can_edit && <Button size="sm" variant="outline" onClick={() => setLogging(f)}>Log</Button>}
-                      </td>
                     </tr>
                   ))}
                 </tbody>
@@ -190,9 +198,10 @@ export default function StudentFollowups() {
             </div>
           </CardContent>
         </Card>
+
+        <ReminderLog currentUser={currentUser} />
       </div>
 
-      <LogFollowupDialog followup={logging} onClose={() => setLogging(null)} onSaved={refresh} />
       <NewFollowupDialog open={creating} onClose={() => setCreating(false)} onSaved={refresh} students={myStudents} />
     </div>
   );

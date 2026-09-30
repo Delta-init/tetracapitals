@@ -4,6 +4,7 @@ import { route } from "./router";
 import { error as errorResponse } from "./lib/response";
 import { startFinanceFundingWorker } from "./finance/funding";
 import { startInactivityWorker } from "./students/inactivity";
+import { startReminderWorker } from "./students/followupReminders";
 
 async function main() {
   await connectDb();
@@ -27,6 +28,8 @@ async function main() {
   startFinanceFundingWorker();
   // Students held by a CS with no approved deposit for 90 days move team (off until switched on).
   startInactivityWorker();
+  // Follow-up reminder emails, 10:00 UAE each day (FOLLOWUP_REMINDERS=off to keep a server out of it).
+  startReminderWorker();
 }
 
 const shutdown = async (signal: string) => {

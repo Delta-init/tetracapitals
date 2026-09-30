@@ -17,6 +17,7 @@ import { isMentorRole as isMentorTier, getScope, downlineIds } from "@/component
 
 import { Plus, Search, Eye, Users, UserCheck, Upload, Download, Filter, ArrowUp, Share2, Trash2, ArrowRightLeft } from "lucide-react";
 import TransferStudentsDialog from "../components/students/TransferStudentsDialog";
+import { CallButton } from "@/components/followups/CallFlow";
 import { listTeams } from "@/components/utils/teams";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -824,6 +825,7 @@ export default function Students() {
                             </TableCell>
                             <TableCell className="text-right">
                               <div className="flex justify-end gap-1">
+                                <CallButton variant="icon" student={student} />
                                 <Link to={createPageUrl('StudentDetail') + '?id=' + student.id}>
                                   <Button size="sm" variant="ghost" className="h-8 w-8 p-0" title="View">
                                     <Eye className="h-4 w-4" />
@@ -912,6 +914,7 @@ export default function Students() {
                          </TableCell>
                          <TableCell className="text-right">
                            <div className="flex justify-end gap-1">
+                             <CallButton variant="icon" student={student} />
                              <Link to={createPageUrl('StudentDetail') + '?id=' + student.id}>
                                <Button size="sm" variant="ghost" className="h-8 w-8 p-0" title="View">
                                  <Eye className="h-4 w-4" />
@@ -1016,6 +1019,7 @@ export default function Students() {
                           </TableCell>
                           <TableCell className="text-right">
                             <div className="flex justify-end gap-1">
+                              <CallButton variant="icon" student={student} />
                               <Link to={createPageUrl('StudentDetail') + '?id=' + student.id}>
                                 <Button size="sm" variant="ghost" className="h-8 w-8 p-0" title="View">
                                   <Eye className="h-4 w-4" />
@@ -1103,6 +1107,7 @@ export default function Students() {
                             </TableCell>
                             <TableCell className="text-right">
                               <div className="flex justify-end gap-1">
+                                <CallButton variant="icon" student={student} />
                                 <Link to={createPageUrl('StudentDetail') + '?id=' + student.id}>
                                   <Button size="sm" variant="ghost" className="h-8 w-8 p-0" title="View">
                                     <Eye className="h-4 w-4" />
@@ -1189,6 +1194,7 @@ export default function Students() {
                         </TableCell>
                         <TableCell className="text-right">
                           <div className="flex justify-end gap-2">
+                            <CallButton variant="icon" student={student} />
                             <Link to={createPageUrl('StudentDetail') + '?id=' + student.id}>
                               <Button size="sm" variant="ghost" className="h-8 w-8 p-0" title="View">
                                 <Eye className="h-4 w-4" />
@@ -1359,6 +1365,7 @@ export default function Students() {
                       </TableCell>
                       <TableCell className="text-right">
                         <div className="flex justify-end gap-1">
+                          <CallButton variant="icon" student={student} />
                           <Link to={createPageUrl('StudentDetail') + '?id=' + student.id}>
                             <Button size="sm" variant="ghost" className="h-8 w-8 p-0" title="View">
                               <Eye className="h-4 w-4" />

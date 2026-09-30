@@ -78,6 +78,8 @@ export async function getFollowups(req: Request, user: AuthUser): Promise<Respon
         deal_value: f.deal_value ?? null,
         notes: f.notes ?? "",
         auto_converted: !!f.converted_by_deposit_id,
+        // The latest reminder email about it: { date, status, reason, at, to, seen_at }.
+        reminder: f.last_reminder ?? null,
         can_edit: canWorkOn(user, s),
         created_date: f.created_date,
       };
@@ -100,6 +102,25 @@ export async function getFollowups(req: Request, user: AuthUser): Promise<Respon
   if (studentId) {
     out.events = await col("student_followup_events").find({ student_id: studentId }).sort({ at: -1 }).limit(500).toArray();
     out.can_create = students[0] ? canWorkOn(user, students[0]) : false;
+    // Reminder emails that listed this student's follow-ups, newest first.
+    const ids = rows.map((r) => r.id);
+    out.reminders = ids.length
+      ? ((await col("followup_reminders")
+        .find({ followup_ids: { $in: ids } }, { projection: { date: 1, status: 1, reason: 1, to: 1, mentor_name: 1, sent_at: 1, seen_at: 1, last_attempt_at: 1, created_at: 1, items: 1 } })
+        .sort({ date: -1 })
+        .limit(90)
+        .toArray()) as any[]).map((r) => ({
+        id: String(r._id),
+        date: r.date,
+        status: r.status,
+        reason: r.reason ?? "",
+        to: r.to ?? "",
+        mentor_name: r.mentor_name ?? "",
+        at: r.sent_at || r.last_attempt_at || r.created_at,
+        seen_at: r.seen_at ?? null,
+        items: (r.items ?? []).filter((i: any) => ids.includes(i.followup_id)).map((i: any) => ({ followup_id: i.followup_id, status: i.status })),
+      }))
+      : [];
   }
   return json(out);
 }

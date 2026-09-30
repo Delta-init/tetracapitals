@@ -22,6 +22,7 @@ import { getStudentHistory } from "./getStudentHistory";
 import { reassignStudents } from "./reassignStudents";
 import { getStudentMoves } from "./getStudentMoves";
 import { getFollowups, createFollowup, logFollowup, getFollowupTeams } from "./studentFollowups";
+import { getReminderLog, resendReminder, runRemindersNow, sendTestReminder } from "./followupReminders";
 import { getInactivityTransfer, setInactivityTransfer, runInactivityTransfer } from "./inactivityTransfer";
 import { financeFundingConfigured } from "../finance/funding";
 import type { AuthUser } from "../auth/middleware";
@@ -37,6 +38,10 @@ const AUTHED: Record<string, AuthedHandler> = {
   createFollowup,
   logFollowup,
   getFollowupTeams,
+  getReminderLog,
+  resendReminder,
+  runRemindersNow,
+  sendTestReminder,
   getInactivityTransfer,
   setInactivityTransfer,
   runInactivityTransfer,

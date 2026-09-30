@@ -17,6 +17,7 @@ import {
   handleInvokeLLM, handleGenerateImage, handleExtractDataFromUploadedFile,
 } from "./integrations/core";
 import { invokeFunction, listFunctions } from "./functions/index";
+import { handleReminderOpen } from "./functions/followupReminders";
 
 /**
  * Main HTTP router. The API is namespaced under /api.
@@ -37,6 +38,7 @@ import { invokeFunction, listFunctions } from "./functions/index";
  *   POST   /api/integrations/UploadFile           (multipart upload)
  *   POST   /api/integrations/SendEmail | SendSMS | InvokeLLM | GenerateImage | ExtractDataFromUploadedFile
  *
+ *   GET    /api/reminders/open/:token             (reminder email button → portal)
  *   GET    /uploads/:filename                     (static file)
  *   GET    /health
  */
@@ -64,6 +66,10 @@ export async function route(req: Request): Promise<Response> {
   if (path === "/api/v1/integrations/finance/funding-decisions" && req.method === "POST") return handleFundingDecision(req);
   // ---- The Delta LMS sending every other new student (its own shared secret) ----
   if (path === "/api/v1/integrations/lms/students" && req.method === "POST") return handleLmsStudents(req);
+
+  // ---- The button in a follow-up reminder email: noted as seen, then on to the portal ----
+  const reminderOpen = path.match(/^\/api\/reminders\/open\/([A-Za-z0-9_-]{16,64})$/);
+  if (reminderOpen && req.method === "GET") return handleReminderOpen(reminderOpen[1]);
 
   // ---- Entities ----
   const entityMatch = path.match(/^\/api\/entities\/([A-Za-z0-9_]+)(?:\/([^/]+))?$/);

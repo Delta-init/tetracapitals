@@ -20,6 +20,7 @@ import { listTeams } from '@/components/utils/teams';
 import { createPageUrl } from '@/utils';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import StudentMovesPanel from '@/components/students/StudentMovesPanel';
+import { CallButton } from '@/components/followups/CallFlow';
 
 const ROUND_ROBIN = '__round_robin__';
 const REASSIGNERS = ['super_admin', 'admin'];
@@ -128,7 +129,7 @@ export default function TeamDetail() {
   const toggle = (id, on) => setSelected(prev => (on ? [...prev, id] : prev.filter(x => x !== id)));
   const allOn = visible.length > 0 && visible.every(s => selected.includes(s.id));
   const selectedStudents = teamStudents.filter(s => selected.includes(s.id));
-  const colCount = 8 + (canReassign ? 2 : 0);
+  const colCount = 9 + (canReassign ? 1 : 0);
 
   return (
     <div className="min-h-screen p-6">
@@ -232,7 +233,7 @@ export default function TeamDetail() {
                       <th className="px-4 py-3 text-left text-[11px] font-semibold uppercase tracking-wider text-slate-500">Level</th>
                       <th className="px-4 py-3 text-left text-[11px] font-semibold uppercase tracking-wider text-slate-500">Status</th>
                       <th className="px-4 py-3 text-left text-[11px] font-semibold uppercase tracking-wider text-slate-500">Created</th>
-                      {canReassign && <th className="px-4 py-3" />}
+                      <th className="px-4 py-3" />
                     </tr>
                   </thead>
                   <tbody>
@@ -258,11 +259,12 @@ export default function TeamDetail() {
                           <Badge variant="outline" className={s.status === 'ACTIVE' ? 'border-emerald-200 bg-emerald-50 text-emerald-700' : 'bg-slate-100 text-slate-500'}>{s.status || '—'}</Badge>
                         </td>
                         <td className="px-4 py-2.5 text-slate-500">{s.created_date ? new Date(s.created_date).toLocaleDateString() : '—'}</td>
-                        {canReassign && (
-                          <td className="px-4 py-2.5 text-right">
-                            <Button variant="outline" size="sm" onClick={() => setDialogFor([s])}>Reassign</Button>
-                          </td>
-                        )}
+                        <td className="px-4 py-2.5 text-right">
+                          <div className="flex items-center justify-end gap-1.5">
+                            <CallButton variant="icon" student={s} />
+                            {canReassign && <Button variant="outline" size="sm" onClick={() => setDialogFor([s])}>Reassign</Button>}
+                          </div>
+                        </td>
                       </tr>
                     ))}
                   </tbody>

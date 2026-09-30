@@ -7,9 +7,18 @@ export const config = {
   corsOrigin: process.env.CORS_ORIGIN ?? "*",
   uploadDir: process.env.UPLOAD_DIR ?? "./uploads",
   publicBaseUrl: process.env.PUBLIC_BASE_URL ?? "http://localhost:4000",
+  /**
+   * Where people open the portal (the frontend), e.g.
+   * https://commission-v2.tetracapitals.com — used for links in emails
+   * (follow-up reminders). Unset: CORS_ORIGIN when that is one address;
+   * neither: emails go out without a button.
+   */
+  appBaseUrl: (process.env.APP_BASE_URL || (/^https?:\/\//.test(process.env.CORS_ORIGIN ?? "") ? process.env.CORS_ORIGIN! : "")).replace(/\/+$/, ""),
   smtp: {
     host: process.env.SMTP_HOST ?? "",
     port: Number(process.env.SMTP_PORT ?? 587),
+    /** SSL from the start (port 465) vs STARTTLS (587). Unset: by the port. */
+    secure: process.env.SMTP_SECURE ? process.env.SMTP_SECURE === "true" : undefined,
     user: process.env.SMTP_USER ?? "",
     pass: process.env.SMTP_PASS ?? "",
     from: process.env.SMTP_FROM ?? "no-reply@example.com",
