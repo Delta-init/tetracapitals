@@ -55,6 +55,8 @@ export default function TeamDialog({ open, onOpenChange, mode, team, users, unas
   }, [open, mode, team]);
 
   const inDialog = new Set([leaderId, ...rows.map(r => r.id)].filter(Boolean));
+  // Taken off the team in this dialog — they go to Unassigned only when it is saved.
+  const removed = mode === 'edit' ? [...originalIds].filter(id => !inDialog.has(id)) : [];
 
   // People who can join: anyone unassigned, plus (when editing) this team's
   // current members. People on other teams must be removed there first.
@@ -293,13 +295,22 @@ export default function TeamDialog({ open, onOpenChange, mode, team, users, unas
           )}
         </div>
 
-        <DialogFooter className="gap-2 sm:gap-0">
-          <Button variant="outline" onClick={() => onOpenChange(false)} disabled={saving}>Cancel</Button>
-          <Button onClick={save} disabled={saving}>
-            {saving && <Loader2 className="h-4 w-4 animate-spin" />}
-            {mode === 'create' ? 'Create team' : 'Save changes'}
-          </Button>
-        </DialogFooter>
+        {/* Kept in view however long the member list is, so a change is never left unsaved for want of the button. */}
+        <div className="sticky bottom-0 -mx-6 -mb-6 space-y-2 border-t border-slate-100 bg-background/95 px-6 py-4 backdrop-blur">
+          {removed.length > 0 && (
+            <p className="rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-800">
+              Removed: <strong>{removed.map(id => byId[id]?.full_name || 'someone').join(', ')}</strong>. Press Save changes to take
+              them off the team — they go to Unassigned.
+            </p>
+          )}
+          <DialogFooter className="gap-2 sm:gap-0">
+            <Button variant="outline" onClick={() => onOpenChange(false)} disabled={saving}>Cancel</Button>
+            <Button onClick={save} disabled={saving}>
+              {saving && <Loader2 className="h-4 w-4 animate-spin" />}
+              {mode === 'create' ? 'Create team' : 'Save changes'}
+            </Button>
+          </DialogFooter>
+        </div>
       </DialogContent>
     </Dialog>
   );
