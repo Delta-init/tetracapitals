@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { enrolmentOf, ENROLMENT } from '@/components/students/enrolment';
+import { enrolmentOf, ENROLMENT, EnrolledSwitch, isEnrolled } from '@/components/students/enrolment';
 import { commonOf, isStudentOf } from '@/components/students/common';
 import { StudentTagChips, tagNamesOf, useStudentTagCatalog } from '@/components/students/tags';
 import PageHeader from '@/components/common/PageHeader';
@@ -453,12 +453,12 @@ export default function Students() {
     filteredStudents = filteredStudents.filter(s => s.status === filterStatus);
   }
 
-  // Apply enrolment filter (Open / Closed = enrolled)
+  // Apply the tag and Enrolled filters (Enrolled = Enrolment Closed; Not enrolled = Open or Old)
   if (filterTag !== 'all') {
     filteredStudents = filteredStudents.filter(s => tagNamesOf(s).includes(filterTag));
   }
   if (filterEnrolment !== 'all') {
-    filteredStudents = filteredStudents.filter(s => enrolmentOf(s) === filterEnrolment);
+    filteredStudents = filteredStudents.filter(s => isEnrolled(s) === (filterEnrolment === 'enrolled'));
   }
 
   // Apply course / product filter
@@ -642,6 +642,18 @@ export default function Students() {
                 </SelectContent>
               </Select>
 
+              {/* Enrolled Filter — everyone, on every tab */}
+              <Select value={filterEnrolment} onValueChange={(v) => v && setFilterEnrolment(v)}>
+                <SelectTrigger className="w-full md:w-44">
+                  <SelectValue placeholder="Enrolled" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">Enrolled or not</SelectItem>
+                  <SelectItem value="enrolled">Enrolled</SelectItem>
+                  <SelectItem value="not_enrolled">Not enrolled</SelectItem>
+                </SelectContent>
+              </Select>
+
               {/* Admin Filters */}
               {['super_admin', 'broker_admin'].includes(currentUser.app_role) && (activeTab === 'all' || activeTab === 'open_pool') && (
                 <>
@@ -674,18 +686,6 @@ export default function Students() {
                     </SelectContent>
                   </Select>
 
-                  {/* Enrolment Filter */}
-                  <Select value={filterEnrolment} onValueChange={setFilterEnrolment}>
-                    <SelectTrigger className="w-40">
-                      <SelectValue placeholder="Enrolment" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="all">All Enrolment</SelectItem>
-                      <SelectItem value="open">Open</SelectItem>
-                      <SelectItem value="closed">Closed (enrolled)</SelectItem>
-                      <SelectItem value="old">Old</SelectItem>
-                    </SelectContent>
-                  </Select>
 
 
                   {/* Team Filter */}
@@ -830,6 +830,7 @@ export default function Students() {
                       <TableHead className="font-semibold">Course</TableHead>
                       <TableHead className="font-semibold">Products</TableHead>
                         <TableHead className="font-semibold">Status</TableHead>
+                        <TableHead className="font-semibold">Enrolled</TableHead>
                         <TableHead className="font-semibold">Tags</TableHead>
                         <TableHead className="font-semibold">Created</TableHead>
                         <TableHead className="font-semibold text-right">Actions</TableHead>
@@ -838,7 +839,7 @@ export default function Students() {
                     <TableBody>
                       {displayStudents.length === 0 ? (
                         <TableRow>
-                          <TableCell colSpan={14} className="text-center py-8 text-gray-500">
+                          <TableCell colSpan={15} className="text-center py-8 text-gray-500">
                             No students found
                           </TableCell>
                         </TableRow>
@@ -862,6 +863,7 @@ export default function Students() {
                                 {student.status}
                               </Badge>
                             </TableCell>
+                            <TableCell><EnrolledSwitch student={student} currentUser={currentUser} /></TableCell>
                             <TableCell><StudentTagChips student={student} catalog={tagCatalog} /></TableCell>
                             <TableCell className="text-sm">
                               {student.created_date ? format(new Date(student.created_date), 'MMM d, yyyy') : '-'}
@@ -921,6 +923,7 @@ export default function Students() {
                       <TableHead className="font-semibold">Course</TableHead>
                       <TableHead className="font-semibold">Products</TableHead>
                       <TableHead className="font-semibold">Status</TableHead>
+                      <TableHead className="font-semibold">Enrolled</TableHead>
                       <TableHead className="font-semibold">Tags</TableHead>
                       <TableHead className="font-semibold">Created</TableHead>
                       <TableHead className="font-semibold text-right">Actions</TableHead>
@@ -929,7 +932,7 @@ export default function Students() {
                   <TableBody>
                     {displayStudents.length === 0 ? (
                      <TableRow>
-                       <TableCell colSpan={14} className="text-center py-8 text-gray-500">
+                       <TableCell colSpan={15} className="text-center py-8 text-gray-500">
                          No team students found
                        </TableCell>
                      </TableRow>
@@ -953,6 +956,7 @@ export default function Students() {
                              {student.status}
                            </Badge>
                          </TableCell>
+                         <TableCell><EnrolledSwitch student={student} currentUser={currentUser} /></TableCell>
                          <TableCell><StudentTagChips student={student} catalog={tagCatalog} /></TableCell>
                          <TableCell className="text-sm">
                            {student.created_date ? format(new Date(student.created_date), 'MMM d, yyyy') : '-'}
@@ -1020,6 +1024,7 @@ export default function Students() {
                       <TableHead className="font-semibold">Course</TableHead>
                       <TableHead className="font-semibold">Products</TableHead>
                       <TableHead className="font-semibold">Status</TableHead>
+                      <TableHead className="font-semibold">Enrolled</TableHead>
                       <TableHead className="font-semibold">Tags</TableHead>
                       <TableHead className="font-semibold">Created</TableHead>
                       <TableHead className="font-semibold text-right">Actions</TableHead>
@@ -1028,7 +1033,7 @@ export default function Students() {
                   <TableBody>
                     {displayStudents.length === 0 ? (
                       <TableRow>
-                        <TableCell colSpan={canEdit ? 15 : 14} className="text-center py-8 text-gray-500">
+                        <TableCell colSpan={canEdit ? 16 : 15} className="text-center py-8 text-gray-500">
                           No students found
                         </TableCell>
                       </TableRow>
@@ -1060,6 +1065,7 @@ export default function Students() {
                               {student.status}
                             </Badge>
                           </TableCell>
+                          <TableCell><EnrolledSwitch student={student} currentUser={currentUser} /></TableCell>
                           <TableCell><StudentTagChips student={student} catalog={tagCatalog} /></TableCell>
                           <TableCell className="text-sm">
                             {student.created_date ? format(new Date(student.created_date), 'MMM d, yyyy') : '-'}
@@ -1115,6 +1121,7 @@ export default function Students() {
                       <TableHead className="font-semibold">Team</TableHead>
                       <TableHead className="font-semibold">Course</TableHead>
                       <TableHead className="font-semibold">Products</TableHead>
+                      <TableHead className="font-semibold">Enrolled</TableHead>
                       <TableHead className="font-semibold">Tags</TableHead>
                       <TableHead className="font-semibold">My Net Deposits</TableHead>
                       <TableHead className="font-semibold">Primary Net Deposits</TableHead>
@@ -1126,7 +1133,7 @@ export default function Students() {
                   <TableBody>
                     {coManagedStudents.length === 0 ? (
                       <TableRow>
-                        <TableCell colSpan={12} className="text-center py-8 text-gray-500">
+                        <TableCell colSpan={13} className="text-center py-8 text-gray-500">
                           No co-managed clients yet. Send a referral request from a Fund Request to get started.
                         </TableCell>
                       </TableRow>
@@ -1147,6 +1154,7 @@ export default function Students() {
                             <TableCell className="text-sm">{student.team_name || '-'}</TableCell>
                             <TableCell className="max-w-[220px] text-sm">{courseLabel(student.lms_course) || <span className="text-slate-300">—</span>}</TableCell>
                             <TableCell className="text-sm">{(studentProducts[student.id] || []).length ? <div className="flex flex-wrap gap-1">{studentProducts[student.id].map(p => <Badge key={p} variant="outline" className="border-violet-200 bg-violet-50 text-violet-700">{p}</Badge>)}</div> : <span className="text-slate-300">—</span>}</TableCell>
+                            <TableCell><EnrolledSwitch student={student} currentUser={currentUser} /></TableCell>
                             <TableCell><StudentTagChips student={student} catalog={tagCatalog} /></TableCell>
                             <TableCell className="text-sm font-semibold text-green-700">${myNet.toLocaleString()}</TableCell>
                             <TableCell className="text-sm text-gray-600">${primaryNet.toLocaleString()}</TableCell>
@@ -1209,6 +1217,7 @@ export default function Students() {
                       <TableHead className="font-semibold">Course</TableHead>
                       <TableHead className="font-semibold">Products</TableHead>
                     <TableHead className="font-semibold">Status</TableHead>
+                    <TableHead className="font-semibold">Enrolled</TableHead>
                     <TableHead className="font-semibold">Tags</TableHead>
                     <TableHead className="font-semibold">Created</TableHead>
                     <TableHead className="font-semibold text-right">Actions</TableHead>
@@ -1217,7 +1226,7 @@ export default function Students() {
                 <TableBody>
                   {displayStudents.length === 0 ? (
                     <TableRow>
-                      <TableCell colSpan={12} className="text-center py-8 text-gray-500">
+                      <TableCell colSpan={13} className="text-center py-8 text-gray-500">
                         No open pool students available
                       </TableCell>
                     </TableRow>
@@ -1239,6 +1248,7 @@ export default function Students() {
                             {student.status}
                           </Badge>
                         </TableCell>
+                        <TableCell><EnrolledSwitch student={student} currentUser={currentUser} /></TableCell>
                         <TableCell><StudentTagChips student={student} catalog={tagCatalog} /></TableCell>
                         <TableCell className="text-sm">
                           {student.created_date ? format(new Date(student.created_date), 'MMM d, yyyy') : '-'}
@@ -1308,6 +1318,7 @@ export default function Students() {
                       <TableHead className="font-semibold">Co-Mentor Net Deposits</TableHead>
                       <TableHead className="font-semibold">Combined Total</TableHead>
                       <TableHead className="font-semibold">Status</TableHead>
+                      <TableHead className="font-semibold">Enrolled</TableHead>
                       <TableHead className="font-semibold">Tags</TableHead>
                       <TableHead className="font-semibold">Co-Mentor Since</TableHead>
                     </TableRow>
@@ -1315,7 +1326,7 @@ export default function Students() {
                   <TableBody>
                     {allCoManagedStudents.length === 0 ? (
                       <TableRow>
-                        <TableCell colSpan={13} className="text-center py-8 text-gray-500">
+                        <TableCell colSpan={14} className="text-center py-8 text-gray-500">
                           No co-managed clients found
                         </TableCell>
                       </TableRow>
@@ -1344,6 +1355,7 @@ export default function Students() {
                                   {student.status}
                                 </Badge>
                               </TableCell>
+                              <TableCell><EnrolledSwitch student={student} currentUser={currentUser} /></TableCell>
                               <TableCell><StudentTagChips student={student} catalog={tagCatalog} /></TableCell>
                               <TableCell className="text-sm text-gray-500">
                                 {co.since ? format(new Date(co.since), 'MMM d, yyyy') : '-'}
@@ -1382,6 +1394,7 @@ export default function Students() {
                       <TableHead className="font-semibold">Course</TableHead>
                       <TableHead className="font-semibold">Products</TableHead>
                   <TableHead className="font-semibold">Status</TableHead>
+                  <TableHead className="font-semibold">Enrolled</TableHead>
                   <TableHead className="font-semibold">Tags</TableHead>
                   <TableHead className="font-semibold">Created</TableHead>
                   <TableHead className="font-semibold text-right">Actions</TableHead>
@@ -1390,7 +1403,7 @@ export default function Students() {
               <TableBody>
                 {displayStudents.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={14} className="text-center py-8 text-gray-500">
+                    <TableCell colSpan={15} className="text-center py-8 text-gray-500">
                       No students found
                     </TableCell>
                   </TableRow>
@@ -1414,6 +1427,7 @@ export default function Students() {
                           {student.status}
                         </Badge>
                       </TableCell>
+                      <TableCell><EnrolledSwitch student={student} currentUser={currentUser} /></TableCell>
                       <TableCell><StudentTagChips student={student} catalog={tagCatalog} /></TableCell>
                       <TableCell className="text-sm">
                         {student.created_date ? format(new Date(student.created_date), 'MMM d, yyyy') : '-'}
