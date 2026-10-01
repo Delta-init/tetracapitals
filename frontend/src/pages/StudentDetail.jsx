@@ -11,6 +11,7 @@ import { Link } from "react-router-dom";
 import { createPageUrl } from "../utils";
 import StudentForm from "../components/students/StudentForm";
 import MT5AccountSection from "../components/students/MT5AccountSection";
+import CourseFeesCard from "../components/students/CourseFeesCard";
 import StudentHistory, { useStudentHistory } from "../components/students/StudentHistory";
 import StudentFollowupsSection from "@/components/followups/StudentFollowupsSection";
 import StudentCallsSection from "@/components/calls/StudentCallsSection";
@@ -355,6 +356,9 @@ export default function StudentDetail() {
             </div>
           </CardContent>
         </Card>
+
+        {/* What each course cost and what was paid, as Delta finance approved it */}
+        <CourseFeesCard fees={displayStudent.course_fees} />
 
         {/* Follow-ups: stage, what they said, next date, click-to-call */}
         <StudentFollowupsSection student={displayStudent} />
