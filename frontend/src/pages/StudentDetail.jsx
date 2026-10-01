@@ -16,6 +16,7 @@ import StudentHistory, { useStudentHistory } from "../components/students/Studen
 import StudentFollowupsSection from "@/components/followups/StudentFollowupsSection";
 import StudentCallsSection from "@/components/calls/StudentCallsSection";
 import { CallButton } from "@/components/followups/CallFlow";
+import { EnrolmentControl } from "@/components/students/enrolment";
 import { isMentorRole as isMentorTier } from "@/components/utils/roles";
 import { 
   canEditStudent, 
@@ -209,6 +210,8 @@ export default function StudentDetail() {
                   {displayStudent.student_code}
                 </span>
               </p>
+              {/* Open, or Closed = enrolled */}
+              <div className="mt-2"><EnrolmentControl student={student} currentUser={currentUser} /></div>
             </div>
           </div>
           <div className="flex items-center gap-2">

@@ -23,7 +23,8 @@ export type HistoryType =
   | "senior_mentor_changed"
   | "level_changed"
   | "status_changed"
-  | "pool_changed";
+  | "pool_changed"
+  | "enrolment_changed";
 
 export interface HistoryEntry {
   student_id: string;

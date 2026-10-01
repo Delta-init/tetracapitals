@@ -34,6 +34,7 @@ const DOT = {
   senior_mentor_changed: 'bg-purple-400',
   level_changed: 'bg-amber-500',
   status_changed: 'bg-gray-500',
+  enrolment_changed: 'bg-emerald-500',
   pool_changed: 'bg-cyan-500',
   request: 'bg-slate-400',
 };

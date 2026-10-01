@@ -24,6 +24,7 @@ import { getStudentMoves } from "./getStudentMoves";
 import { getFollowups, createFollowup, logFollowup, getFollowupTeams } from "./studentFollowups";
 import { getReminderLog, resendReminder, runRemindersNow, sendTestReminder } from "./followupReminders";
 import { getCalls, getCallRecording, syncCallsNow, testThreecx } from "./studentCalls";
+import { setEnrolment } from "./studentEnrolment";
 import { getMentorSchedule, getMentorClass, bookMentorMeeting, getMentorMeeting, updateMentorMeeting, cancelMentorMeeting } from "./mentorCalendar";
 import { getInactivityTransfer, setInactivityTransfer, runInactivityTransfer } from "./inactivityTransfer";
 import { financeFundingConfigured } from "../finance/funding";
@@ -54,6 +55,7 @@ const AUTHED: Record<string, AuthedHandler> = {
   getMentorMeeting,
   updateMentorMeeting,
   cancelMentorMeeting,
+  setEnrolment,
   getInactivityTransfer,
   setInactivityTransfer,
   runInactivityTransfer,
