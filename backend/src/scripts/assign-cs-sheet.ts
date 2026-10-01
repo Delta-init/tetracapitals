@@ -9,7 +9,9 @@
  *   bun src/scripts/assign-cs-sheet.ts --cs=<cs email> --file=<…> --apply            does it; saves an undo file
  *   bun src/scripts/assign-cs-sheet.ts --undo=<file> [--apply]                       puts back what --apply did
  *
- * The JSON: { rows: [{ row, name, email, phone, closed }] } — made from the CS's spreadsheet.
+ * The JSON: { rows: [{ row, name, email, phone, closed, course? }] } — made from the CS's spreadsheet. A row with a
+ * course is enrolled too: Enrolment Closed, and the "Closed - <course>" tag (made on the Student Tags list if it is not
+ * there yet).
  * Already in the portal: the same email, or the same phone (any number in the cell, last 9 digits). The sheet is the
  * CS's own list, so a phone match is taken as the same student even when the name is spelled differently — those are
  * listed. A student another CS's sheet already gave to them is on both CSs' lists: they stay with that CS and become
@@ -28,6 +30,7 @@ import { nextStudentCode } from "../lib/studentCode";
 import { loadTeams } from "../students/teams";
 import { stampNewStudents, recordCreated, prepareStudentUpdate, describePerson, type HistoryEntry } from "../students/history";
 import { commonIds } from "../students/followups";
+import { CLOSED_PREFIX } from "../students/tags";
 import type { AuthUser } from "../auth/middleware";
 
 const apply = process.argv.includes("--apply");
@@ -38,7 +41,8 @@ const MISSING = { $missing: true };
 const LINKED = ["student_followups", "student_calls", "funding_transactions", "student_requests", "tickets",
   "commission_credits", "commission_ledgers", "mentor_referrals", "manual_commission_adjustments"];
 
-interface Row { row: number; name: string; email: string; phone: string; closed: boolean }
+interface Row { row: number; name: string; email: string; phone: string; closed: boolean; course?: string; courses: string[] }
+const tagOf = (course: string) => `${CLOSED_PREFIX}${course}`;
 
 const emailsOf = (v: unknown) => [...new Set((String(v ?? "").match(/[A-Za-z0-9._%+\-]+@[A-Za-z0-9.\-]+\.[A-Za-z]{2,}/g) ?? []).map((e) => e.toLowerCase().replace(/[.,]+$/, "")))];
 /** Every number in a phone cell, by its last 9 digits ("564643928.0" was a number cell; "(wp)" and new lines split). */
@@ -51,7 +55,7 @@ const samePerson = (a: unknown, b: unknown) => {
   return !!(x.length && y.length) && (x[0] === y[0] || x.every((w) => y.includes(w)) || y.every((w) => x.includes(w)));
 };
 
-const log = { database: config.mongoDb, host, batch: "", cs: "", applied_at: now, created: [] as string[], history_ids: [] as string[],
+const log = { database: config.mongoDb, host, batch: "", cs: "", applied_at: now, created: [] as string[], history_ids: [] as string[], tags_created: [] as string[],
   changes: [] as { id: string; before: Record<string, unknown>; after: Record<string, unknown> }[] };
 
 async function insertHistory(entries: HistoryEntry[]) {
@@ -67,6 +71,11 @@ async function assign(csEmail: string, file: string) {
   const csName = String(cs.full_name || cs.email);
   const rows = (JSON.parse(await Bun.file(file).text()).rows ?? []) as Row[];
   if (!rows.length) throw new Error(`No rows in ${file}`);
+  for (const r of rows) {
+    const course = String(r.course ?? "").trim();
+    r.courses = course ? [course] : [];
+    if (course) r.closed = true;   // on the sheet with a course: enrolled
+  }
   log.batch = `cs-sheet-${csEmail.split("@")[0]}-${now.slice(0, 10)}`;
   log.cs = csEmail;
   const ACTOR: AuthUser = { id: "", email: "", full_name: `${csName}'s students sheet`, app_role: "super_admin" };
@@ -89,7 +98,7 @@ async function assign(csEmail: string, file: string) {
     for (const k of keys) for (const s of byPhone.get(k) ?? []) found.set(String(s._id), s);
     if (!found.size) {
       const twin = [...emails, ...keys].map((k) => newBy.get(k)).find(Boolean);
-      if (twin) { notes.push(`row ${r.row} ${r.name} — same new student as row ${twin.row}: created once`); if (r.closed) twin.closed = true; continue; }
+      if (twin) { notes.push(`row ${r.row} ${r.name} — same new student as row ${twin.row}: created once`); if (r.closed) twin.closed = true; twin.courses.push(...r.courses); continue; }
       for (const k of [...emails, ...keys]) newBy.set(k, r);
       create.push(r);
       continue;
@@ -99,7 +108,7 @@ async function assign(csEmail: string, file: string) {
     if (list.length > 1) notes.push(`row ${r.row} ${r.name} — ${list.length} portal records, all go to ${csName}: ${list.map((s) => `${s.student_code} ${String(s.full_name ?? "").trim()}`).join(", ")}`);
     for (const s of list) {
       const first = takenBy.get(String(s._id));
-      if (first) { notes.push(`row ${r.row} ${r.name} — same portal student as row ${first.row} (${s.student_code})`); if (r.closed) first.closed = true; continue; }
+      if (first) { notes.push(`row ${r.row} ${r.name} — same portal student as row ${first.row} (${s.student_code})`); if (r.closed) first.closed = true; first.courses.push(...r.courses); continue; }
       takenBy.set(String(s._id), r);
       if (String(s.primary_mentor_id ?? "") === String(cs._id)) already.push({ r, s });
       else if (s.cs_sheet?.cs && s.cs_sheet.cs !== csEmail) {
@@ -113,6 +122,14 @@ async function assign(csEmail: string, file: string) {
   const toClose = [...move, ...common, ...already].filter(({ r, s }) => r.closed && s.enrolment_status !== "closed");
   // Not CLOSED on the sheet → Old, unless they are Closed already (an enrolled student is never put back) or Old.
   const toOld = [...move, ...common, ...already].filter(({ r, s }) => !r.closed && s.enrolment_status !== "closed" && s.enrolment_status !== "old");
+  // A course on the sheet: the "Closed - <course>" tag, where the student does not have it yet.
+  const toTag = [...move, ...common, ...already]
+    .map(({ s, r }) => ({ s, add: [...new Set(r.courses.map(tagOf))].filter((t) => !(Array.isArray(s.tags) ? s.tags : []).includes(t)) }))
+    .filter((x) => x.add.length);
+  const needTags = [...new Set(rows.flatMap((r) => r.courses.map(tagOf)))];
+  const haveTags = new Set((await col("student_tags").find({ name: { $in: needTags } }, { projection: { name: 1 } }).toArray()).map((t: any) => String(t.name)));
+  const makeTags = needTags.filter((t) => !haveTags.has(t));
+  const tagCount = toTag.reduce((n, x) => n + x.add.length, 0) + create.reduce((n, r) => n + new Set(r.courses).size, 0);
 
   console.log(`\n${csName}'s sheet: ${rows.length} rows`);
   const alreadyCommon = already.filter(({ s }) => String(s.primary_mentor_id ?? "") !== String(cs._id)).length;
@@ -123,6 +140,9 @@ async function assign(csEmail: string, file: string) {
   console.log(`  new, created under ${csName}: ${create.length}`);
   console.log(`  CLOSED (enrolled) on the sheet: ${closedRows.length} → Enrolment set to Closed on ${toClose.length + create.filter((r) => r.closed).length}`);
   console.log(`  not CLOSED → Enrolment set to Old on ${toOld.length + create.filter((r) => !r.closed).length}`);
+  const perCourse: Record<string, number> = {};
+  for (const r of rows) { const c = String(r.course ?? "").trim(); if (c) perCourse[c] = (perCourse[c] ?? 0) + 1; }
+  console.log(`  courses on the sheet: ${Object.entries(perCourse).map(([c, n]) => `${c} ${n}`).join(", ") || "none"} → "Closed - <course>" tag put on ${tagCount} student(s)${makeTags.length ? ` (new on the Student Tags list: ${makeTags.join(", ")})` : ""}`);
   console.log(`  no email or phone (skipped): ${skipped.length}${skipped.length ? " — " + skipped.map((r) => `row ${r.row} ${r.name}`).join(", ") : ""}`);
   console.log(`\nTo know about (${notes.length}):`);
   for (const n of notes) console.log(`  ${n}`);
@@ -132,6 +152,12 @@ async function assign(csEmail: string, file: string) {
   try {
     const marker = { cs: csEmail, batch: log.batch, at: now };
     const index = await loadTeams();
+    // 0. Any "Closed - <course>" not on the Student Tags list yet
+    for (const name of makeTags) {
+      const res = await col("student_tags").insertOne({ name, color: "#059669", kind: "closed", course: name.slice(CLOSED_PREFIX.length), active: true,
+        created_date: now, updated_date: now, created_by: "", created_by_name: ACTOR.full_name });
+      log.tags_created.push(String(res.insertedId));
+    }
     // 1. move the ones already in the portal (history line + team, as any change of CS)
     for (const { s } of move) {
       // Loaded before the portal kept who received a student first: that was the CS they are with now, so the
@@ -177,6 +203,14 @@ async function assign(csEmail: string, file: string) {
       await col("students").updateOne({ _id: s._id }, { $set: data });
       await insertHistory([{ student_id: String(s._id), at: now, type: "enrolment_changed", text: "Enrolment set to Old", by_id: null, by_name: ACTOR.full_name!, from: s.enrolment_status === "closed" ? "closed" : "open", to: "old", via: "cs-sheet" }]);
     }
+    // 2c. The course tags, on the ones already in the portal
+    for (const { s, add } of toTag) {
+      const data = { tags: [...(Array.isArray(s.tags) ? s.tags : []), ...add], updated_date: now };
+      log.changes.push({ id: String(s._id), before: Object.fromEntries(Object.keys(data).map((k) => [k, k in s ? s[k] : MISSING])), after: data });
+      await col("students").updateOne({ _id: s._id }, { $set: data });
+      Object.assign(s, data);
+      await insertHistory(add.map((t) => ({ student_id: String(s._id), at: now, type: "tag_changed" as const, text: `Tag added: ${t}`, by_id: null, by_name: ACTOR.full_name!, to: t, via: "cs-sheet" })));
+    }
     // 3. create the new ones under the CS
     const docs: any[] = create.map((r) => {
       const emails = emailsOf(r.email);
@@ -192,6 +226,8 @@ async function assign(csEmail: string, file: string) {
     if (docs.length) {
       await stampNewStudents(docs, index);
       for (const d of docs) d.student_code = await nextStudentCode();
+      // Tags are the server's to set (stamping clears them), so they go on after.
+      docs.forEach((d, i) => { const tags = [...new Set(create[i]!.courses.map(tagOf))]; if (tags.length) d.tags = tags; });
       const res = await col("students").insertMany(docs);
       docs.forEach((d, i) => { d._id = res.insertedIds[i]; log.created.push(String(d._id)); });
       await recordCreated(docs, ACTOR, "imported", index);
@@ -199,10 +235,13 @@ async function assign(csEmail: string, file: string) {
         student_id: String(d._id), at: now, type: "enrolment_changed" as const, text: d.enrolment_status === "closed" ? "Enrolment closed — enrolled" : "Enrolment set to Old",
         by_id: null, by_name: ACTOR.full_name!, from: "open", to: d.enrolment_status, via: "cs-sheet",
       })));
+      await insertHistory(docs.flatMap((d) => (Array.isArray(d.tags) ? d.tags : []).map((t: string) => ({
+        student_id: String(d._id), at: now, type: "tag_changed" as const, text: `Tag added: ${t}`, by_id: null, by_name: ACTOR.full_name!, to: t, via: "cs-sheet",
+      }))));
     }
-    console.log(`\nDone: ${move.length} moved to ${csName}, ${common.length} made Common, ${toClose.length} set to Closed, ${toOld.length} set to Old, ${docs.length} created${docs.length ? ` (${docs[0].student_code} → ${docs[docs.length - 1].student_code})` : ""}.`);
+    console.log(`\nDone: ${move.length} moved to ${csName}, ${common.length} made Common, ${toClose.length} set to Closed, ${toOld.length} set to Old, ${tagCount} course tag(s) put on, ${docs.length} created${docs.length ? ` (${docs[0].student_code} → ${docs[docs.length - 1].student_code})` : ""}.`);
   } finally {
-    if (log.changes.length || log.created.length) {
+    if (log.changes.length || log.created.length || log.tags_created.length) {
       await Bun.write(undoPath, JSON.stringify(log, null, 1));
       console.log(`Undo file: ${undoPath}\n  bun src/scripts/assign-cs-sheet.ts --undo=${undoPath}          (shows what it would put back)`);
     }
@@ -241,11 +280,17 @@ async function undo(file: string) {
   }
   console.log(`\nUndo of ${saved.batch}: ${restored} student(s) put back, ${remove.length} created student(s) removed, ${saved.history_ids.length} history line(s) removed`);
   for (const k of kept) console.log(`  ${k}`);
-  if (!apply) return;
+  if (!apply) { if (saved.tags_created?.length) console.log(`  ${saved.tags_created.length} tag(s) it made on the Student Tags list go if no student has them`); return; }
   await col("student_history").deleteMany({ _id: { $in: saved.history_ids.map((id) => toObjectId(id)) as any[] } });
   if (remove.length) {
     await col("student_history").deleteMany({ student_id: { $in: remove.map((d) => String(d._id)) } });
     await col("students").deleteMany({ _id: { $in: remove.map((d) => d._id) } });
+  }
+  for (const id of saved.tags_created ?? []) {
+    const t: any = await col("student_tags").findOne({ _id: toObjectId(id) as any });
+    if (!t) continue;
+    if (await col("students").countDocuments({ tags: t.name })) console.log(`  tag ${t.name}: a student has it — kept`);
+    else { await col("student_tags").deleteOne({ _id: t._id }); console.log(`  tag ${t.name}: removed from the Student Tags list`); }
   }
 }
 
