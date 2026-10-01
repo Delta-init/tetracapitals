@@ -271,7 +271,7 @@ export default function StudentDetail() {
               </div>
               
               <div>
-                <label className="text-sm font-medium text-gray-500">Primary Mentor</label>
+                <label className="text-sm font-medium text-gray-500">CS</label>
                 <p className="mt-1 text-base font-semibold text-gray-900">
                   {displayStudent.primary_mentor_name || '-'}
                 </p>

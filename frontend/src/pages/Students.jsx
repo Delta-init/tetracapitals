@@ -524,7 +524,7 @@ export default function Students() {
     };
 
     const csvContent = [
-      ['Student Code', 'Full Name', 'Email', 'Phone', 'Country', 'User ID', 'Primary Mentor', 'Senior Mentor', 'Team', 'Course', 'Products', 'Status', 'Created Date', 'Notes'].join(','),
+      ['Student Code', 'Full Name', 'Email', 'Phone', 'Country', 'User ID', 'CS', 'Senior Mentor', 'Team', 'Course', 'Products', 'Status', 'Created Date', 'Notes'].join(','),
       ...filteredStudents.map(s => [
         escapeCSV(s.student_code || ''),
         escapeCSV(s.full_name || ''),
@@ -784,7 +784,7 @@ export default function Students() {
                         <TableHead className="font-semibold">Phone</TableHead>
                         <TableHead className="font-semibold">Country</TableHead>
                         <TableHead className="font-semibold">User ID</TableHead>
-                        <TableHead className="font-semibold">Primary Mentor</TableHead>
+                        <TableHead className="font-semibold">CS</TableHead>
                         <TableHead className="font-semibold">Team</TableHead>
                       <TableHead className="font-semibold">Course</TableHead>
                       <TableHead className="font-semibold">Products</TableHead>
@@ -873,7 +873,7 @@ export default function Students() {
                       <TableHead className="font-semibold">Phone</TableHead>
                       <TableHead className="font-semibold">Country</TableHead>
                       <TableHead className="font-semibold">User ID</TableHead>
-                      <TableHead className="font-semibold">Primary Mentor</TableHead>
+                      <TableHead className="font-semibold">CS</TableHead>
                       <TableHead className="font-semibold">Team</TableHead>
                       <TableHead className="font-semibold">Course</TableHead>
                       <TableHead className="font-semibold">Products</TableHead>
@@ -970,7 +970,7 @@ export default function Students() {
                       <TableHead className="font-semibold">Phone</TableHead>
                       <TableHead className="font-semibold">Country</TableHead>
                       <TableHead className="font-semibold">User ID</TableHead>
-                      <TableHead className="font-semibold">Primary Mentor</TableHead>
+                      <TableHead className="font-semibold">CS</TableHead>
                       <TableHead className="font-semibold">Team</TableHead>
                       <TableHead className="font-semibold">Course</TableHead>
                       <TableHead className="font-semibold">Products</TableHead>
@@ -1064,7 +1064,7 @@ export default function Students() {
                     <TableRow className="bg-gray-50">
                       <TableHead className="font-semibold">Client Name</TableHead>
                       <TableHead className="font-semibold">Code</TableHead>
-                      <TableHead className="font-semibold">Primary Mentor</TableHead>
+                      <TableHead className="font-semibold">CS</TableHead>
                       <TableHead className="font-semibold">Team</TableHead>
                       <TableHead className="font-semibold">Course</TableHead>
                       <TableHead className="font-semibold">Products</TableHead>
@@ -1248,7 +1248,7 @@ export default function Students() {
                     <TableRow className="bg-gray-50">
                       <TableHead className="font-semibold">Client Name</TableHead>
                       <TableHead className="font-semibold">Code</TableHead>
-                      <TableHead className="font-semibold">Primary Mentor</TableHead>
+                      <TableHead className="font-semibold">CS</TableHead>
                       <TableHead className="font-semibold">Team</TableHead>
                       <TableHead className="font-semibold">Course</TableHead>
                       <TableHead className="font-semibold">Products</TableHead>
@@ -1324,7 +1324,7 @@ export default function Students() {
                   <TableHead className="font-semibold">Phone</TableHead>
                   <TableHead className="font-semibold">Country</TableHead>
                   <TableHead className="font-semibold">User ID</TableHead>
-                  <TableHead className="font-semibold">Primary Mentor</TableHead>
+                  <TableHead className="font-semibold">CS</TableHead>
                   <TableHead className="font-semibold">Team</TableHead>
                       <TableHead className="font-semibold">Course</TableHead>
                       <TableHead className="font-semibold">Products</TableHead>

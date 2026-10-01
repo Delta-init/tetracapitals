@@ -470,7 +470,7 @@ export default function FundingRequests() {
     };
 
     const csvContent = [
-      ['Requested Date', 'Type', 'Status', 'Student Name', 'Student Email', 'Student Code', 'Primary Mentor', 'Added By', 'Meeting Conducted By', 'MT5 Login', 'Amount USD', 'Payment Method', 'Tags', 'User ID', 'Transaction ID', 'Approved By', 'Approved Date', 'Notes'].join(','),
+      ['Requested Date', 'Type', 'Status', 'Student Name', 'Student Email', 'Student Code', 'CS', 'Added By', 'Meeting Conducted By', 'MT5 Login', 'Amount USD', 'Payment Method', 'Tags', 'User ID', 'Transaction ID', 'Approved By', 'Approved Date', 'Notes'].join(','),
       ...filteredTransactions.map(t => {
         const student = students.find(s => s.id === t.student_id);
         // Tags are stored as a string array; join with "; " so they fit in one CSV cell.
@@ -767,7 +767,7 @@ export default function FundingRequests() {
                     <TableHead className="font-semibold">Email</TableHead>
                     <TableHead className="font-semibold">Code</TableHead>
                     <TableHead className="font-semibold">Level</TableHead>
-                    <TableHead className="font-semibold">Primary Mentor</TableHead>
+                    <TableHead className="font-semibold">CS</TableHead>
                     <TableHead className="font-semibold">Added By</TableHead>
                     <TableHead className="font-semibold">Meeting By</TableHead>
                     <TableHead className="font-semibold">MT5 Login</TableHead>

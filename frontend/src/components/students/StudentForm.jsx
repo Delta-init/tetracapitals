@@ -183,7 +183,7 @@ export default function StudentForm({ student, onSubmit, onCancel, isSubmitting,
         </div>
 
         <div className="space-y-2">
-          <Label htmlFor="primary_mentor">Primary Mentor</Label>
+          <Label htmlFor="primary_mentor">CS</Label>
           <Select
             value={formData.primary_mentor_id || undefined}
             onValueChange={(value) => { if (value) setFormData(f => ({ ...f, primary_mentor_id: value })); }}

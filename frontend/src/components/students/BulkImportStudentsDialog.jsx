@@ -250,10 +250,10 @@ export default function BulkImportStudentsDialog({ open, onOpenChange, onImportC
           {assignmentMethod === 'specific_mentor' && (
             <div className="space-y-4">
               <div className="space-y-2">
-                <Label>Primary Mentor *</Label>
+                <Label>CS *</Label>
                 <Select value={selectedMentorId} onValueChange={setSelectedMentorId}>
                   <SelectTrigger>
-                    <SelectValue placeholder="Choose a primary mentor..." />
+                    <SelectValue placeholder="Choose a CS..." />
                   </SelectTrigger>
                   <SelectContent>
                     {mentors.map((mentor) => (
@@ -280,7 +280,7 @@ export default function BulkImportStudentsDialog({ open, onOpenChange, onImportC
                     className="bg-gray-50"
                   />
                   <p className="text-xs text-gray-500">
-                    Senior mentor is automatically assigned based on the primary mentor's hierarchy
+                    Senior mentor is automatically assigned based on the CS's hierarchy
                   </p>
                 </div>
               )}

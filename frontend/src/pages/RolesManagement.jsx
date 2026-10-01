@@ -29,7 +29,7 @@ const PAGE_GROUPS = NAV_GROUPS
   .filter(g => g.pages.length);
 
 const SCOPE_OPTIONS = [
-  { value: 'own', label: 'Own students', hint: 'Only students they are the primary mentor for (or created)' },
+  { value: 'own', label: 'Own students', hint: 'Only students they are the CS for (or created)' },
   { value: 'downline', label: 'Team students', hint: 'Their students plus everyone on their team (via Up Head)' },
   { value: 'all', label: 'Full system', hint: 'Every student in the system' },
 ];

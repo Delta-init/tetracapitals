@@ -122,7 +122,7 @@ function StudentCard({ student }) {
             <p className="text-xs text-gray-500 uppercase tracking-wide font-semibold mb-2">Mentor Information</p>
             <div className="space-y-2">
               <div>
-                <p className="text-xs text-gray-500">Primary Mentor</p>
+                <p className="text-xs text-gray-500">CS</p>
                 <p className="text-sm font-medium text-gray-900">{student.primary_mentor_name}</p>
               </div>
               {student.senior_mentor_name && (

@@ -51,7 +51,7 @@ export default function PrimaryMentorReport({ transactions, dateLabel, startDate
     }, [transactions]);
 
     const handleExport = () => {
-        const headers = ['Primary Mentor', 'Senior Mentor', 'Students', 'Txns', 'Deposits (USD)', 'Withdrawals (USD)', 'Net (USD)'];
+        const headers = ['CS', 'Senior Mentor', 'Students', 'Txns', 'Deposits (USD)', 'Withdrawals (USD)', 'Net (USD)'];
         const csvRows = [headers.join(','), ...rows.map(r => [
             `"${r.mentor_name}"`, `"${r.senior_mentor_name}"`, r.student_count, r.transaction_count,
             r.total_deposit.toFixed(2), r.total_withdrawal.toFixed(2), r.net.toFixed(2)
@@ -90,7 +90,7 @@ export default function PrimaryMentorReport({ transactions, dateLabel, startDate
                     <table className="w-full text-sm">
                         <thead>
                             <tr className="bg-gray-50 border-b border-gray-200">
-                                <th className="text-left px-4 py-3 font-semibold text-gray-600">Primary Mentor</th>
+                                <th className="text-left px-4 py-3 font-semibold text-gray-600">CS</th>
                                 <th className="text-left px-4 py-3 font-semibold text-gray-600">Senior Mentor</th>
                                 <th className="text-center px-4 py-3 font-semibold text-gray-600">Students</th>
                                 <th className="text-center px-4 py-3 font-semibold text-gray-600">Txns</th>

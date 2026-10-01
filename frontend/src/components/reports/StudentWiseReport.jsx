@@ -50,7 +50,7 @@ export default function StudentWiseReport({ transactions, dateLabel, startDate, 
     }, [transactions]);
 
     const handleExport = () => {
-        const headers = ['Code', 'Student', 'Primary Mentor', 'Senior Mentor', 'Deposits (USD)', 'Bonus (USD)', 'Withdrawals (USD)', 'Net (USD)', 'Txns'];
+        const headers = ['Code', 'Student', 'CS', 'Senior Mentor', 'Deposits (USD)', 'Bonus (USD)', 'Withdrawals (USD)', 'Net (USD)', 'Txns'];
         const csvRows = [headers.join(','), ...rows.map(r => [
             r.student_code, `"${r.student_name}"`, `"${r.primary_mentor_name}"`, `"${r.senior_mentor_name}"`,
             r.total_deposit.toFixed(2), r.total_bonus.toFixed(2), r.total_withdrawal.toFixed(2), r.net.toFixed(2), r.transaction_count
@@ -95,7 +95,7 @@ export default function StudentWiseReport({ transactions, dateLabel, startDate, 
                             <tr className="bg-gray-50 border-b border-gray-200">
                                 <th className="text-left px-4 py-3 font-semibold text-gray-600">Code</th>
                                 <th className="text-left px-4 py-3 font-semibold text-gray-600">Student</th>
-                                <th className="text-left px-4 py-3 font-semibold text-gray-600">Primary Mentor</th>
+                                <th className="text-left px-4 py-3 font-semibold text-gray-600">CS</th>
                                 <th className="text-left px-4 py-3 font-semibold text-gray-600">Senior Mentor</th>
                                 <th className="text-right px-4 py-3 font-semibold text-gray-600">Deposit (USD)</th>
                                 <th className="text-right px-4 py-3 font-semibold text-gray-600">Bonus (USD)</th>

@@ -161,7 +161,7 @@ export async function prepareStudentUpdate(existing: any, data: Record<string, a
         const toTeam = team?.name ?? "";
         entries.push({
           ...base, type: "mentor_changed",
-          text: `Primary mentor changed from ${existing.primary_mentor_name || "nobody"} to ${mentorId ? describePerson(index, mentorId, toName) : "nobody"}` +
+          text: `CS changed from ${existing.primary_mentor_name || "nobody"} to ${mentorId ? describePerson(index, mentorId, toName) : "nobody"}` +
             (fromTeam !== toTeam ? ` — team ${fromTeam || "none"} → ${toTeam || "none"}` : ""),
           from: { id: existing.primary_mentor_id ?? "", name: existing.primary_mentor_name ?? "", team: fromTeam || null },
           to: { id: mentorId, name: toName, team: toTeam || null },

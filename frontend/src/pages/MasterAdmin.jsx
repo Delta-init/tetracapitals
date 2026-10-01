@@ -577,7 +577,7 @@ export default function MasterAdmin() {
                   </Select>
                 </div>
                 <div>
-                  <Label>Primary Mentor</Label>
+                  <Label>CS</Label>
                   <Select value={draft.primary_mentor_id} onValueChange={(v) => setField('primary_mentor_id', v)}>
                     <SelectTrigger><SelectValue /></SelectTrigger>
                     <SelectContent>

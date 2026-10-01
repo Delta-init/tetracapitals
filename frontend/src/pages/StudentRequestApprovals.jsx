@@ -547,7 +547,7 @@ export default function StudentRequestApprovals() {
                   <p><strong>Email:</strong> {selectedRequest.email}</p>
                   <p><strong>Current Level:</strong> Level 1 (Logs Only)</p>
                   <p><strong>Requested Level:</strong> Level 2 (Full Access - Deposits & Withdrawals)</p>
-                  <p><strong>Primary Mentor:</strong> {selectedRequest.requested_primary_mentor_name}</p>
+                  <p><strong>CS:</strong> {selectedRequest.requested_primary_mentor_name}</p>
                 </div>
               )}
             </div>
@@ -609,7 +609,7 @@ export default function StudentRequestApprovals() {
                   <div className="bg-blue-50 p-4 rounded-lg space-y-2 text-sm">
                     <p className="font-semibold text-gray-900">Requested By:</p>
                     <p><strong>Mentor:</strong> {selectedRequest.requested_by_name}</p>
-                    <p><strong>New Primary Mentor:</strong> {selectedRequest.requested_primary_mentor_name}</p>
+                    <p><strong>New CS:</strong> {selectedRequest.requested_primary_mentor_name}</p>
                   </div>
                 </div>
               )}
@@ -647,7 +647,7 @@ export default function StudentRequestApprovals() {
                     <p className="font-semibold text-gray-900">Existing Student:</p>
                     <p><strong>Name:</strong> {duplicateStudent.full_name}</p>
                     <p><strong>Email:</strong> {duplicateStudent.email}</p>
-                    <p><strong>Current Primary Mentor:</strong> {duplicateStudent.primary_mentor_name}</p>
+                    <p><strong>Current CS:</strong> {duplicateStudent.primary_mentor_name}</p>
                     {duplicateStudent.senior_mentor_name && (
                       <p><strong>Current Senior Mentor:</strong> {duplicateStudent.senior_mentor_name}</p>
                     )}
@@ -655,7 +655,7 @@ export default function StudentRequestApprovals() {
                   
                   <div className="bg-blue-50 p-4 rounded-lg space-y-2 text-sm">
                     <p className="font-semibold text-gray-900">Transfer To:</p>
-                    <p><strong>New Primary Mentor:</strong> {selectedRequest.requested_primary_mentor_name}</p>
+                    <p><strong>New CS:</strong> {selectedRequest.requested_primary_mentor_name}</p>
                     {selectedRequest.requested_senior_mentor_name && (
                       <p><strong>New Senior Mentor:</strong> {selectedRequest.requested_senior_mentor_name}</p>
                     )}

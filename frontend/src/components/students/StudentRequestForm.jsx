@@ -116,7 +116,7 @@ export default function StudentRequestForm({ onSubmit, onCancel, isSubmitting, u
       </div>
 
       <div className="space-y-2">
-        <Label>Primary Mentor (You)</Label>
+        <Label>CS (You)</Label>
         <Input
           value={currentUser?.full_name || ''}
           disabled

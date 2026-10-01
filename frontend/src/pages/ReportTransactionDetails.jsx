@@ -122,7 +122,7 @@ export default function ReportTransactionDetails() {
   }, [transactions, adjustments]);
 
   const handleExport = () => {
-    const headers = ['Date', 'Student Code', 'Student', 'Primary Mentor', 'Senior Mentor', 'Added By', 'Type', 'Amount (USD)', 'Payment Method', 'Transaction ID'];
+    const headers = ['Date', 'Student Code', 'Student', 'CS', 'Senior Mentor', 'Added By', 'Type', 'Amount (USD)', 'Payment Method', 'Transaction ID'];
     const rows = transactions.map((t) => [
     t.requested_at ? format(new Date(t.requested_at), 'dd MMM yyyy HH:mm') : '',
     t.student_code || '',
@@ -223,7 +223,7 @@ export default function ReportTransactionDetails() {
                                         <th className="text-left px-4 py-3 font-semibold text-gray-600">Date</th>
                                         <th className="text-left px-4 py-3 font-semibold text-gray-600">Code</th>
                                         <th className="text-left px-4 py-3 font-semibold text-gray-600">Student</th>
-                                        <th className="text-left px-4 py-3 font-semibold text-gray-600">Primary Mentor</th>
+                                        <th className="text-left px-4 py-3 font-semibold text-gray-600">CS</th>
                                         <th className="text-left px-4 py-3 font-semibold text-gray-600">Senior Mentor</th>
                                         {!isMentor && <th className="text-left px-4 py-3 font-semibold text-gray-600">Added By</th>}
                                         <th className="text-center px-4 py-3 font-semibold text-gray-600">Type</th>

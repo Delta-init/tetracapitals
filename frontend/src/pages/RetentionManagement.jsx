@@ -184,7 +184,7 @@ export default function RetentionManagement() {
                         <p className="text-sm text-gray-600">Code: {student.student_code}</p>
                         <p className="text-sm text-green-600 font-medium mt-2">Net Deposit: ${student.net_deposit_usd.toLocaleString('en-US', { minimumFractionDigits: 2 })}</p>
                         {student.primary_mentor_name && (
-                          <p className="text-sm text-gray-600 mt-1">Primary Mentor: {student.primary_mentor_name}</p>
+                          <p className="text-sm text-gray-600 mt-1">CS: {student.primary_mentor_name}</p>
                         )}
                       </div>
                       <Button
@@ -248,7 +248,7 @@ function AssignmentCard({ assignment, drawAdmins, onAssign, isLoading }) {
           <div>
             <p className="text-xs text-gray-500 uppercase tracking-wide">Deposit Amount</p>
             <p className="text-lg font-semibold text-green-600">${assignment.net_deposit_usd.toLocaleString('en-US', { minimumFractionDigits: 2 })}</p>
-            <p className="text-sm text-gray-600">Primary Mentor: {assignment.primary_mentor_name}</p>
+            <p className="text-sm text-gray-600">CS: {assignment.primary_mentor_name}</p>
           </div>
           <div>
             <p className="text-xs text-gray-500 uppercase tracking-wide mb-2">Assign to Draw Admin</p>

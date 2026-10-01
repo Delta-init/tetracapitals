@@ -32,7 +32,7 @@ export async function createReferralRequest(req: Request, user: AuthUser): Promi
   // Check primary FIRST so the error message is accurate even when they're
   // also already listed in co_mentors_details with role 'primary'.
   if (student && (student as any).primary_mentor_id === user.id) {
-    return error("You're already the primary mentor for this client.", 400);
+    return error("You're already the CS for this client.", 400);
   }
   if (student && (student as any).co_mentors_details) {
     let existing: any[] = [];

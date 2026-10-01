@@ -110,7 +110,7 @@ export default function ReferralRequestPopup({ student, currentUser, onClose, tr
           <div className="bg-gray-50 rounded-lg p-3 text-sm space-y-1">
             <p><span className="text-gray-500">Student:</span> <span className="font-medium">{student.full_name}</span></p>
             <p><span className="text-gray-500">Code:</span> <span className="font-mono">{student.student_code || '-'}</span></p>
-            <p><span className="text-gray-500">Primary Mentor:</span> <span className="font-medium text-blue-700">{student.primary_mentor_name}</span></p>
+            <p><span className="text-gray-500">CS:</span> <span className="font-medium text-blue-700">{student.primary_mentor_name}</span></p>
           </div>
 
           {isBonus && (
