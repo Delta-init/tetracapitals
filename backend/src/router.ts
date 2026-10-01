@@ -19,6 +19,7 @@ import {
 import { invokeFunction, listFunctions } from "./functions/index";
 import { handleReminderOpen } from "./functions/followupReminders";
 import { streamRecording } from "./students/calls";
+import { streamWhatsAppMedia } from "./functions/whatsapp";
 
 /**
  * Main HTTP router. The API is namespaced under /api.
@@ -75,6 +76,8 @@ export async function route(req: Request): Promise<Response> {
 
   // ---- A call recording, played from 3CX on a short-lived signed link (getCallRecording) ----
   if (path === "/api/calls/recording" && req.method === "GET") return streamRecording(req, url);
+  // ---- A photo or file from a WhatsApp chat, on a short-lived signed link ----
+  if (path === "/api/whatsapp/media" && req.method === "GET") return streamWhatsAppMedia(url);
 
   // ---- Entities ----
   const entityMatch = path.match(/^\/api\/entities\/([A-Za-z0-9_]+)(?:\/([^/]+))?$/);

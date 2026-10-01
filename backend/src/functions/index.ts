@@ -26,6 +26,10 @@ import { getReminderLog, resendReminder, runRemindersNow, sendTestReminder } fro
 import { getCalls, getCallRecording, syncCallsNow, testThreecx } from "./studentCalls";
 import { setEnrolment } from "./studentEnrolment";
 import { getStudentTags, setStudentTag } from "./studentTags";
+import {
+  getWhatsAppStatus, connectWhatsApp, disconnectWhatsApp, getWhatsAppChats, getWhatsAppMessages, markWhatsAppRead,
+  sendWhatsApp, sendWhatsAppFile, linkWhatsAppChat, getStudentWhatsApp,
+} from "./whatsapp";
 import { getMentorSchedule, getMentorClass, bookMentorMeeting, getMentorMeeting, updateMentorMeeting, cancelMentorMeeting } from "./mentorCalendar";
 import { getInactivityTransfer, setInactivityTransfer, runInactivityTransfer } from "./inactivityTransfer";
 import { financeFundingConfigured } from "../finance/funding";
@@ -59,6 +63,16 @@ const AUTHED: Record<string, AuthedHandler> = {
   setEnrolment,
   getStudentTags,
   setStudentTag,
+  getWhatsAppStatus,
+  connectWhatsApp,
+  disconnectWhatsApp,
+  getWhatsAppChats,
+  getWhatsAppMessages,
+  markWhatsAppRead,
+  sendWhatsApp,
+  sendWhatsAppFile,
+  linkWhatsAppChat,
+  getStudentWhatsApp,
   getInactivityTransfer,
   setInactivityTransfer,
   runInactivityTransfer,

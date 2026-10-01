@@ -6,6 +6,7 @@ import { startFinanceFundingWorker } from "./finance/funding";
 import { startInactivityWorker } from "./students/inactivity";
 import { startReminderWorker } from "./students/followupReminders";
 import { startCallSyncWorker } from "./students/calls";
+import { startWhatsApp } from "./whatsapp/service";
 
 async function main() {
   await connectDb();
@@ -33,6 +34,8 @@ async function main() {
   startReminderWorker();
   // Calls with students (and their recordings) from 3CX, every 5 minutes — once THREECX_* is set.
   startCallSyncWorker();
+  // Each CS's linked WhatsApp, back after a restart (WHATSAPP=off to keep a server out of it).
+  startWhatsApp();
 }
 
 const shutdown = async (signal: string) => {

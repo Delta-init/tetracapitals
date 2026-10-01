@@ -15,6 +15,7 @@ import CourseFeesCard from "../components/students/CourseFeesCard";
 import StudentHistory, { useStudentHistory } from "../components/students/StudentHistory";
 import StudentFollowupsSection from "@/components/followups/StudentFollowupsSection";
 import StudentCallsSection from "@/components/calls/StudentCallsSection";
+import StudentWhatsAppCard from "@/components/students/StudentWhatsAppCard";
 import { CallButton } from "@/components/followups/CallFlow";
 import { EnrolmentControl } from "@/components/students/enrolment";
 import { isStudentOf } from "@/components/students/common";
@@ -371,6 +372,7 @@ export default function StudentDetail() {
 
         {/* Calls with them through 3CX, with the recordings */}
         <StudentCallsSection student={displayStudent} />
+        <StudentWhatsAppCard student={displayStudent} />
 
         {/* Everything that happened to this student */}
         <StudentHistory studentId={studentId} enabled={!!currentUser} />

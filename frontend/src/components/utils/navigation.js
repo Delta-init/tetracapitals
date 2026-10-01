@@ -47,6 +47,7 @@ import {
   Tags,
   PhoneCall,
   PhoneIncoming,
+  MessageCircle,
   CalendarDays,
 } from 'lucide-react';
 
@@ -84,6 +85,8 @@ export const NAV_ITEMS = [
   { name: 'Students', page: 'Students', icon: Users, roles: ['super_admin', 'admin', 'broker_admin', 'academic_head', 'academic_admin', 'junior_mentor', 'chief_mentor', 'senior_mentor', 'subjunior_mentor', 'assistance'] },
   { name: 'StudentFollowups', label: 'Follow-ups', page: 'StudentFollowups', icon: PhoneCall, roles: FOLLOWUP_ROLES },
   { name: 'StudentCalls', label: 'Calls', page: 'StudentCalls', icon: PhoneIncoming, roles: FOLLOWUP_ROLES, sameAccessAs: 'StudentFollowups' },
+  // Each CS's own WhatsApp; their Chief Mentor / CS Manager and Super Admins read it (backend/src/functions/whatsapp.ts).
+  { name: 'WhatsApp', label: 'WhatsApp', page: 'WhatsApp', icon: MessageCircle, roles: ['super_admin', 'chief_mentor'], sameAccessAs: 'StudentFollowups' },
   { name: 'MentorCalendar', label: 'Mentor Calendar', page: 'MentorCalendar', icon: CalendarDays, roles: ['all'], everyone: true },
   { name: 'StudentLogs', page: 'StudentLogs', icon: ClipboardList, roles: ['super_admin', 'admin', 'broker_admin', 'academic_head', 'academic_admin', 'junior_mentor', 'chief_mentor', 'senior_mentor', 'subjunior_mentor', 'assistance'] },
   { name: 'StudentLogHistoryPage', page: 'StudentLogHistoryPage', icon: History, roles: ['super_admin', 'academic_head', 'academic_admin', 'admin_supervisor', 'junior_mentor', 'chief_mentor', 'senior_mentor', 'subjunior_mentor', 'assistance'] },
@@ -121,7 +124,7 @@ export const NAV_GROUPS = ['Overview', 'People & Access', 'Students', 'Funding',
 export const GROUP_OF = {
   Dashboard: 'Overview', TeamDashboard: 'Overview', Teams: 'Overview', ActivityTracker: 'Overview', AIInsights: 'Overview', Leaderboard: 'Overview', MentorPerformance: 'Overview', MentorTraining: 'Overview',
   Personnel: 'People & Access', RolesManagement: 'People & Access', Hierarchy: 'People & Access', AcademicCounselors: 'People & Access', MasterAdmin: 'People & Access',
-  Students: 'Students', StudentFollowups: 'Students', StudentCalls: 'Students', MentorCalendar: 'Students', StudentLogs: 'Students', StudentLogHistoryPage: 'Students', MyStudentRequests: 'Students', StudentRequestApprovals: 'Students', RetentionManagement: 'Students', DrawAdminStudents: 'Students', MT5Accounts: 'Students', InactivityTransfers: 'Students', StudentTags: 'Students',
+  Students: 'Students', StudentFollowups: 'Students', StudentCalls: 'Students', WhatsApp: 'Students', MentorCalendar: 'Students', StudentLogs: 'Students', StudentLogHistoryPage: 'Students', MyStudentRequests: 'Students', StudentRequestApprovals: 'Students', RetentionManagement: 'Students', DrawAdminStudents: 'Students', MT5Accounts: 'Students', InactivityTransfers: 'Students', StudentTags: 'Students',
   FundingActivities: 'Funding', FundingRequests: 'Funding', Transactions: 'Funding', TransactionTags: 'Funding',
   CommissionPlans: 'Commission', BonusCommissionReports: 'Commission', DepositCommissionReports: 'Commission', CommissionReports: 'Commission', CommissionTools: 'Commission', Commissions: 'Commission', QuarterClosing: 'Commission', MonthlyClosing: 'Commission', DailyPayouts: 'Commission', MyCommissionHistory: 'Commission', MyTargets: 'Commission', TargetsManagement: 'Commission',
   Tickets: 'More', Reports: 'More', AuditLogs: 'More', GamificationSettings: 'More',

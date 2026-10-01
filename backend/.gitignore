@@ -8,3 +8,6 @@ dist/
 # Persistent embedded MongoDB data (dev-with-mongo.ts) — never commit.
 data/
 
+# Linked WhatsApp devices' keys and chat media (whatsapp/service.ts) — never commit.
+whatsapp-sessions/
+whatsapp-media/

@@ -54,6 +54,23 @@ export const config = {
     serviceSecret: process.env.LMS_SERVICE_SECRET ?? "",
     remoteOrgId: process.env.LMS_REMOTE_ORG_ID ?? "",
   },
+  /**
+   * WhatsApp, as in the Carlton CRM: each CS links their own WhatsApp by
+   * scanning a QR (Baileys — the WhatsApp Web protocol; no Meta account).
+   *
+   *   enabled     WHATSAPP=off keeps a server out of it: no saved session is
+   *               restored and nobody can link (a test or local copy)
+   *   sessionDir  WHATSAPP_SESSION_DIR — the linked devices' keys, one folder
+   *               per CS. Must survive deploys, or everyone scans again.
+   *   mediaDir    WHATSAPP_MEDIA_DIR — photos and files sent and received
+   *
+   * One API process only: a WhatsApp link lives in the process that made it.
+   */
+  whatsapp: {
+    enabled: !/^(off|false|0|no)$/i.test(process.env.WHATSAPP ?? ""),
+    sessionDir: process.env.WHATSAPP_SESSION_DIR ?? "./whatsapp-sessions",
+    mediaDir: process.env.WHATSAPP_MEDIA_DIR ?? "./whatsapp-media",
+  },
   anthropicApiKey: process.env.ANTHROPIC_API_KEY ?? "",
   /**
    * The Root portal, which opens this app for people signed in there and

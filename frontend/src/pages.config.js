@@ -96,6 +96,7 @@ import MentorCalendar from './pages/MentorCalendar';
 import Tickets from './pages/Tickets';
 import Transactions from './pages/Transactions';
 import TransactionTags from './pages/TransactionTags';
+import WhatsApp from './pages/WhatsApp';
 import __Layout from './Layout.jsx';
 
 
@@ -149,6 +150,7 @@ export const PAGES = {
     "Tickets": Tickets,
     "Transactions": Transactions,
     "TransactionTags": TransactionTags,
+    "WhatsApp": WhatsApp,
 }
 
 export const pagesConfig = {

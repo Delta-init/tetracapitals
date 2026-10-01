@@ -218,12 +218,17 @@ const Core = {
 // envelope so callers that read `res.data.users` keep working.
 //   base44.functions.createReferralRequest(body)         → { data, status }
 //   base44.functions.invoke('createReferralRequest', body) → { data, status }
+//   base44.functions.invokeForm('sendWhatsAppFile', formData) → { data, status }   (a file upload)
 const functions = new Proxy({}, {
   get(_t, key) {
     if (typeof key !== "string") return undefined;
     if (key === "invoke") {
       return (name, body = {}) =>
         apiWrap(`/api/functions/${encodeURIComponent(name)}`, { method: "POST", body });
+    }
+    if (key === "invokeForm") {
+      return (name, form) =>
+        apiWrap(`/api/functions/${encodeURIComponent(name)}`, { method: "POST", body: form, isForm: true });
     }
     return (body = {}) =>
       apiWrap(`/api/functions/${encodeURIComponent(key)}`, { method: "POST", body });
