@@ -557,7 +557,7 @@ export default function Students() {
     };
 
     const csvContent = [
-      ['Student Code', 'Full Name', 'Email', 'Phone', 'Country', 'User ID', 'CS', 'Senior Mentor', 'Team', 'Course', 'Products', 'Status', 'Enrolment', 'Tags', 'Created Date', 'Notes'].join(','),
+      ['Student Code', 'Full Name', 'Email', 'Phone', 'Country', 'User ID', 'CS', 'Senior Mentor', 'Team', 'Course', 'Status', 'Enrolment', 'Tags', 'Created Date', 'Notes'].join(','),
       ...filteredStudents.map(s => [
         escapeCSV(s.student_code || ''),
         escapeCSV(s.full_name || ''),
@@ -569,7 +569,6 @@ export default function Students() {
         escapeCSV(s.senior_mentor_name || ''),
         escapeCSV(s.team_name || ''),
         escapeCSV(courseLabel(s.lms_course)),
-        escapeCSV((studentProducts[s.id] || []).join(' / ')),
         escapeCSV(s.status || ''),
         escapeCSV(ENROLMENT[enrolmentOf(s)].label),
         escapeCSV(tagNamesOf(s).join(', ')),
@@ -842,7 +841,6 @@ export default function Students() {
                         <TableHead className="font-semibold">CS</TableHead>
                         <TableHead className="font-semibold">Team</TableHead>
                       <TableHead className="font-semibold">Course</TableHead>
-                      <TableHead className="font-semibold">Products</TableHead>
                       <TableHead className="font-semibold">Balance</TableHead>
                         <TableHead className="font-semibold">Status</TableHead>
                         <TableHead className="font-semibold">Enrolled</TableHead>
@@ -854,7 +852,7 @@ export default function Students() {
                     <TableBody>
                       {displayStudents.length === 0 ? (
                         <TableRow>
-                          <TableCell colSpan={13} className="text-center py-8 text-gray-500">
+                          <TableCell colSpan={12} className="text-center py-8 text-gray-500">
                             No students found
                           </TableCell>
                         </TableRow>
@@ -872,7 +870,6 @@ export default function Students() {
                             <TableCell className="text-sm">{student.primary_mentor_name}</TableCell>
                             <TableCell className="text-sm">{student.team_name || '-'}</TableCell>
                             <TableCell className="max-w-[220px] text-sm"><CourseCell student={student} /></TableCell>
-                            <TableCell className="text-sm">{(studentProducts[student.id] || []).length ? <div className="flex flex-wrap gap-1">{studentProducts[student.id].map(p => <Badge key={p} variant="outline" className="border-violet-200 bg-violet-50 text-violet-700">{p}</Badge>)}</div> : <span className="text-slate-300">—</span>}</TableCell>
                             <TableCell><BalanceCell student={student} /></TableCell>
                             <TableCell>
                               <Badge variant="outline" className={getStatusColor(student.status)}>
@@ -934,7 +931,6 @@ export default function Students() {
                       <TableHead className="font-semibold">CS</TableHead>
                       <TableHead className="font-semibold">Team</TableHead>
                       <TableHead className="font-semibold">Course</TableHead>
-                      <TableHead className="font-semibold">Products</TableHead>
                       <TableHead className="font-semibold">Balance</TableHead>
                       <TableHead className="font-semibold">Status</TableHead>
                       <TableHead className="font-semibold">Enrolled</TableHead>
@@ -946,7 +942,7 @@ export default function Students() {
                   <TableBody>
                     {displayStudents.length === 0 ? (
                      <TableRow>
-                       <TableCell colSpan={13} className="text-center py-8 text-gray-500">
+                       <TableCell colSpan={12} className="text-center py-8 text-gray-500">
                          No team students found
                        </TableCell>
                      </TableRow>
@@ -964,7 +960,6 @@ export default function Students() {
                          <TableCell className="text-sm text-purple-600 font-medium">{student.primary_mentor_name}</TableCell>
                          <TableCell className="text-sm">{student.team_name || '-'}</TableCell>
                             <TableCell className="max-w-[220px] text-sm"><CourseCell student={student} /></TableCell>
-                            <TableCell className="text-sm">{(studentProducts[student.id] || []).length ? <div className="flex flex-wrap gap-1">{studentProducts[student.id].map(p => <Badge key={p} variant="outline" className="border-violet-200 bg-violet-50 text-violet-700">{p}</Badge>)}</div> : <span className="text-slate-300">—</span>}</TableCell>
                             <TableCell><BalanceCell student={student} /></TableCell>
                          <TableCell>
                            <Badge variant="outline" className={getStatusColor(student.status)}>
@@ -1034,7 +1029,6 @@ export default function Students() {
                       <TableHead className="font-semibold">CS</TableHead>
                       <TableHead className="font-semibold">Team</TableHead>
                       <TableHead className="font-semibold">Course</TableHead>
-                      <TableHead className="font-semibold">Products</TableHead>
                       <TableHead className="font-semibold">Balance</TableHead>
                       <TableHead className="font-semibold">Status</TableHead>
                       <TableHead className="font-semibold">Enrolled</TableHead>
@@ -1046,7 +1040,7 @@ export default function Students() {
                   <TableBody>
                     {displayStudents.length === 0 ? (
                       <TableRow>
-                        <TableCell colSpan={canEdit ? 14 : 13} className="text-center py-8 text-gray-500">
+                        <TableCell colSpan={canEdit ? 13 : 12} className="text-center py-8 text-gray-500">
                           No students found
                         </TableCell>
                       </TableRow>
@@ -1072,7 +1066,6 @@ export default function Students() {
                           <TableCell className="text-sm">{student.primary_mentor_name}</TableCell>
                           <TableCell className="text-sm">{student.team_name || '-'}</TableCell>
                             <TableCell className="max-w-[220px] text-sm"><CourseCell student={student} /></TableCell>
-                            <TableCell className="text-sm">{(studentProducts[student.id] || []).length ? <div className="flex flex-wrap gap-1">{studentProducts[student.id].map(p => <Badge key={p} variant="outline" className="border-violet-200 bg-violet-50 text-violet-700">{p}</Badge>)}</div> : <span className="text-slate-300">—</span>}</TableCell>
                             <TableCell><BalanceCell student={student} /></TableCell>
                           <TableCell>
                             <Badge variant="outline" className={getStatusColor(student.status)}>
@@ -1134,7 +1127,6 @@ export default function Students() {
                       <TableHead className="font-semibold">CS</TableHead>
                       <TableHead className="font-semibold">Team</TableHead>
                       <TableHead className="font-semibold">Course</TableHead>
-                      <TableHead className="font-semibold">Products</TableHead>
                       <TableHead className="font-semibold">Balance</TableHead>
                       <TableHead className="font-semibold">Enrolled</TableHead>
                       <TableHead className="font-semibold">Tags</TableHead>
@@ -1148,7 +1140,7 @@ export default function Students() {
                   <TableBody>
                     {coManagedStudents.length === 0 ? (
                       <TableRow>
-                        <TableCell colSpan={14} className="text-center py-8 text-gray-500">
+                        <TableCell colSpan={13} className="text-center py-8 text-gray-500">
                           No co-managed clients yet. Send a referral request from a Fund Request to get started.
                         </TableCell>
                       </TableRow>
@@ -1168,7 +1160,6 @@ export default function Students() {
                             <TableCell className="text-sm">{student.primary_mentor_name}</TableCell>
                             <TableCell className="text-sm">{student.team_name || '-'}</TableCell>
                             <TableCell className="max-w-[220px] text-sm"><CourseCell student={student} /></TableCell>
-                            <TableCell className="text-sm">{(studentProducts[student.id] || []).length ? <div className="flex flex-wrap gap-1">{studentProducts[student.id].map(p => <Badge key={p} variant="outline" className="border-violet-200 bg-violet-50 text-violet-700">{p}</Badge>)}</div> : <span className="text-slate-300">—</span>}</TableCell>
                             <TableCell><BalanceCell student={student} /></TableCell>
                             <TableCell><EnrolledSwitch student={student} currentUser={currentUser} /></TableCell>
                             <TableCell><StudentTagChips student={student} catalog={tagCatalog} /></TableCell>
@@ -1228,7 +1219,6 @@ export default function Students() {
                     <TableHead className="font-semibold">Student</TableHead>
                     <TableHead className="font-semibold">Phone</TableHead>
                       <TableHead className="font-semibold">Course</TableHead>
-                      <TableHead className="font-semibold">Products</TableHead>
                       <TableHead className="font-semibold">Balance</TableHead>
                     <TableHead className="font-semibold">Status</TableHead>
                     <TableHead className="font-semibold">Enrolled</TableHead>
@@ -1240,7 +1230,7 @@ export default function Students() {
                 <TableBody>
                   {displayStudents.length === 0 ? (
                     <TableRow>
-                      <TableCell colSpan={11} className="text-center py-8 text-gray-500">
+                      <TableCell colSpan={10} className="text-center py-8 text-gray-500">
                         No open pool students available
                       </TableCell>
                     </TableRow>
@@ -1256,7 +1246,6 @@ export default function Students() {
                         </TableCell>
                         <TableCell className="text-sm font-mono">{student.phone}</TableCell>
                             <TableCell className="max-w-[220px] text-sm"><CourseCell student={student} /></TableCell>
-                            <TableCell className="text-sm">{(studentProducts[student.id] || []).length ? <div className="flex flex-wrap gap-1">{studentProducts[student.id].map(p => <Badge key={p} variant="outline" className="border-violet-200 bg-violet-50 text-violet-700">{p}</Badge>)}</div> : <span className="text-slate-300">—</span>}</TableCell>
                             <TableCell><BalanceCell student={student} /></TableCell>
                         <TableCell>
                           <Badge variant="outline" className={getStatusColor(student.status)}>
@@ -1327,7 +1316,6 @@ export default function Students() {
                       <TableHead className="font-semibold">CS</TableHead>
                       <TableHead className="font-semibold">Team</TableHead>
                       <TableHead className="font-semibold">Course</TableHead>
-                      <TableHead className="font-semibold">Products</TableHead>
                       <TableHead className="font-semibold">Balance</TableHead>
                       <TableHead className="font-semibold">Co-Mentor</TableHead>
                       <TableHead className="font-semibold">Primary Net Deposits</TableHead>
@@ -1342,7 +1330,7 @@ export default function Students() {
                   <TableBody>
                     {allCoManagedStudents.length === 0 ? (
                       <TableRow>
-                        <TableCell colSpan={15} className="text-center py-8 text-gray-500">
+                        <TableCell colSpan={14} className="text-center py-8 text-gray-500">
                           No co-managed clients found
                         </TableCell>
                       </TableRow>
@@ -1361,7 +1349,6 @@ export default function Students() {
                               <TableCell className="text-sm">{student.primary_mentor_name}</TableCell>
                               <TableCell className="text-sm">{student.team_name || '-'}</TableCell>
                             <TableCell className="max-w-[220px] text-sm"><CourseCell student={student} /></TableCell>
-                            <TableCell className="text-sm">{(studentProducts[student.id] || []).length ? <div className="flex flex-wrap gap-1">{studentProducts[student.id].map(p => <Badge key={p} variant="outline" className="border-violet-200 bg-violet-50 text-violet-700">{p}</Badge>)}</div> : <span className="text-slate-300">—</span>}</TableCell>
                             <TableCell><BalanceCell student={student} /></TableCell>
                               <TableCell className="text-sm font-medium text-purple-700">{co.mentor_name}</TableCell>
                               <TableCell className="text-sm text-gray-700">${primaryNet.toLocaleString()}</TableCell>
@@ -1406,7 +1393,6 @@ export default function Students() {
                   <TableHead className="font-semibold">CS</TableHead>
                   <TableHead className="font-semibold">Team</TableHead>
                       <TableHead className="font-semibold">Course</TableHead>
-                      <TableHead className="font-semibold">Products</TableHead>
                       <TableHead className="font-semibold">Balance</TableHead>
                   <TableHead className="font-semibold">Status</TableHead>
                   <TableHead className="font-semibold">Enrolled</TableHead>
@@ -1418,7 +1404,7 @@ export default function Students() {
               <TableBody>
                 {displayStudents.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={13} className="text-center py-8 text-gray-500">
+                    <TableCell colSpan={12} className="text-center py-8 text-gray-500">
                       No students found
                     </TableCell>
                   </TableRow>
@@ -1436,7 +1422,6 @@ export default function Students() {
                       <TableCell className="text-sm">{student.primary_mentor_name}</TableCell>
                       <TableCell className="text-sm">{student.team_name || '-'}</TableCell>
                             <TableCell className="max-w-[220px] text-sm"><CourseCell student={student} /></TableCell>
-                            <TableCell className="text-sm">{(studentProducts[student.id] || []).length ? <div className="flex flex-wrap gap-1">{studentProducts[student.id].map(p => <Badge key={p} variant="outline" className="border-violet-200 bg-violet-50 text-violet-700">{p}</Badge>)}</div> : <span className="text-slate-300">—</span>}</TableCell>
                             <TableCell><BalanceCell student={student} /></TableCell>
                       <TableCell>
                         <Badge variant="outline" className={getStatusColor(student.status)}>
