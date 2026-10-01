@@ -15,7 +15,7 @@ const fromTracker = (f) => f?.source === "cs_tracker";
  * What each of the student's courses cost and what was paid — one row per
  * invoice from Delta finance, as it approved them (the finance student intake,
  * backend/src/finance/students.ts), and one per row of the CS enrolment tracker
- * (scripts/import-tracker-payments.ts), marked with the CS tab it came from.
+ * (scripts/import-enrolment-tracker.ts), marked with the CS tab it came from.
  *
  * For information. Finance is the record of payments, so this is the picture
  * at approval rather than a running balance; and the bonus is what the
