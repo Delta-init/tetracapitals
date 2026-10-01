@@ -3,7 +3,7 @@ import { config } from "../config";
 import { json, error, forbidden, notFound } from "../lib/response";
 import { toObjectId } from "../lib/id";
 import type { AuthUser } from "../auth/middleware";
-import { isAdmin, visibleMentorIds } from "../students/followups";
+import { isAdmin, visibleMentorIds, isStudentOf, studentsOf } from "../students/followups";
 import { threecxConfigured, threecxFetch, threecxJson } from "../lib/threecx";
 import {
   CALLS, BACKFILL_DAYS, LINK_TTL_S, getCallSettings, syncCalls, syncExtensions, recordingPath, recordingSource, recordingCount,
@@ -18,20 +18,20 @@ const message = (err: unknown) => (err instanceof Error ? err.message : String(e
 /**
  * Calls `user` may see — Follow-ups' rule: admin roles all; Chief Mentor and
  * CS Manager calls with their people's students; anyone else their own
- * students'. Plus any call they took themselves.
+ * students' (Common ones too). Plus any call they took themselves.
  */
 async function scopeFilter(user: AuthUser): Promise<Record<string, any> | null> {
   const visible = await visibleMentorIds(user);
   if (!visible) return null;
-  const students = await col("students").find({ primary_mentor_id: { $in: [...visible] } }, { projection: { _id: 1 } }).toArray();
+  const students = await col("students").find(studentsOf(visible), { projection: { _id: 1 } }).toArray();
   return { $or: [{ student_id: { $in: students.map((s: any) => String(s._id)) } }, { user_id: user.id }] };
 }
 
 async function canSeeCall(user: AuthUser, call: any): Promise<boolean> {
   const visible = await visibleMentorIds(user);
   if (!visible || call.user_id === user.id) return true;
-  const s: any = await col("students").findOne({ _id: toObjectId(String(call.student_id)) as any }, { projection: { primary_mentor_id: 1 } });
-  return !!s && visible.has(String(s.primary_mentor_id ?? ""));
+  const s: any = await col("students").findOne({ _id: toObjectId(String(call.student_id)) as any }, { projection: { primary_mentor_id: 1, common_cs: 1 } });
+  return !!s && isStudentOf(s, visible);
 }
 
 /** Who a call is counted under: the portal user, else the 3CX extension, else "-" (nobody took it). */

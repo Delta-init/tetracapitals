@@ -21,10 +21,11 @@ import { isAdminRole, isCustomRole } from "./roles";
  *     UI (by the same scope) because some mentor flows need the wider list,
  *     e.g. the new-student duplicate check and co-managed students.
  * The fields listed are OR-matched: a record is in scope if ANY of them holds
- * one of the allowed ids.
+ * one of the allowed ids. A dotted field reaches into a list ("common_cs.id":
+ * the CSs a student is Common with — on two CSs' own sheets, both have them).
  */
 const OWN_FIELDS: Record<string, string[]> = {
-  Student: ["primary_mentor_id", "created_by"],
+  Student: ["primary_mentor_id", "created_by", "common_cs.id"],
   FundingTransaction: ["primary_mentor_id", "initiating_mentor_id", "requested_by_id", "created_by"],
   MentorTarget: ["mentor_id"],
   // Activity logs: a staff sees only their own; a chief sees their downline.
@@ -121,13 +122,20 @@ export async function buildScopeFilter(
   return { $or: fields.map((f) => ({ [f]: { $in: ids } })) };
 }
 
+/** The values at a field, through lists as Mongo does: "common_cs.id" → each entry's id. */
+function valuesAt(doc: any, field: string): unknown[] {
+  let vals: any[] = [doc];
+  for (const key of field.split(".")) vals = vals.flatMap((v) => (Array.isArray(v) ? v : [v])).map((v) => v?.[key]);
+  return vals.flatMap((v) => (Array.isArray(v) ? v : [v]));
+}
+
 /** True if a single already-loaded doc satisfies the given scope filter. */
 export function docMatchesScope(doc: any, scopeFilter: Record<string, any> | null): boolean {
   if (!scopeFilter) return true;
   const conds: any[] = scopeFilter.$or || [];
   return conds.some((cond) => {
     const [field, pred] = Object.entries(cond)[0] as [string, any];
-    return Array.isArray(pred?.$in) && pred.$in.includes(doc[field]);
+    return Array.isArray(pred?.$in) && valuesAt(doc, field).some((v) => pred.$in.includes(v));
   });
 }
 

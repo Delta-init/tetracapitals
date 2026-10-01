@@ -3,9 +3,10 @@ import { json, error, forbidden, notFound } from "../lib/response";
 import { toObjectId } from "../lib/id";
 import type { AuthUser } from "../auth/middleware";
 import { loadTeams } from "../students/teams";
+import { tagNamesOf } from "../students/tags";
 import {
   TARGET_OUTCOMES, STAGES, LOST_REASONS, CLOSED_STAGES,
-  businessToday, followupStatus, visibleMentorIds, canWorkOn, recordEvents, autoConvert,
+  businessToday, followupStatus, visibleMentorIds, canWorkOn, studentsOf, recordEvents, autoConvert,
 } from "../students/followups";
 
 const DATE = /^\d{4}-\d{2}-\d{2}$/;
@@ -27,7 +28,7 @@ export async function getFollowups(req: Request, user: AuthUser): Promise<Respon
   const studentId = str(body?.studentId, 40);
 
   const studentFilter: Record<string, any> = {};
-  if (visible) studentFilter.primary_mentor_id = { $in: [...visible] };
+  if (visible) Object.assign(studentFilter, studentsOf(visible));   // their own, and students Common with them
   if (studentId) {
     const oid = toObjectId(studentId);
     if (!oid) return error("Bad studentId", 400);
@@ -37,7 +38,7 @@ export async function getFollowups(req: Request, user: AuthUser): Promise<Respon
   let students: any[] = [];
   if (visible || studentId) {
     students = (await col("students")
-      .find(studentFilter, { projection: { full_name: 1, student_code: 1, phone: 1, email: 1, primary_mentor_id: 1, primary_mentor_name: 1, team_name: 1 } })
+      .find(studentFilter, { projection: { full_name: 1, student_code: 1, phone: 1, email: 1, primary_mentor_id: 1, primary_mentor_name: 1, team_name: 1, common_cs: 1, tags: 1, enrolment_status: 1 } })
       .toArray()) as any[];
     followFilter.student_id = { $in: students.map((s) => String(s._id)) };
   }
@@ -45,7 +46,7 @@ export async function getFollowups(req: Request, user: AuthUser): Promise<Respon
   if (!visible && !studentId) {
     const ids = [...new Set(followups.map((f) => f.student_id))].map(toObjectId).filter(Boolean);
     students = ids.length
-      ? ((await col("students").find({ _id: { $in: ids as any[] } }, { projection: { full_name: 1, student_code: 1, phone: 1, email: 1, primary_mentor_id: 1, primary_mentor_name: 1, team_name: 1 } }).toArray()) as any[])
+      ? ((await col("students").find({ _id: { $in: ids as any[] } }, { projection: { full_name: 1, student_code: 1, phone: 1, email: 1, primary_mentor_id: 1, primary_mentor_name: 1, team_name: 1, common_cs: 1, tags: 1, enrolment_status: 1 } }).toArray()) as any[])
       : [];
   }
   await autoConvert(followups);
@@ -66,6 +67,7 @@ export async function getFollowups(req: Request, user: AuthUser): Promise<Respon
         mentor_id: String(s.primary_mentor_id ?? ""),
         mentor_name: s.primary_mentor_name ?? "",
         team_name: s.team_name ?? "",
+        tag_names: tagNamesOf(s),
         target_outcome: f.target_outcome,
         stage: f.stage,
         last_contact_date: f.last_contact_date ?? "",

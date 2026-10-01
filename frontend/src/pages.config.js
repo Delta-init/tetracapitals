@@ -83,6 +83,7 @@ import RolesManagement from './pages/RolesManagement';
 import StudentDetail from './pages/StudentDetail';
 import StudentLogHistoryPage from './pages/StudentLogHistoryPage';
 import StudentLogs from './pages/StudentLogs';
+import StudentTags from './pages/StudentTags';
 import StudentRequestApprovals from './pages/StudentRequestApprovals';
 import Students from './pages/Students';
 import TargetsManagement from './pages/TargetsManagement';
@@ -134,6 +135,7 @@ export const PAGES = {
     "RolesManagement": RolesManagement,
     "StudentDetail": StudentDetail,
     "StudentLogHistoryPage": StudentLogHistoryPage,
+    "StudentTags": StudentTags,
     "StudentLogs": StudentLogs,
     "StudentRequestApprovals": StudentRequestApprovals,
     "Students": Students,

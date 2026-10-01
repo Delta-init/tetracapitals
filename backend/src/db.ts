@@ -78,6 +78,7 @@ export async function ensureIndexes(): Promise<void> {
     d.collection("student_history").createIndex({ student_id: 1, at: 1 }),
     d.collection("student_followups").createIndex({ student_id: 1 }),
     d.collection("student_followup_events").createIndex({ student_id: 1, at: -1 }),
+    d.collection("student_tags").createIndex({ name: 1 }, { unique: true }),
     // One reminder email per person per day — the unique key is what stops a second one.
     d.collection("followup_reminders").createIndex({ key: 1 }, { unique: true }),
     d.collection("followup_reminders").createIndex({ date: -1, mentor_id: 1 }),

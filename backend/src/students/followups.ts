@@ -8,7 +8,8 @@ import { getDownlineIds } from "../lib/scope";
 
    One record per student + target outcome (a student can have several open at
    once). A follow-up belongs to whoever is the student's primary mentor NOW,
-   so it moves with the student. Every logged follow-up is also kept as an
+   so it moves with the student — and a CS the student is Common with works on
+   it too. Every logged follow-up is also kept as an
    event, so "what the client said" is never overwritten.
 
    Follow-up status is never stored: it is worked out from the stage and the
@@ -54,8 +55,26 @@ export async function visibleMentorIds(user: AuthUser): Promise<Set<string> | nu
   return new Set([user.id]);
 }
 
-/** May `user` create / log follow-ups for this student? Their own students, or Super Admin / Admin. */
-export const canWorkOn = (user: AuthUser, student: any) => canEditAny(user) || String(student?.primary_mentor_id ?? "") === user.id;
+/**
+ * The other CSs a student is Common with: on two CSs' own sheets, they stay with the first (their CS) and are also
+ * with the other — both see and work on them (students.common_cs, set by the CS-sheet import).
+ */
+export const commonIds = (student: any): string[] =>
+  (Array.isArray(student?.common_cs) ? student.common_cs : []).map((c: any) => String(c?.id ?? "")).filter(Boolean);
+
+/** Is this one of `ids`' students — their CS, or a CS they are Common with? */
+export const isStudentOf = (student: any, ids: Set<string>) =>
+  ids.has(String(student?.primary_mentor_id ?? "")) || commonIds(student).some((id) => ids.has(id));
+
+/** Filter for `ids`' students — their CS, or a CS they are Common with. */
+export const studentsOf = (ids: Iterable<string>) => {
+  const list = [...ids];
+  return { $or: [{ primary_mentor_id: { $in: list } }, { "common_cs.id": { $in: list } }] };
+};
+
+/** May `user` create / log follow-ups for this student? Their own students (Common ones too), or Super Admin / Admin. */
+export const canWorkOn = (user: AuthUser, student: any) =>
+  canEditAny(user) || String(student?.primary_mentor_id ?? "") === user.id || commonIds(student).includes(user.id);
 
 export interface FollowupEvent {
   followup_id: string;

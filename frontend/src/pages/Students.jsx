@@ -1,5 +1,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { EnrolmentBadge, enrolmentOf, ENROLMENT } from '@/components/students/enrolment';
+import { enrolmentOf, ENROLMENT } from '@/components/students/enrolment';
+import { commonOf, isStudentOf } from '@/components/students/common';
+import { StudentTagChips, tagNamesOf, useStudentTagCatalog } from '@/components/students/tags';
 import PageHeader from '@/components/common/PageHeader';
 import { Link, useNavigate } from 'react-router-dom';
 import { courseLabel, productsByStudent, courseProductOptions, matchesCourseProduct } from '@/components/utils/studentProducts';
@@ -48,6 +50,7 @@ export default function Students() {
   const [filterMentor, setFilterMentor] = useState('all');
   const [filterStatus, setFilterStatus] = useState('all');
   const [filterEnrolment, setFilterEnrolment] = useState('all');
+  const [filterTag, setFilterTag] = useState('all');
   const [filterLevel, setFilterLevel] = useState('all');
   const [filterTeam, setFilterTeam] = useState('all');
   const [filterCourse, setFilterCourse] = useState('all');
@@ -74,6 +77,7 @@ export default function Students() {
     fetchUser();
   }, []);
 
+  const { data: tagCatalog = [] } = useStudentTagCatalog();
   const { data: students = [] } = useQuery({
     queryKey: ['students'],
     queryFn: () => base44.entities.Student.list('-created_date'),
@@ -143,7 +147,7 @@ export default function Students() {
       // Check for duplicate email — block for all roles
       const existingStudent = students.find(s => s.email?.toLowerCase() === data.email?.toLowerCase());
       if (existingStudent) {
-        if (existingStudent.primary_mentor_id === currentUser.id) {
+        if (isStudentOf(existingStudent, currentUser.id)) {
           throw new Error('DUPLICATE_OWN_STUDENT');
         }
         throw new Error(`A student with email ${data.email} already exists (${existingStudent.student_code} - ${existingStudent.full_name})`);
@@ -374,15 +378,15 @@ export default function Students() {
     // Assistance sees only students assigned to their mentor
     allStudents = students.filter(s => s.primary_mentor_id === currentUser.assigned_mentor_id);
   } else if (isMentor) {
-    // Filter MY students - students where I am the primary mentor
-    myStudents = students.filter(s => s.primary_mentor_id === currentUser.id);
+    // Filter MY students - students where I am the primary mentor, or a CS they are Common with
+    myStudents = students.filter(s => isStudentOf(s, currentUser.id));
     
     // Filter TEAM students - students of people on my team (Up Head chain), or
     // where I'm listed as their senior mentor, but NOT my own students
     const team = hasTeamView ? downlineIds(currentUser.id, users) : null;
     teamStudents = hasTeamView ? students.filter(s =>
-      s.primary_mentor_id !== currentUser.id &&
-      (team.has(s.primary_mentor_id) || s.senior_mentor_id === currentUser.id)
+      !isStudentOf(s, currentUser.id) &&
+      (team.has(s.primary_mentor_id) || commonOf(s).some(c => team.has(c.id)) || s.senior_mentor_id === currentUser.id)
     ) : [];
     
     // Filter OPEN POOL students - students without assigned mentors
@@ -450,6 +454,9 @@ export default function Students() {
   }
 
   // Apply enrolment filter (Open / Closed = enrolled)
+  if (filterTag !== 'all') {
+    filteredStudents = filteredStudents.filter(s => tagNamesOf(s).includes(filterTag));
+  }
   if (filterEnrolment !== 'all') {
     filteredStudents = filteredStudents.filter(s => enrolmentOf(s) === filterEnrolment);
   }
@@ -531,7 +538,7 @@ export default function Students() {
     };
 
     const csvContent = [
-      ['Student Code', 'Full Name', 'Email', 'Phone', 'Country', 'User ID', 'CS', 'Senior Mentor', 'Team', 'Course', 'Products', 'Status', 'Enrolment', 'Created Date', 'Notes'].join(','),
+      ['Student Code', 'Full Name', 'Email', 'Phone', 'Country', 'User ID', 'CS', 'Senior Mentor', 'Team', 'Course', 'Products', 'Status', 'Enrolment', 'Tags', 'Created Date', 'Notes'].join(','),
       ...filteredStudents.map(s => [
         escapeCSV(s.student_code || ''),
         escapeCSV(s.full_name || ''),
@@ -546,6 +553,7 @@ export default function Students() {
         escapeCSV((studentProducts[s.id] || []).join(' / ')),
         escapeCSV(s.status || ''),
         escapeCSV(ENROLMENT[enrolmentOf(s)].label),
+        escapeCSV(tagNamesOf(s).join(', ')),
         escapeCSV(s.created_date ? format(new Date(s.created_date), 'yyyy-MM-dd') : ''),
         escapeCSV(s.notes || '')
       ].join(','))
@@ -623,6 +631,17 @@ export default function Students() {
                 />
               </div>
 
+              {/* Tag Filter — everyone, on every tab */}
+              <Select value={filterTag} onValueChange={(v) => v && setFilterTag(v)}>
+                <SelectTrigger className="w-full md:w-52">
+                  <SelectValue placeholder="Tag" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All tags</SelectItem>
+                  {tagCatalog.filter(t => t.active !== false).map(t => <SelectItem key={t.id} value={t.name}>{t.name}</SelectItem>)}
+                </SelectContent>
+              </Select>
+
               {/* Admin Filters */}
               {['super_admin', 'broker_admin'].includes(currentUser.app_role) && (activeTab === 'all' || activeTab === 'open_pool') && (
                 <>
@@ -664,8 +683,10 @@ export default function Students() {
                       <SelectItem value="all">All Enrolment</SelectItem>
                       <SelectItem value="open">Open</SelectItem>
                       <SelectItem value="closed">Closed (enrolled)</SelectItem>
+                      <SelectItem value="old">Old</SelectItem>
                     </SelectContent>
                   </Select>
+
 
                   {/* Team Filter */}
                   <Select value={filterTeam} onValueChange={setFilterTeam}>
@@ -809,7 +830,7 @@ export default function Students() {
                       <TableHead className="font-semibold">Course</TableHead>
                       <TableHead className="font-semibold">Products</TableHead>
                         <TableHead className="font-semibold">Status</TableHead>
-                        <TableHead className="font-semibold">Enrolment</TableHead>
+                        <TableHead className="font-semibold">Tags</TableHead>
                         <TableHead className="font-semibold">Created</TableHead>
                         <TableHead className="font-semibold text-right">Actions</TableHead>
                       </TableRow>
@@ -841,7 +862,7 @@ export default function Students() {
                                 {student.status}
                               </Badge>
                             </TableCell>
-                            <TableCell><EnrolmentBadge student={student} /></TableCell>
+                            <TableCell><StudentTagChips student={student} catalog={tagCatalog} /></TableCell>
                             <TableCell className="text-sm">
                               {student.created_date ? format(new Date(student.created_date), 'MMM d, yyyy') : '-'}
                             </TableCell>
@@ -900,7 +921,7 @@ export default function Students() {
                       <TableHead className="font-semibold">Course</TableHead>
                       <TableHead className="font-semibold">Products</TableHead>
                       <TableHead className="font-semibold">Status</TableHead>
-                      <TableHead className="font-semibold">Enrolment</TableHead>
+                      <TableHead className="font-semibold">Tags</TableHead>
                       <TableHead className="font-semibold">Created</TableHead>
                       <TableHead className="font-semibold text-right">Actions</TableHead>
                     </TableRow>
@@ -932,7 +953,7 @@ export default function Students() {
                              {student.status}
                            </Badge>
                          </TableCell>
-                         <TableCell><EnrolmentBadge student={student} /></TableCell>
+                         <TableCell><StudentTagChips student={student} catalog={tagCatalog} /></TableCell>
                          <TableCell className="text-sm">
                            {student.created_date ? format(new Date(student.created_date), 'MMM d, yyyy') : '-'}
                          </TableCell>
@@ -999,7 +1020,7 @@ export default function Students() {
                       <TableHead className="font-semibold">Course</TableHead>
                       <TableHead className="font-semibold">Products</TableHead>
                       <TableHead className="font-semibold">Status</TableHead>
-                      <TableHead className="font-semibold">Enrolment</TableHead>
+                      <TableHead className="font-semibold">Tags</TableHead>
                       <TableHead className="font-semibold">Created</TableHead>
                       <TableHead className="font-semibold text-right">Actions</TableHead>
                     </TableRow>
@@ -1039,7 +1060,7 @@ export default function Students() {
                               {student.status}
                             </Badge>
                           </TableCell>
-                          <TableCell><EnrolmentBadge student={student} /></TableCell>
+                          <TableCell><StudentTagChips student={student} catalog={tagCatalog} /></TableCell>
                           <TableCell className="text-sm">
                             {student.created_date ? format(new Date(student.created_date), 'MMM d, yyyy') : '-'}
                           </TableCell>
@@ -1094,7 +1115,7 @@ export default function Students() {
                       <TableHead className="font-semibold">Team</TableHead>
                       <TableHead className="font-semibold">Course</TableHead>
                       <TableHead className="font-semibold">Products</TableHead>
-                      <TableHead className="font-semibold">Enrolment</TableHead>
+                      <TableHead className="font-semibold">Tags</TableHead>
                       <TableHead className="font-semibold">My Net Deposits</TableHead>
                       <TableHead className="font-semibold">Primary Net Deposits</TableHead>
                       <TableHead className="font-semibold">Combined Total</TableHead>
@@ -1126,7 +1147,7 @@ export default function Students() {
                             <TableCell className="text-sm">{student.team_name || '-'}</TableCell>
                             <TableCell className="max-w-[220px] text-sm">{courseLabel(student.lms_course) || <span className="text-slate-300">—</span>}</TableCell>
                             <TableCell className="text-sm">{(studentProducts[student.id] || []).length ? <div className="flex flex-wrap gap-1">{studentProducts[student.id].map(p => <Badge key={p} variant="outline" className="border-violet-200 bg-violet-50 text-violet-700">{p}</Badge>)}</div> : <span className="text-slate-300">—</span>}</TableCell>
-                            <TableCell><EnrolmentBadge student={student} /></TableCell>
+                            <TableCell><StudentTagChips student={student} catalog={tagCatalog} /></TableCell>
                             <TableCell className="text-sm font-semibold text-green-700">${myNet.toLocaleString()}</TableCell>
                             <TableCell className="text-sm text-gray-600">${primaryNet.toLocaleString()}</TableCell>
                             <TableCell className="text-sm font-semibold">${combinedNet.toLocaleString()}</TableCell>
@@ -1188,7 +1209,7 @@ export default function Students() {
                       <TableHead className="font-semibold">Course</TableHead>
                       <TableHead className="font-semibold">Products</TableHead>
                     <TableHead className="font-semibold">Status</TableHead>
-                    <TableHead className="font-semibold">Enrolment</TableHead>
+                    <TableHead className="font-semibold">Tags</TableHead>
                     <TableHead className="font-semibold">Created</TableHead>
                     <TableHead className="font-semibold text-right">Actions</TableHead>
                   </TableRow>
@@ -1218,7 +1239,7 @@ export default function Students() {
                             {student.status}
                           </Badge>
                         </TableCell>
-                        <TableCell><EnrolmentBadge student={student} /></TableCell>
+                        <TableCell><StudentTagChips student={student} catalog={tagCatalog} /></TableCell>
                         <TableCell className="text-sm">
                           {student.created_date ? format(new Date(student.created_date), 'MMM d, yyyy') : '-'}
                         </TableCell>
@@ -1287,7 +1308,7 @@ export default function Students() {
                       <TableHead className="font-semibold">Co-Mentor Net Deposits</TableHead>
                       <TableHead className="font-semibold">Combined Total</TableHead>
                       <TableHead className="font-semibold">Status</TableHead>
-                      <TableHead className="font-semibold">Enrolment</TableHead>
+                      <TableHead className="font-semibold">Tags</TableHead>
                       <TableHead className="font-semibold">Co-Mentor Since</TableHead>
                     </TableRow>
                   </TableHeader>
@@ -1323,7 +1344,7 @@ export default function Students() {
                                   {student.status}
                                 </Badge>
                               </TableCell>
-                              <TableCell><EnrolmentBadge student={student} /></TableCell>
+                              <TableCell><StudentTagChips student={student} catalog={tagCatalog} /></TableCell>
                               <TableCell className="text-sm text-gray-500">
                                 {co.since ? format(new Date(co.since), 'MMM d, yyyy') : '-'}
                               </TableCell>
@@ -1361,7 +1382,7 @@ export default function Students() {
                       <TableHead className="font-semibold">Course</TableHead>
                       <TableHead className="font-semibold">Products</TableHead>
                   <TableHead className="font-semibold">Status</TableHead>
-                  <TableHead className="font-semibold">Enrolment</TableHead>
+                  <TableHead className="font-semibold">Tags</TableHead>
                   <TableHead className="font-semibold">Created</TableHead>
                   <TableHead className="font-semibold text-right">Actions</TableHead>
                 </TableRow>
@@ -1393,7 +1414,7 @@ export default function Students() {
                           {student.status}
                         </Badge>
                       </TableCell>
-                      <TableCell><EnrolmentBadge student={student} /></TableCell>
+                      <TableCell><StudentTagChips student={student} catalog={tagCatalog} /></TableCell>
                       <TableCell className="text-sm">
                         {student.created_date ? format(new Date(student.created_date), 'MMM d, yyyy') : '-'}
                       </TableCell>

@@ -18,6 +18,8 @@ import {
 import { CallButton, useCallFlow } from '@/components/followups/CallFlow';
 import ReminderLog from '@/components/followups/ReminderLog';
 import { LastCallLine } from '@/components/calls/callUi';
+import { isStudentOf } from '@/components/students/common';
+import { TagChip, useStudentTagCatalog } from '@/components/students/tags';
 
 const TABS = {
   overdue: { label: 'Overdue', test: (f) => f.followup_status === 'OVERDUE' },
@@ -49,7 +51,7 @@ export default function StudentFollowups() {
     enabled: !!currentUser,
   });
   const myStudents = useMemo(
-    () => students.filter(s => canEditAny || s.primary_mentor_id === currentUser?.id).sort((a, b) => String(a.full_name || '').localeCompare(String(b.full_name || ''))),
+    () => students.filter(s => canEditAny || isStudentOf(s, currentUser?.id)).sort((a, b) => String(a.full_name || '').localeCompare(String(b.full_name || ''))),
     [students, canEditAny, currentUser?.id],
   );
 
@@ -59,6 +61,8 @@ export default function StudentFollowups() {
   const [stage, setStage] = useState('all');
   const [outcome, setOutcome] = useState('all');
   const [team, setTeam] = useState('all');
+  const [tag, setTag] = useState('all');
+  const { data: tagCatalog = [] } = useStudentTagCatalog();
   const [q, setQ] = useState('');
   const callFlow = useCallFlow();
   const [creating, setCreating] = useState(false);
@@ -69,6 +73,7 @@ export default function StudentFollowups() {
     (stage === 'all' || f.stage === stage) &&
     (outcome === 'all' || f.target_outcome === outcome) &&
     (team === 'all' || f.team_name === team) &&
+    (tag === 'all' || (f.tag_names || []).includes(tag)) &&
     (!needle || [f.student_name, f.student_code, f.phone, f.mentor_name, f.client_said].some(v => String(v || '').toLowerCase().includes(needle)))
   );
   const counts = Object.fromEntries(Object.entries(TABS).map(([k, t]) => [k, base.filter(t.test).length]));
@@ -131,6 +136,10 @@ export default function StudentFollowups() {
                 <SelectTrigger className="h-9 w-52"><SelectValue /></SelectTrigger>
                 <SelectContent><SelectItem value="all">All target outcomes</SelectItem>{OUTCOMES.map(o => <SelectItem key={o} value={o}>{o}</SelectItem>)}</SelectContent>
               </Select>
+              <Select value={tag} onValueChange={(v) => v && setTag(v)}>
+                <SelectTrigger className="h-9 w-48"><SelectValue /></SelectTrigger>
+                <SelectContent><SelectItem value="all">All tags</SelectItem>{tagCatalog.filter(t => t.active !== false).map(t => <SelectItem key={t.id} value={t.name}>{t.name}</SelectItem>)}</SelectContent>
+              </Select>
               {teams.length > 1 && (
                 <Select value={team} onValueChange={(v) => v && setTeam(v)}>
                   <SelectTrigger className="h-9 w-44"><SelectValue /></SelectTrigger>
@@ -177,6 +186,11 @@ export default function StudentFollowups() {
                       <td className="px-3 py-2.5">
                         <Link to={`${createPageUrl('StudentDetail')}?id=${f.student_id}`} className="font-medium text-slate-900 hover:text-blue-600">{f.student_name}</Link>
                         <div className="font-mono text-xs text-slate-400">{f.student_code}</div>
+                        {(f.tag_names || []).length > 0 && (
+                          <div className="mt-1 flex flex-wrap gap-1">
+                            {f.tag_names.map(n => <TagChip key={n} name={n} color={tagCatalog.find(t => t.name === n)?.color || '#64748b'} />)}
+                          </div>
+                        )}
                       </td>
                       <td className="whitespace-nowrap px-3 py-2.5 text-slate-600">{String(f.phone || '').replace(/^[\s'`"]+/, '') || '—'}</td>
                       {showMentor && <td className="px-3 py-2.5 text-slate-600">{f.mentor_name}<div className="text-xs text-slate-400">{f.team_name}</div></td>}

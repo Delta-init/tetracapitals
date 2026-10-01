@@ -17,6 +17,8 @@ import StudentFollowupsSection from "@/components/followups/StudentFollowupsSect
 import StudentCallsSection from "@/components/calls/StudentCallsSection";
 import { CallButton } from "@/components/followups/CallFlow";
 import { EnrolmentControl } from "@/components/students/enrolment";
+import { isStudentOf } from "@/components/students/common";
+import { StudentTagsEditor } from "@/components/students/tags";
 import { isMentorRole as isMentorTier } from "@/components/utils/roles";
 import { 
   canEditStudent, 
@@ -137,7 +139,7 @@ export default function StudentDetail() {
   })();
 
   const hasAccess = isAdminRole ||
-    currentUser.id === student.primary_mentor_id ||
+    isStudentOf(student, currentUser.id) ||
     currentUser.id === student.senior_mentor_id ||
     isCoMentor;
 
@@ -212,6 +214,7 @@ export default function StudentDetail() {
               </p>
               {/* Open, or Closed = enrolled */}
               <div className="mt-2"><EnrolmentControl student={student} currentUser={currentUser} /></div>
+              <div className="mt-2"><StudentTagsEditor student={student} currentUser={currentUser} /></div>
             </div>
           </div>
           <div className="flex items-center gap-2">

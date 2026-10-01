@@ -337,6 +337,17 @@ export const ENTITIES: Record<string, EntityConfig> = {
     delete: ADMIN_ROLES,
     defaultSort: "name",
   },
+  StudentTag: {
+    // Labels on students (students/tags.ts): auto (Old, Closed, Common), "Closed - <course>", and any an admin adds.
+    // Documents look like: { name, color, kind: "auto" | "closed" | "custom", course?, active }
+    collection: "student_tags",
+    read: ALL_ROLES,
+    create: ADMIN_ROLES,
+    update: ADMIN_ROLES,
+    delete: ADMIN_ROLES,
+    defaultSort: "name",
+    uniqueFields: ["name"],
+  },
 };
 
 export function getEntity(name: string): EntityConfig | undefined {
