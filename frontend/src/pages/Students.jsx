@@ -4,7 +4,7 @@ import { commonOf, isStudentOf } from '@/components/students/common';
 import { StudentTagChips, tagNamesOf, useStudentTagCatalog } from '@/components/students/tags';
 import PageHeader from '@/components/common/PageHeader';
 import { Link, useNavigate } from 'react-router-dom';
-import { courseLabel, productsByStudent, courseProductOptions, matchesCourseProduct } from '@/components/utils/studentProducts';
+import { courseLabel, productsByStudent, courseProductOptions, matchesCourseProduct, studentCourses, studentBalance, balanceText } from '@/components/utils/studentProducts';
 import { base44 } from "@/api/base44Client";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
@@ -41,6 +41,21 @@ import { toast } from "sonner";
 import { format } from "date-fns";
 import { logAction } from "../components/utils/AuditLogger";
 
+/** A student's courses — the LMS course, their "Closed - <course>" tags, their Course fees — as badges. */
+function CourseCell({ student }) {
+  const courses = studentCourses(student);
+  return courses.length
+    ? <div className="flex flex-wrap gap-1">{courses.map(c => <Badge key={c} variant="outline" className="border-emerald-200 bg-emerald-50 text-emerald-700">{c}</Badge>)}</div>
+    : <span className="text-slate-300">—</span>;
+}
+
+/** What is still to pay, from Course fees: amber while owed, green when paid in full, a dash when nothing is known. */
+function BalanceCell({ student }) {
+  const { known, owing } = studentBalance(student);
+  if (!known) return <span className="text-slate-300">—</span>;
+  return <span className={`whitespace-nowrap text-sm font-medium ${owing ? 'text-amber-700' : 'text-emerald-700'}`}>{balanceText(student)}</span>;
+}
+
 export default function Students() {
   const [currentUser, setCurrentUser] = useState(null);
   const [showAddDialog, setShowAddDialog] = useState(false);
@@ -50,6 +65,7 @@ export default function Students() {
   const [filterMentor, setFilterMentor] = useState('all');
   const [filterStatus, setFilterStatus] = useState('all');
   const [filterEnrolment, setFilterEnrolment] = useState('all');
+  const [filterBalance, setFilterBalance] = useState('all');
   const [filterTag, setFilterTag] = useState('all');
   const [filterLevel, setFilterLevel] = useState('all');
   const [filterTeam, setFilterTeam] = useState('all');
@@ -466,6 +482,11 @@ export default function Students() {
     filteredStudents = filteredStudents.filter(s => matchesCourseProduct(s, studentProducts, filterCourse));
   }
 
+  // Apply balance filter (from Course fees): still owing, or paid in full
+  if (filterBalance !== 'all') {
+    filteredStudents = filteredStudents.filter(s => { const b = studentBalance(s); return filterBalance === 'owing' ? b.owing : b.known && !b.owing; });
+  }
+
   // Apply team filter
   if (filterTeam !== 'all') {
     filteredStudents = filteredStudents.filter(s => (filterTeam === 'none' ? !s.team_id : s.team_id === filterTeam));
@@ -476,16 +497,14 @@ export default function Students() {
     filteredStudents = filteredStudents.filter(s => (s.student_level || 'LEVEL_1') === filterLevel);
   }
 
-  // Apply date filter (only for "all" tab)
-  if (activeTab === 'all') {
-    const dateRange = getDateRange();
-    if (dateRange) {
-      filteredStudents = filteredStudents.filter(s => {
-        if (!s.created_date) return false;
-        const createdDate = new Date(s.created_date);
-        return createdDate >= dateRange.from && createdDate <= dateRange.to;
-      });
-    }
+  // Apply date filter (when they were added) — every tab
+  const dateRange = getDateRange();
+  if (dateRange) {
+    filteredStudents = filteredStudents.filter(s => {
+      if (!s.created_date) return false;
+      const createdDate = new Date(s.created_date);
+      return createdDate >= dateRange.from && createdDate <= dateRange.to;
+    });
   }
   
   // Apply masking to displayed students
@@ -619,9 +638,9 @@ export default function Students() {
         {/* Search and Filters */}
         <Card className="border-gray-200">
           <CardContent className="p-4">
-            <div className="flex flex-col md:flex-row gap-4">
+            <div className="flex flex-col md:flex-row md:flex-wrap gap-3">
               {/* Search */}
-              <div className="flex-1 relative">
+              <div className="relative flex-1 md:min-w-[260px]">
                 <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
                 <Input
                   placeholder="Search by name, code, email or phone..."
@@ -653,6 +672,66 @@ export default function Students() {
                   <SelectItem value="not_enrolled">Not enrolled</SelectItem>
                 </SelectContent>
               </Select>
+
+              {/* Course / Product, Balance and Date — everyone, on every tab */}
+              <Select value={filterCourse} onValueChange={(v) => v && setFilterCourse(v)}>
+                <SelectTrigger className="w-full md:w-52">
+                  <SelectValue placeholder="Course / Product" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All courses &amp; products</SelectItem>
+                  <SelectItem value="none">No course or product</SelectItem>
+                  {courseOptions.courses.map(c => <SelectItem key={'c' + c} value={'course:' + c}>Course · {c}</SelectItem>)}
+                  {courseOptions.products.map(p => <SelectItem key={'p' + p} value={'product:' + p}>Product · {p}</SelectItem>)}
+                </SelectContent>
+              </Select>
+
+              <Select value={filterBalance} onValueChange={(v) => v && setFilterBalance(v)}>
+                <SelectTrigger className="w-full md:w-40">
+                  <SelectValue placeholder="Balance" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">Any balance</SelectItem>
+                  <SelectItem value="owing">Has balance</SelectItem>
+                  <SelectItem value="paid">Fully paid</SelectItem>
+                </SelectContent>
+              </Select>
+
+              <Select value={filterDateRange} onValueChange={setFilterDateRange}>
+                <SelectTrigger className="w-full md:w-40">
+                  <SelectValue placeholder="Date added" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">Added any time</SelectItem>
+                  <SelectItem value="weekly">Last 7 days</SelectItem>
+                  <SelectItem value="monthly">Last 30 days</SelectItem>
+                  <SelectItem value="custom">Custom range</SelectItem>
+                </SelectContent>
+              </Select>
+              {filterDateRange === 'custom' && (
+                <>
+                  <Popover>
+                    <PopoverTrigger asChild>
+                      <Button variant="outline" className="w-full md:w-36">
+                        {customDateFrom ? format(customDateFrom, 'MMM d, yyyy') : 'From date'}
+                      </Button>
+                    </PopoverTrigger>
+                    <PopoverContent className="w-auto p-0">
+                      <Calendar mode="single" selected={customDateFrom} onSelect={setCustomDateFrom} initialFocus />
+                    </PopoverContent>
+                  </Popover>
+                  <Popover>
+                    <PopoverTrigger asChild>
+                      <Button variant="outline" className="w-full md:w-36">
+                        {customDateTo ? format(customDateTo, 'MMM d, yyyy') : 'To date'}
+                      </Button>
+                    </PopoverTrigger>
+                    <PopoverContent className="w-auto p-0">
+                      <Calendar mode="single" selected={customDateTo} onSelect={setCustomDateTo} initialFocus />
+                    </PopoverContent>
+                  </Popover>
+                </>
+              )}
 
               {/* Admin Filters */}
               {['super_admin', 'broker_admin'].includes(currentUser.app_role) && (activeTab === 'all' || activeTab === 'open_pool') && (
@@ -700,18 +779,6 @@ export default function Students() {
                     </SelectContent>
                   </Select>
 
-                  {/* Course / Product Filter */}
-                  <Select value={filterCourse} onValueChange={(v) => v && setFilterCourse(v)}>
-                    <SelectTrigger className="w-52">
-                      <SelectValue placeholder="Course / Product" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="all">All courses &amp; products</SelectItem>
-                      <SelectItem value="none">No course or product</SelectItem>
-                      {courseOptions.courses.map(c => <SelectItem key={'c' + c} value={'course:' + c}>Course · {c}</SelectItem>)}
-                      {courseOptions.products.map(p => <SelectItem key={'p' + p} value={'product:' + p}>Product · {p}</SelectItem>)}
-                    </SelectContent>
-                  </Select>
 
                   {/* Level Filter */}
                   <Select value={filterLevel} onValueChange={setFilterLevel}>
@@ -725,56 +792,6 @@ export default function Students() {
                     </SelectContent>
                   </Select>
 
-                  {/* Date Filter */}
-                  {activeTab === 'all' && (
-                    <Select value={filterDateRange} onValueChange={setFilterDateRange}>
-                      <SelectTrigger className="w-36">
-                        <SelectValue placeholder="Date Range" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="all">All Time</SelectItem>
-                        <SelectItem value="weekly">Last 7 Days</SelectItem>
-                        <SelectItem value="monthly">Last 30 Days</SelectItem>
-                        <SelectItem value="custom">Custom Range</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  )}
-
-                  {/* Custom Date Pickers */}
-                  {filterDateRange === 'custom' && activeTab === 'all' && (
-                    <>
-                      <Popover>
-                        <PopoverTrigger asChild>
-                          <Button variant="outline" className="w-36">
-                            {customDateFrom ? format(customDateFrom, 'MMM d, yyyy') : 'From Date'}
-                          </Button>
-                        </PopoverTrigger>
-                        <PopoverContent className="w-auto p-0">
-                          <Calendar
-                            mode="single"
-                            selected={customDateFrom}
-                            onSelect={setCustomDateFrom}
-                            initialFocus
-                          />
-                        </PopoverContent>
-                      </Popover>
-                      <Popover>
-                        <PopoverTrigger asChild>
-                          <Button variant="outline" className="w-36">
-                            {customDateTo ? format(customDateTo, 'MMM d, yyyy') : 'To Date'}
-                          </Button>
-                        </PopoverTrigger>
-                        <PopoverContent className="w-auto p-0">
-                          <Calendar
-                            mode="single"
-                            selected={customDateTo}
-                            onSelect={setCustomDateTo}
-                            initialFocus
-                          />
-                        </PopoverContent>
-                      </Popover>
-                    </>
-                  )}
                 </>
               )}
             </div>
@@ -820,15 +837,13 @@ export default function Students() {
                     <TableHeader>
                       <TableRow className="bg-gray-50">
                         <TableHead className="font-semibold">Student Code</TableHead>
-                        <TableHead className="font-semibold">Full Name</TableHead>
-                        <TableHead className="font-semibold">Email</TableHead>
+                        <TableHead className="font-semibold">Student</TableHead>
                         <TableHead className="font-semibold">Phone</TableHead>
-                        <TableHead className="font-semibold">Country</TableHead>
-                        <TableHead className="font-semibold">User ID</TableHead>
                         <TableHead className="font-semibold">CS</TableHead>
                         <TableHead className="font-semibold">Team</TableHead>
                       <TableHead className="font-semibold">Course</TableHead>
                       <TableHead className="font-semibold">Products</TableHead>
+                      <TableHead className="font-semibold">Balance</TableHead>
                         <TableHead className="font-semibold">Status</TableHead>
                         <TableHead className="font-semibold">Enrolled</TableHead>
                         <TableHead className="font-semibold">Tags</TableHead>
@@ -839,7 +854,7 @@ export default function Students() {
                     <TableBody>
                       {displayStudents.length === 0 ? (
                         <TableRow>
-                          <TableCell colSpan={15} className="text-center py-8 text-gray-500">
+                          <TableCell colSpan={13} className="text-center py-8 text-gray-500">
                             No students found
                           </TableCell>
                         </TableRow>
@@ -849,15 +864,16 @@ export default function Students() {
                             <TableCell className="font-mono text-sm font-medium text-blue-600">
                               {student.student_code}
                             </TableCell>
-                            <TableCell className="font-medium">{student.full_name}</TableCell>
-                            <TableCell className="text-sm">{student.email}</TableCell>
+                            <TableCell>
+                              <div className="font-medium text-slate-900">{student.full_name}</div>
+                              {student.email && <div className="text-xs text-slate-500">{student.email}</div>}
+                            </TableCell>
                             <TableCell className="text-sm font-mono">{student.phone}</TableCell>
-                            <TableCell className="text-sm">{student.country || '-'}</TableCell>
-                            <TableCell className="text-sm font-mono">{student.user_id || '-'}</TableCell>
                             <TableCell className="text-sm">{student.primary_mentor_name}</TableCell>
                             <TableCell className="text-sm">{student.team_name || '-'}</TableCell>
-                            <TableCell className="max-w-[220px] text-sm">{courseLabel(student.lms_course) || <span className="text-slate-300">—</span>}</TableCell>
+                            <TableCell className="max-w-[220px] text-sm"><CourseCell student={student} /></TableCell>
                             <TableCell className="text-sm">{(studentProducts[student.id] || []).length ? <div className="flex flex-wrap gap-1">{studentProducts[student.id].map(p => <Badge key={p} variant="outline" className="border-violet-200 bg-violet-50 text-violet-700">{p}</Badge>)}</div> : <span className="text-slate-300">—</span>}</TableCell>
+                            <TableCell><BalanceCell student={student} /></TableCell>
                             <TableCell>
                               <Badge variant="outline" className={getStatusColor(student.status)}>
                                 {student.status}
@@ -913,15 +929,13 @@ export default function Students() {
                   <TableHeader>
                     <TableRow className="bg-gray-50">
                       <TableHead className="font-semibold">Student Code</TableHead>
-                      <TableHead className="font-semibold">Full Name</TableHead>
-                      <TableHead className="font-semibold">Email</TableHead>
+                      <TableHead className="font-semibold">Student</TableHead>
                       <TableHead className="font-semibold">Phone</TableHead>
-                      <TableHead className="font-semibold">Country</TableHead>
-                      <TableHead className="font-semibold">User ID</TableHead>
                       <TableHead className="font-semibold">CS</TableHead>
                       <TableHead className="font-semibold">Team</TableHead>
                       <TableHead className="font-semibold">Course</TableHead>
                       <TableHead className="font-semibold">Products</TableHead>
+                      <TableHead className="font-semibold">Balance</TableHead>
                       <TableHead className="font-semibold">Status</TableHead>
                       <TableHead className="font-semibold">Enrolled</TableHead>
                       <TableHead className="font-semibold">Tags</TableHead>
@@ -932,7 +946,7 @@ export default function Students() {
                   <TableBody>
                     {displayStudents.length === 0 ? (
                      <TableRow>
-                       <TableCell colSpan={15} className="text-center py-8 text-gray-500">
+                       <TableCell colSpan={13} className="text-center py-8 text-gray-500">
                          No team students found
                        </TableCell>
                      </TableRow>
@@ -942,15 +956,16 @@ export default function Students() {
                          <TableCell className="font-mono text-sm font-medium text-blue-600">
                            {student.student_code}
                          </TableCell>
-                         <TableCell className="font-medium">{student.full_name}</TableCell>
-                         <TableCell className="text-sm">{student.email}</TableCell>
+                         <TableCell>
+                           <div className="font-medium text-slate-900">{student.full_name}</div>
+                           {student.email && <div className="text-xs text-slate-500">{student.email}</div>}
+                         </TableCell>
                          <TableCell className="text-sm font-mono">{student.phone}</TableCell>
-                         <TableCell className="text-sm">{student.country || '-'}</TableCell>
-                         <TableCell className="text-sm font-mono">{student.user_id || '-'}</TableCell>
                          <TableCell className="text-sm text-purple-600 font-medium">{student.primary_mentor_name}</TableCell>
                          <TableCell className="text-sm">{student.team_name || '-'}</TableCell>
-                            <TableCell className="max-w-[220px] text-sm">{courseLabel(student.lms_course) || <span className="text-slate-300">—</span>}</TableCell>
+                            <TableCell className="max-w-[220px] text-sm"><CourseCell student={student} /></TableCell>
                             <TableCell className="text-sm">{(studentProducts[student.id] || []).length ? <div className="flex flex-wrap gap-1">{studentProducts[student.id].map(p => <Badge key={p} variant="outline" className="border-violet-200 bg-violet-50 text-violet-700">{p}</Badge>)}</div> : <span className="text-slate-300">—</span>}</TableCell>
+                            <TableCell><BalanceCell student={student} /></TableCell>
                          <TableCell>
                            <Badge variant="outline" className={getStatusColor(student.status)}>
                              {student.status}
@@ -1014,15 +1029,13 @@ export default function Students() {
                         </TableHead>
                       )}
                       <TableHead className="font-semibold">Student Code</TableHead>
-                      <TableHead className="font-semibold">Full Name</TableHead>
-                      <TableHead className="font-semibold">Email</TableHead>
+                      <TableHead className="font-semibold">Student</TableHead>
                       <TableHead className="font-semibold">Phone</TableHead>
-                      <TableHead className="font-semibold">Country</TableHead>
-                      <TableHead className="font-semibold">User ID</TableHead>
                       <TableHead className="font-semibold">CS</TableHead>
                       <TableHead className="font-semibold">Team</TableHead>
                       <TableHead className="font-semibold">Course</TableHead>
                       <TableHead className="font-semibold">Products</TableHead>
+                      <TableHead className="font-semibold">Balance</TableHead>
                       <TableHead className="font-semibold">Status</TableHead>
                       <TableHead className="font-semibold">Enrolled</TableHead>
                       <TableHead className="font-semibold">Tags</TableHead>
@@ -1033,7 +1046,7 @@ export default function Students() {
                   <TableBody>
                     {displayStudents.length === 0 ? (
                       <TableRow>
-                        <TableCell colSpan={canEdit ? 16 : 15} className="text-center py-8 text-gray-500">
+                        <TableCell colSpan={canEdit ? 14 : 13} className="text-center py-8 text-gray-500">
                           No students found
                         </TableCell>
                       </TableRow>
@@ -1051,15 +1064,16 @@ export default function Students() {
                           <TableCell className="font-mono text-sm font-medium text-blue-600">
                             {student.student_code}
                           </TableCell>
-                          <TableCell className="font-medium">{student.full_name}</TableCell>
-                          <TableCell className="text-sm">{student.email}</TableCell>
+                          <TableCell>
+                            <div className="font-medium text-slate-900">{student.full_name}</div>
+                            {student.email && <div className="text-xs text-slate-500">{student.email}</div>}
+                          </TableCell>
                           <TableCell className="text-sm font-mono">{student.phone}</TableCell>
-                          <TableCell className="text-sm">{student.country || '-'}</TableCell>
-                          <TableCell className="text-sm font-mono">{student.user_id || '-'}</TableCell>
                           <TableCell className="text-sm">{student.primary_mentor_name}</TableCell>
                           <TableCell className="text-sm">{student.team_name || '-'}</TableCell>
-                            <TableCell className="max-w-[220px] text-sm">{courseLabel(student.lms_course) || <span className="text-slate-300">—</span>}</TableCell>
+                            <TableCell className="max-w-[220px] text-sm"><CourseCell student={student} /></TableCell>
                             <TableCell className="text-sm">{(studentProducts[student.id] || []).length ? <div className="flex flex-wrap gap-1">{studentProducts[student.id].map(p => <Badge key={p} variant="outline" className="border-violet-200 bg-violet-50 text-violet-700">{p}</Badge>)}</div> : <span className="text-slate-300">—</span>}</TableCell>
+                            <TableCell><BalanceCell student={student} /></TableCell>
                           <TableCell>
                             <Badge variant="outline" className={getStatusColor(student.status)}>
                               {student.status}
@@ -1121,6 +1135,7 @@ export default function Students() {
                       <TableHead className="font-semibold">Team</TableHead>
                       <TableHead className="font-semibold">Course</TableHead>
                       <TableHead className="font-semibold">Products</TableHead>
+                      <TableHead className="font-semibold">Balance</TableHead>
                       <TableHead className="font-semibold">Enrolled</TableHead>
                       <TableHead className="font-semibold">Tags</TableHead>
                       <TableHead className="font-semibold">My Net Deposits</TableHead>
@@ -1133,7 +1148,7 @@ export default function Students() {
                   <TableBody>
                     {coManagedStudents.length === 0 ? (
                       <TableRow>
-                        <TableCell colSpan={13} className="text-center py-8 text-gray-500">
+                        <TableCell colSpan={14} className="text-center py-8 text-gray-500">
                           No co-managed clients yet. Send a referral request from a Fund Request to get started.
                         </TableCell>
                       </TableRow>
@@ -1152,8 +1167,9 @@ export default function Students() {
                             <TableCell className="font-mono text-sm text-blue-600">{student.student_code || '-'}</TableCell>
                             <TableCell className="text-sm">{student.primary_mentor_name}</TableCell>
                             <TableCell className="text-sm">{student.team_name || '-'}</TableCell>
-                            <TableCell className="max-w-[220px] text-sm">{courseLabel(student.lms_course) || <span className="text-slate-300">—</span>}</TableCell>
+                            <TableCell className="max-w-[220px] text-sm"><CourseCell student={student} /></TableCell>
                             <TableCell className="text-sm">{(studentProducts[student.id] || []).length ? <div className="flex flex-wrap gap-1">{studentProducts[student.id].map(p => <Badge key={p} variant="outline" className="border-violet-200 bg-violet-50 text-violet-700">{p}</Badge>)}</div> : <span className="text-slate-300">—</span>}</TableCell>
+                            <TableCell><BalanceCell student={student} /></TableCell>
                             <TableCell><EnrolledSwitch student={student} currentUser={currentUser} /></TableCell>
                             <TableCell><StudentTagChips student={student} catalog={tagCatalog} /></TableCell>
                             <TableCell className="text-sm font-semibold text-green-700">${myNet.toLocaleString()}</TableCell>
@@ -1209,13 +1225,11 @@ export default function Students() {
                 <TableHeader>
                   <TableRow className="bg-gray-50">
                     <TableHead className="font-semibold">Student Code</TableHead>
-                    <TableHead className="font-semibold">Full Name</TableHead>
-                    <TableHead className="font-semibold">Email</TableHead>
+                    <TableHead className="font-semibold">Student</TableHead>
                     <TableHead className="font-semibold">Phone</TableHead>
-                    <TableHead className="font-semibold">Country</TableHead>
-                    <TableHead className="font-semibold">User ID</TableHead>
                       <TableHead className="font-semibold">Course</TableHead>
                       <TableHead className="font-semibold">Products</TableHead>
+                      <TableHead className="font-semibold">Balance</TableHead>
                     <TableHead className="font-semibold">Status</TableHead>
                     <TableHead className="font-semibold">Enrolled</TableHead>
                     <TableHead className="font-semibold">Tags</TableHead>
@@ -1226,7 +1240,7 @@ export default function Students() {
                 <TableBody>
                   {displayStudents.length === 0 ? (
                     <TableRow>
-                      <TableCell colSpan={13} className="text-center py-8 text-gray-500">
+                      <TableCell colSpan={11} className="text-center py-8 text-gray-500">
                         No open pool students available
                       </TableCell>
                     </TableRow>
@@ -1236,13 +1250,14 @@ export default function Students() {
                         <TableCell className="font-mono text-sm font-medium text-blue-600">
                           {student.student_code}
                         </TableCell>
-                        <TableCell className="font-medium">{student.full_name}</TableCell>
-                        <TableCell className="text-sm">{student.email}</TableCell>
+                        <TableCell>
+                          <div className="font-medium text-slate-900">{student.full_name}</div>
+                          {student.email && <div className="text-xs text-slate-500">{student.email}</div>}
+                        </TableCell>
                         <TableCell className="text-sm font-mono">{student.phone}</TableCell>
-                        <TableCell className="text-sm">{student.country || '-'}</TableCell>
-                        <TableCell className="text-sm font-mono">{student.user_id || '-'}</TableCell>
-                            <TableCell className="max-w-[220px] text-sm">{courseLabel(student.lms_course) || <span className="text-slate-300">—</span>}</TableCell>
+                            <TableCell className="max-w-[220px] text-sm"><CourseCell student={student} /></TableCell>
                             <TableCell className="text-sm">{(studentProducts[student.id] || []).length ? <div className="flex flex-wrap gap-1">{studentProducts[student.id].map(p => <Badge key={p} variant="outline" className="border-violet-200 bg-violet-50 text-violet-700">{p}</Badge>)}</div> : <span className="text-slate-300">—</span>}</TableCell>
+                            <TableCell><BalanceCell student={student} /></TableCell>
                         <TableCell>
                           <Badge variant="outline" className={getStatusColor(student.status)}>
                             {student.status}
@@ -1313,6 +1328,7 @@ export default function Students() {
                       <TableHead className="font-semibold">Team</TableHead>
                       <TableHead className="font-semibold">Course</TableHead>
                       <TableHead className="font-semibold">Products</TableHead>
+                      <TableHead className="font-semibold">Balance</TableHead>
                       <TableHead className="font-semibold">Co-Mentor</TableHead>
                       <TableHead className="font-semibold">Primary Net Deposits</TableHead>
                       <TableHead className="font-semibold">Co-Mentor Net Deposits</TableHead>
@@ -1326,7 +1342,7 @@ export default function Students() {
                   <TableBody>
                     {allCoManagedStudents.length === 0 ? (
                       <TableRow>
-                        <TableCell colSpan={14} className="text-center py-8 text-gray-500">
+                        <TableCell colSpan={15} className="text-center py-8 text-gray-500">
                           No co-managed clients found
                         </TableCell>
                       </TableRow>
@@ -1344,8 +1360,9 @@ export default function Students() {
                               <TableCell className="font-mono text-sm text-blue-600">{student.student_code || '-'}</TableCell>
                               <TableCell className="text-sm">{student.primary_mentor_name}</TableCell>
                               <TableCell className="text-sm">{student.team_name || '-'}</TableCell>
-                            <TableCell className="max-w-[220px] text-sm">{courseLabel(student.lms_course) || <span className="text-slate-300">—</span>}</TableCell>
+                            <TableCell className="max-w-[220px] text-sm"><CourseCell student={student} /></TableCell>
                             <TableCell className="text-sm">{(studentProducts[student.id] || []).length ? <div className="flex flex-wrap gap-1">{studentProducts[student.id].map(p => <Badge key={p} variant="outline" className="border-violet-200 bg-violet-50 text-violet-700">{p}</Badge>)}</div> : <span className="text-slate-300">—</span>}</TableCell>
+                            <TableCell><BalanceCell student={student} /></TableCell>
                               <TableCell className="text-sm font-medium text-purple-700">{co.mentor_name}</TableCell>
                               <TableCell className="text-sm text-gray-700">${primaryNet.toLocaleString()}</TableCell>
                               <TableCell className="text-sm font-semibold text-green-700">${coNet.toLocaleString()}</TableCell>
@@ -1384,15 +1401,13 @@ export default function Students() {
               <TableHeader>
                 <TableRow className="bg-gray-50">
                   <TableHead className="font-semibold">Student Code</TableHead>
-                  <TableHead className="font-semibold">Full Name</TableHead>
-                  <TableHead className="font-semibold">Email</TableHead>
+                  <TableHead className="font-semibold">Student</TableHead>
                   <TableHead className="font-semibold">Phone</TableHead>
-                  <TableHead className="font-semibold">Country</TableHead>
-                  <TableHead className="font-semibold">User ID</TableHead>
                   <TableHead className="font-semibold">CS</TableHead>
                   <TableHead className="font-semibold">Team</TableHead>
                       <TableHead className="font-semibold">Course</TableHead>
                       <TableHead className="font-semibold">Products</TableHead>
+                      <TableHead className="font-semibold">Balance</TableHead>
                   <TableHead className="font-semibold">Status</TableHead>
                   <TableHead className="font-semibold">Enrolled</TableHead>
                   <TableHead className="font-semibold">Tags</TableHead>
@@ -1403,7 +1418,7 @@ export default function Students() {
               <TableBody>
                 {displayStudents.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={15} className="text-center py-8 text-gray-500">
+                    <TableCell colSpan={13} className="text-center py-8 text-gray-500">
                       No students found
                     </TableCell>
                   </TableRow>
@@ -1413,15 +1428,16 @@ export default function Students() {
                       <TableCell className="font-mono text-sm font-medium text-blue-600">
                         {student.student_code}
                       </TableCell>
-                      <TableCell className="font-medium">{student.full_name}</TableCell>
-                      <TableCell className="text-sm">{student.email}</TableCell>
+                      <TableCell>
+                        <div className="font-medium text-slate-900">{student.full_name}</div>
+                        {student.email && <div className="text-xs text-slate-500">{student.email}</div>}
+                      </TableCell>
                       <TableCell className="text-sm font-mono">{student.phone}</TableCell>
-                      <TableCell className="text-sm">{student.country || '-'}</TableCell>
-                      <TableCell className="text-sm font-mono">{student.user_id || '-'}</TableCell>
                       <TableCell className="text-sm">{student.primary_mentor_name}</TableCell>
                       <TableCell className="text-sm">{student.team_name || '-'}</TableCell>
-                            <TableCell className="max-w-[220px] text-sm">{courseLabel(student.lms_course) || <span className="text-slate-300">—</span>}</TableCell>
+                            <TableCell className="max-w-[220px] text-sm"><CourseCell student={student} /></TableCell>
                             <TableCell className="text-sm">{(studentProducts[student.id] || []).length ? <div className="flex flex-wrap gap-1">{studentProducts[student.id].map(p => <Badge key={p} variant="outline" className="border-violet-200 bg-violet-50 text-violet-700">{p}</Badge>)}</div> : <span className="text-slate-300">—</span>}</TableCell>
+                            <TableCell><BalanceCell student={student} /></TableCell>
                       <TableCell>
                         <Badge variant="outline" className={getStatusColor(student.status)}>
                           {student.status}
