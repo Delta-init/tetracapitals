@@ -12,6 +12,7 @@ import type { Boom } from "@hapi/boom";
 import { config } from "../config";
 import { col } from "../db";
 import { toObjectId } from "../lib/id";
+import { push } from "../lib/notify";
 
 /* ────────────────────────────────────────────────────────────────────────────
    WhatsApp, as in the Carlton CRM (WHATSAPP_INTEGRATION.md there): each CS
@@ -180,7 +181,7 @@ async function receive(owner: { id: string; name: string }, sock: WASocket, msg:
   }
   const fromMe = !!msg.key.fromMe;
   const ts = Number(msg.messageTimestamp ?? 0);
-  await store({
+  const kept = await store({
     owner_id: owner.id, owner_name: owner.name,
     chat: phone || jid, phone, key, jid,
     direction: fromMe ? "out" : "in",
@@ -193,6 +194,21 @@ async function receive(owner: { id: string; name: string }, sock: WASocket, msg:
     media: media ? { type: media.type, mime: media.mime, file_name: media.fileName, file: saved?.file ?? "", size: saved?.size ?? 0 } : null,
     at: new Date(ts > 0 ? ts * 1000 : Date.now()).toISOString(),
   });
+  // A new message to the CS: a push to their phone and computer (the WhatsApp page keeps the count, so no bell).
+  if (kept && !fromMe) {
+    const sid = toObjectId(students[0] ?? "");
+    const student: any = sid ? await col("students").findOne({ _id: sid }, { projection: { full_name: 1 } }) : null;
+    const who = String(student?.full_name ?? "").trim() || msg.pushName || (phone ? `+${phone}` : "WhatsApp");
+    const text = body || LABEL[media!.type] || "File";
+    void push([owner.id], {
+      type: "whatsapp_message",
+      title: `WhatsApp · ${who}`,
+      body: text.length > 140 ? `${text.slice(0, 137)}…` : text,
+      link: `/WhatsApp?chat=${encodeURIComponent(kept.chat)}`,
+      tag: `wa-${kept.chat}`,
+      renotify: true,
+    });
+  }
 }
 
 /* ── Linking ────────────────────────────────────────────────────────────── */

@@ -1,5 +1,5 @@
-import React, { useMemo, useState } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import React, { useEffect, useMemo, useState } from 'react';
+import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { base44 } from '@/api/base44Client';
 import { PageTitle } from '@/components/common/PageHeader';
@@ -37,6 +37,7 @@ const TABS = {
 export default function StudentFollowups() {
   const queryClient = useQueryClient();
   const navigate = useNavigate();
+  const location = useLocation();
   const { data: currentUser } = useQuery({ queryKey: ['me-effective'], queryFn: async () => getEffectiveUser(await base44.auth.me()) });
   const { data, isLoading, error } = useQuery({
     queryKey: ['followups'],
@@ -57,7 +58,10 @@ export default function StudentFollowups() {
 
   const followups = data?.followups || [];
   const stats = data?.stats || {};
-  const [tab, setTab] = useState('today');
+  // ?tab=upcoming etc. — where a notice or email opens it (tomorrow's follow-ups are under Upcoming).
+  const tabInUrl = () => { const t = new URLSearchParams(location.search).get('tab'); return t && TABS[t] ? t : null; };
+  const [tab, setTab] = useState(() => tabInUrl() || 'today');
+  useEffect(() => { const t = tabInUrl(); if (t) setTab(t); }, [location.search]);
   const [stage, setStage] = useState('all');
   const [outcome, setOutcome] = useState('all');
   const [team, setTeam] = useState('all');

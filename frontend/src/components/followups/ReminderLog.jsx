@@ -13,9 +13,11 @@ import { REMINDER, reminderKind, reminderTitle, hhmm, fmtDate, StatusBadge } fro
 
 /**
  * Reminder emails — one a day at 10:00 UAE to each person with follow-ups
- * due or overdue: who got one, what was in it, sent / failed / not sent and
- * why, and whether they opened the portal from it. Everyone sees their own;
- * managers their people; admin roles everyone (the server decides).
+ * due today, overdue or due tomorrow, and a leader alert to the Chief Mentor /
+ * CS Manager when one of their CSs' follow-ups goes overdue: who got one, what
+ * was in it, sent / failed / not sent and why, and whether they opened the
+ * portal from it. Everyone sees their own; managers their people; admin roles
+ * everyone (the server decides).
  */
 export default function ReminderLog({ currentUser }) {
   const queryClient = useQueryClient();
@@ -47,7 +49,7 @@ export default function ReminderLog({ currentUser }) {
     mutationFn: async () => (await base44.functions.invoke('runRemindersNow', {})).data,
     onSuccess: (r) => {
       setRunOpen(false);
-      toast.success(`Sent ${r.sent}${r.failed ? `, failed ${r.failed}` : ''}${r.skipped ? `, not sent ${r.skipped}` : ''}${r.already ? ` — ${r.already} already had today's` : ''}`);
+      toast.success(`Sent ${r.sent}${r.failed ? `, failed ${r.failed}` : ''}${r.skipped ? `, not sent ${r.skipped}` : ''}${r.alerts ? ` (${r.alerts} leader alert${r.alerts === 1 ? '' : 's'})` : ''}${r.already ? ` — ${r.already} already had today's` : ''}`);
       refresh();
     },
     onError: (e) => toast.error(e?.message || 'Could not run the reminders'),
@@ -67,7 +69,7 @@ export default function ReminderLog({ currentUser }) {
           <div>
             <CardTitle className="flex items-center gap-2 text-base text-brand-navy"><Mail className="h-4 w-4" /> Reminder emails</CardTitle>
             <p className="mt-1 max-w-2xl text-sm text-slate-500">
-              One email a day at {data?.send_time || '10:00 UAE'} to each person with follow-ups due or overdue — sent, failed or not sent (and why), and whether they opened the portal from it.
+              One email a day at {data?.send_time || '10:00 UAE'} to each person with follow-ups due today, overdue or due tomorrow — and to their Chief Mentor and CS Manager when one goes overdue. Sent, failed or not sent (and why), and whether they opened the portal from it.
             </p>
           </div>
           <div className="flex flex-shrink-0 flex-wrap items-center gap-2">
@@ -111,18 +113,18 @@ export default function ReminderLog({ currentUser }) {
           <table className="w-full text-sm">
             <thead>
               <tr className="border-b bg-slate-50/80">
-                {['', 'Person', 'Due today', 'Overdue', 'Email', 'Sent', 'Opened', 'Tries', 'Details', ''].map((h, i) => (
-                  <th key={i} className={`whitespace-nowrap px-3 py-3 text-[11px] font-semibold uppercase tracking-wider text-slate-500 ${[2, 3, 7].includes(i) ? 'text-right' : 'text-left'}`}>{h}</th>
+                {['', 'Person', 'Due today', 'Overdue', 'Tomorrow', 'Email', 'Sent', 'Opened', 'Tries', 'Details', ''].map((h, i) => (
+                  <th key={i} className={`whitespace-nowrap px-3 py-3 text-[11px] font-semibold uppercase tracking-wider text-slate-500 ${[2, 3, 4, 8].includes(i) ? 'text-right' : 'text-left'}`}>{h}</th>
                 ))}
               </tr>
             </thead>
             <tbody>
               {isLoading ? (
-                <tr><td colSpan={10} className="py-10 text-center text-slate-400">Loading…</td></tr>
+                <tr><td colSpan={11} className="py-10 text-center text-slate-400">Loading…</td></tr>
               ) : error ? (
-                <tr><td colSpan={10} className="py-10 text-center text-rose-600">{error.message || 'Could not load the reminder emails'}</td></tr>
+                <tr><td colSpan={11} className="py-10 text-center text-rose-600">{error.message || 'Could not load the reminder emails'}</td></tr>
               ) : rows.length === 0 ? (
-                <tr><td colSpan={10} className="py-10 text-center text-slate-400">
+                <tr><td colSpan={11} className="py-10 text-center text-slate-400">
                   {isToday && !data?.ran_today ? `No reminder emails yet today — they go out at ${data?.send_time || '10:00 UAE'}.` : 'No reminder emails on this day.'}
                 </td></tr>
               ) : rows.map((r) => {
@@ -130,16 +132,21 @@ export default function ReminderLog({ currentUser }) {
                 const Icon = k.icon;
                 const open = expanded === r.id;
                 const canResend = data?.can_resend && isToday && r.status !== 'sending' && r.mentor_id;
+                const alert = r.kind === 'leader_alert';
                 return (
                   <React.Fragment key={r.id}>
                     <tr className="cursor-pointer border-b border-slate-100 align-top hover:bg-cyan-50/40" onClick={(e) => { if (!e.target.closest('button')) setExpanded(open ? null : r.id); }}>
                       <td className="w-8 px-3 py-2.5 text-slate-400">{open ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}</td>
                       <td className="px-3 py-2.5">
-                        <div className="font-medium text-slate-900">{r.mentor_name || (r.mentor_id ? 'Unknown' : 'No mentor')}</div>
+                        <div className="font-medium text-slate-900">
+                          {r.mentor_name || (r.mentor_id ? 'Unknown' : 'No mentor')}
+                          {alert && <span title="What went overdue in the team they lead" className="ml-1.5 rounded bg-rose-50 px-1.5 py-0.5 align-middle text-[10px] font-semibold uppercase tracking-wide text-rose-700">Leader alert</span>}
+                        </div>
                         <div className="text-xs text-slate-400">{r.to || '—'}</div>
                       </td>
                       <td className="tabular px-3 py-2.5 text-right text-slate-700">{r.due_today ?? 0}</td>
                       <td className="tabular px-3 py-2.5 text-right text-slate-700">{r.overdue ?? 0}</td>
+                      <td className="tabular px-3 py-2.5 text-right text-slate-700">{r.tomorrow ?? 0}</td>
                       <td className="px-3 py-2.5" title={reminderTitle(r)}>
                         <Badge variant="outline" className={`gap-1 whitespace-nowrap ${k.cls}`}><Icon className={`h-3 w-3 ${r.status === 'sending' ? 'animate-spin' : ''}`} />{k.label}</Badge>
                       </td>
@@ -158,7 +165,7 @@ export default function ReminderLog({ currentUser }) {
                     {open && (
                       <tr className="border-b border-slate-100 bg-slate-50/60">
                         <td />
-                        <td colSpan={9} className="px-3 py-3">
+                        <td colSpan={10} className="px-3 py-3">
                           <div className="grid gap-4 lg:grid-cols-[2fr_1fr]">
                             <div>
                               <p className="mb-2 text-[11px] font-semibold uppercase tracking-wider text-slate-500">In the email</p>
@@ -167,7 +174,7 @@ export default function ReminderLog({ currentUser }) {
                                   <li key={i.followup_id} className="flex flex-wrap items-center gap-2 text-sm">
                                     <StatusBadge status={i.status} />
                                     <span className="font-medium text-slate-800">{i.student_name}</span>
-                                    <span className="text-slate-400">{i.target_outcome} · {i.stage} · due {fmtDate(i.next_followup_date)}</span>
+                                    <span className="text-slate-400">{i.cs_name ? `${i.cs_name} · ` : ''}{i.target_outcome} · {i.stage} · due {fmtDate(i.next_followup_date)}</span>
                                   </li>
                                 ))}
                               </ul>
@@ -220,7 +227,7 @@ export default function ReminderLog({ currentUser }) {
           <DialogHeader>
             <DialogTitle className="text-brand-navy">Send today’s reminders now?</DialogTitle>
             <DialogDescription>
-              Everyone with follow-ups due or overdue who hasn’t had today’s reminder gets it now. Nobody gets two in a day — the {data?.send_time || '10:00 UAE'} run only reaches people still without one.
+              Everyone with follow-ups due today, overdue or due tomorrow who hasn’t had today’s reminder gets it now, and leaders hear about follow-ups that went overdue. Nobody gets two in a day — the {data?.send_time || '10:00 UAE'} run only reaches people still without one.
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>

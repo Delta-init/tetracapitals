@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useLocation } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { base44 } from '@/api/base44Client';
@@ -14,7 +14,7 @@ import SearchableSelect from '@/components/common/SearchableSelect';
 import { ArrowLeft, Link2, Loader2, MessageCircle, Plus, Search, Smartphone, Unlink } from 'lucide-react';
 import { getEffectiveUser } from '@/components/utils/ImpersonationContext';
 import { createPageUrl } from '@/utils';
-import { Composer, Thread, WA_GREEN, shortTime } from '@/components/whatsapp/waUi';
+import { Composer, Thread, WA_GREEN, shortTime, numbersOf } from '@/components/whatsapp/waUi';
 
 /* ────────────────────────────────────────────────────────────────────────────
    WhatsApp: each CS links their own WhatsApp here (a QR, as WhatsApp Web) and
@@ -114,9 +114,17 @@ export default function WhatsApp() {
     refetchInterval: (q) => (['connecting', 'qr_ready'].includes(q.state.data?.me?.status) ? 2000 : 15000),
   });
   const [ownerId, setOwnerId] = useState('');
-  const [chatId, setChatId] = useState('');
+  const location = useLocation();
+  const [chatId, setChatId] = useState(() => new URLSearchParams(window.location.search).get('chat') || '');
+  // A WhatsApp notification opens its chat (/WhatsApp?chat=…), also when the page is already open.
+  useEffect(() => {
+    const c = new URLSearchParams(location.search).get('chat');
+    if (c) { setOwnerId(''); setChatId(c); }
+  }, [location.search]);
   const [q, setQ] = useState('');
   const [newNumber, setNewNumber] = useState(null);
+  const [draft, setDraft] = useState(null);       // a chat started from a student, before its first message
+  const [picking, setPicking] = useState(null);   // a student with several numbers: which one
   const [linking, setLinking] = useState(false);
 
   const owners = st?.owners || [];
@@ -129,7 +137,36 @@ export default function WhatsApp() {
     refetchInterval: 5000,
   });
   const chats = chatsData?.chats || [];
-  const chat = chats.find(c => c.chat === chatId) || (chatId ? { chat: chatId, phone: /^\d+$/.test(chatId) ? chatId : '', name: /^\d+$/.test(chatId) ? `+${chatId}` : chatId, students: [], unread: 0 } : null);
+  const chat = chats.find(c => c.chat === chatId) || (draft?.chat === chatId ? draft : null) || (chatId ? { chat: chatId, phone: /^\d+$/.test(chatId) ? chatId : '', name: /^\d+$/.test(chatId) ? `+${chatId}` : chatId, students: [], unread: 0 } : null);
+
+  // Your students, to start a chat from: the dropdown above the chats.
+  const { data: myStudents = [] } = useQuery({
+    queryKey: ['wa-my-students', st?.me?.id],
+    queryFn: () => base44.entities.Student.list('-created_date'),
+    enabled: !!st?.can_link && mine,
+    staleTime: 60_000,
+  });
+  const studentOptions = useMemo(() => myStudents
+    .filter(s => s.primary_mentor_id === st?.me?.id || (s.common_cs || []).some(c => c.id === st?.me?.id))
+    .map(s => ({ value: s.id, label: `${String(s.full_name || '').trim()} · ${s.student_code || ''}` })), [myStudents, st?.me?.id]);
+  /** Their chat if there is one (linked to them, or on one of their numbers), else a new one on their number. */
+  const openStudent = (id) => {
+    const s = myStudents.find(x => x.id === id);
+    if (!s) return;
+    const brief = { id: s.id, code: s.student_code || '', name: String(s.full_name || '').trim() };
+    const nums = numbersOf(s.phone);
+    const existing = chats.find(c => c.students.some(x => x.id === s.id)) || chats.find(c => c.phone && nums.some(n => n.slice(-9) === c.phone.slice(-9)));
+    setPicking(null);
+    if (existing) { setChatId(existing.chat); return; }
+    if (!nums.length) { toast.error(`No phone number on ${brief.name}'s record`); return; }
+    if (nums.length > 1) { setPicking({ student: brief, numbers: nums }); return; }
+    startDraft(brief, nums[0]);
+  };
+  const startDraft = (brief, number) => {
+    setDraft({ chat: number, phone: number, name: brief.name, whatsapp_name: '', students: [brief], unread: 0 });
+    setChatId(number);
+    setPicking(null);
+  };
   const { data: thread } = useQuery({
     queryKey: ['wa-messages', viewing, chatId],
     queryFn: () => call('getWhatsAppMessages', { ownerId: viewing, chat: chatId }),
@@ -215,14 +252,28 @@ export default function WhatsApp() {
                   <Search className="absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
                   <Input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search name, number or code" className="h-9 pl-8" />
                 </div>
-                {canSend && (newNumber === null
-                  ? <Button variant="outline" size="sm" className="w-full" onClick={() => setNewNumber('')}><Plus className="mr-1 h-4 w-4" />New chat</Button>
-                  : (
-                    <form className="flex gap-2" onSubmit={(e) => { e.preventDefault(); const d = newNumber.replace(/\D/g, ''); if (d.length >= 9) { setChatId(d); setNewNumber(null); } }}>
-                      <Input autoFocus value={newNumber} onChange={(e) => setNewNumber(e.target.value)} placeholder="Number with country code" className="h-8" />
-                      <Button type="submit" size="sm" className="h-8">Open</Button>
-                    </form>
-                  ))}
+                {mine && st?.can_link && (
+                  <>
+                    <SearchableSelect value="" onValueChange={(v) => v && v !== '__none__' && openStudent(v)} options={studentOptions}
+                      placeholder={studentOptions.length ? 'Message a student…' : 'No students yet'} searchPlaceholder="Name or code…" disabled={!studentOptions.length} />
+                    {picking && (
+                      <div className="rounded-md border bg-slate-50 p-2 text-xs">
+                        <p className="mb-1.5 text-slate-600">{picking.student.name} has {picking.numbers.length} numbers — which one?</p>
+                        <div className="flex flex-wrap gap-1.5">
+                          {picking.numbers.map(n => <Button key={n} size="sm" variant="outline" className="h-7 text-xs" onClick={() => startDraft(picking.student, n)}>+{n}</Button>)}
+                        </div>
+                      </div>
+                    )}
+                    {canSend && (newNumber === null
+                      ? <button type="button" className="text-xs text-blue-600 hover:underline" onClick={() => setNewNumber('')}><Plus className="mr-0.5 inline h-3 w-3" />or type a number</button>
+                      : (
+                        <form className="flex gap-2" onSubmit={(e) => { e.preventDefault(); const d = newNumber.replace(/\D/g, ''); if (d.length >= 9) { setChatId(d); setNewNumber(null); } }}>
+                          <Input autoFocus value={newNumber} onChange={(e) => setNewNumber(e.target.value)} placeholder="Number with country code" className="h-8" />
+                          <Button type="submit" size="sm" className="h-8">Open</Button>
+                        </form>
+                      ))}
+                  </>
+                )}
               </div>
               <div className="min-h-0 flex-1 overflow-y-auto">
                 {shown.length === 0 && <p className="p-6 text-center text-sm text-slate-500">{chats.length ? 'No match' : mine && st?.me?.status !== 'connected' ? 'Link your WhatsApp to start' : 'No chats yet'}</p>}

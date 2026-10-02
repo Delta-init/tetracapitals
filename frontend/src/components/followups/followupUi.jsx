@@ -23,6 +23,7 @@ export const LOST_REASONS = [
 export const STATUS_CLS = {
   OVERDUE: 'border-rose-200 bg-rose-50 text-rose-700',
   'DUE TODAY': 'border-amber-200 bg-amber-50 text-amber-700',
+  TOMORROW: 'border-sky-200 bg-sky-50 text-sky-700',
   'On Track': 'border-emerald-200 bg-emerald-50 text-emerald-700',
   Closed: 'border-slate-200 bg-slate-100 text-slate-500',
   '-': 'border-slate-200 bg-white text-slate-400',

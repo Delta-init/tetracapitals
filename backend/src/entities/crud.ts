@@ -7,6 +7,7 @@ import { translateFilter, parseOrder, clampLimit, clampSkip } from "../lib/query
 import { getAuthUser, type AuthUser } from "../auth/middleware";
 import { buildScopeFilter, applyScope, docMatchesScope } from "../lib/scope";
 import { stampNewStudents, recordCreated, prepareStudentUpdate, recordHistory, type HistoryEntry } from "../students/history";
+import { notifyStudentsGiven } from "../lib/notify";
 import type { TeamIndex } from "../students/teams";
 import { stampFundingForFinance, kickFinanceFunding, financeLock, withFinance, WITH_FINANCE_MESSAGE } from "../finance/funding";
 
@@ -196,7 +197,10 @@ export async function createEntity(req: Request, entityName: string): Promise<Re
 
   const res = await col(ctx.cfg.collection).insertOne(data as any);
   const created = await col(ctx.cfg.collection).findOne({ _id: res.insertedId });
-  if (teams && created) await recordCreated([created], ctx.user, "created", teams);
+  if (teams && created) {
+    await recordCreated([created], ctx.user, "created", teams);
+    void notifyStudentsGiven([created], ctx.user.id);
+  }
   if (toFinance) kickFinanceFunding();
   return json(serialize(created));
 }
@@ -242,7 +246,10 @@ export async function bulkCreateEntity(req: Request, entityName: string): Promis
   const created = await col(ctx.cfg.collection)
     .find({ _id: { $in: Object.values(res.insertedIds) } })
     .toArray();
-  if (teams) await recordCreated(created, ctx.user, "imported", teams);
+  if (teams) {
+    await recordCreated(created, ctx.user, "imported", teams);
+    void notifyStudentsGiven(created, ctx.user.id);
+  }
   if (toFinance) kickFinanceFunding();
   return json(serializeMany(created));
 }
@@ -286,6 +293,8 @@ export async function updateEntity(req: Request, entityName: string, id: string)
   const doc = await col(ctx.cfg.collection).findOne({ _id: oid });
   if (!doc) return notFound();
   await recordHistory(history);
+  // Given to somebody (from Delta Open Students, a transfer, an admin's edit): tell them.
+  if (history.some((h) => h.type === "assigned" || h.type === "mentor_changed")) void notifyStudentsGiven([doc], ctx.user.id);
   return json(serialize(doc));
 }
 

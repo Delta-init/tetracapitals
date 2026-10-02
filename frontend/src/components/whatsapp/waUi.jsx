@@ -10,6 +10,16 @@ import { apiUrl } from '@/api/base44Client';
 ──────────────────────────────────────────────────────────────────────────── */
 
 export const WA_GREEN = '#25D366';
+/** A number as WhatsApp wants it — as toIntl() in backend/src/whatsapp/service.ts: local UAE (5x…, 05x…) and Indian mobiles get their country code. */
+export function toIntl(raw) {
+  let d = String(raw || '').replace(/\D/g, '').replace(/^00/, '');
+  if (/^05\d{8}$/.test(d)) d = `971${d.slice(1)}`;
+  else if (/^5\d{8}$/.test(d)) d = `971${d}`;
+  else if (/^[6-9]\d{9}$/.test(d)) d = `91${d}`;
+  return d;
+}
+/** Each number in a student's phone field, ready for WhatsApp. */
+export const numbersOf = (phone) => [...new Set(String(phone || '').replace(/\.0$/, '').split(/[\n\r/,;|]+| - /).map(toIntl).filter(x => x.length >= 9))];
 const time = (iso) => (iso ? new Date(iso).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' }) : '');
 const dayOf = (iso) => (iso ? new Date(iso).toDateString() : '');
 const dayLabel = (iso) => {

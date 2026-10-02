@@ -85,6 +85,8 @@ export async function ensureIndexes(): Promise<void> {
     // The same WhatsApp message twice for one CS (a reconnect replays them) is kept once.
     d.collection("whatsapp_messages").createIndex({ owner_id: 1, message_id: 1 }, { unique: true, partialFilterExpression: { message_id: { $gt: "" } } }),
     d.collection("whatsapp_links").createIndex({ key: 1 }, { unique: true }),
+    d.collection("push_subscriptions").createIndex({ endpoint: 1 }, { unique: true }),
+    d.collection("push_subscriptions").createIndex({ user_id: 1 }),
     // One reminder email per person per day — the unique key is what stops a second one.
     d.collection("followup_reminders").createIndex({ key: 1 }, { unique: true }),
     d.collection("followup_reminders").createIndex({ date: -1, mentor_id: 1 }),
@@ -98,6 +100,9 @@ export async function ensureIndexes(): Promise<void> {
     d.collection("student_calls").createIndex({ user_id: 1, started_at: -1 }),
     d.collection("student_calls").createIndex({ extension: 1, user_id: 1 }),
     d.collection("students").createIndex({ team_id: 1 }),
+    d.collection("students").createIndex({ new_for_id: 1 }, { sparse: true }),
+    d.collection("tabby_links").createIndex({ student_id: 1, created_at: -1 }),
+    d.collection("tabby_links").createIndex({ reference_id: 1 }, { unique: true }),
     d.collection("retention_assignments").createIndex({ student_id: 1 }),
     d.collection("mentor_targets").createIndex({ mentor_id: 1, period: 1 }),
     d.collection("mentor_points").createIndex({ total_points: -1 }),

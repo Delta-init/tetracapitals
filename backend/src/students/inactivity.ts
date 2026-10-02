@@ -4,6 +4,7 @@ import type { AuthUser } from "../auth/middleware";
 import { loadTeams, type Team, type TeamIndex } from "./teams";
 import { takeNext, csTurn } from "./intake";
 import { prepareStudentUpdate, recordHistory } from "./history";
+import { markNewFor, push } from "../lib/notify";
 
 /* ────────────────────────────────────────────────────────────────────────────
    The inactivity rule: a student held by a CS who has had no APPROVED DEPOSIT
@@ -162,6 +163,8 @@ export async function runInactivity(by: AuthUser = SYSTEM): Promise<{ moved: num
       note(d.mentorId, `${d.name} moved to ${target.team.name}`, `${reason}, so ${d.name} was given to ${target.cs.name} (${target.team.name}).`),
       note(target.cs.id, `New student: ${d.name}`, `${d.name} was moved to you from ${d.teamName || "another team"} — ${reason.toLowerCase()} with their previous mentor.`),
     ] as any[]);
+    await markNewFor(target.cs.id, [d.id]);
+    void push([target.cs.id], { type: "student_given", title: `New student: ${d.name}`, body: `${d.name} was moved to you from ${d.teamName || "another team"}.`, link, tag: `student-${d.id}`, renotify: true });
     await col("logs").insertOne({
       timestamp: now,
       user_id: by.id, user_email: by.email, user_name: by.full_name, user_role: by.app_role,

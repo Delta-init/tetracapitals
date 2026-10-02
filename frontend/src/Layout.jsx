@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Link, useLocation } from 'react-router-dom';
+import { useQuery } from '@tanstack/react-query';
 import { motion, AnimatePresence } from 'framer-motion';
 import { createPageUrl } from './utils';
 import { base44 } from '@/api/base44Client';
@@ -10,6 +11,7 @@ import { getEffectiveUser } from './components/utils/ImpersonationContext';
 import { EASE } from '@/components/motion';
 import { NAV_ITEMS, NAV_GROUPS, GROUP_OF, humanize } from '@/components/utils/navigation';
 import { CallFlowProvider } from '@/components/followups/CallFlow';
+import { forgetThisDevice } from '@/components/utils/usePushNotifications';
 
 const initials = (name = '') =>
   name.split(/\s+/).filter(Boolean).slice(0, 2).map(p => p[0]?.toUpperCase()).join('') || 'D';
@@ -25,6 +27,7 @@ export default function Layout({ children, currentPageName }) {
   const [collapsed, setCollapsed] = useState(() => {
     try { return localStorage.getItem(SIDEBAR_KEY) === '1'; } catch { return false; }
   });
+  const [waUnread, setWaUnread] = useState(0);   // a CS's unread WhatsApp (NotificationBell keeps it)
   const [pendingCounts, setPendingCounts] = useState({
     fundingRequests: 0,
     studentRequests: 0,
@@ -127,7 +130,18 @@ export default function Layout({ children, currentPageName }) {
     return () => clearInterval(interval);
   }, [currentUser]);
 
-  const handleLogout = () => {
+  // The numbers on the sidebar: new students given to you (not opened yet), today's and overdue follow-ups.
+  const { data: navCounts, refetch: refetchNavCounts } = useQuery({
+    queryKey: ['nav-counts'],
+    queryFn: async () => (await base44.functions.invoke('getNavCounts', {})).data,
+    enabled: !!currentUser,
+    refetchInterval: 60_000,
+  });
+  useEffect(() => { if (currentUser) refetchNavCounts(); }, [location.pathname]);
+
+  const handleLogout = async () => {
+    // This device stops getting the person's notifications once they sign out.
+    await forgetThisDevice();
     base44.auth.logout();
   };
 
@@ -153,11 +167,23 @@ export default function Layout({ children, currentPageName }) {
     .map(group => ({ group, items: filteredNavigation.filter(i => (GROUP_OF[i.name] || 'More') === group) }))
     .filter(section => section.items.length > 0);
 
+  const countOf = (name) => ({
+    Students: navCounts?.new_students,
+    StudentFollowups: navCounts?.followups_today,
+    OverdueFollowups: navCounts?.followups_overdue,
+  })[name] || 0;
+  const COUNT_STYLE = {
+    Students: { cls: 'bg-brand-mint text-brand-navy', title: 'new students given to you — not opened yet' },
+    StudentFollowups: { cls: 'bg-amber-400 text-brand-navy', title: 'follow-ups due today' },
+    OverdueFollowups: { cls: 'bg-rose-500 text-white', title: 'overdue follow-ups' },
+  };
+
   const hasBadge = (name) =>
     (name === 'FundingRequests' && pendingCounts.fundingRequests > 0) ||
     (name === 'StudentRequestApprovals' && pendingCounts.studentRequests > 0) ||
     (name === 'Tickets' && pendingCounts.tickets > 0) ||
-    (name === 'RetentionManagement' && pendingCounts.retention > 0);
+    (name === 'RetentionManagement' && pendingCounts.retention > 0) ||
+    (name === 'WhatsApp' && waUnread > 0);
 
   // The "FundingActivities" nav item routes to the MyFundingRequests page.
   const isActiveItem = (item) =>
@@ -230,7 +256,14 @@ export default function Layout({ children, currentPageName }) {
                     />
                     {!compact && <span className="truncate">{label}</span>}
                   </span>
-                  {hasBadge(item.name) && (
+                  {countOf(item.name) > 0 ? (
+                    <span
+                      title={`${countOf(item.name)} ${COUNT_STYLE[item.name].title}`}
+                      className={`${compact ? 'absolute right-1 top-0.5 h-4 min-w-[16px] px-1 text-[10px]' : 'relative ml-auto h-5 min-w-[20px] px-1.5 text-[11px]'} flex items-center justify-center rounded-full font-semibold tabular-nums leading-none ${COUNT_STYLE[item.name].cls}`}
+                    >
+                      {countOf(item.name) > 99 ? '99+' : countOf(item.name)}
+                    </span>
+                  ) : hasBadge(item.name) && (
                     <span className={`${compact ? 'absolute right-2 top-1.5' : 'relative ml-auto'} flex h-2 w-2`}>
                       <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-brand-mint opacity-75" />
                       <span className="relative inline-flex h-2 w-2 rounded-full bg-brand-mint" />
@@ -397,7 +430,7 @@ export default function Layout({ children, currentPageName }) {
               <span className="hidden text-xs font-medium text-slate-400 lg:inline">
                 {new Date().toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })}
               </span>
-              <NotificationBell currentUser={currentUser} />
+              <NotificationBell currentUser={currentUser} onWhatsAppUnread={setWaUnread} />
               <div className="hidden items-center gap-2.5 border-l border-slate-200 pl-3 sm:flex">
                 <div className="flex h-8 w-8 items-center justify-center rounded-full bg-brand-navy text-[11px] font-bold text-white">
                   {initials(currentUser.full_name)}

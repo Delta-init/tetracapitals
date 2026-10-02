@@ -82,6 +82,8 @@ export async function getFollowups(req: Request, user: AuthUser): Promise<Respon
         auto_converted: !!f.converted_by_deposit_id,
         // The latest reminder email about it: { date, status, reason, at, to, seen_at }.
         reminder: f.last_reminder ?? null,
+        // Overdue: when the CS's leaders were told it went overdue (for this due date), or null.
+        leaders_told_at: f.leader_alert?.due && f.leader_alert.due === f.next_followup_date ? f.leader_alert.at ?? null : null,
         can_edit: canWorkOn(user, s),
         created_date: f.created_date,
       };

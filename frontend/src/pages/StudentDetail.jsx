@@ -16,6 +16,7 @@ import StudentHistory, { useStudentHistory } from "../components/students/Studen
 import StudentFollowupsSection from "@/components/followups/StudentFollowupsSection";
 import StudentCallsSection from "@/components/calls/StudentCallsSection";
 import StudentWhatsAppCard from "@/components/students/StudentWhatsAppCard";
+import TabbyLinksCard from "@/components/students/TabbyLinksCard";
 import { CallButton } from "@/components/followups/CallFlow";
 import { EnrolmentControl } from "@/components/students/enrolment";
 import { isStudentOf } from "@/components/students/common";
@@ -81,6 +82,17 @@ export default function StudentDetail() {
 
   // Team, who received them first, where they came from — and the history card below.
   const { data: history } = useStudentHistory(studentId, !!currentUser);
+
+  // Opened by the person it was given to: no longer new for them (the sidebar's count goes down).
+  useEffect(() => {
+    if (!student?.id || !currentUser?.id || student.new_for_id !== currentUser.id) return;
+    base44.functions.invoke('markStudentSeen', { id: student.id })
+      .then(() => {
+        queryClient.invalidateQueries({ queryKey: ['nav-counts'] });
+        queryClient.invalidateQueries({ queryKey: ['students'] });
+      })
+      .catch(() => { /* still new — counted until it is marked */ });
+  }, [student?.id, student?.new_for_id, currentUser?.id]);
 
   const updateMutation = useMutation({
     mutationFn: ({ id, data }) => base44.entities.Student.update(id, data),
@@ -372,6 +384,10 @@ export default function StudentDetail() {
 
         {/* Calls with them through 3CX, with the recordings */}
         <StudentCallsSection student={displayStudent} />
+
+        {/* Tabby payment links sent to them */}
+        <TabbyLinksCard student={displayStudent} />
+
         <StudentWhatsAppCard student={displayStudent} />
 
         {/* Everything that happened to this student */}

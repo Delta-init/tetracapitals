@@ -26,9 +26,12 @@ import { getReminderLog, resendReminder, runRemindersNow, sendTestReminder } fro
 import { getCalls, getCallRecording, syncCallsNow, testThreecx } from "./studentCalls";
 import { setEnrolment } from "./studentEnrolment";
 import { getStudentTags, setStudentTag } from "./studentTags";
+import { getPushConfig, savePushSubscription, deletePushSubscription, sendTestPush } from "./push";
+import { getNavCounts, markStudentSeen } from "./navCounts";
+import { getTabbyLinks, createTabbyLink, cancelTabbyLink } from "./tabbyLinks";
 import {
   getWhatsAppStatus, connectWhatsApp, disconnectWhatsApp, getWhatsAppChats, getWhatsAppMessages, markWhatsAppRead,
-  sendWhatsApp, sendWhatsAppFile, linkWhatsAppChat, getStudentWhatsApp,
+  sendWhatsApp, sendWhatsAppFile, linkWhatsAppChat, getStudentWhatsApp, getWhatsAppUnread,
 } from "./whatsapp";
 import { getMentorSchedule, getMentorClass, bookMentorMeeting, getMentorMeeting, updateMentorMeeting, cancelMentorMeeting } from "./mentorCalendar";
 import { getInactivityTransfer, setInactivityTransfer, runInactivityTransfer } from "./inactivityTransfer";
@@ -63,6 +66,15 @@ const AUTHED: Record<string, AuthedHandler> = {
   setEnrolment,
   getStudentTags,
   setStudentTag,
+  getPushConfig,
+  savePushSubscription,
+  deletePushSubscription,
+  sendTestPush,
+  getNavCounts,
+  markStudentSeen,
+  getTabbyLinks,
+  createTabbyLink,
+  cancelTabbyLink,
   getWhatsAppStatus,
   connectWhatsApp,
   disconnectWhatsApp,
@@ -73,6 +85,7 @@ const AUTHED: Record<string, AuthedHandler> = {
   sendWhatsAppFile,
   linkWhatsAppChat,
   getStudentWhatsApp,
+  getWhatsAppUnread,
   getInactivityTransfer,
   setInactivityTransfer,
   runInactivityTransfer,

@@ -4,6 +4,7 @@ import { toObjectId } from "../lib/id";
 import type { AuthUser } from "../auth/middleware";
 import { loadTeams } from "../students/teams";
 import { prepareStudentUpdate, recordHistory } from "../students/history";
+import { notifyStudentsGiven } from "../lib/notify";
 
 const ADMINS = new Set(["super_admin", "admin"]);
 
@@ -60,6 +61,7 @@ export async function reassignStudents(req: Request, user: AuthUser): Promise<Re
   const now = new Date().toISOString();
   const results: { studentId: string; to?: string; skipped?: string }[] = [];
   let moved = 0;
+  const given: any[] = [];
   for (let i = 0; i < ids.length; i++) {
     const student: any = byId.get(ids[i]!);
     const to = targetFor(i);
@@ -91,7 +93,9 @@ export async function reassignStudents(req: Request, user: AuthUser): Promise<Re
       success: true,
     });
     results.push({ studentId: ids[i]!, to: to.name });
+    given.push({ ...student, ...data });
     moved++;
   }
+  void notifyStudentsGiven(given, user.id);
   return json({ moved, skipped: ids.length - moved, results });
 }

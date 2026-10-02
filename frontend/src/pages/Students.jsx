@@ -18,7 +18,7 @@ import StudentRequestForm from "../components/students/StudentRequestForm";
 import BulkImportStudentsDialog from "../components/students/BulkImportStudentsDialog";
 import { isMentorRole as isMentorTier, getScope, downlineIds } from "@/components/utils/roles";
 
-import { Plus, Search, Eye, Users, UserCheck, Upload, Download, Filter, ArrowUp, Share2, Trash2, ArrowRightLeft } from "lucide-react";
+import { Plus, Search, Eye, Users, UserCheck, Upload, Download, Filter, ArrowUp, Share2, Trash2, ArrowRightLeft, Sparkles } from "lucide-react";
 import TransferStudentsDialog from "../components/students/TransferStudentsDialog";
 import { CallButton } from "@/components/followups/CallFlow";
 import { listTeams } from "@/components/utils/teams";
@@ -49,6 +49,12 @@ function CourseCell({ student }) {
     : <span className="text-slate-300">—</span>;
 }
 
+/** Given to you and not opened yet — what the sidebar counts on Students (opening the student clears it). */
+const isNewFor = (s, me) => !!me && s.new_for_id === me && s.primary_mentor_id === me;
+const NewForYou = ({ student, me }) => (isNewFor(student, me)
+  ? <span title="Given to you — not opened yet" className="ml-1.5 rounded bg-emerald-100 px-1.5 py-0.5 align-middle text-[10px] font-semibold uppercase tracking-wide text-emerald-700">New</span>
+  : null);
+
 /** What is still to pay, from Course fees: amber while owed, green when paid in full, a dash when nothing is known. */
 function BalanceCell({ student }) {
   const { known, owing } = studentBalance(student);
@@ -67,6 +73,7 @@ export default function Students() {
   const [filterEnrolment, setFilterEnrolment] = useState('all');
   const [filterBalance, setFilterBalance] = useState('all');
   const [filterTag, setFilterTag] = useState('all');
+  const [onlyNew, setOnlyNew] = useState(false);
   const [filterLevel, setFilterLevel] = useState('all');
   const [filterTeam, setFilterTeam] = useState('all');
   const [filterCourse, setFilterCourse] = useState('all');
@@ -341,6 +348,7 @@ export default function Students() {
   const isAssistance = currentUser.app_role === 'assistance';
   const isAdmin = ['super_admin', 'broker_admin', 'academic_head'].includes(currentUser.app_role);
   const isSuperAdmin = currentUser.app_role === 'super_admin';
+  const newForMe = students.filter(s => isNewFor(s, currentUser.id)).length;
 
   // Co-managed students: where current user appears in co_mentors_details (mentors)
   const coManagedStudents = isMentor ? (allStudentsForCoManaged.length ? allStudentsForCoManaged : students).filter(s => {
@@ -467,6 +475,11 @@ export default function Students() {
   // Apply status filter
   if (filterStatus !== 'all') {
     filteredStudents = filteredStudents.filter(s => s.status === filterStatus);
+  }
+
+  // Only the students given to you that you haven't opened yet
+  if (onlyNew) {
+    filteredStudents = filteredStudents.filter(s => isNewFor(s, currentUser.id));
   }
 
   // Apply the tag and Enrolled filters (Enrolled = Enrolment Closed; Not enrolled = Open or Old)
@@ -648,6 +661,15 @@ export default function Students() {
                   className="pl-10"
                 />
               </div>
+
+              {/* New for you — given to you, not opened yet (the sidebar's count) */}
+              {(newForMe > 0 || onlyNew) && (
+                <Button type="button" variant={onlyNew ? 'default' : 'outline'}
+                  onClick={() => { setOnlyNew(v => !v); if (isMentor) setActiveTab('my'); }}
+                  className={onlyNew ? 'bg-emerald-600 hover:bg-emerald-700' : 'border-emerald-600 text-emerald-700 hover:bg-emerald-50'}>
+                  <Sparkles className="h-4 w-4 mr-2" />New for you ({newForMe})
+                </Button>
+              )}
 
               {/* Tag Filter — everyone, on every tab */}
               <Select value={filterTag} onValueChange={(v) => v && setFilterTag(v)}>
@@ -863,7 +885,7 @@ export default function Students() {
                               {student.student_code}
                             </TableCell>
                             <TableCell>
-                              <div className="font-medium text-slate-900">{student.full_name}</div>
+                              <div className="font-medium text-slate-900">{student.full_name}<NewForYou student={student} me={currentUser.id} /></div>
                               {student.email && <div className="text-xs text-slate-500">{student.email}</div>}
                             </TableCell>
                             <TableCell className="text-sm font-mono">{student.phone}</TableCell>
@@ -953,7 +975,7 @@ export default function Students() {
                            {student.student_code}
                          </TableCell>
                          <TableCell>
-                           <div className="font-medium text-slate-900">{student.full_name}</div>
+                           <div className="font-medium text-slate-900">{student.full_name}<NewForYou student={student} me={currentUser.id} /></div>
                            {student.email && <div className="text-xs text-slate-500">{student.email}</div>}
                          </TableCell>
                          <TableCell className="text-sm font-mono">{student.phone}</TableCell>
@@ -1059,7 +1081,7 @@ export default function Students() {
                             {student.student_code}
                           </TableCell>
                           <TableCell>
-                            <div className="font-medium text-slate-900">{student.full_name}</div>
+                            <div className="font-medium text-slate-900">{student.full_name}<NewForYou student={student} me={currentUser.id} /></div>
                             {student.email && <div className="text-xs text-slate-500">{student.email}</div>}
                           </TableCell>
                           <TableCell className="text-sm font-mono">{student.phone}</TableCell>
@@ -1155,7 +1177,7 @@ export default function Students() {
         const myEntry = _coMentors.find(cm => cm.mentor_id === currentUser?.id);
                         return (
                           <TableRow key={student.id} className="cursor-pointer hover:bg-gray-50 transition-colors" onClick={(e) => openStudent(e, student.id)}>
-                            <TableCell className="font-medium">{student.full_name}</TableCell>
+                            <TableCell className="font-medium">{student.full_name}<NewForYou student={student} me={currentUser.id} /></TableCell>
                             <TableCell className="font-mono text-sm text-blue-600">{student.student_code || '-'}</TableCell>
                             <TableCell className="text-sm">{student.primary_mentor_name}</TableCell>
                             <TableCell className="text-sm">{student.team_name || '-'}</TableCell>
@@ -1241,7 +1263,7 @@ export default function Students() {
                           {student.student_code}
                         </TableCell>
                         <TableCell>
-                          <div className="font-medium text-slate-900">{student.full_name}</div>
+                          <div className="font-medium text-slate-900">{student.full_name}<NewForYou student={student} me={currentUser.id} /></div>
                           {student.email && <div className="text-xs text-slate-500">{student.email}</div>}
                         </TableCell>
                         <TableCell className="text-sm font-mono">{student.phone}</TableCell>
@@ -1344,7 +1366,7 @@ export default function Students() {
                           const primaryNet = Math.max(0, combined - coNet);
                           return (
                             <TableRow key={`${student.id}-${idx}`} className="cursor-pointer hover:bg-gray-50 transition-colors" onClick={(e) => openStudent(e, student.id)}>
-                              <TableCell className="font-medium">{student.full_name}</TableCell>
+                              <TableCell className="font-medium">{student.full_name}<NewForYou student={student} me={currentUser.id} /></TableCell>
                               <TableCell className="font-mono text-sm text-blue-600">{student.student_code || '-'}</TableCell>
                               <TableCell className="text-sm">{student.primary_mentor_name}</TableCell>
                               <TableCell className="text-sm">{student.team_name || '-'}</TableCell>
@@ -1415,7 +1437,7 @@ export default function Students() {
                         {student.student_code}
                       </TableCell>
                       <TableCell>
-                        <div className="font-medium text-slate-900">{student.full_name}</div>
+                        <div className="font-medium text-slate-900">{student.full_name}<NewForYou student={student} me={currentUser.id} /></div>
                         {student.email && <div className="text-xs text-slate-500">{student.email}</div>}
                       </TableCell>
                       <TableCell className="text-sm font-mono">{student.phone}</TableCell>

@@ -71,6 +71,41 @@ export const config = {
     sessionDir: process.env.WHATSAPP_SESSION_DIR ?? "./whatsapp-sessions",
     mediaDir: process.env.WHATSAPP_MEDIA_DIR ?? "./whatsapp-media",
   },
+  /**
+   * Phone and desktop notifications (Web Push), as in the Sales CRM. One key
+   * pair for the server, made once with `npx web-push generate-vapid-keys`:
+   *
+   *   publicKey   VAPID_PUBLIC_KEY   (browsers get it from getPushConfig)
+   *   privateKey  VAPID_PRIVATE_KEY  (stays on the server)
+   *   subject     VAPID_SUBJECT      e.g. mailto:admin@deltainstitutions.com
+   *
+   * Changing the keys stops every saved device until it turns notifications
+   * on again. Either key unset: no push; the bell still works.
+   */
+  push: {
+    publicKey: process.env.VAPID_PUBLIC_KEY ?? "",
+    privateKey: process.env.VAPID_PRIVATE_KEY ?? "",
+    subject: process.env.VAPID_SUBJECT ?? "mailto:no-reply@example.com",
+  },
+  /**
+   * Tabby payment links — Tabby's Custom Payment Links: a session for an
+   * amount, and Tabby texts the student the link
+   * (https://docs.tabby.ai/offline-payment-methods/custom-payment-links).
+   * The same Tabby account as the LMS: copy these from the LMS server.
+   *
+   *   secretKey     TABBY_SECRET_KEY
+   *   merchantCode  TABBY_MERCHANT_CODE
+   *   currency      TABBY_CURRENCY   AED (UAE) or SAR (KSA)
+   *   apiUrl        TABBY_API_URL    https://api.tabby.ai (UAE) or https://api.tabby.sa (KSA)
+   *
+   * Either key unset: no Tabby links (the button says so).
+   */
+  tabby: {
+    secretKey: process.env.TABBY_SECRET_KEY ?? "",
+    merchantCode: process.env.TABBY_MERCHANT_CODE ?? "",
+    currency: process.env.TABBY_CURRENCY || "AED",
+    apiUrl: (process.env.TABBY_API_URL || "https://api.tabby.ai").replace(/\/+$/, ""),
+  },
   anthropicApiKey: process.env.ANTHROPIC_API_KEY ?? "",
   /**
    * The Root portal, which opens this app for people signed in there and

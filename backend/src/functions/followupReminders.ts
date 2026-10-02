@@ -82,10 +82,10 @@ export async function sendTestReminder(req: Request, user: AuthUser): Promise<Re
 /**
  * GET /api/reminders/open/:token — the button in a reminder email (no sign-in:
  * it is a link in an email). Notes the reminder as seen, then on to the
- * portal's follow-ups.
+ * portal's follow-ups (a leader's alert: the overdue ones).
  */
 export async function handleReminderOpen(token: string): Promise<Response> {
-  await markReminderSeen(token).catch((err) => console.error("[reminders] could not note seen", err));
+  const page = await markReminderSeen(token).catch((err) => { console.error("[reminders] could not note seen", err); return null; });
   if (!config.appBaseUrl) return new Response("Opened.", { status: 200, headers: { "Content-Type": "text/plain" } });
-  return new Response(null, { status: 302, headers: { Location: `${config.appBaseUrl}/StudentFollowups`, "Cache-Control": "no-store" } });
+  return new Response(null, { status: 302, headers: { Location: `${config.appBaseUrl}${page || "/StudentFollowups"}`, "Cache-Control": "no-store" } });
 }

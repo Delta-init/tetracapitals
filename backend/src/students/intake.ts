@@ -4,6 +4,7 @@ import { json } from "../lib/response";
 import { nextStudentCode } from "../lib/studentCode";
 import { loadTeams, type Member, type Team } from "./teams";
 import { recordHistory } from "./history";
+import { notifyStudentsGiven } from "../lib/notify";
 
 /* ────────────────────────────────────────────────────────────────────────────
    New Delta students arriving from another system — what the finance and LMS
@@ -230,5 +231,6 @@ export async function createStudent(input: {
     console.error("[student intake] could not write the activity log", err);
   }
 
+  void notifyStudentsGiven([{ _id: insertedId, ...doc }]);
   return answer({ _id: insertedId, ...doc }, true, null, `Created ${doc.student_code} for ${where}`);
 }

@@ -173,6 +173,32 @@ export async function getWhatsAppMessages(req: Request, user: AuthUser): Promise
   return json({ owner_id: owner, chat, can_send: owner === user.id && status(owner).status === "connected", messages: docs.map((m) => shape(m, user.id)) });
 }
 
+/**
+ * POST /api/functions/getWhatsAppUnread { since? }
+ * A CS's own unread WhatsApp — how many, and the messages that came in after `since` (the `now` of their last call),
+ * newest first: what the portal pops up as browser notifications and counts on the menu.
+ */
+export async function getWhatsAppUnread(req: Request, user: AuthUser): Promise<Response> {
+  const body: any = await req.json().catch(() => ({}));
+  const now = new Date().toISOString();
+  if (!canLink(user)) return json({ unread: 0, messages: [], now });
+  const since = typeof body?.since === "string" && /^\d{4}-\d{2}-\d{2}T/.test(body.since) ? body.since : "";
+  const base = { owner_id: user.id, direction: "in", read: false };
+  const unread = await col("whatsapp_messages").countDocuments(base);
+  // By when the portal got them (a message can carry an older WhatsApp time).
+  const fresh = since ? ((await col("whatsapp_messages").find({ ...base, created_date: { $gt: since } }).sort({ created_date: -1 }).limit(5).toArray()) as any[]) : [];
+  const byKey = await studentsByKey();
+  const idsOf = (m: any) => [...(m.student_ids ?? []), ...(byKey.get(m.key || m.chat) ?? [])];
+  const students = await studentsBrief(fresh.flatMap(idsOf));
+  return json({
+    unread, now,
+    messages: fresh.map((m) => {
+      const sid = idsOf(m).find((id) => students.has(id));
+      return { id: String(m._id), chat: m.chat, name: (sid && students.get(sid)?.name) || m.sender_name || (m.phone ? `+${m.phone}` : "WhatsApp"), body: m.body ?? "", at: m.at };
+    }),
+  });
+}
+
 /** POST /api/functions/markWhatsAppRead { chat } — your own chat only (a manager reading it leaves it unread for the CS). */
 export async function markWhatsAppRead(req: Request, user: AuthUser): Promise<Response> {
   const body: any = await req.json().catch(() => ({}));

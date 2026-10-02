@@ -30,7 +30,10 @@ export function CallFlowProvider({ children }) {
   const [choosing, setChoosing] = useState(null);   // { student, followups }
   const [creating, setCreating] = useState(null);   // { student, afterCall }
 
-  const refresh = useCallback(() => queryClient.invalidateQueries({ queryKey: ['followups'] }), [queryClient]);
+  const refresh = useCallback(() => {
+    queryClient.invalidateQueries({ queryKey: ['followups'] });
+    queryClient.invalidateQueries({ queryKey: ['nav-counts'] });   // the sidebar's today / overdue
+  }, [queryClient]);
 
   const openLog = useCallback((followup) => setLogging(followup), []);
 
