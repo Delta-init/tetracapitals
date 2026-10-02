@@ -7,7 +7,7 @@ import { threecxConfigured, threecxFetch, threecxJson } from "../lib/threecx";
 /* ────────────────────────────────────────────────────────────────────────────
    Calls with students, from 3CX.
 
-   Every 5 minutes the 3CX call log (the report behind 3CX's own Call
+   Every minute the 3CX call log (the report behind 3CX's own Call
    History) is read for the last few hours, and every call between a
    student's number and the phone system is kept in `student_calls`: when,
    in / out, answered or missed, who took it (3CX extension), ringing and
@@ -28,7 +28,10 @@ const DAY_MS = 86_400_000;
 export const BACKFILL_DAYS = 90;
 const OVERLAP_MS = 3 * 3_600_000;      // a call is logged when it ends — look back far enough for long ones
 const PAGE = 500;
-const TICK_MS = 5 * 60_000;
+const TICK_MS = 60_000;                  // every minute, so a call shows on the Calls page soon after it ends
+/** How 3CX's rows are read into calls; when it changes, the next run reads the 90 days again (calls are keyed, so none
+ *  is kept twice). 2 — a call is the rows sharing its call history id, its main row the lowest Indent (V20 sends 1). */
+const PARSER = 2;
 const LOCK_MS = 15 * 60_000;
 const EXTENSIONS_EVERY_MS = 6 * 3_600_000;
 export const LINK_TTL_S = 10 * 60;
@@ -96,22 +99,19 @@ const indent = (r: any) => Number(r?.Indent) || 0;
 const text = (v: unknown) => (v === undefined || v === null ? "" : String(v));
 
 /**
- * Rows → calls: each main row (Indent 0) with the rows under it. Joined by
- * the call history id, else CallId; when those are missing or shared by two
- * main rows (3CX V20 has given every row CallId 1), each main row stands alone.
+ * Rows → calls: the rows of one call share its call history id (MainCallHistoryId). Which of them is the main row
+ * is the call's own business (parseCall): 3CX V20 sends Indent 1 on every row, older versions 0 on the main one. A
+ * row without that id stands alone — CallId cannot join them (V20 has given every row CallId 1).
  */
 export function groupRows(rows: any[]): any[][] {
-  const main = rows.filter((r) => indent(r) === 0);
-  const joinBy = (keyOf: (r: any) => string): any[][] | null => {
-    const keys = main.map(keyOf);
-    if (keys.some((k) => !k) || new Set(keys).size !== keys.length) return null;
-    const groups = new Map<string, any[]>(keys.map((k) => [k, []]));
-    for (const r of rows) groups.get(keyOf(r))?.push(r);
-    return [...groups.values()];
-  };
-  return joinBy((r) => text(r?.MainCallHistoryId) || text(r?.CallHistoryId))
-    ?? joinBy((r) => text(r?.CallId))
-    ?? main.map((r) => [r]);
+  const calls = new Map<string, any[]>();
+  const alone: any[][] = [];
+  for (const r of rows) {
+    const k = text(r?.MainCallHistoryId) || text(r?.CallHistoryId);
+    if (!k) { alone.push([r]); continue; }
+    calls.set(k, [...(calls.get(k) ?? []), r]);
+  }
+  return [...calls.values(), ...alone];
 }
 
 export interface ParsedCall {
@@ -141,7 +141,9 @@ export interface ParsedCall {
  * numbers and never match.
  */
 export function parseCall(group: any[], isStudent: (numberKey: string) => boolean): ParsedCall | null {
-  const main = group.find((r) => indent(r) === 0) ?? group[0];
+  // The main row: the lowest Indent (V20: 1 on every row; older: 0), the earliest of those.
+  const top = Math.min(...group.map(indent));
+  const main = group.filter((r) => indent(r) === top).sort((a, b) => text(a?.StartTime).localeCompare(text(b?.StartTime)))[0] ?? group[0];
   const started = Date.parse(String(main?.StartTime ?? ""));
   if (!main || !Number.isFinite(started)) return null;
   const src = sideOf(main, "Source");
@@ -163,12 +165,14 @@ export function parseCall(group: any[], isStudent: (numberKey: string) => boolea
   const talked = group.filter((r) => r?.Answered === true && durationSeconds(r?.TalkingDuration) > 0);
   const answered = talked.length > 0 || main.Answered === true;
   // Rows under the main one first: the main row of a queue call names the queue, not who answered.
-  const taker = [...talked.filter((r) => indent(r) > 0), ...talked.filter((r) => indent(r) === 0)].map(extOf).find(Boolean) ?? extOf(main);
+  const taker = [...talked.filter((r) => indent(r) > top), ...talked.filter((r) => indent(r) === top)].map(extOf).find(Boolean) ?? extOf(main);
 
   const recording_ids = [...new Set(group.flatMap((r) => [r?.SrcRecId, r?.DstRecId]).map(Number))].filter((n) => Number.isInteger(n) && n > 0);
   const recording_url = String(group.map((r) => r?.RecordingUrl).find((u) => typeof u === "string" && u) ?? "");
-  const key = text(main.SegmentId)
-    ? `seg:${main.SegmentId}`
+  // The call's own id — its call history id. (Not SegmentId: 3CX V20 sends 1 on every row, so every call would be one.)
+  const historyId = text(main.MainCallHistoryId) || text(main.CallHistoryId);
+  const key = historyId
+    ? `call:${historyId}`
     : `h:${createHash("sha1").update([main.StartTime, main.SourceDn, main.SourceCallerId, main.DestinationDn, main.DestinationCallerId].join("|")).digest("hex")}`;
 
   return {
@@ -337,6 +341,12 @@ export async function syncCalls(by = "Schedule"): Promise<SyncSummary> {
     const [students, users] = await Promise.all([studentsByPhone(), usersByExtension()]);
     await linkUnmatchedCalls(users);
 
+    // Rows read a new way since the last run: the 90 days again, from the start (progress is kept as it goes, so a
+    // run that stops resumes; the Calls page says the import is running until it is done).
+    if (s.parser !== PARSER) {
+      await saveSettings({ parser: PARSER, synced_to: null, backfilled_at: null });
+      Object.assign(s, { parser: PARSER, synced_to: null, backfilled_at: null });
+    }
     const to = Date.now();
     const from = s.synced_to ? Math.max(Date.parse(s.synced_to) - OVERLAP_MS, to - BACKFILL_DAYS * DAY_MS) : to - BACKFILL_DAYS * DAY_MS;
     sum.from = new Date(from).toISOString();
@@ -368,7 +378,7 @@ export async function syncCalls(by = "Schedule"): Promise<SyncSummary> {
   return sum;
 }
 
-/** Every 5 minutes, when 3CX is connected. */
+/** Every minute, when 3CX is connected. */
 export function startCallSyncWorker(): void {
   if (!threecxConfigured()) {
     console.log("[calls] 3CX not connected — no call sync (THREECX_URL / THREECX_CLIENT_ID / THREECX_API_KEY)");

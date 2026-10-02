@@ -34,7 +34,7 @@ async function main() {
   startInactivityWorker();
   // Follow-up reminder emails, 10:00 UAE each day (FOLLOWUP_REMINDERS=off to keep a server out of it).
   startReminderWorker();
-  // Calls with students (and their recordings) from 3CX, every 5 minutes — once THREECX_* is set.
+  // Calls with students (and their recordings) from 3CX, every minute — once THREECX_* is set.
   startCallSyncWorker();
   // Each CS's linked WhatsApp, back after a restart (WHATSAPP=off to keep a server out of it).
   startWhatsApp();

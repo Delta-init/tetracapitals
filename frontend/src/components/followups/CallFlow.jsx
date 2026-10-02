@@ -292,12 +292,17 @@ function CallWindow({ call, onClose, onLog }) {
   const status = state?.participant?.status || '';
   const devices = (state?.devices?.length ? state.devices : call?.ringing) || [];
   const ringingYou = `Ringing your 3CX${devices.length ? ` (${devices.join(', ')})` : ''}…`;
-  const line = ended ? 'Call ended'
+  const name = firstName(call?.who?.full_name);
+  const line = ended ? (connectedAt ? 'Call ended' : 'The call ended before it connected')
     : !state?.participant ? ringingYou
     : /connect/i.test(status) ? `Connected · ${clock(Date.now() - (connectedAt ?? Date.now()))}`
-    : /dial/i.test(status) ? `Calling ${firstName(call?.who?.full_name)}…`
+    : /dial/i.test(status) ? `Calling ${name}…`
     : /ring/i.test(status) ? ringingYou
     : status;
+  // 3CX "Dialing" covers both steps — your own 3CX app ringing, then the student's phone — so say what has to happen.
+  const hint = connectedAt ? ''
+    : !ended ? `3CX rings your own 3CX app first — answer it there, then ${name}'s phone rings.`
+    : `If your 3CX app didn't ring, open it (with notifications on) and call again — or use Phone call. If you answered it, ${name} didn't pick up.`;
 
   return (
     <Dialog open={!!call} onOpenChange={(o) => { if (!o) onClose(); }}>
@@ -311,6 +316,7 @@ function CallWindow({ call, onClose, onLog }) {
         </DialogHeader>
         <div className="space-y-1 text-center">
           <p className={`text-lg font-semibold ${ended ? 'text-slate-500' : 'text-emerald-700'}`}>{line}</p>
+          {hint && <p className="text-sm text-slate-600">{hint}</p>}
           {status && !ended && <p className="text-xs text-slate-400">3CX: {status}{state?.participant?.party ? ` · ${state.participant.party}` : ''}</p>}
           {!ended && <p className="text-xs text-slate-400">The call is on your 3CX app or phone — closing this window does not end it.</p>}
           {problem && <p className="text-xs text-rose-600">{problem}</p>}

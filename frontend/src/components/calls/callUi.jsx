@@ -5,7 +5,7 @@ import { Button } from '@/components/ui/button';
 import { AlertTriangle, Loader2, Phone, PhoneIncoming, PhoneMissed, PhoneOff, PhoneOutgoing, Play, RefreshCw } from 'lucide-react';
 
 /* ────────────────────────────────────────────────────────────────────────────
-   Calls with students, from 3CX (synced every 5 minutes): how a call's
+   Calls with students, from 3CX (synced every minute): how a call's
    result, length and recording show on the Calls page, a student's page and
    the Follow-ups list.
 ──────────────────────────────────────────────────────────────────────────── */
@@ -146,5 +146,5 @@ export function SyncNote({ threecx }) {
       : box('border-sky-200 bg-sky-50 text-sky-800', Phone, 'Waiting for the first import from 3CX (it starts a couple of minutes after the server does).');
   }
   if (threecx.error) return box('border-rose-200 bg-rose-50 text-rose-700', AlertTriangle, `The last sync with 3CX failed at ${fmtClock(threecx.error.at)}: ${threecx.error.message}`);
-  return <p className="text-xs text-slate-400">Updated {fmtClock(threecx.updated_at)} · from 3CX every 5 minutes</p>;
+  return <p className="text-xs text-slate-400">Updated {fmtClock(threecx.updated_at)} · from 3CX every minute</p>;
 }
