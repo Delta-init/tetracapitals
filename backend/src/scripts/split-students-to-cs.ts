@@ -12,6 +12,8 @@
  *
  *   cd backend
  *   bun src/scripts/split-students-to-cs.ts                         shows the split (add --report=<file.csv> for every move)
+ *   bun src/scripts/split-students-to-cs.ts --tag="DATA - "         only students with a tag starting so (anyone else
+ *                                                                   without a CS stays as they are); works with --apply
  *   bun src/scripts/split-students-to-cs.ts --apply                 does it; saves an undo file
  *   bun src/scripts/split-students-to-cs.ts --undo=<file> [--apply] puts back what --apply did
  *
@@ -38,6 +40,9 @@ const emailsOf = (v: unknown) => [...new Set((String(v ?? "").match(/[A-Za-z0-9.
 const phoneKeys = (v: unknown) => [...new Set(String(v ?? "").replace(/\.0$/, "").split(/[\n\r/,;|]+| - /)
   .map((x) => x.replace(/\(.*?\)/g, "").replace(/\D/g, "").replace(/^00/, "")).filter((x) => x.length >= 7).map((x) => `p:${x.slice(-9)}`))];
 const keysOf = (s: any) => [...emailsOf(s.email), ...phoneKeys(s.phone)];
+/** --tag="DATA - ": only students with a tag starting so are given out (2026-10-02, the DATA sheet's students). */
+const onlyTag = option("tag");
+const tagged = (s: any) => !onlyTag || (Array.isArray(s.tags) ? s.tags : []).some((t: unknown) => typeof t === "string" && t.startsWith(onlyTag));
 
 const log = { database: config.mongoDb, host, applied_at: now, history_ids: [] as string[],
   changes: [] as { id: string; before: Record<string, unknown>; after: Record<string, unknown> }[] };
@@ -58,7 +63,8 @@ async function split() {
 
   const students = (await col("students").find({}).toArray()) as any[];
   const held = students.filter((s) => isCs(user(s.primary_mentor_id)));
-  const todo = students.filter((s) => !isCs(user(s.primary_mentor_id)));
+  const todo = students.filter((s) => !isCs(user(s.primary_mentor_id)) && tagged(s));
+  const untagged = students.filter((s) => !isCs(user(s.primary_mentor_id)) && !tagged(s)).length;
 
   // One person (or family) on several records: grouped by any shared email / phone, so they go together.
   const parent = new Map<string, string>();
@@ -116,6 +122,7 @@ async function split() {
   const months = [...new Set(plan.map((p) => p.month))].sort();
   const multi = [...groups.values()].filter((g) => g.length > 1);
   console.log(`\nStudents: ${students.length} · with an active CS, left as they are: ${held.length} · to give a CS: ${todo.length}`);
+  if (onlyTag) console.log(`  only students with a tag starting "${onlyTag}" — ${untagged} other student(s) without a CS stay as they are`);
   console.log(`  held now by: ${Object.entries(from).sort((a, b) => b[1] - a[1]).map(([k, n]) => `${k} ${n}`).join(" · ")}`);
   console.log(`  kept together (same email or phone): ${multi.length} group(s), ${multi.reduce((n, g) => n + g.length, 0)} students`);
   console.log(`  same person as a student a CS already has → that CS: ${plan.filter((p) => p.why === "twin").length}`);
@@ -141,6 +148,7 @@ async function split() {
   if (!plan.length || !apply) return;
 
   const undoPath = join(homedir(), `student-split-undo-${now.replace(/[:.]/g, "-")}.json`);
+  let count = 0;
   try {
     for (const p of plan) {
       const s = p.s, to = user(p.to)!;
@@ -162,6 +170,9 @@ async function split() {
       if (Array.isArray(s.common_cs) && s.common_cs.some((c: any) => c?.id === p.to)) {
         await change(s, { common_cs: s.common_cs.filter((c: any) => c?.id !== p.to), updated_date: now });
       }
+      // A long run: keep the undo file current, so stopping half way can still be undone.
+      const done = ++count;
+      if (done % 100 === 0) { await Bun.write(undoPath, JSON.stringify(log, null, 1)); process.stdout.write(`\r  ${done} / ${plan.length}`); }
     }
     console.log(`\nDone: ${plan.length} student(s) given to a CS.`);
   } finally {
