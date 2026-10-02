@@ -141,9 +141,9 @@ export function OnboardingDialog({ student, open, onOpenChange }) {
                 </div>
                 <div>
                   <Label htmlFor="onb-email-body">Message</Label>
-                  <Textarea id="onb-email-body" rows={11} value={email.body} disabled={!email.on || !!busy} onChange={(e) => setEmail(v => ({ ...v, body: e.target.value }))} className="mt-1 text-sm" />
+                  <Textarea id="onb-email-body" rows={16} value={email.body} disabled={!email.on || !!busy} onChange={(e) => setEmail(v => ({ ...v, body: e.target.value }))} className="mt-1 text-sm" />
                 </div>
-                <p className="text-xs text-slate-500">From “Delta Institutions”{draft.email.reply_to ? ` · replies go to ${draft.email.reply_to}` : ''}</p>
+                <p className="text-xs text-slate-500">From “Delta Institutions”{draft.email.reply_to ? ` · replies go to ${draft.email.reply_to}` : ''} · sent in the Delta email design with the logo; *text between stars* is bold</p>
               </>
             ))}
             {channel(<MessageCircle className="h-4 w-4 text-emerald-600" />, 'WhatsApp', wa.on, (on) => setWa(v => ({ ...v, on })), draft.whatsapp.can_send, draft.whatsapp.why_not, (
@@ -155,9 +155,9 @@ export function OnboardingDialog({ student, open, onOpenChange }) {
                 </div>
                 <div>
                   <Label htmlFor="onb-wa-text">Message</Label>
-                  <Textarea id="onb-wa-text" rows={6} value={wa.text} disabled={!wa.on || !!busy} onChange={(e) => setWa(v => ({ ...v, text: e.target.value }))} className="mt-1 text-sm" />
+                  <Textarea id="onb-wa-text" rows={12} value={wa.text} disabled={!wa.on || !!busy} onChange={(e) => setWa(v => ({ ...v, text: e.target.value }))} className="mt-1 text-sm" />
                 </div>
-                <p className="text-xs text-slate-500">From your own WhatsApp — it shows in your chats on the WhatsApp page.</p>
+                <p className="text-xs text-slate-500">From your own WhatsApp — it shows in your chats on the WhatsApp page · *text between stars* shows in bold</p>
               </>
             ))}
             {draft.sent_before?.at && (

@@ -50,13 +50,17 @@ export type SendResult =
   | { ok: true; messageId: string; accepted: string[]; response: string }
   | { ok: false; error: string; notConfigured?: boolean };
 
+/** A file sent with the email; one with a `cid` is an image shown in it (`<img src="cid:…">`), not a download. */
+export type MailAttachment = { filename: string; path: string; cid?: string };
+
 /** `fromName` shows the mailbox under that name; `replyTo` is where an answer goes (the person who sent it). */
-export async function sendMail(msg: { to: string; subject: string; html: string; text: string; fromName?: string; replyTo?: string }): Promise<SendResult> {
+export async function sendMail(msg: { to: string; subject: string; html: string; text: string; fromName?: string; replyTo?: string; attachments?: MailAttachment[] }): Promise<SendResult> {
   if (!mailConfigured()) return { ok: false, error: "Email is not configured on the server (SMTP settings)", notConfigured: true };
   try {
     const info = await transport().sendMail({
       from: msg.fromName ? fromNamed(msg.fromName) : fromAddress(), to: msg.to, subject: msg.subject, html: msg.html, text: msg.text,
       ...(msg.replyTo ? { replyTo: msg.replyTo } : {}),
+      ...(msg.attachments?.length ? { attachments: msg.attachments } : {}),
     });
     const accepted = (info.accepted || []).map(String);
     if (!accepted.length) return { ok: false, error: `Rejected by the mail server: ${info.response || "no recipients accepted"}` };
