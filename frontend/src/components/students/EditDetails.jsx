@@ -6,16 +6,19 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Loader2, Pencil } from 'lucide-react';
 import { isAdminRole } from '@/components/utils/roles';
 import { isStudentOf } from '@/components/students/common';
+import { LANGUAGES, NO_LANGUAGE } from '@/components/students/languages';
 
 /* ────────────────────────────────────────────────────────────────────────────
-   A student's own details — name, email, phone, country — changed from the
-   Students list or the student page by the people who look after them: their
-   CS (or a CS they are Common with), the people above them and admins (the
-   server checks, functions/studentDetails.ts). Each change is in the
-   student's history. The full Edit Student form stays for admins.
+   A student's own details — name, email, phone, country and the language they
+   study in — changed from the Students list or the student page by the people
+   who look after them: their CS (or a CS they are Common with), the people
+   above them and admins (the server checks, functions/studentDetails.ts).
+   Each change is in the student's history. The full Edit Student form stays
+   for admins.
 ──────────────────────────────────────────────────────────────────────────── */
 
 /** Who the server lets change a student's details — anyone else gets no button. */
@@ -27,6 +30,7 @@ const FIELDS = [
   { key: 'email', label: 'Email', type: 'email' },
   { key: 'phone', label: 'Phone', type: 'tel' },
   { key: 'country', label: 'Country', type: 'text' },
+  { key: 'language', label: 'Language', type: 'language' },
 ];
 const stop = (e) => e.stopPropagation();   // the button sits in clickable table rows
 
@@ -74,20 +78,30 @@ export function EditDetailsButton({ student, currentUser, label }) {
         <DialogContent className="max-w-md" onClick={stop}>
           <DialogHeader>
             <DialogTitle>Edit {student.student_code}</DialogTitle>
-            <DialogDescription>Name, email, phone and country. The change goes in the student's history.</DialogDescription>
+            <DialogDescription>Name, email, phone, country and language. The change goes in the student's history.</DialogDescription>
           </DialogHeader>
           <div className="space-y-3">
             {FIELDS.map(f => (
               <div key={f.key}>
                 <Label htmlFor={`edit-${f.key}`}>{f.label}</Label>
-                <Input
-                  id={`edit-${f.key}`}
-                  type={f.type}
-                  value={form[f.key] ?? ''}
-                  onChange={(e) => setForm(v => ({ ...v, [f.key]: e.target.value }))}
-                  onKeyDown={(e) => { if (e.key === 'Enter') save(); }}
-                  className="mt-1"
-                />
+                {f.type === 'language' ? (
+                  <Select value={form.language || NO_LANGUAGE} onValueChange={(v) => setForm(x => ({ ...x, language: v === NO_LANGUAGE ? '' : v }))}>
+                    <SelectTrigger id={`edit-${f.key}`} className="mt-1"><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value={NO_LANGUAGE}>Not set</SelectItem>
+                      {LANGUAGES.map(l => <SelectItem key={l} value={l}>{l}</SelectItem>)}
+                    </SelectContent>
+                  </Select>
+                ) : (
+                  <Input
+                    id={`edit-${f.key}`}
+                    type={f.type}
+                    value={form[f.key] ?? ''}
+                    onChange={(e) => setForm(v => ({ ...v, [f.key]: e.target.value }))}
+                    onKeyDown={(e) => { if (e.key === 'Enter') save(); }}
+                    className="mt-1"
+                  />
+                )}
               </div>
             ))}
           </div>

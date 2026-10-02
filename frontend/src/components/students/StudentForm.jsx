@@ -9,6 +9,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Button } from "@/components/ui/button";
 import { Loader2 } from "lucide-react";
+import { LANGUAGES, NO_LANGUAGE } from "@/components/students/languages";
 
 export default function StudentForm({ student, onSubmit, onCancel, isSubmitting, users: propUsers, currentUser }) {
   const [formData, setFormData] = useState({
@@ -16,6 +17,7 @@ export default function StudentForm({ student, onSubmit, onCancel, isSubmitting,
     email: '',
     phone: '',
     country: '',
+    language: '',
     user_id: '',
     primary_mentor_id: '',
     senior_mentor_id: '',
@@ -143,7 +145,23 @@ export default function StudentForm({ student, onSubmit, onCancel, isSubmitting,
             onChange={(e) => setFormData({ ...formData, country: e.target.value })}
           />
         </div>
-        
+
+        <div className="space-y-2">
+          <Label htmlFor="language">Language</Label>
+          <Select
+            value={formData.language || NO_LANGUAGE}
+            onValueChange={(v) => setFormData({ ...formData, language: v === NO_LANGUAGE ? '' : v })}
+          >
+            <SelectTrigger id="language">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value={NO_LANGUAGE}>Not set</SelectItem>
+              {LANGUAGES.map(l => <SelectItem key={l} value={l}>{l}</SelectItem>)}
+            </SelectContent>
+          </Select>
+        </div>
+
         <div className="space-y-2">
           <Label htmlFor="user_id">User ID</Label>
           <Input

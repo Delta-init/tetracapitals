@@ -2,6 +2,8 @@ import { col } from "../db";
 import { config } from "../config";
 import { ok, refuse, secretMatches, text, isEmail, answer, studentWithEmail, createStudent } from "../students/intake";
 import { lmsEnrolledFields } from "../students/lmsEnrolment";
+import { languageOf } from "../students/language";
+import { recordHistory } from "../students/history";
 
 /* ────────────────────────────────────────────────────────────────────────────
    POST /api/v1/integrations/finance/students — a new Delta LMS student.
@@ -27,6 +29,11 @@ import { lmsEnrolledFields } from "../students/lmsEnrolment";
    course adds its own — for the mentors to see. Information only: the bonus
    is what the counsellor promised, not a BONUS request; it credits nobody and
    creates nothing.
+
+   And the language they study in, as the sales CRM asked it at the close
+   (students/language.ts): on the course's fees, and on the student — the
+   language of their latest close, so a new close for a student already here
+   sets theirs, said in their history. The same invoice again does not.
 ──────────────────────────────────────────────────────────────────────────── */
 
 /** One course's money, as finance approved it. Minor units (cents / fils). */
@@ -34,6 +41,8 @@ type CourseFee = {
   invoice_id: string;
   invoice_number: string;
   course: string;
+  /** What this course is studied in, from the close; "" when the CRM did not say. */
+  language: string;
   currency: string;
   fee_minor: number;
   paid_minor: number;
@@ -53,7 +62,7 @@ const minor = (v: unknown): number | null => (typeof v === "number" && Number.is
  * than refused: refusing would cost the student their team, and the money is
  * the part that can be looked up in finance.
  */
-function courseFee(raw: unknown, invoiceId: string, invoiceNumber: string, course: string): CourseFee | null {
+function courseFee(raw: unknown, invoiceId: string, invoiceNumber: string, course: string, language: string): CourseFee | null {
   if (!raw || typeof raw !== "object" || Array.isArray(raw)) return null;
   const f = raw as Record<string, unknown>;
   const fee = minor(f.feeMinor), paid = minor(f.paidMinor), balance = minor(f.balanceMinor);
@@ -69,6 +78,7 @@ function courseFee(raw: unknown, invoiceId: string, invoiceNumber: string, cours
     invoice_id: invoiceId,
     invoice_number: invoiceNumber,
     course,
+    language,
     currency,
     fee_minor: fee,
     paid_minor: paid,
@@ -91,6 +101,19 @@ async function recordCourseFee(student: { _id: unknown }, fee: CourseFee | null)
   );
 }
 
+/** The language of their latest close, on a student already here — in their history when it changes. */
+async function recordCloseLanguage(student: { _id: unknown; language?: unknown }, language: string, invoiceNumber: string): Promise<void> {
+  const was = String(student.language ?? "");
+  if (!language || was === language) return;
+  const now = new Date().toISOString();
+  await col("students").updateOne({ _id: student._id as never }, { $set: { language, updated_date: now } });
+  await recordHistory([{
+    student_id: String(student._id), at: now, type: "details_changed",
+    text: `Details changed — Language: ${was || "none"} → ${language} (the sales close${invoiceNumber ? `, invoice ${invoiceNumber}` : ""})`,
+    by_id: null, by_name: "Delta finance", from: { language: was }, to: { language }, via: "finance",
+  }]);
+}
+
 export async function handleFinanceStudents(req: Request): Promise<Response> {
   if (!config.financeS2sSecret) return refuse(503, "INTEGRATION_DISABLED", "The Delta finance link is not configured on this server");
   if (!secretMatches(req.headers.get("x-finance-secret"), config.financeS2sSecret)) return refuse(401, "UNAUTHORISED", "Bad secret");
@@ -106,12 +129,14 @@ export async function handleFinanceStudents(req: Request): Promise<Response> {
   const name = text(body.name) || email.split("@")[0]!;
   const invoiceNumber = text(body.invoiceNumber, 64);
   const course = text(body.course);
+  const language = languageOf(body.language);
 
-  const fee = courseFee(body.feeSummary, invoiceId, invoiceNumber, course);
+  const fee = courseFee(body.feeSummary, invoiceId, invoiceNumber, course, language);
 
   // The same invoice again — finance retrying, or asked twice. One student.
   const already = await col("students").findOne({ finance_invoice_id: invoiceId });
   if (already) {
+    // Not the language: this close's was set when it first came, and a later close may have set another since.
     await recordCourseFee(already, fee);
     return ok(answer(already, false, "invoice", "This invoice's student is already here"));
   }
@@ -119,6 +144,7 @@ export async function handleFinanceStudents(req: Request): Promise<Response> {
   const existing = await studentWithEmail(email);
   if (existing) {
     await recordCourseFee(existing, fee);
+    await recordCloseLanguage(existing, language, invoiceNumber);
     return ok(answer(existing, false, "email", `${email} is already a student here — left as they are${fee ? ", with this course's fees added" : ""}`));
   }
 
@@ -134,6 +160,7 @@ export async function handleFinanceStudents(req: Request): Promise<Response> {
       finance_invoice_number: invoiceNumber,
       lms_course: course,
       lms_user_id: text(body.lmsUserId, 64),
+      ...(language ? { language } : {}),
       // Written with the student, so a new student never exists without the course they paid for.
       course_fees: fee ? [fee] : [],
       // With an LMS account: enrolled from the start (the hourly LMS check confirms it).

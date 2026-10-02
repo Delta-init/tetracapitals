@@ -298,7 +298,15 @@ export default function StudentDetail() {
                   {displayStudent.country || '-'}
                 </p>
               </div>
-              
+
+              {/* The language they study in, from their close in the sales CRM (or set here) */}
+              <div>
+                <label className="text-sm font-medium text-gray-500">Language</label>
+                <p className="mt-1 text-base text-gray-900">
+                  {displayStudent.language || '-'}
+                </p>
+              </div>
+
               <div>
                 <label className="text-sm font-medium text-gray-500">CS</label>
                 <p className="mt-1 text-base font-semibold text-gray-900">

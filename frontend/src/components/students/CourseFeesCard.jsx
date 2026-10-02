@@ -41,6 +41,7 @@ export default function CourseFeesCard({ fees }) {
             <thead>
               <tr className="bg-gray-50 border-b">
                 <th className="text-left p-3 text-sm font-semibold text-gray-700">Course</th>
+                <th className="text-left p-3 text-sm font-semibold text-gray-700">Language</th>
                 <th className="text-right p-3 text-sm font-semibold text-gray-700">Fee</th>
                 <th className="text-right p-3 text-sm font-semibold text-gray-700">Paid</th>
                 <th className="text-right p-3 text-sm font-semibold text-gray-700">Balance</th>
@@ -70,6 +71,8 @@ export default function CourseFeesCard({ fees }) {
                       </div>
                     )}
                   </td>
+                  {/* What this course is studied in, from the close in the sales CRM */}
+                  <td className="p-3 text-sm whitespace-nowrap text-gray-700">{f.language || <span className="text-gray-400">—</span>}</td>
                   <td className="p-3 text-sm text-right whitespace-nowrap">{money(f.fee_minor, f.currency)}</td>
                   <td className="p-3 text-sm text-right whitespace-nowrap text-emerald-700">{money(f.paid_minor, f.currency)}</td>
                   <td className={`p-3 text-sm text-right whitespace-nowrap font-semibold ${f.balance_minor > 0 ? "text-amber-700" : f.balance_minor === null || f.balance_minor === undefined ? "text-gray-400" : "text-emerald-700"}`}>

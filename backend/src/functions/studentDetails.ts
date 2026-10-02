@@ -4,18 +4,20 @@ import { toObjectId } from "../lib/id";
 import type { AuthUser } from "../auth/middleware";
 import { visibleMentorIds, isStudentOf } from "../students/followups";
 import { recordHistory } from "../students/history";
+import { LANGUAGES, languageOf } from "../students/language";
 
 /** The details a student's people may change, and what the history calls them. */
-const FIELDS: Record<string, string> = { full_name: "Name", email: "Email", phone: "Phone", country: "Country" };
+const FIELDS: Record<string, string> = { full_name: "Name", email: "Email", phone: "Phone", country: "Country", language: "Language" };
 const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 /**
- * POST /api/functions/updateStudentDetails { studentId, full_name?, email?, phone?, country? }
+ * POST /api/functions/updateStudentDetails { studentId, full_name?, email?, phone?, country?, language? }
  *
- * A student's own details — name, email, phone, country — changed by the people who look after them: their CS (or a
- * CS they are Common with), the people above them and admin roles, the same people who change their enrolment. Only
- * these four fields (everything else stays with the full Edit Student form, admins only). The email must be free —
- * no other student has it. Each change is in the student's history, from and to.
+ * A student's own details — name, email, phone, country and the language they study in — changed by the people who
+ * look after them: their CS (or a CS they are Common with), the people above them and admin roles, the same people
+ * who change their enrolment. Only these five fields (everything else stays with the full Edit Student form, admins
+ * only). The email must be free — no other student has it; the language is one of the sales CRMs' four, or none.
+ * Each change is in the student's history, from and to.
  */
 export async function updateStudentDetails(req: Request, user: AuthUser): Promise<Response> {
   const body: any = await req.json().catch(() => ({}));
@@ -31,7 +33,11 @@ export async function updateStudentDetails(req: Request, user: AuthUser): Promis
   const data: Record<string, string> = {};
   for (const f of Object.keys(FIELDS)) {
     if (typeof body?.[f] !== "string") continue;
-    const v = body[f].replace(/\s+/g, " ").trim().slice(0, 200);
+    let v = body[f].replace(/\s+/g, " ").trim().slice(0, 200);
+    if (f === "language" && v) {
+      v = languageOf(v);
+      if (!v) return error(`The language is one of ${LANGUAGES.join(", ")} — or none`, 400);
+    }
     if (v !== String(s[f] ?? "").trim()) data[f] = v;
   }
   if ("full_name" in data && !data.full_name) return error("The name cannot be empty", 400);

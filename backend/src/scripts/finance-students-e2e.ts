@@ -243,6 +243,44 @@ const code = await call("POST", "/api/functions/getNextStudentCode", {}, { autho
 const nextExpected = `STU-${String(seq + 1).padStart(4, "0")}`;
 check("getNextStudentCode carries on from the same sequence", typeof seq === "number" && code.body?.code === nextExpected, `${JSON.stringify(code.body)} vs ${nextExpected}`);
 
+step("The language they study in, from the close");
+const fees = { currency: "AED", feeMinor: 130_000, paidMinor: 50_000, balanceMinor: 80_000 };
+const hindi = enrolment({ language: "Hindi / Urdu", feeSummary: fees });
+await send(hindi);
+let lang = await db.collection("students").findOne({ finance_invoice_id: hindi.invoiceId }) as any;
+check("however finance writes it, it is one of the CRMs' four — on the student and on the course's fees",
+  lang?.language === "Hindi/Urdu" && lang?.course_fees?.[0]?.language === "Hindi/Urdu", JSON.stringify({ language: lang?.language, fees: lang?.course_fees }));
+const arabic = enrolment({ language: "Arabic" });
+await send(arabic);
+check("a language the CRMs do not ask: none", !(await db.collection("students").findOne({ finance_invoice_id: arabic.invoiceId }) as any)?.language);
+await send(enrolment({ email: hindi.email, language: "tamil", feeSummary: fees }));
+lang = await db.collection("students").findOne({ _id: lang._id }) as any;
+const changed = await db.collection("student_history").find({ student_id: String(lang?._id), type: "details_changed" }).toArray();
+check("their next close, in Tamil: the student studies in Tamil now, in their history from finance",
+  lang?.language === "Tamil" && lang?.course_fees?.length === 2 && lang.course_fees[1]?.language === "Tamil" && changed.length === 1 &&
+  /Language: Hindi\/Urdu → Tamil/.test(changed[0]?.text ?? "") && changed[0]?.by_name === "Delta finance", JSON.stringify({ language: lang?.language, history: changed.map((h) => h.text) }));
+await send(hindi);
+check("finance retrying the first close: still Tamil, and no more history",
+  ((await db.collection("students").findOne({ _id: lang._id })) as any)?.language === "Tamil" &&
+  (await db.collection("student_history").countDocuments({ student_id: String(lang?._id), type: "details_changed" })) === 1);
+
+step("The language, changed by the student's CS");
+const held = { _id: new ObjectId(), full_name: "Held By One", email: "held@e2e-finance.test", student_code: "STU-9001", status: "ACTIVE",
+  student_level: "LEVEL_1", primary_mentor_id: String(oneCs._id), primary_mentor_name: oneCs.full_name, created_date: new Date().toISOString() };
+await db.collection("students").insertOne(held);
+const csToken = (await call("POST", "/api/auth/login", { email: oneCs.email, password: "Password123!" })).body?.token;
+const edit = (body: Record<string, unknown>) => call("POST", "/api/functions/updateStudentDetails", { studentId: String(held._id), ...body }, { authorization: `Bearer ${csToken}` });
+let e = await edit({ language: "malayalam" });
+const heldNow = await db.collection("students").findOne({ _id: held._id }) as any;
+const heldLine = await db.collection("student_history").findOne({ student_id: String(held._id), type: "details_changed" }) as any;
+check("set by their CS, written the CRMs' way, and in their history", e.status === 200 && heldNow?.language === "Malayalam" &&
+  /Language: none → Malayalam/.test(heldLine?.text ?? "") && heldLine?.by_name === oneCs.full_name, JSON.stringify({ status: e.status, body: e.body, line: heldLine?.text }));
+e = await edit({ language: "Klingon" });
+check("a language that is not one of the four: refused, saying which", e.status === 400 && /English, Malayalam, Hindi\/Urdu, Tamil/.test(JSON.stringify(e.body)) &&
+  ((await db.collection("students").findOne({ _id: held._id })) as any)?.language === "Malayalam", JSON.stringify(e.body));
+e = await edit({ language: "" });
+check("…and taken off again", e.status === 200 && ((await db.collection("students").findOne({ _id: held._id })) as any)?.language === "", JSON.stringify(e.body));
+
 await db.dropDatabase();
 await client.close();
 console.log(`\n${pass}/${pass + fail} checks passed`);
