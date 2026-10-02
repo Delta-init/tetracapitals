@@ -125,9 +125,12 @@ export default function Dashboard() {
     ? fundingTransactions.filter(t => (t.initiating_mentor_id || t.primary_mentor_id) === currentUser.id)
     : [];
 
-  // Quarter commission — sourced from mentor's own transactions (matches Funding Activities)
-  const quarterCommission = isMentorRole(currentUser.app_role)
-    ? calculateQuarterlyNetDepositAndCommission(mentorOwnTransactions, currentUser)
+  // This month's revenue (net deposit) and commission — from the mentor's own transactions (as Funding Activities),
+  // the 1st of the month to its end.
+  const today = new Date();
+  const thisMonth = { start: new Date(today.getFullYear(), today.getMonth(), 1), end: new Date(today.getFullYear(), today.getMonth() + 1, 0, 23, 59, 59, 999) };
+  const monthCommission = isMentorRole(currentUser.app_role)
+    ? calculateQuarterlyNetDepositAndCommission(mentorOwnTransactions, currentUser, today, thisMonth)
     : null;
 
   // Prepare chart data - Last 6 months transaction trend
@@ -243,21 +246,21 @@ export default function Dashboard() {
           {isMentorRole(currentUser.app_role) ? (
             <>
               <StatsCard
-                title="Quarter Net Deposit"
-                value={`$${quarterCommission?.netDepositUsd?.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) || '0.00'}`}
+                title="Monthly Revenue"
+                value={`$${monthCommission?.netDepositUsd?.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) || '0.00'}`}
                 icon={DollarSign}
                 color="emerald"
-                trend="Current quarter"
-                trendUp={quarterCommission?.netDepositUsd > 0}
+                trend="This month"
+                trendUp={monthCommission?.netDepositUsd > 0}
                 delay={0.17}
               />
               <StatsCard
-                title="Quarter Gross Commission"
-                value={`$${quarterCommission?.grossCommissionUsd?.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) || '0.00'}`}
+                title="Monthly Gross Commission"
+                value={`$${monthCommission?.grossCommissionUsd?.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) || '0.00'}`}
                 icon={Award}
                 color="cyan"
-                trend="4% of net deposit"
-                trendUp={quarterCommission?.grossCommissionUsd > 0}
+                trend={`${monthCommission?.commissionRate ?? 4}% of monthly revenue`}
+                trendUp={monthCommission?.grossCommissionUsd > 0}
                 delay={0.24}
               />
               <StatsCard
