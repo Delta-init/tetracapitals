@@ -8,6 +8,7 @@ import { startReminderWorker } from "./students/followupReminders";
 import { startCallSyncWorker } from "./students/calls";
 import { startWhatsApp } from "./whatsapp/service";
 import { startLmsEnrolmentWorker } from "./students/lmsEnrolment";
+import { startLmsActivityWorker } from "./students/lmsActivity";
 
 async function main() {
   await connectDb();
@@ -39,6 +40,8 @@ async function main() {
   startWhatsApp();
   // Enrolled = has a Delta LMS account, checked every hour (LMS_ENROLMENT_SYNC=off to keep a server out of it).
   startLmsEnrolmentWorker();
+  // LMS support tickets and class assignments, told to the student's CS every 2 minutes (LMS_ACTIVITY=off to keep a server out of it).
+  startLmsActivityWorker();
 }
 
 const shutdown = async (signal: string) => {

@@ -20,6 +20,7 @@ import StudentCallsSection from "@/components/calls/StudentCallsSection";
 import StudentWhatsAppCard from "@/components/students/StudentWhatsAppCard";
 import TabbyLinksCard from "@/components/students/TabbyLinksCard";
 import StudentClassesCard from "@/components/students/StudentClassesCard";
+import StudentLmsSupportCards from "@/components/students/StudentLmsSupportCards";
 import { CallButton } from "@/components/followups/CallFlow";
 import { EnrolmentControl } from "@/components/students/enrolment";
 import { isStudentOf } from "@/components/students/common";
@@ -387,6 +388,9 @@ export default function StudentDetail() {
 
         {/* Their live classes in the Delta LMS: attended, missed, upcoming */}
         <StudentClassesCard student={displayStudent} />
+
+        {/* Their Delta LMS support tickets, with the conversation, and class assignments, with the reviews */}
+        <StudentLmsSupportCards student={displayStudent} />
 
         {/* Follow-ups: stage, what they said, next date, click-to-call */}
         <StudentFollowupsSection student={displayStudent} />

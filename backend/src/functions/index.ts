@@ -27,6 +27,7 @@ import { getCalls, getCallRecording, syncCallsNow, testThreecx } from "./student
 import { setEnrolment, getLmsEnrolment, syncLmsEnrolmentNow } from "./studentEnrolment";
 import { updateStudentDetails } from "./studentDetails";
 import { getStudentClasses } from "./lmsClasses";
+import { getStudentLmsSupport } from "./lmsSupport";
 import { getStudentTags, setStudentTag } from "./studentTags";
 import { getPushConfig, savePushSubscription, deletePushSubscription, sendTestPush } from "./push";
 import { getNavCounts, markStudentSeen } from "./navCounts";
@@ -72,6 +73,7 @@ const AUTHED: Record<string, AuthedHandler> = {
   getLmsEnrolment,
   syncLmsEnrolmentNow,
   getStudentClasses,
+  getStudentLmsSupport,
   getStudentTags,
   setStudentTag,
   getPushConfig,
