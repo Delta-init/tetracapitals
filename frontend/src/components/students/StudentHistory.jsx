@@ -37,6 +37,7 @@ const DOT = {
   enrolment_changed: 'bg-emerald-500',
   made_common: 'bg-amber-400',
   tag_changed: 'bg-sky-500',
+  details_changed: 'bg-indigo-400',
   pool_changed: 'bg-cyan-500',
   request: 'bg-slate-400',
 };

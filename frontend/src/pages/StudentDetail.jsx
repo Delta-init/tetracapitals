@@ -11,6 +11,7 @@ import { ArrowLeft, CalendarPlus, Edit, TrendingUp, TrendingDown } from "lucide-
 import { Link } from "react-router-dom";
 import { createPageUrl } from "../utils";
 import StudentForm from "../components/students/StudentForm";
+import { EditDetailsButton } from "@/components/students/EditDetails";
 import MT5AccountSection from "../components/students/MT5AccountSection";
 import CourseFeesCard from "../components/students/CourseFeesCard";
 import StudentHistory, { useStudentHistory } from "../components/students/StudentHistory";
@@ -242,11 +243,14 @@ export default function StudentDetail() {
                 Book mentor session
               </Button>
             </Link>
-            {canEdit && (
+            {canEdit ? (
               <Button onClick={() => setShowEditDialog(true)} className="bg-blue-600 hover:bg-blue-700">
                 <Edit className="h-4 w-4 mr-2" />
                 Edit Student
               </Button>
+            ) : (
+              // Their CS and the people above them: name, email, phone and country
+              <EditDetailsButton student={student} currentUser={currentUser} label="Edit details" />
             )}
           </div>
         </div>

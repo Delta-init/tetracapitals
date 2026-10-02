@@ -25,6 +25,7 @@ import { getFollowups, createFollowup, logFollowup, getFollowupTeams } from "./s
 import { getReminderLog, resendReminder, runRemindersNow, sendTestReminder } from "./followupReminders";
 import { getCalls, getCallRecording, syncCallsNow, testThreecx } from "./studentCalls";
 import { setEnrolment, getLmsEnrolment, syncLmsEnrolmentNow } from "./studentEnrolment";
+import { updateStudentDetails } from "./studentDetails";
 import { getStudentClasses } from "./lmsClasses";
 import { getStudentTags, setStudentTag } from "./studentTags";
 import { getPushConfig, savePushSubscription, deletePushSubscription, sendTestPush } from "./push";
@@ -67,6 +68,7 @@ const AUTHED: Record<string, AuthedHandler> = {
   updateMentorMeeting,
   cancelMentorMeeting,
   setEnrolment,
+  updateStudentDetails,
   getLmsEnrolment,
   syncLmsEnrolmentNow,
   getStudentClasses,

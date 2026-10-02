@@ -15,6 +15,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import StudentForm from "../components/students/StudentForm";
+import { EditDetailsButton } from '@/components/students/EditDetails';
 import StudentRequestForm from "../components/students/StudentRequestForm";
 import BulkImportStudentsDialog from "../components/students/BulkImportStudentsDialog";
 import { isMentorRole as isMentorTier, getScope } from "@/components/utils/roles";
@@ -881,6 +882,7 @@ export default function Students() {
                             <TableCell className="text-right">
                               <div className="flex justify-end gap-1">
                                 <CallButton variant="icon" student={student} />
+                                <EditDetailsButton student={student} currentUser={currentUser} />
                                 <Link to={createPageUrl('StudentDetail') + '?id=' + student.id}>
                                   <Button size="sm" variant="ghost" className="h-8 w-8 p-0" title="View">
                                     <Eye className="h-4 w-4" />
@@ -974,6 +976,7 @@ export default function Students() {
                          <TableCell className="text-right">
                            <div className="flex justify-end gap-1">
                              <CallButton variant="icon" student={student} />
+                             <EditDetailsButton student={student} currentUser={currentUser} />
                              <Link to={createPageUrl('StudentDetail') + '?id=' + student.id}>
                                <Button size="sm" variant="ghost" className="h-8 w-8 p-0" title="View">
                                  <Eye className="h-4 w-4" />
@@ -1094,6 +1097,7 @@ export default function Students() {
                           <TableCell className="text-right">
                             <div className="flex justify-end gap-1">
                               <CallButton variant="icon" student={student} />
+                              <EditDetailsButton student={student} currentUser={currentUser} />
                               <Link to={createPageUrl('StudentDetail') + '?id=' + student.id}>
                                 <Button size="sm" variant="ghost" className="h-8 w-8 p-0" title="View">
                                   <Eye className="h-4 w-4" />
@@ -1189,6 +1193,7 @@ export default function Students() {
                             <TableCell className="text-right">
                               <div className="flex justify-end gap-1">
                                 <CallButton variant="icon" student={student} />
+                                <EditDetailsButton student={student} currentUser={currentUser} />
                                 <Link to={createPageUrl('StudentDetail') + '?id=' + student.id}>
                                   <Button size="sm" variant="ghost" className="h-8 w-8 p-0" title="View">
                                     <Eye className="h-4 w-4" />
@@ -1280,6 +1285,7 @@ export default function Students() {
                         <TableCell className="text-right">
                           <div className="flex justify-end gap-2">
                             <CallButton variant="icon" student={student} />
+                            <EditDetailsButton student={student} currentUser={currentUser} />
                             <Link to={createPageUrl('StudentDetail') + '?id=' + student.id}>
                               <Button size="sm" variant="ghost" className="h-8 w-8 p-0" title="View">
                                 <Eye className="h-4 w-4" />
@@ -1462,6 +1468,7 @@ export default function Students() {
                       <TableCell className="text-right">
                         <div className="flex justify-end gap-1">
                           <CallButton variant="icon" student={student} />
+                          <EditDetailsButton student={student} currentUser={currentUser} />
                           <Link to={createPageUrl('StudentDetail') + '?id=' + student.id}>
                             <Button size="sm" variant="ghost" className="h-8 w-8 p-0" title="View">
                               <Eye className="h-4 w-4" />

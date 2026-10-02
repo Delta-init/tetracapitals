@@ -5,9 +5,12 @@ import { base44 } from '@/api/base44Client';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Switch } from '@/components/ui/switch';
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Archive, CheckCircle2, Loader2, RotateCcw } from 'lucide-react';
 import { isAdminRole } from '@/components/utils/roles';
 import { isStudentOf } from '@/components/students/common';
+import { useStudentTagCatalog } from '@/components/students/tags';
+import { courseLabel } from '@/components/utils/studentProducts';
 
 /* ────────────────────────────────────────────────────────────────────────────
    Enrolment: Enrolled (stored "closed" — the "Closed - <course>" tags say
@@ -18,7 +21,9 @@ import { isStudentOf } from '@/components/students/common';
    the student page and with the Students table's switch, by their CS (or a CS
    they are Common with), the people above them (CS Manager, Chief) and admin
    roles (the server checks); a change against what the LMS says stays until
-   the LMS agrees. Each change goes in the student's history.
+   the LMS agrees. Marking a student enrolled asks which course: its
+   "Closed - <course>" tag goes on with it. Each change goes in the student's
+   history.
 ──────────────────────────────────────────────────────────────────────────── */
 
 export const enrolmentOf = (s) => (s?.enrolment_status === 'closed' || s?.enrolment_status === 'old' ? s.enrolment_status : 'open');
@@ -60,12 +65,84 @@ function useSetEnrolment(student) {
   };
 }
 
+const CLOSED_PREFIX = 'Closed - ';
+const NONE = '__none__';
+const stop = (e) => e.stopPropagation();   // also opened from clickable table rows
+
+/**
+ * "Which course did they enrol in?" — asked whenever a student is marked enrolled. The courses are the
+ * "Closed - <course>" tags (products, LMS courses, the tracker's); the one chosen goes on the student with the
+ * enrolment. "Not in the list" marks them enrolled without a course.
+ */
+function EnrolCourseDialog({ student, open, onOpenChange }) {
+  const queryClient = useQueryClient();
+  const set = useSetEnrolment(student);
+  const { data: catalog = [] } = useStudentTagCatalog();
+  const courses = catalog.filter(t => t.kind === 'closed' && t.active !== false).map(t => t.name).sort((a, b) => a.localeCompare(b));
+  const own = Array.isArray(student?.tags) ? student.tags : [];
+  const guess = [CLOSED_PREFIX + courseLabel(student?.lms_course), ...own].find(t => courses.includes(t));
+  const [pick, setPick] = useState(null);
+  const [saving, setSaving] = useState(false);
+  const chosen = pick ?? guess ?? null;
+  const save = async () => {
+    setSaving(true);
+    try {
+      if (!isEnrolled(student)) await set('closed');
+      if (chosen && chosen !== NONE && !own.includes(chosen)) {
+        await base44.functions.invoke('setStudentTag', { studentId: student.id, tag: chosen, on: true });
+        queryClient.invalidateQueries({ queryKey: ['students'] });
+        queryClient.invalidateQueries({ queryKey: ['student', student.id] });
+        queryClient.invalidateQueries({ queryKey: ['student-history', student.id] });
+      }
+      toast.success(`${student.full_name || 'Student'} marked as enrolled${chosen && chosen !== NONE ? ` — ${chosen.slice(CLOSED_PREFIX.length)}` : ''}`);
+      setPick(null);
+      onOpenChange(false);
+    } catch (e) {
+      toast.error(e?.message || 'Could not mark them enrolled');
+    } finally {
+      setSaving(false);
+    }
+  };
+  const option = (value, label) => (
+    <button
+      key={value}
+      type="button"
+      onClick={() => setPick(value)}
+      className={`w-full rounded-lg border px-3 py-2 text-left text-sm transition-colors ${chosen === value ? 'border-emerald-400 bg-emerald-50 font-medium text-emerald-800' : 'border-slate-200 hover:bg-slate-50'}`}
+    >
+      {label}
+    </button>
+  );
+  return (
+    <Dialog open={open} onOpenChange={(o) => { if (!saving) { setPick(null); onOpenChange(o); } }}>
+      <DialogContent className="max-w-md" onClick={stop}>
+        <DialogHeader>
+          <DialogTitle>Which course did {student?.full_name || 'they'} enrol in?</DialogTitle>
+          <DialogDescription>On the Delta LMS. The course goes on them as a tag, with Enrolled.</DialogDescription>
+        </DialogHeader>
+        <div className="max-h-72 space-y-1.5 overflow-y-auto">
+          {courses.map(c => option(c, c.slice(CLOSED_PREFIX.length)))}
+          {option(NONE, 'Not in the list — just mark enrolled')}
+        </div>
+        <DialogFooter className="gap-2 sm:gap-0">
+          <Button variant="outline" onClick={() => onOpenChange(false)} disabled={saving}>Cancel</Button>
+          <Button onClick={save} disabled={saving || !chosen}>
+            {saving && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}Mark as enrolled
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 /** The student page's Enrolment: the badge, and a button for each of the other two. */
 export function EnrolmentControl({ student, currentUser }) {
   const set = useSetEnrolment(student);
   const [busy, setBusy] = useState(false);
+  const [asking, setAsking] = useState(false);
   const k = enrolmentOf(student);
   const change = async (to) => {
+    if (to === 'closed') { setAsking(true); return; }
     setBusy(to);
     try {
       await set(to);
@@ -86,6 +163,7 @@ export function EnrolmentControl({ student, currentUser }) {
           {ENROLMENT[to].action}
         </Button>
       ))}
+      {asking && <EnrolCourseDialog student={student} open onOpenChange={setAsking} />}
     </span>
   );
 }
@@ -97,12 +175,14 @@ export function EnrolmentControl({ student, currentUser }) {
 export function EnrolledSwitch({ student, currentUser }) {
   const set = useSetEnrolment(student);
   const [busy, setBusy] = useState(false);
+  const [asking, setAsking] = useState(false);
   const on = isEnrolled(student);
   const title = `${ENROLMENT[enrolmentOf(student)].hint}${lmsNote(student)}${changedBy(student)}`;
   if (!mayChange(currentUser, student)) {
     return <Badge variant="outline" className={on ? ENROLMENT.closed.cls : 'border-slate-200 bg-slate-50 text-slate-500'} title={title}>{on ? 'Yes' : 'No'}</Badge>;
   }
   const flip = async (next) => {
+    if (next) { setAsking(true); return; }   // enrolled in which course? asked first
     setBusy(true);
     try {
       await set(next ? 'closed' : 'open');
@@ -118,6 +198,7 @@ export function EnrolledSwitch({ student, currentUser }) {
       <Switch checked={on} disabled={busy} onCheckedChange={flip} aria-label={`${student.full_name || 'Student'} enrolled`} />
       <span className={`text-xs ${on ? 'font-medium text-emerald-700' : 'text-slate-500'}`}>{on ? 'Enrolled' : 'Not enrolled'}</span>
       {student.enrolment_manual && <span className="text-[10px] font-medium uppercase tracking-wide text-amber-600">by hand</span>}
+      {asking && <EnrolCourseDialog student={student} open onOpenChange={setAsking} />}
     </span>
   );
 }

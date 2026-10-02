@@ -26,7 +26,8 @@ export type HistoryType =
   | "pool_changed"
   | "enrolment_changed"
   | "made_common"
-  | "tag_changed";
+  | "tag_changed"
+  | "details_changed";
 
 export interface HistoryEntry {
   student_id: string;
