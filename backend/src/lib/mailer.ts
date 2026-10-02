@@ -20,6 +20,12 @@ function fromAddress(): string {
   return from.includes("<") ? from : `"Delta Commission Portal" <${from}>`;
 }
 
+/** The same mailbox under another name — what a student sees ("Delta Institutions"). */
+function fromNamed(name: string): string {
+  const address = fromAddress().match(/<([^>]+)>/)?.[1] ?? fromAddress();
+  return `"${name.replace(/["\\]/g, "")}" <${address}>`;
+}
+
 /** What the admin pages show about the mail set-up (never the password). */
 export const mailInfo = () => (mailConfigured()
   ? { configured: true, host: config.smtp.host, from: fromAddress() }
@@ -44,10 +50,14 @@ export type SendResult =
   | { ok: true; messageId: string; accepted: string[]; response: string }
   | { ok: false; error: string; notConfigured?: boolean };
 
-export async function sendMail(msg: { to: string; subject: string; html: string; text: string }): Promise<SendResult> {
+/** `fromName` shows the mailbox under that name; `replyTo` is where an answer goes (the person who sent it). */
+export async function sendMail(msg: { to: string; subject: string; html: string; text: string; fromName?: string; replyTo?: string }): Promise<SendResult> {
   if (!mailConfigured()) return { ok: false, error: "Email is not configured on the server (SMTP settings)", notConfigured: true };
   try {
-    const info = await transport().sendMail({ from: fromAddress(), to: msg.to, subject: msg.subject, html: msg.html, text: msg.text });
+    const info = await transport().sendMail({
+      from: msg.fromName ? fromNamed(msg.fromName) : fromAddress(), to: msg.to, subject: msg.subject, html: msg.html, text: msg.text,
+      ...(msg.replyTo ? { replyTo: msg.replyTo } : {}),
+    });
     const accepted = (info.accepted || []).map(String);
     if (!accepted.length) return { ok: false, error: `Rejected by the mail server: ${info.response || "no recipients accepted"}` };
     return { ok: true, messageId: String(info.messageId || ""), accepted, response: String(info.response || "") };

@@ -145,6 +145,8 @@ async function filters(user: AuthUser, tab: Tab, f: any): Promise<Record<string,
   if (tag && tag !== "all") out.push(tagFilter(tag));
   if (f?.enrolment === "enrolled") out.push({ enrolment_status: "closed" });
   if (f?.enrolment === "not_enrolled") out.push({ enrolment_status: { $ne: "closed" } });
+  if (f?.onboarding === "onboarded") out.push({ onboarded: true });
+  if (f?.onboarding === "not_onboarded") out.push({ onboarded: { $ne: true } });
   // LMS classes in their own courses (the hourly LMS check keeps the counts on the student).
   if (["attended", "booked", "upcoming"].includes(f?.classes)) out.push({ [`lms_classes.${f.classes}`]: { $gt: 0 } });
   const course = str(f?.course);
@@ -174,7 +176,7 @@ async function filters(user: AuthUser, tab: Tab, f: any): Promise<Record<string,
 /**
  * POST /api/functions/listStudents
  * Body: { tab, page?, pageSize? (25 | 50 | 100), all? (every match, up to 10,000 — export, select all),
- *         filters?: { search, onlyNew, tag, enrolment, classes, course, balance, from, to, status, team, level, mentor } }
+ *         filters?: { search, onlyNew, tag, enrolment, onboarding, classes, course, balance, from, to, status, team, level, mentor } }
  * → { tab, tabs, rows, total, page, page_size, truncated?, counts: { new_for_me, co_managed?, admin_co_managed? } }
  */
 export async function listStudents(req: Request, user: AuthUser): Promise<Response> {

@@ -27,7 +27,8 @@ export type HistoryType =
   | "enrolment_changed"
   | "made_common"
   | "tag_changed"
-  | "details_changed";
+  | "details_changed"
+  | "onboarding_changed";
 
 export interface HistoryEntry {
   student_id: string;
@@ -72,8 +73,9 @@ export function describePerson(index: TeamIndex, id: unknown, fallbackName: unkn
 // `assigned_at` is when they were given to their current mentor — the clock the
 // inactivity rule (inactivity.ts) counts from. `common_cs` — the other CSs a
 // student is Common with — only the CS-sheet import sets; `tags` only
-// setStudentTag. Never set by a client.
-const SERVER_OWNED = ["team_id", "team_name", "first_assignee_id", "first_assignee_name", "first_assignee_role", "first_assigned_at", "assigned_at", "common_cs", "tags", "new_for_id", "new_since", "lms_account", "enrolment_manual", "lms_classes"];
+// setStudentTag; `onboarded…` and `onboarding` only setOnboarding. Never set by a client.
+const SERVER_OWNED = ["team_id", "team_name", "first_assignee_id", "first_assignee_name", "first_assignee_role", "first_assigned_at", "assigned_at", "common_cs", "tags", "new_for_id", "new_since", "lms_account", "enrolment_manual", "lms_classes",
+  "onboarded", "onboarded_at", "onboarded_by_id", "onboarded_by_name", "onboarding"];
 
 /**
  * Before a student is made in Tetra Commission itself (the Students page, or

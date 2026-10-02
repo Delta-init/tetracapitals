@@ -26,6 +26,7 @@ import { getReminderLog, resendReminder, runRemindersNow, sendTestReminder } fro
 import { getCalls, getCallRecording, syncCallsNow, testThreecx } from "./studentCalls";
 import { setEnrolment, getLmsEnrolment, syncLmsEnrolmentNow } from "./studentEnrolment";
 import { updateStudentDetails } from "./studentDetails";
+import { getOnboardingDraft, setOnboarding } from "./studentOnboarding";
 import { getStudentClasses } from "./lmsClasses";
 import { getStudentLmsSupport } from "./lmsSupport";
 import { getStudentTags, setStudentTag } from "./studentTags";
@@ -70,6 +71,8 @@ const AUTHED: Record<string, AuthedHandler> = {
   cancelMentorMeeting,
   setEnrolment,
   updateStudentDetails,
+  getOnboardingDraft,
+  setOnboarding,
   getLmsEnrolment,
   syncLmsEnrolmentNow,
   getStudentClasses,

@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { enrolmentOf, ENROLMENT, EnrolledSwitch } from '@/components/students/enrolment';
+import { OnboardedSwitch } from '@/components/students/onboarding';
 import { isStudentOf } from '@/components/students/common';
 import { StudentTagChips, tagNamesOf, useStudentTagCatalog } from '@/components/students/tags';
 import PageHeader from '@/components/common/PageHeader';
@@ -90,6 +91,7 @@ export default function Students() {
   const [filterMentor, setFilterMentor] = useState('all');
   const [filterStatus, setFilterStatus] = useState('all');
   const [filterEnrolment, setFilterEnrolment] = useState('all');
+  const [filterOnboarding, setFilterOnboarding] = useState('all');
   const [filterClasses, setFilterClasses] = useState('all');
   const [filterBalance, setFilterBalance] = useState('all');
   const [filterTag, setFilterTag] = useState('all');
@@ -144,10 +146,10 @@ export default function Students() {
     return null;
   }, [filterDateRange, customDateFrom, customDateTo]);
   const listFilters = useMemo(() => ({
-    search: debouncedSearch, onlyNew, tag: filterTag, enrolment: filterEnrolment, classes: filterClasses, course: filterCourse, balance: filterBalance,
+    search: debouncedSearch, onlyNew, tag: filterTag, enrolment: filterEnrolment, onboarding: filterOnboarding, classes: filterClasses, course: filterCourse, balance: filterBalance,
     from: dateRange ? new Date(dateRange.from).toISOString() : '', to: dateRange ? new Date(dateRange.to).toISOString() : '',
     status: filterStatus, team: filterTeam, level: filterLevel, mentor: filterMentor,
-  }), [debouncedSearch, onlyNew, filterTag, filterEnrolment, filterClasses, filterCourse, filterBalance, dateRange, filterStatus, filterTeam, filterLevel, filterMentor]);
+  }), [debouncedSearch, onlyNew, filterTag, filterEnrolment, filterOnboarding, filterClasses, filterCourse, filterBalance, dateRange, filterStatus, filterTeam, filterLevel, filterMentor]);
   const filtersKey = JSON.stringify(listFilters);
   // A new tab, search or filter starts at page 1 with nothing ticked.
   useEffect(() => { setPage(1); setSelected({}); }, [serverTab, filtersKey]);
@@ -655,6 +657,18 @@ export default function Students() {
                 </SelectContent>
               </Select>
 
+              {/* Onboarded Filter — everyone, on every tab */}
+              <Select value={filterOnboarding} onValueChange={(v) => v && setFilterOnboarding(v)}>
+                <SelectTrigger className="w-full md:w-44">
+                  <SelectValue placeholder="Onboarded" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">Onboarded or not</SelectItem>
+                  <SelectItem value="onboarded">Onboarded</SelectItem>
+                  <SelectItem value="not_onboarded">Not onboarded</SelectItem>
+                </SelectContent>
+              </Select>
+
               {/* LMS classes — everyone, on every tab */}
               <Select value={filterClasses} onValueChange={(v) => v && setFilterClasses(v)}>
                 <SelectTrigger className="w-full md:w-44">
@@ -840,6 +854,7 @@ export default function Students() {
                       <TableHead className="font-semibold">Balance</TableHead>
                         <TableHead className="font-semibold">Status</TableHead>
                         <TableHead className="font-semibold">Enrolled</TableHead>
+                        <TableHead className="font-semibold">Onboarded</TableHead>
                       <TableHead className="font-semibold">Classes</TableHead>
                         <TableHead className="font-semibold">Tags</TableHead>
                         <TableHead className="font-semibold">Created</TableHead>
@@ -849,7 +864,7 @@ export default function Students() {
                     <TableBody>
                       {displayStudents.length === 0 ? (
                         <TableRow>
-                          <TableCell colSpan={13} className="text-center py-8 text-gray-500">
+                          <TableCell colSpan={14} className="text-center py-8 text-gray-500">
                             {emptyText('No students found')}
                           </TableCell>
                         </TableRow>
@@ -874,6 +889,7 @@ export default function Students() {
                               </Badge>
                             </TableCell>
                             <TableCell><EnrolledSwitch student={student} currentUser={currentUser} /></TableCell>
+                            <TableCell><OnboardedSwitch student={student} currentUser={currentUser} /></TableCell>
                             <TableCell><ClassesCell student={student} /></TableCell>
                             <TableCell><StudentTagChips student={student} catalog={tagCatalog} /></TableCell>
                             <TableCell className="text-sm">
@@ -934,6 +950,7 @@ export default function Students() {
                       <TableHead className="font-semibold">Balance</TableHead>
                       <TableHead className="font-semibold">Status</TableHead>
                       <TableHead className="font-semibold">Enrolled</TableHead>
+                      <TableHead className="font-semibold">Onboarded</TableHead>
                       <TableHead className="font-semibold">Classes</TableHead>
                       <TableHead className="font-semibold">Tags</TableHead>
                       <TableHead className="font-semibold">Created</TableHead>
@@ -943,7 +960,7 @@ export default function Students() {
                   <TableBody>
                     {displayStudents.length === 0 ? (
                      <TableRow>
-                       <TableCell colSpan={13} className="text-center py-8 text-gray-500">
+                       <TableCell colSpan={14} className="text-center py-8 text-gray-500">
                          {emptyText('No team students found')}
                        </TableCell>
                      </TableRow>
@@ -968,6 +985,7 @@ export default function Students() {
                            </Badge>
                          </TableCell>
                          <TableCell><EnrolledSwitch student={student} currentUser={currentUser} /></TableCell>
+                         <TableCell><OnboardedSwitch student={student} currentUser={currentUser} /></TableCell>
                             <TableCell><ClassesCell student={student} /></TableCell>
                          <TableCell><StudentTagChips student={student} catalog={tagCatalog} /></TableCell>
                          <TableCell className="text-sm">
@@ -1047,6 +1065,7 @@ export default function Students() {
                       <TableHead className="font-semibold">Balance</TableHead>
                       <TableHead className="font-semibold">Status</TableHead>
                       <TableHead className="font-semibold">Enrolled</TableHead>
+                      <TableHead className="font-semibold">Onboarded</TableHead>
                       <TableHead className="font-semibold">Classes</TableHead>
                       <TableHead className="font-semibold">Tags</TableHead>
                       <TableHead className="font-semibold">Created</TableHead>
@@ -1056,7 +1075,7 @@ export default function Students() {
                   <TableBody>
                     {displayStudents.length === 0 ? (
                       <TableRow>
-                        <TableCell colSpan={canEdit ? 14 : 13} className="text-center py-8 text-gray-500">
+                        <TableCell colSpan={canEdit ? 15 : 14} className="text-center py-8 text-gray-500">
                           {emptyText('No students found')}
                         </TableCell>
                       </TableRow>
@@ -1089,6 +1108,7 @@ export default function Students() {
                             </Badge>
                           </TableCell>
                           <TableCell><EnrolledSwitch student={student} currentUser={currentUser} /></TableCell>
+                          <TableCell><OnboardedSwitch student={student} currentUser={currentUser} /></TableCell>
                             <TableCell><ClassesCell student={student} /></TableCell>
                           <TableCell><StudentTagChips student={student} catalog={tagCatalog} /></TableCell>
                           <TableCell className="text-sm">
@@ -1148,6 +1168,7 @@ export default function Students() {
                       <TableHead className="font-semibold">Course</TableHead>
                       <TableHead className="font-semibold">Balance</TableHead>
                       <TableHead className="font-semibold">Enrolled</TableHead>
+                      <TableHead className="font-semibold">Onboarded</TableHead>
                       <TableHead className="font-semibold">Classes</TableHead>
                       <TableHead className="font-semibold">Tags</TableHead>
                       <TableHead className="font-semibold">My Net Deposits</TableHead>
@@ -1160,7 +1181,7 @@ export default function Students() {
                   <TableBody>
                     {displayStudents.length === 0 ? (
                       <TableRow>
-                        <TableCell colSpan={14} className="text-center py-8 text-gray-500">
+                        <TableCell colSpan={15} className="text-center py-8 text-gray-500">
                           {emptyText('No co-managed clients yet. Send a referral request from a Fund Request to get started.')}
                         </TableCell>
                       </TableRow>
@@ -1182,6 +1203,7 @@ export default function Students() {
                             <TableCell className="max-w-[220px] text-sm"><CourseCell student={student} /></TableCell>
                             <TableCell><BalanceCell student={student} /></TableCell>
                             <TableCell><EnrolledSwitch student={student} currentUser={currentUser} /></TableCell>
+                            <TableCell><OnboardedSwitch student={student} currentUser={currentUser} /></TableCell>
                             <TableCell><ClassesCell student={student} /></TableCell>
                             <TableCell><StudentTagChips student={student} catalog={tagCatalog} /></TableCell>
                             <TableCell className="text-sm font-semibold text-green-700">${myNet.toLocaleString()}</TableCell>
@@ -1245,6 +1267,7 @@ export default function Students() {
                       <TableHead className="font-semibold">Balance</TableHead>
                     <TableHead className="font-semibold">Status</TableHead>
                     <TableHead className="font-semibold">Enrolled</TableHead>
+                    <TableHead className="font-semibold">Onboarded</TableHead>
                       <TableHead className="font-semibold">Classes</TableHead>
                     <TableHead className="font-semibold">Tags</TableHead>
                     <TableHead className="font-semibold">Created</TableHead>
@@ -1254,7 +1277,7 @@ export default function Students() {
                 <TableBody>
                   {displayStudents.length === 0 ? (
                     <TableRow>
-                      <TableCell colSpan={11} className="text-center py-8 text-gray-500">
+                      <TableCell colSpan={12} className="text-center py-8 text-gray-500">
                         {emptyText('No open pool students available')}
                       </TableCell>
                     </TableRow>
@@ -1277,6 +1300,7 @@ export default function Students() {
                           </Badge>
                         </TableCell>
                         <TableCell><EnrolledSwitch student={student} currentUser={currentUser} /></TableCell>
+                        <TableCell><OnboardedSwitch student={student} currentUser={currentUser} /></TableCell>
                             <TableCell><ClassesCell student={student} /></TableCell>
                         <TableCell><StudentTagChips student={student} catalog={tagCatalog} /></TableCell>
                         <TableCell className="text-sm">
@@ -1350,6 +1374,7 @@ export default function Students() {
                       <TableHead className="font-semibold">Combined Total</TableHead>
                       <TableHead className="font-semibold">Status</TableHead>
                       <TableHead className="font-semibold">Enrolled</TableHead>
+                      <TableHead className="font-semibold">Onboarded</TableHead>
                       <TableHead className="font-semibold">Classes</TableHead>
                       <TableHead className="font-semibold">Tags</TableHead>
                       <TableHead className="font-semibold">Co-Mentor Since</TableHead>
@@ -1358,7 +1383,7 @@ export default function Students() {
                   <TableBody>
                     {displayStudents.length === 0 ? (
                       <TableRow>
-                        <TableCell colSpan={15} className="text-center py-8 text-gray-500">
+                        <TableCell colSpan={16} className="text-center py-8 text-gray-500">
                           {emptyText('No co-managed clients found')}
                         </TableCell>
                       </TableRow>
@@ -1388,6 +1413,7 @@ export default function Students() {
                                 </Badge>
                               </TableCell>
                               <TableCell><EnrolledSwitch student={student} currentUser={currentUser} /></TableCell>
+                              <TableCell><OnboardedSwitch student={student} currentUser={currentUser} /></TableCell>
                             <TableCell><ClassesCell student={student} /></TableCell>
                               <TableCell><StudentTagChips student={student} catalog={tagCatalog} /></TableCell>
                               <TableCell className="text-sm text-gray-500">
@@ -1426,6 +1452,7 @@ export default function Students() {
                       <TableHead className="font-semibold">Balance</TableHead>
                   <TableHead className="font-semibold">Status</TableHead>
                   <TableHead className="font-semibold">Enrolled</TableHead>
+                  <TableHead className="font-semibold">Onboarded</TableHead>
                       <TableHead className="font-semibold">Classes</TableHead>
                   <TableHead className="font-semibold">Tags</TableHead>
                   <TableHead className="font-semibold">Created</TableHead>
@@ -1435,7 +1462,7 @@ export default function Students() {
               <TableBody>
                 {displayStudents.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={13} className="text-center py-8 text-gray-500">
+                    <TableCell colSpan={14} className="text-center py-8 text-gray-500">
                       {emptyText('No students found')}
                     </TableCell>
                   </TableRow>
@@ -1460,6 +1487,7 @@ export default function Students() {
                         </Badge>
                       </TableCell>
                       <TableCell><EnrolledSwitch student={student} currentUser={currentUser} /></TableCell>
+                      <TableCell><OnboardedSwitch student={student} currentUser={currentUser} /></TableCell>
                             <TableCell><ClassesCell student={student} /></TableCell>
                       <TableCell><StudentTagChips student={student} catalog={tagCatalog} /></TableCell>
                       <TableCell className="text-sm">

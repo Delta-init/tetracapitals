@@ -23,6 +23,7 @@ import StudentClassesCard from "@/components/students/StudentClassesCard";
 import StudentLmsSupportCards from "@/components/students/StudentLmsSupportCards";
 import { CallButton } from "@/components/followups/CallFlow";
 import { EnrolmentControl } from "@/components/students/enrolment";
+import { OnboardingControl } from "@/components/students/onboarding";
 import { isStudentOf } from "@/components/students/common";
 import { StudentTagsEditor } from "@/components/students/tags";
 import { isMentorRole as isMentorTier } from "@/components/utils/roles";
@@ -231,6 +232,8 @@ export default function StudentDetail() {
               </p>
               {/* Open, or Closed = enrolled */}
               <div className="mt-2"><EnrolmentControl student={student} currentUser={currentUser} /></div>
+              {/* Onboarded: the welcome email / WhatsApp sent, or marked so */}
+              <div className="mt-2"><OnboardingControl student={student} currentUser={currentUser} /></div>
               <div className="mt-2"><StudentTagsEditor student={student} currentUser={currentUser} /></div>
             </div>
           </div>
