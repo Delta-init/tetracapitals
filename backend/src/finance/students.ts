@@ -3,6 +3,7 @@ import { config } from "../config";
 import { ok, refuse, secretMatches, text, isEmail, answer, studentWithEmail, createStudent } from "../students/intake";
 import { lmsEnrolledFields } from "../students/lmsEnrolment";
 import { languageOf } from "../students/language";
+import { salesCrmOf, salesCrmName } from "../students/salesCrm";
 import { recordHistory } from "../students/history";
 
 /* ────────────────────────────────────────────────────────────────────────────
@@ -34,6 +35,10 @@ import { recordHistory } from "../students/history";
    (students/language.ts): on the course's fees, and on the student — the
    language of their latest close, so a new close for a student already here
    sets theirs, said in their history. The same invoice again does not.
+
+   And which sales CRM sold it (students/salesCrm.ts): on the course's fees,
+   and on the student — the CRM they first came through, so a later course
+   from another CRM is tagged on its own fees and leaves the student's alone.
 ──────────────────────────────────────────────────────────────────────────── */
 
 /** One course's money, as finance approved it. Minor units (cents / fils). */
@@ -43,6 +48,8 @@ type CourseFee = {
   course: string;
   /** What this course is studied in, from the close; "" when the CRM did not say. */
   language: string;
+  /** Which sales CRM sold it ("delta", "remote", "draw"); "" when finance did not say. */
+  sales_crm: string;
   currency: string;
   fee_minor: number;
   paid_minor: number;
@@ -62,7 +69,7 @@ const minor = (v: unknown): number | null => (typeof v === "number" && Number.is
  * than refused: refusing would cost the student their team, and the money is
  * the part that can be looked up in finance.
  */
-function courseFee(raw: unknown, invoiceId: string, invoiceNumber: string, course: string, language: string): CourseFee | null {
+function courseFee(raw: unknown, invoiceId: string, invoiceNumber: string, course: string, language: string, salesCrm: string): CourseFee | null {
   if (!raw || typeof raw !== "object" || Array.isArray(raw)) return null;
   const f = raw as Record<string, unknown>;
   const fee = minor(f.feeMinor), paid = minor(f.paidMinor), balance = minor(f.balanceMinor);
@@ -79,6 +86,7 @@ function courseFee(raw: unknown, invoiceId: string, invoiceNumber: string, cours
     invoice_number: invoiceNumber,
     course,
     language,
+    sales_crm: salesCrm,
     currency,
     fee_minor: fee,
     paid_minor: paid,
@@ -114,6 +122,16 @@ async function recordCloseLanguage(student: { _id: unknown; language?: unknown }
   }]);
 }
 
+/**
+ * The CRM a student already here first came through, where they have none yet
+ * — one from before finance said. A later course from another CRM is tagged on
+ * its own fees, and leaves this alone.
+ */
+async function recordSalesCrm(student: { _id: unknown; sales_crm?: unknown }, salesCrm: string): Promise<void> {
+  if (!salesCrm || student.sales_crm) return;
+  await col("students").updateOne({ _id: student._id as never, sales_crm: { $in: [null, ""] } }, { $set: { sales_crm: salesCrm } });
+}
+
 export async function handleFinanceStudents(req: Request): Promise<Response> {
   if (!config.financeS2sSecret) return refuse(503, "INTEGRATION_DISABLED", "The Delta finance link is not configured on this server");
   if (!secretMatches(req.headers.get("x-finance-secret"), config.financeS2sSecret)) return refuse(401, "UNAUTHORISED", "Bad secret");
@@ -130,8 +148,9 @@ export async function handleFinanceStudents(req: Request): Promise<Response> {
   const invoiceNumber = text(body.invoiceNumber, 64);
   const course = text(body.course);
   const language = languageOf(body.language);
+  const salesCrm = salesCrmOf(body.crm);
 
-  const fee = courseFee(body.feeSummary, invoiceId, invoiceNumber, course, language);
+  const fee = courseFee(body.feeSummary, invoiceId, invoiceNumber, course, language, salesCrm);
 
   // The same invoice again — finance retrying, or asked twice. One student.
   const already = await col("students").findOne({ finance_invoice_id: invoiceId });
@@ -145,6 +164,7 @@ export async function handleFinanceStudents(req: Request): Promise<Response> {
   if (existing) {
     await recordCourseFee(existing, fee);
     await recordCloseLanguage(existing, language, invoiceNumber);
+    await recordSalesCrm(existing, salesCrm);
     return ok(answer(existing, false, "email", `${email} is already a student here — left as they are${fee ? ", with this course's fees added" : ""}`));
   }
 
@@ -161,12 +181,13 @@ export async function handleFinanceStudents(req: Request): Promise<Response> {
       lms_course: course,
       lms_user_id: text(body.lmsUserId, 64),
       ...(language ? { language } : {}),
+      ...(salesCrm ? { sales_crm: salesCrm } : {}),
       // Written with the student, so a new student never exists without the course they paid for.
       course_fees: fee ? [fee] : [],
       // With an LMS account: enrolled from the start (the hourly LMS check confirms it).
       ...(text(body.lmsUserId, 64) ? lmsEnrolledFields() : {}),
     },
-    arrived: `Arrived from the Delta sales CRM, via finance — ${course || "a course"}${invoiceNumber ? `, invoice ${invoiceNumber}` : ""}`,
+    arrived: `Arrived from ${salesCrm === "draw" ? "" : "the "}${salesCrmName(salesCrm)}, via finance — ${course || "a course"}${invoiceNumber ? `, invoice ${invoiceNumber}` : ""}`,
     createdBy: "delta-finance",
     createdByName: "Delta LMS (via finance)",
     unique: { field: "finance_invoice_id", value: invoiceId, existing: "invoice", detail: "This invoice's student is already here" },

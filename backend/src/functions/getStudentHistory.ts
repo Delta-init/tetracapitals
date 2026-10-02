@@ -5,6 +5,7 @@ import type { AuthUser } from "../auth/middleware";
 import { userCanReadDoc } from "../entities/crud";
 import { loadTeams } from "../students/teams";
 import { roleLabel } from "../students/history";
+import { salesCrmOf, salesCrmName } from "../students/salesCrm";
 
 /**
  * POST /api/functions/getStudentHistory
@@ -32,7 +33,10 @@ const when = (r: any) => String(r.requested_at || r.created_date || "");
 
 function cameFrom(s: any) {
   if (s.finance_invoice_id) {
-    return { label: "Delta sales CRM, via finance", invoice: s.finance_invoice_number || null, course: s.lms_course || null, academy: null };
+    // The sales CRM that sold it, as finance said — or, for a student from
+    // before it said, Delta's, which every one of those came through.
+    const salesCrm = salesCrmOf(s.sales_crm) || "delta";
+    return { label: `${salesCrmName(salesCrm)}, via finance`, salesCrm, invoice: s.finance_invoice_number || null, course: s.lms_course || null, academy: null };
   }
   if (s.source === "delta_lms" && s.lms_user_id) {
     return { label: "Delta LMS", invoice: null, course: s.lms_course || null, academy: s.lms_academy || null };

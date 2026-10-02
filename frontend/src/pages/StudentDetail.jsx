@@ -14,6 +14,7 @@ import StudentForm from "../components/students/StudentForm";
 import { EditDetailsButton } from "@/components/students/EditDetails";
 import MT5AccountSection from "../components/students/MT5AccountSection";
 import CourseFeesCard from "../components/students/CourseFeesCard";
+import { SalesCrmBadge, salesCrmOfStudent } from "@/components/students/salesCrm";
 import StudentHistory, { useStudentHistory } from "../components/students/StudentHistory";
 import StudentFollowupsSection from "@/components/followups/StudentFollowupsSection";
 import StudentCallsSection from "@/components/calls/StudentCallsSection";
@@ -225,10 +226,12 @@ export default function StudentDetail() {
             </Link>
             <div>
               <PageTitle eyebrow="Students">Student Details</PageTitle>
-              <p className="mt-2 max-w-3xl text-sm text-slate-500 sm:text-base">
+              <p className="mt-2 flex max-w-3xl flex-wrap items-center gap-2 text-sm text-slate-500 sm:text-base">
                 <span className="font-mono font-semibold text-blue-600">
                   {displayStudent.student_code}
                 </span>
+                {/* Which sales CRM they came through */}
+                <SalesCrmBadge crm={salesCrmOfStudent(displayStudent)} />
               </p>
               {/* Open, or Closed = enrolled */}
               <div className="mt-2"><EnrolmentControl student={student} currentUser={currentUser} /></div>

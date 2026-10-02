@@ -73,9 +73,10 @@ export function describePerson(index: TeamIndex, id: unknown, fallbackName: unkn
 // `assigned_at` is when they were given to their current mentor — the clock the
 // inactivity rule (inactivity.ts) counts from. `common_cs` — the other CSs a
 // student is Common with — only the CS-sheet import sets; `tags` only
-// setStudentTag; `onboarded…` and `onboarding` only setOnboarding. Never set by a client.
+// setStudentTag; `onboarded…` and `onboarding` only setOnboarding; `sales_crm`
+// only finance (finance/students.ts). Never set by a client.
 const SERVER_OWNED = ["team_id", "team_name", "first_assignee_id", "first_assignee_name", "first_assignee_role", "first_assigned_at", "assigned_at", "common_cs", "tags", "new_for_id", "new_since", "lms_account", "enrolment_manual", "lms_classes",
-  "onboarded", "onboarded_at", "onboarded_by_id", "onboarded_by_name", "onboarding"];
+  "onboarded", "onboarded_at", "onboarded_by_id", "onboarded_by_name", "onboarding", "sales_crm"];
 
 /**
  * Before a student is made in Tetra Commission itself (the Students page, or

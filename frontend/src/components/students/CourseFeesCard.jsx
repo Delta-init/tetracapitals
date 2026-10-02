@@ -2,6 +2,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { GraduationCap, Receipt, Gift } from "lucide-react";
 import { format } from "date-fns";
+import { SalesCrmBadge, salesCrmOfFee } from "@/components/students/salesCrm";
 
 /* Amounts arrive in the smallest unit (cents / fils), the way finance keeps them; one the source did not give is a dash. */
 const money = (minor, currency) =>
@@ -64,10 +65,14 @@ export default function CourseFeesCard({ fees }) {
                         )}
                       </div>
                     ) : (
-                      <div className="text-xs text-gray-500">
-                        {[f.invoice_number && `Invoice ${f.invoice_number}`, f.recorded_at && format(new Date(f.recorded_at), "MMM d, yyyy")]
-                          .filter(Boolean)
-                          .join(" · ")}
+                      <div className="mt-0.5 flex flex-wrap items-center gap-1.5 text-xs text-gray-500">
+                        <span>
+                          {[f.invoice_number && `Invoice ${f.invoice_number}`, f.recorded_at && format(new Date(f.recorded_at), "MMM d, yyyy")]
+                            .filter(Boolean)
+                            .join(" · ")}
+                        </span>
+                        {/* Which sales CRM sold this course */}
+                        <SalesCrmBadge crm={salesCrmOfFee(f)} />
                       </div>
                     )}
                   </td>

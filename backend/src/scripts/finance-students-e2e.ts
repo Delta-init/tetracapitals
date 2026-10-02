@@ -281,6 +281,43 @@ check("a language that is not one of the four: refused, saying which", e.status 
 e = await edit({ language: "" });
 check("…and taken off again", e.status === 200 && ((await db.collection("students").findOne({ _id: held._id })) as any)?.language === "", JSON.stringify(e.body));
 
+step("Which sales CRM sold it");
+const adminAuth = { authorization: `Bearer ${login.body?.token}` };
+const arrivalOf = async (id: unknown) =>
+  ((await db.collection("student_history").findOne({ student_id: String(id), type: "arrived" })) as any)?.text ?? "";
+const remote = enrolment({ crm: "remote", feeSummary: fees });
+await send(remote);
+let tagged = await db.collection("students").findOne({ finance_invoice_id: remote.invoiceId }) as any;
+check("Case 1 — a student the Remote CRM sold is tagged so, on the student and on the course's fees",
+  tagged?.sales_crm === "remote" && tagged?.course_fees?.[0]?.sales_crm === "remote", JSON.stringify({ crm: tagged?.sales_crm, fees: tagged?.course_fees }));
+check("…and arrives from it, by name", /^Arrived from the Remote CRM, via finance/.test(await arrivalOf(tagged?._id)), await arrivalOf(tagged?._id));
+let page = await call("POST", "/api/functions/getStudentHistory", { studentId: String(tagged?._id) }, adminAuth);
+check("…their page says where they came from, with the tag", page.status === 200 && page.body?.cameFrom?.label === "Remote CRM, via finance"
+  && page.body?.cameFrom?.salesCrm === "remote", JSON.stringify(page.body?.cameFrom));
+await send(enrolment({ email: remote.email, crm: "delta", feeSummary: fees }));
+tagged = await db.collection("students").findOne({ _id: tagged._id }) as any;
+check("Case 2 — their next course, from the Sales CRM, is tagged on its own fees; the student keeps the CRM they came through",
+  tagged?.sales_crm === "remote" && tagged?.course_fees?.length === 2 && tagged.course_fees[1]?.sales_crm === "delta", JSON.stringify(tagged?.course_fees?.map((f: any) => f.sales_crm)));
+const untagged = enrolment({ feeSummary: fees });
+await send(untagged);
+let older = await db.collection("students").findOne({ finance_invoice_id: untagged.invoiceId }) as any;
+check("Case 2 — from a finance that does not say: nothing stored, rather than a guess, and arrives as before",
+  !older?.sales_crm && older?.course_fees?.[0]?.sales_crm === "" && /^Arrived from the Delta sales CRM, via finance/.test(await arrivalOf(older?._id)),
+  JSON.stringify({ crm: older?.sales_crm, fee: older?.course_fees?.[0]?.sales_crm }));
+page = await call("POST", "/api/functions/getStudentHistory", { studentId: String(older?._id) }, adminAuth);
+check("…and their page reads as the Sales CRM's, as every student from finance before was", page.body?.cameFrom?.label === "Delta sales CRM, via finance"
+  && page.body?.cameFrom?.salesCrm === "delta", JSON.stringify(page.body?.cameFrom));
+await send(enrolment({ email: untagged.email, crm: "remote", feeSummary: fees }));
+older = await db.collection("students").findOne({ _id: older._id }) as any;
+check("Case 2 — a student from before is given the CRM of their next close", older?.sales_crm === "remote", String(older?.sales_crm));
+const odd = enrolment({ crm: "Facebook Ads" });
+await send(odd);
+check("Case 3 — a CRM that is not one of the three: no tag", !((await db.collection("students").findOne({ finance_invoice_id: odd.invoiceId })) as any)?.sales_crm);
+const patched = await call("PATCH", `/api/entities/Student/${String(tagged?._id)}`, { sales_crm: "draw" }, adminAuth);
+check("Case 4 — not even an admin can change it from a screen: only finance sets it",
+  ((await db.collection("students").findOne({ _id: tagged._id })) as any)?.sales_crm === "remote", `${patched.status} ${JSON.stringify(patched.body).slice(0, 160)}`);
+check("Case 4 — and finance's door still wants its secret", (await send(enrolment({ crm: "remote" }), "wrong-secret")).status === 401);
+
 await db.dropDatabase();
 await client.close();
 console.log(`\n${pass}/${pass + fail} checks passed`);
