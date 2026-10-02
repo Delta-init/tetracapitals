@@ -4,12 +4,13 @@ import { useQuery } from '@tanstack/react-query';
 import { motion, AnimatePresence } from 'framer-motion';
 import { createPageUrl } from './utils';
 import { base44 } from '@/api/base44Client';
-import { Menu, X, LogOut, PanelLeftClose, PanelLeftOpen } from 'lucide-react';
+import { Menu, X, LogOut, PanelLeftClose, PanelLeftOpen, ShieldAlert } from 'lucide-react';
+import { Card, CardContent } from '@/components/ui/card';
 import ImpersonationBanner from './components/utils/ImpersonationBanner';
 import NotificationBell from './components/utils/NotificationBell';
 import { getEffectiveUser } from './components/utils/ImpersonationContext';
 import { EASE } from '@/components/motion';
-import { NAV_ITEMS, NAV_GROUPS, GROUP_OF, humanize } from '@/components/utils/navigation';
+import { NAV_ITEMS, NAV_GROUPS, GROUP_OF, humanize, pageBlockedFor } from '@/components/utils/navigation';
 import { CallFlowProvider } from '@/components/followups/CallFlow';
 import { forgetThisDevice } from '@/components/utils/usePushNotifications';
 
@@ -156,6 +157,7 @@ export default function Layout({ children, currentPageName }) {
   const allowedPages = currentUser?.app_role === 'super_admin' ? null : myRole?.page_permissions;
   const filteredNavigation = navigation.filter(item => {
     if (item.hidden) return false;
+    if (item.notFor?.includes(currentUser?.app_role)) return false;
     if (item.everyone) return true;
     if (item.name === 'RolesManagement' && ['super_admin', 'admin'].includes(currentUser?.app_role)) return true;
     if (Array.isArray(allowedPages)) return allowedPages.includes(item.sameAccessAs || item.name);
@@ -192,6 +194,8 @@ export default function Layout({ children, currentPageName }) {
   const activeItem = navigation.find(isActiveItem);
   const pageTitle = activeItem ? (activeItem.label || humanize(activeItem.name)) : humanize(currentPageName);
   const pageGroup = activeItem ? (GROUP_OF[activeItem.name] || 'More') : null;
+  // A page this role never gets (navigation.js `notFor`) says so instead of opening.
+  const pageBlocked = pageBlockedFor(currentUser?.app_role, currentPageName);
 
   if (!currentUser) {
     return (
@@ -455,7 +459,18 @@ export default function Layout({ children, currentPageName }) {
             className="page-stagger [&>.min-h-screen]:!min-h-0 [&>.min-h-screen]:!bg-none [&>.min-h-screen]:!bg-transparent [&>.min-h-screen]:!p-4 sm:[&>.min-h-screen]:!p-6 lg:[&>.min-h-screen]:!p-8"
           >
             {/* Call (3CX) then log — one set of dialogs for every page */}
-            <CallFlowProvider>{children}</CallFlowProvider>
+            <CallFlowProvider>
+              {pageBlocked ? (
+                <div className="mx-auto max-w-xl p-8">
+                  <Card className="border-red-200"><CardContent className="space-y-3 p-6 text-center">
+                    <ShieldAlert className="mx-auto h-10 w-10 text-red-600" />
+                    <h2 className="text-lg font-semibold">Restricted page</h2>
+                    <p className="text-sm text-gray-600">{pageTitle} is not available for your role.</p>
+                    <Link to="/" className="inline-block text-sm font-medium text-blue-600 hover:underline">Go to the home page</Link>
+                  </CardContent></Card>
+                </div>
+              ) : children}
+            </CallFlowProvider>
           </motion.div>
         </main>
       </div>

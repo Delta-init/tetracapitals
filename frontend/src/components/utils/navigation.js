@@ -67,15 +67,18 @@ export const navLabel = (item) => item.label || humanize(item.name);
 // Role Management for everyone (the page itself still opens by address) —
 // remove the flag to bring one back. `sameAccessAs` pages show exactly when
 // that page does, and `everyone` pages show for every signed-in person whatever
-// their role's page list — Role Management lists neither on its own.
+// their role's page list — Role Management lists neither on its own. `notFor`
+// roles never get the page, whatever their page list says: it is not in their
+// sidebar or offered for them in Role Management, and opened by address it
+// says it is not available (Layout.jsx).
 const FOLLOWUP_ROLES = ['super_admin', 'admin', 'broker_admin', 'academic_head', 'academic_admin', 'admin_supervisor', 'finance_admin', 'chief_mentor', 'senior_mentor', 'junior_mentor', 'subjunior_mentor', 'assistance'];
 export const NAV_ITEMS = [
   { name: 'Dashboard', page: 'Dashboard', icon: LayoutDashboard, roles: ['super_admin', 'admin', 'broker_admin', 'academic_head', 'admin_supervisor', 'junior_mentor', 'chief_mentor', 'senior_mentor', 'finance_admin'] },
   { name: 'TeamDashboard', page: 'TeamDashboard', icon: LayoutGrid, roles: ['super_admin', 'admin', 'broker_admin', 'academic_head', 'chief_mentor'] },
   { name: 'Teams', page: 'Teams', icon: UsersRound, roles: ['all'] },
-  { name: 'ActivityTracker', page: 'ActivityTracker', icon: Activity, roles: ['all'] },
+  { name: 'ActivityTracker', page: 'ActivityTracker', icon: Activity, roles: ['all'], notFor: ['cs'] },
   { name: 'AIInsights', hidden: true, page: 'AIInsights', icon: Sparkles, roles: ['super_admin', 'broker_admin', 'academic_head'] },
-  { name: 'MentorTraining', page: 'MentorTraining', icon: GraduationCap, roles: ['junior_mentor', 'chief_mentor', 'senior_mentor'] },
+  { name: 'MentorTraining', page: 'MentorTraining', icon: GraduationCap, roles: ['junior_mentor', 'chief_mentor', 'senior_mentor'], notFor: ['cs'] },
   { name: 'Leaderboard', page: 'Leaderboard', icon: Trophy, roles: ['super_admin', 'admin', 'broker_admin', 'academic_head', 'junior_mentor', 'chief_mentor', 'senior_mentor', 'finance_admin'] },
   { name: 'MentorPerformance', hidden: true, page: 'MentorPerformance', icon: Gauge, roles: ['super_admin', 'admin', 'broker_admin', 'academic_head', 'junior_mentor', 'chief_mentor', 'senior_mentor', 'finance_admin'] },
   { name: 'MasterAdmin', page: 'MasterAdmin', icon: ShieldCheck, roles: ['super_admin'] },
@@ -132,6 +135,10 @@ export const GROUP_OF = {
   Tickets: 'More', Reports: 'More', AuditLogs: 'More', GamificationSettings: 'More',
 };
 
+/** A page (by item name or page) this role never gets — see `notFor`. */
+export const pageBlockedFor = (role, name) =>
+  !!role && NAV_ITEMS.some(i => (i.name === name || i.page === name) && i.notFor?.includes(role));
+
 /** Page names a built-in role sees when it has no override. */
 export const defaultPagesFor = (role) =>
-  NAV_ITEMS.filter(i => !i.hidden && !i.sameAccessAs && !i.everyone && (i.roles.includes('all') || i.roles.includes(role))).map(i => i.name);
+  NAV_ITEMS.filter(i => !i.hidden && !i.sameAccessAs && !i.everyone && !i.notFor?.includes(role) && (i.roles.includes('all') || i.roles.includes(role))).map(i => i.name);

@@ -14,7 +14,7 @@ import { getEffectiveUser } from '@/components/utils/ImpersonationContext';
 import {
   DEFAULT_SCOPES, SCOPE_LABELS, BUILTIN_ROLES, BUILTIN_ROLE_NAMES, isAdminRole,
 } from '@/components/utils/roles';
-import { NAV_ITEMS, NAV_GROUPS, GROUP_OF, navLabel, defaultPagesFor } from '@/components/utils/navigation';
+import { NAV_ITEMS, NAV_GROUPS, GROUP_OF, navLabel, defaultPagesFor, pageBlockedFor } from '@/components/utils/navigation';
 
 // Every page a role's access can be toggled for — the sidebar's pages (a
 // `sameAccessAs` page comes with its partner: Calls with Follow-ups; an
@@ -27,6 +27,8 @@ const LABEL_OF = Object.fromEntries(NAV_ITEMS.map(i => [i.name, navLabel(i)]));
 const PAGE_GROUPS = NAV_GROUPS
   .map(group => ({ group, pages: PAGES.filter(p => (GROUP_OF[p] || 'More') === group) }))
   .filter(g => g.pages.length);
+// The pages a role can be given — less any it never gets (`notFor` in navigation.js).
+const pagesFor = (key) => PAGES.filter(p => !pageBlockedFor(key, p));
 
 const SCOPE_OPTIONS = [
   { value: 'own', label: 'Own students', hint: 'Only students they are the CS for (or created)' },
@@ -88,7 +90,7 @@ export default function RolesManagement() {
         kind: 'builtin',
         key,
         name: BUILTIN_ROLE_NAMES[key],
-        pages: override ? doc.page_permissions.filter(p => PAGES.includes(p)) : defaultPagesFor(key),
+        pages: override ? doc.page_permissions.filter(p => pagesFor(key).includes(p)) : defaultPagesFor(key),
         customised: override,
         scope: isAdminRole(key) ? 'all' : (doc?.data_scope || DEFAULT_SCOPES[key] || null),
         locked: key === 'super_admin',
@@ -103,7 +105,7 @@ export default function RolesManagement() {
         key: r.role_key,
         doc: r,
         name: r.name,
-        pages: Array.isArray(r.page_permissions) ? r.page_permissions.filter(p => PAGES.includes(p)) : [],
+        pages: Array.isArray(r.page_permissions) ? r.page_permissions.filter(p => pagesFor(r.role_key).includes(p)) : [],
         customised: false,
         scope: r.data_scope || 'own',
         locked: false,
@@ -203,6 +205,9 @@ export default function RolesManagement() {
   }
 
   const builtinKey = editing?.kind === 'builtin' ? editing.key : null;
+  // The pages the role being edited can be given, and any it never gets.
+  const offered = pagesFor(builtinKey || editing?.doc?.role_key || null);
+  const notOffered = PAGES.filter(p => !offered.includes(p));
   const pagesLocked = builtinKey === 'super_admin';
   const scopeLocked = builtinKey && isAdminRole(builtinKey);
   const scopeOptions = builtinKey && !DEFAULT_SCOPES[builtinKey] && !isAdminRole(builtinKey)
@@ -231,7 +236,7 @@ export default function RolesManagement() {
       <TableCell className="tabular text-sm text-slate-700">{peopleOf[row.key] || 0}</TableCell>
       <TableCell className="max-w-[340px] text-sm text-slate-600">
         <span className="font-semibold text-slate-800">{row.pages.length}</span>
-        <span className="text-slate-400"> / {PAGES.length}</span>
+        <span className="text-slate-400"> / {pagesFor(row.key).length}</span>
         <span className="ml-2 hidden truncate text-xs text-slate-400 lg:inline">
           {row.pages.slice(0, 3).map(p => LABEL_OF[p] || p).join(', ')}{row.pages.length > 3 ? '…' : ''}
         </span>
@@ -327,7 +332,7 @@ export default function RolesManagement() {
 
               <div className="space-y-2">
                 <div className="flex flex-wrap items-center justify-between gap-2">
-                  <Label>Pages <span className="font-normal text-slate-400">· {form.page_permissions.length} of {PAGES.length}</span></Label>
+                  <Label>Pages <span className="font-normal text-slate-400">· {form.page_permissions.length} of {offered.length}</span></Label>
                   {!pagesLocked && (
                     <div className="flex gap-2">
                       {builtinKey && pagesDiffer && (
@@ -335,7 +340,7 @@ export default function RolesManagement() {
                           <RotateCcw className="h-3.5 w-3.5" /> Reset to default
                         </Button>
                       )}
-                      <Button type="button" size="sm" variant="outline" onClick={() => setForm(f => ({ ...f, page_permissions: [...PAGES] }))}>All</Button>
+                      <Button type="button" size="sm" variant="outline" onClick={() => setForm(f => ({ ...f, page_permissions: [...offered] }))}>All</Button>
                       <Button type="button" size="sm" variant="outline" onClick={() => setForm(f => ({ ...f, page_permissions: [] }))}>None</Button>
                     </div>
                   )}
@@ -343,8 +348,11 @@ export default function RolesManagement() {
                 {pagesLocked && (
                   <p className="flex items-center gap-1.5 text-xs text-slate-500"><Lock className="h-3.5 w-3.5" /> Super Admin always keeps its default pages, so nobody can be locked out.</p>
                 )}
+                {notOffered.length > 0 && (
+                  <p className="flex items-center gap-1.5 text-xs text-slate-500"><Lock className="h-3.5 w-3.5" /> Never for this role: {notOffered.map(p => LABEL_OF[p] || p).join(', ')}.</p>
+                )}
                 <div className="max-h-72 space-y-3 overflow-y-auto rounded-xl border border-slate-200 p-3">
-                  {PAGE_GROUPS.map(({ group, pages }) => (
+                  {PAGE_GROUPS.map(({ group, pages }) => ({ group, pages: pages.filter(p => offered.includes(p)) })).filter(g => g.pages.length).map(({ group, pages }) => (
                     <div key={group}>
                       <p className="mb-1 text-[10px] font-semibold uppercase tracking-[0.15em] text-slate-400">{group}</p>
                       <div className="grid grid-cols-1 gap-1 sm:grid-cols-2 md:grid-cols-3">
