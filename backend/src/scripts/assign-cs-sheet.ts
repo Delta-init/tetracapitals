@@ -69,6 +69,7 @@ async function assign(csEmail: string, file: string) {
   if (!cs) throw new Error(`No account for ${csEmail}`);
   if (cs.status === "inactive" || !isMentorRole(String(cs.app_role ?? ""))) throw new Error(`${csEmail} is switched off or not a CS / mentor`);
   const csName = String(cs.full_name || cs.email);
+  const idByEmail = new Map(((await col("users").find({}, { projection: { email: 1 } }).toArray()) as any[]).map((u) => [String(u.email ?? "").toLowerCase(), String(u._id)]));
   const rows = (JSON.parse(await Bun.file(file).text()).rows ?? []) as Row[];
   if (!rows.length) throw new Error(`No rows in ${file}`);
   for (const r of rows) {
@@ -111,8 +112,9 @@ async function assign(csEmail: string, file: string) {
       if (first) { notes.push(`row ${r.row} ${r.name} — same portal student as row ${first.row} (${s.student_code})`); if (r.closed) first.closed = true; first.courses.push(...r.courses); continue; }
       takenBy.set(String(s._id), r);
       if (String(s.primary_mentor_id ?? "") === String(cs._id)) already.push({ r, s });
-      else if (s.cs_sheet?.cs && s.cs_sheet.cs !== csEmail) {
-        // On another CS's own sheet too: they stay with that CS and become Common with this one.
+      else if (s.cs_sheet?.cs && s.cs_sheet.cs !== csEmail && idByEmail.get(String(s.cs_sheet.cs).toLowerCase()) === String(s.primary_mentor_id ?? "")) {
+        // On another CS's own sheet too, and still with that CS: they stay and become Common with this one. (A mark
+        // from a CS who no longer has them — moved since, e.g. by a split — does not count: they move here.)
         notes.push(`row ${r.row} ${r.name} — ${s.student_code} is on ${s.cs_sheet.cs}'s sheet too (${String(s.cs_sheet.at).slice(0, 10)}): stays with ${s.primary_mentor_name || "them"}, Common with ${csName}`);
         (commonIds(s).includes(String(cs._id)) ? already : common).push({ r, s });
       } else move.push({ r, s });
