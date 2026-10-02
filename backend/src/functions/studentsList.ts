@@ -145,6 +145,9 @@ async function filters(user: AuthUser, tab: Tab, f: any): Promise<Record<string,
   if (tag && tag !== "all") out.push(tagFilter(tag));
   if (f?.enrolment === "enrolled") out.push({ enrolment_status: "closed" });
   if (f?.enrolment === "not_enrolled") out.push({ enrolment_status: { $ne: "closed" } });
+  // LMS classes (the hourly LMS check keeps the counts on the student).
+  if (f?.classes === "attended") out.push({ "lms_classes.attended": { $gt: 0 } });
+  if (f?.classes === "not_attended") out.push({ "lms_classes.attended": { $not: { $gt: 0 } } });
   const course = str(f?.course);
   if (course && course !== "all") {
     const c = await courseFilter(course);
@@ -172,7 +175,7 @@ async function filters(user: AuthUser, tab: Tab, f: any): Promise<Record<string,
 /**
  * POST /api/functions/listStudents
  * Body: { tab, page?, pageSize? (25 | 50 | 100), all? (every match, up to 10,000 — export, select all),
- *         filters?: { search, onlyNew, tag, enrolment, course, balance, from, to, status, team, level, mentor } }
+ *         filters?: { search, onlyNew, tag, enrolment, classes, course, balance, from, to, status, team, level, mentor } }
  * → { tab, tabs, rows, total, page, page_size, truncated?, counts: { new_for_me, co_managed?, admin_co_managed? } }
  */
 export async function listStudents(req: Request, user: AuthUser): Promise<Response> {

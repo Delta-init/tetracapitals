@@ -15,6 +15,12 @@ import { recordHistory, type HistoryEntry } from "./history";
    it; then the LMS decides again. Each change goes in the student's history,
    by "Delta LMS".
 
+   The same run also brings each student's LMS classes — how many attended,
+   missed, upcoming… (POST /service/class-attendance) — kept on the student as
+   lms_classes for the Students table; the student page asks for the classes
+   themselves (functions/lmsClasses.ts). An LMS that doesn't answer that yet
+   leaves the counts as they were and the enrolment check still runs.
+
    Safe by design: all of the LMS's answers are read before anything changes,
    so an LMS that is down or half-answers changes nobody; and a run that finds
    far fewer accounts than the last one stops and says so (the wrong LMS, a
@@ -38,6 +44,7 @@ export interface LmsEnrolmentRun {
   not_enrolled: number;          // set to Not enrolled now
   kept_by_hand: number;          // hand-set, disagreeing with the LMS — left
   back_to_lms: number;           // hand-set, now agreeing — the LMS decides again
+  classes?: { ok: boolean; with_classes?: number; error?: string };
 }
 
 /** The fields a student made from an LMS account starts with (intake): Enrolled. */
@@ -99,7 +106,7 @@ export async function syncLmsEnrolment(by = "Schedule"): Promise<LmsEnrolmentRun
   }
   try {
     const students = (await col("students")
-      .find({}, { projection: { email: 1, enrolment_status: 1, enrolment_manual: 1, lms_account: 1 } })
+      .find({}, { projection: { email: 1, enrolment_status: 1, enrolment_manual: 1, lms_account: 1, lms_classes: 1 } })
       .toArray()) as any[];
     run.students = students.length;
     const emailOf = (s: any) => String(s.email ?? "").trim().toLowerCase();
@@ -147,6 +154,7 @@ export async function syncLmsEnrolment(by = "Schedule"): Promise<LmsEnrolmentRun
     }
     for (let i = 0; i < ops.length; i += 1000) await col("students").bulkWrite(ops.slice(i, i + 1000), { ordered: false });
     await recordHistory(history);
+    run.classes = await syncClassCounts(students, emails, emailOf);
     run.ok = true;
     await col("app_settings").updateOne({ _id: SETTINGS_ID } as any, { $set: { last_run: run, last_ok_run: run, running_until: null } }, { upsert: true });
     return run;
@@ -154,6 +162,39 @@ export async function syncLmsEnrolment(by = "Schedule"): Promise<LmsEnrolmentRun
     run.error = err instanceof Error ? err.message : String(err);
     await col("app_settings").updateOne({ _id: SETTINGS_ID } as any, { $set: { last_run: run, running_until: null } }, { upsert: true });
     return run;
+  }
+}
+
+/** Each student's LMS class counts — every batch answered, or nothing changes. Never throws. */
+async function syncClassCounts(students: any[], emails: string[], emailOf: (s: any) => string): Promise<NonNullable<LmsEnrolmentRun["classes"]>> {
+  try {
+    const counts = new Map<string, any>();
+    for (let i = 0; i < emails.length; i += BATCH) {
+      const data = await callLms<{ students: any[] }>("/class-attendance", { method: "POST", body: { emails: emails.slice(i, i + BATCH) }, verb: "share the classes" });
+      if (!Array.isArray(data?.students)) throw new Error("The LMS did not list the classes");
+      for (const c of data.students) counts.set(String(c.email ?? "").toLowerCase(), c);
+    }
+    const ops: any[] = [];
+    let withClasses = 0;
+    for (const s of students) {
+      const c = counts.get(emailOf(s));
+      const next = c ? {
+        attended: Number(c.attended) || 0, missed: Number(c.missed) || 0, upcoming: Number(c.upcoming) || 0,
+        booked: Number(c.booked) || 0, cancelled: Number(c.cancelled) || 0, last_attended_at: String(c.lastAttendedAt ?? ""),
+      } : null;
+      const any = !!next && (next.attended + next.missed + next.upcoming + next.booked + next.cancelled) > 0;
+      if (any) withClasses++;
+      const before = s.lms_classes ?? null;
+      if (!any && !before) continue;                                         // nothing then, nothing now
+      const value = any ? next : { attended: 0, missed: 0, upcoming: 0, booked: 0, cancelled: 0, last_attended_at: "" };
+      const { checked_at: _old, ...was } = before ?? {};
+      if (JSON.stringify(was) === JSON.stringify(value)) continue;
+      ops.push({ updateOne: { filter: { _id: s._id }, update: { $set: { lms_classes: { ...value, checked_at: new Date().toISOString() } } } } });
+    }
+    for (let i = 0; i < ops.length; i += 1000) await col("students").bulkWrite(ops.slice(i, i + 1000), { ordered: false });
+    return { ok: true, with_classes: withClasses };
+  } catch (err) {
+    return { ok: false, error: err instanceof Error ? err.message : String(err) };
   }
 }
 

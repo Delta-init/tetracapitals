@@ -56,6 +56,19 @@ const NewForYou = ({ student, me }) => (isNewFor(student, me)
   ? <span title="Given to you — not opened yet" className="ml-1.5 rounded bg-emerald-100 px-1.5 py-0.5 align-middle text-[10px] font-semibold uppercase tracking-wide text-emerald-700">New</span>
   : null);
 
+/** Delta LMS classes: how many they attended (and missed) — from the hourly LMS check; the student page lists them. */
+function ClassesCell({ student }) {
+  const c = student.lms_classes;
+  if (!c) return <span className="text-slate-300">—</span>;
+  const title = [`${c.attended} attended`, `${c.missed} missed`, c.upcoming ? `${c.upcoming} upcoming` : '', c.last_attended_at ? `last attended ${format(new Date(c.last_attended_at), 'd MMM yyyy')}` : ''].filter(Boolean).join(' · ');
+  return (
+    <span className="whitespace-nowrap text-sm" title={title}>
+      <span className={c.attended ? 'font-medium text-emerald-700' : 'text-slate-500'}>{c.attended} attended</span>
+      {c.missed > 0 && <span className="text-xs text-rose-600"> · {c.missed} missed</span>}
+    </span>
+  );
+}
+
 /** What is still to pay, from Course fees: amber while owed, green when paid in full, a dash when nothing is known. */
 function BalanceCell({ student }) {
   const { known, owing } = studentBalance(student);
@@ -72,6 +85,7 @@ export default function Students() {
   const [filterMentor, setFilterMentor] = useState('all');
   const [filterStatus, setFilterStatus] = useState('all');
   const [filterEnrolment, setFilterEnrolment] = useState('all');
+  const [filterClasses, setFilterClasses] = useState('all');
   const [filterBalance, setFilterBalance] = useState('all');
   const [filterTag, setFilterTag] = useState('all');
   const [onlyNew, setOnlyNew] = useState(false);
@@ -125,10 +139,10 @@ export default function Students() {
     return null;
   }, [filterDateRange, customDateFrom, customDateTo]);
   const listFilters = useMemo(() => ({
-    search: debouncedSearch, onlyNew, tag: filterTag, enrolment: filterEnrolment, course: filterCourse, balance: filterBalance,
+    search: debouncedSearch, onlyNew, tag: filterTag, enrolment: filterEnrolment, classes: filterClasses, course: filterCourse, balance: filterBalance,
     from: dateRange ? new Date(dateRange.from).toISOString() : '', to: dateRange ? new Date(dateRange.to).toISOString() : '',
     status: filterStatus, team: filterTeam, level: filterLevel, mentor: filterMentor,
-  }), [debouncedSearch, onlyNew, filterTag, filterEnrolment, filterCourse, filterBalance, dateRange, filterStatus, filterTeam, filterLevel, filterMentor]);
+  }), [debouncedSearch, onlyNew, filterTag, filterEnrolment, filterClasses, filterCourse, filterBalance, dateRange, filterStatus, filterTeam, filterLevel, filterMentor]);
   const filtersKey = JSON.stringify(listFilters);
   // A new tab, search or filter starts at page 1 with nothing ticked.
   useEffect(() => { setPage(1); setSelected({}); }, [serverTab, filtersKey]);
@@ -503,7 +517,7 @@ export default function Students() {
     };
 
     const csvContent = [
-      ['Student Code', 'Full Name', 'Email', 'Phone', 'Country', 'User ID', 'CS', 'Senior Mentor', 'Team', 'Course', 'Status', 'Enrolment', 'Tags', 'Created Date', 'Notes'].join(','),
+      ['Student Code', 'Full Name', 'Email', 'Phone', 'Country', 'User ID', 'CS', 'Senior Mentor', 'Team', 'Course', 'Status', 'Enrolment', 'Classes Attended', 'Classes Missed', 'Tags', 'Created Date', 'Notes'].join(','),
       ...filteredStudents.map(s => [
         escapeCSV(s.student_code || ''),
         escapeCSV(s.full_name || ''),
@@ -517,6 +531,8 @@ export default function Students() {
         escapeCSV(courseLabel(s.lms_course)),
         escapeCSV(s.status || ''),
         escapeCSV(ENROLMENT[enrolmentOf(s)].label),
+        escapeCSV(s.lms_classes?.attended ?? ''),
+        escapeCSV(s.lms_classes?.missed ?? ''),
         escapeCSV(tagNamesOf(s).join(', ')),
         escapeCSV(s.created_date ? format(new Date(s.created_date), 'yyyy-MM-dd') : ''),
         escapeCSV(s.notes || '')
@@ -630,6 +646,18 @@ export default function Students() {
                   <SelectItem value="all">Enrolled or not</SelectItem>
                   <SelectItem value="enrolled">Enrolled</SelectItem>
                   <SelectItem value="not_enrolled">Not enrolled</SelectItem>
+                </SelectContent>
+              </Select>
+
+              {/* LMS classes — everyone, on every tab */}
+              <Select value={filterClasses} onValueChange={(v) => v && setFilterClasses(v)}>
+                <SelectTrigger className="w-full md:w-44">
+                  <SelectValue placeholder="Classes" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">Any classes</SelectItem>
+                  <SelectItem value="attended">Attended a class</SelectItem>
+                  <SelectItem value="not_attended">Never attended</SelectItem>
                 </SelectContent>
               </Select>
 
@@ -805,6 +833,7 @@ export default function Students() {
                       <TableHead className="font-semibold">Balance</TableHead>
                         <TableHead className="font-semibold">Status</TableHead>
                         <TableHead className="font-semibold">Enrolled</TableHead>
+                      <TableHead className="font-semibold">Classes</TableHead>
                         <TableHead className="font-semibold">Tags</TableHead>
                         <TableHead className="font-semibold">Created</TableHead>
                         <TableHead className="font-semibold text-right">Actions</TableHead>
@@ -813,7 +842,7 @@ export default function Students() {
                     <TableBody>
                       {displayStudents.length === 0 ? (
                         <TableRow>
-                          <TableCell colSpan={12} className="text-center py-8 text-gray-500">
+                          <TableCell colSpan={13} className="text-center py-8 text-gray-500">
                             {emptyText('No students found')}
                           </TableCell>
                         </TableRow>
@@ -838,6 +867,7 @@ export default function Students() {
                               </Badge>
                             </TableCell>
                             <TableCell><EnrolledSwitch student={student} currentUser={currentUser} /></TableCell>
+                            <TableCell><ClassesCell student={student} /></TableCell>
                             <TableCell><StudentTagChips student={student} catalog={tagCatalog} /></TableCell>
                             <TableCell className="text-sm">
                               {student.created_date ? format(new Date(student.created_date), 'MMM d, yyyy') : '-'}
@@ -896,6 +926,7 @@ export default function Students() {
                       <TableHead className="font-semibold">Balance</TableHead>
                       <TableHead className="font-semibold">Status</TableHead>
                       <TableHead className="font-semibold">Enrolled</TableHead>
+                      <TableHead className="font-semibold">Classes</TableHead>
                       <TableHead className="font-semibold">Tags</TableHead>
                       <TableHead className="font-semibold">Created</TableHead>
                       <TableHead className="font-semibold text-right">Actions</TableHead>
@@ -904,7 +935,7 @@ export default function Students() {
                   <TableBody>
                     {displayStudents.length === 0 ? (
                      <TableRow>
-                       <TableCell colSpan={12} className="text-center py-8 text-gray-500">
+                       <TableCell colSpan={13} className="text-center py-8 text-gray-500">
                          {emptyText('No team students found')}
                        </TableCell>
                      </TableRow>
@@ -929,6 +960,7 @@ export default function Students() {
                            </Badge>
                          </TableCell>
                          <TableCell><EnrolledSwitch student={student} currentUser={currentUser} /></TableCell>
+                            <TableCell><ClassesCell student={student} /></TableCell>
                          <TableCell><StudentTagChips student={student} catalog={tagCatalog} /></TableCell>
                          <TableCell className="text-sm">
                            {student.created_date ? format(new Date(student.created_date), 'MMM d, yyyy') : '-'}
@@ -1006,6 +1038,7 @@ export default function Students() {
                       <TableHead className="font-semibold">Balance</TableHead>
                       <TableHead className="font-semibold">Status</TableHead>
                       <TableHead className="font-semibold">Enrolled</TableHead>
+                      <TableHead className="font-semibold">Classes</TableHead>
                       <TableHead className="font-semibold">Tags</TableHead>
                       <TableHead className="font-semibold">Created</TableHead>
                       <TableHead className="font-semibold text-right">Actions</TableHead>
@@ -1014,7 +1047,7 @@ export default function Students() {
                   <TableBody>
                     {displayStudents.length === 0 ? (
                       <TableRow>
-                        <TableCell colSpan={canEdit ? 13 : 12} className="text-center py-8 text-gray-500">
+                        <TableCell colSpan={canEdit ? 14 : 13} className="text-center py-8 text-gray-500">
                           {emptyText('No students found')}
                         </TableCell>
                       </TableRow>
@@ -1047,6 +1080,7 @@ export default function Students() {
                             </Badge>
                           </TableCell>
                           <TableCell><EnrolledSwitch student={student} currentUser={currentUser} /></TableCell>
+                            <TableCell><ClassesCell student={student} /></TableCell>
                           <TableCell><StudentTagChips student={student} catalog={tagCatalog} /></TableCell>
                           <TableCell className="text-sm">
                             {student.created_date ? format(new Date(student.created_date), 'MMM d, yyyy') : '-'}
@@ -1104,6 +1138,7 @@ export default function Students() {
                       <TableHead className="font-semibold">Course</TableHead>
                       <TableHead className="font-semibold">Balance</TableHead>
                       <TableHead className="font-semibold">Enrolled</TableHead>
+                      <TableHead className="font-semibold">Classes</TableHead>
                       <TableHead className="font-semibold">Tags</TableHead>
                       <TableHead className="font-semibold">My Net Deposits</TableHead>
                       <TableHead className="font-semibold">Primary Net Deposits</TableHead>
@@ -1115,7 +1150,7 @@ export default function Students() {
                   <TableBody>
                     {displayStudents.length === 0 ? (
                       <TableRow>
-                        <TableCell colSpan={13} className="text-center py-8 text-gray-500">
+                        <TableCell colSpan={14} className="text-center py-8 text-gray-500">
                           {emptyText('No co-managed clients yet. Send a referral request from a Fund Request to get started.')}
                         </TableCell>
                       </TableRow>
@@ -1137,6 +1172,7 @@ export default function Students() {
                             <TableCell className="max-w-[220px] text-sm"><CourseCell student={student} /></TableCell>
                             <TableCell><BalanceCell student={student} /></TableCell>
                             <TableCell><EnrolledSwitch student={student} currentUser={currentUser} /></TableCell>
+                            <TableCell><ClassesCell student={student} /></TableCell>
                             <TableCell><StudentTagChips student={student} catalog={tagCatalog} /></TableCell>
                             <TableCell className="text-sm font-semibold text-green-700">${myNet.toLocaleString()}</TableCell>
                             <TableCell className="text-sm text-gray-600">${primaryNet.toLocaleString()}</TableCell>
@@ -1198,6 +1234,7 @@ export default function Students() {
                       <TableHead className="font-semibold">Balance</TableHead>
                     <TableHead className="font-semibold">Status</TableHead>
                     <TableHead className="font-semibold">Enrolled</TableHead>
+                      <TableHead className="font-semibold">Classes</TableHead>
                     <TableHead className="font-semibold">Tags</TableHead>
                     <TableHead className="font-semibold">Created</TableHead>
                     <TableHead className="font-semibold text-right">Actions</TableHead>
@@ -1206,7 +1243,7 @@ export default function Students() {
                 <TableBody>
                   {displayStudents.length === 0 ? (
                     <TableRow>
-                      <TableCell colSpan={10} className="text-center py-8 text-gray-500">
+                      <TableCell colSpan={11} className="text-center py-8 text-gray-500">
                         {emptyText('No open pool students available')}
                       </TableCell>
                     </TableRow>
@@ -1229,6 +1266,7 @@ export default function Students() {
                           </Badge>
                         </TableCell>
                         <TableCell><EnrolledSwitch student={student} currentUser={currentUser} /></TableCell>
+                            <TableCell><ClassesCell student={student} /></TableCell>
                         <TableCell><StudentTagChips student={student} catalog={tagCatalog} /></TableCell>
                         <TableCell className="text-sm">
                           {student.created_date ? format(new Date(student.created_date), 'MMM d, yyyy') : '-'}
@@ -1300,6 +1338,7 @@ export default function Students() {
                       <TableHead className="font-semibold">Combined Total</TableHead>
                       <TableHead className="font-semibold">Status</TableHead>
                       <TableHead className="font-semibold">Enrolled</TableHead>
+                      <TableHead className="font-semibold">Classes</TableHead>
                       <TableHead className="font-semibold">Tags</TableHead>
                       <TableHead className="font-semibold">Co-Mentor Since</TableHead>
                     </TableRow>
@@ -1307,7 +1346,7 @@ export default function Students() {
                   <TableBody>
                     {displayStudents.length === 0 ? (
                       <TableRow>
-                        <TableCell colSpan={14} className="text-center py-8 text-gray-500">
+                        <TableCell colSpan={15} className="text-center py-8 text-gray-500">
                           {emptyText('No co-managed clients found')}
                         </TableCell>
                       </TableRow>
@@ -1337,6 +1376,7 @@ export default function Students() {
                                 </Badge>
                               </TableCell>
                               <TableCell><EnrolledSwitch student={student} currentUser={currentUser} /></TableCell>
+                            <TableCell><ClassesCell student={student} /></TableCell>
                               <TableCell><StudentTagChips student={student} catalog={tagCatalog} /></TableCell>
                               <TableCell className="text-sm text-gray-500">
                                 {co.since ? format(new Date(co.since), 'MMM d, yyyy') : '-'}
@@ -1374,6 +1414,7 @@ export default function Students() {
                       <TableHead className="font-semibold">Balance</TableHead>
                   <TableHead className="font-semibold">Status</TableHead>
                   <TableHead className="font-semibold">Enrolled</TableHead>
+                      <TableHead className="font-semibold">Classes</TableHead>
                   <TableHead className="font-semibold">Tags</TableHead>
                   <TableHead className="font-semibold">Created</TableHead>
                   <TableHead className="font-semibold text-right">Actions</TableHead>
@@ -1382,7 +1423,7 @@ export default function Students() {
               <TableBody>
                 {displayStudents.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={12} className="text-center py-8 text-gray-500">
+                    <TableCell colSpan={13} className="text-center py-8 text-gray-500">
                       {emptyText('No students found')}
                     </TableCell>
                   </TableRow>
@@ -1407,6 +1448,7 @@ export default function Students() {
                         </Badge>
                       </TableCell>
                       <TableCell><EnrolledSwitch student={student} currentUser={currentUser} /></TableCell>
+                            <TableCell><ClassesCell student={student} /></TableCell>
                       <TableCell><StudentTagChips student={student} catalog={tagCatalog} /></TableCell>
                       <TableCell className="text-sm">
                         {student.created_date ? format(new Date(student.created_date), 'MMM d, yyyy') : '-'}
