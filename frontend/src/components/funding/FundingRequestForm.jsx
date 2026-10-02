@@ -44,7 +44,7 @@ export default function FundingRequestForm({ students, allStudents = [], current
   const [referralStudent, setReferralStudent] = useState(null);
   const [showCoManageModal, setShowCoManageModal] = useState(false);
 
-  // Tag catalog with per-tag amounts — for BONUS, the amount is driven by the tag.
+  // Tag catalog with per-tag amounts — for BONUS, the product's price fills in the amount (which can still be changed).
   const { data: bonusTags = [] } = useQuery({
     queryKey: ['transaction-tags-catalog'],
     queryFn: async () => (await base44.entities.TransactionTag.list('name')).filter(t => t.active !== false),
@@ -116,6 +116,11 @@ export default function FundingRequestForm({ students, allStudents = [], current
 
     if (formData.type === 'BONUS' && (!formData.tags || formData.tags.length === 0)) {
       toast.error('Please pick a product for the bonus');
+      return;
+    }
+
+    if (!(parseFloat(formData.amount_usd) > 0)) {
+      toast.error('Enter the amount');
       return;
     }
 
@@ -252,7 +257,7 @@ export default function FundingRequestForm({ students, allStudents = [], current
                 </p>
               )}
               <p className="text-xs text-muted-foreground">
-                Pick the product — its amount fills in automatically. Bundled products come along at no extra charge. Products &amp; amounts are managed by admins.
+                Pick the product — its price fills in the amount, which you can change. Bundled products come along at no extra charge.
               </p>
             </div>
           )}
@@ -260,7 +265,6 @@ export default function FundingRequestForm({ students, allStudents = [], current
           <div className="space-y-2">
             <Label htmlFor="amount">
               Amount (USD) *
-              {formData.type === 'BONUS' && <span className="ml-1 text-xs font-normal text-gray-500">(set by tag)</span>}
             </Label>
             <Input
               id="amount"
@@ -269,12 +273,11 @@ export default function FundingRequestForm({ students, allStudents = [], current
               min="0.01"
               value={formData.amount_usd}
               onChange={(e) => setFormData({ ...formData, amount_usd: e.target.value })}
-              placeholder={formData.type === 'BONUS' ? 'Select a tag first' : '0.00'}
-              disabled={formData.type === 'BONUS'}
+              placeholder="0.00"
               required
             />
             {formData.type === 'BONUS' && (
-              <p className="text-xs text-muted-foreground">Auto-filled from the tag. An admin can adjust it when approving.</p>
+              <p className="text-xs text-muted-foreground">Filled in from the product's price — change it if needed.</p>
             )}
           </div>
 
