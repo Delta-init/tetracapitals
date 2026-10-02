@@ -1,5 +1,6 @@
 import React, { useState, useMemo } from 'react';
 import { PageTitle } from '@/components/common/PageHeader';
+import { TablePagination, usePagination } from '@/components/common/TablePagination';
 import { base44 } from '@/api/base44Client';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
@@ -91,6 +92,9 @@ export default function DepositCommissionReports() {
   }, [credits, quarter, year, canSeeAll, currentUser?.id]);
 
   const detailCredits = selected ? (byStaff[selected.key] || []) : [];
+  // 25 rows to a page; the totals and the CSV still use the full lists.
+  const { pageItems: pageRows, bar: rowsBar } = usePagination(rows, { resetKey: periodKey });
+  const { pageItems: pageDetailCredits, bar: detailBar } = usePagination(detailCredits, { resetKey: `${periodKey}|${selected?.key}` });
 
   // Deposit POOL groups (Junior+Senior 2% shared pool, anchored on the Chief).
   // Accrues over the quarter, split equally among members at closing. Only
@@ -244,7 +248,7 @@ export default function DepositCommissionReports() {
                     <tr><td colSpan={canApprove ? 4 : 3} className="text-center py-10 text-gray-400">Loading…</td></tr>
                   ) : rows.length === 0 ? (
                     <tr><td colSpan={canApprove ? 4 : 3} className="text-center py-10 text-gray-400">No deposit commission for {periodLabel}.</td></tr>
-                  ) : rows.map(r => (
+                  ) : pageRows.map(r => (
                     <tr key={r.key} onClick={() => setSelected(r)} className="border-b hover:bg-blue-50 cursor-pointer">
                       <td className="px-4 py-3 font-medium text-gray-900">{r.name}</td>
                       <td className="px-4 py-3 text-right font-bold text-blue-700">{money(r.commission)}</td>
@@ -275,6 +279,7 @@ export default function DepositCommissionReports() {
                 )}
               </table>
             </div>
+            <TablePagination {...rowsBar} />
           </CardContent>
         </Card>
 
@@ -298,7 +303,7 @@ export default function DepositCommissionReports() {
                   </tr>
                 </thead>
                 <tbody>
-                  {detailCredits.map((c, i) => (
+                  {pageDetailCredits.map((c, i) => (
                     <tr key={c.id || i} className="border-b hover:bg-gray-50">
                       <td className="px-3 py-2 font-medium">{c.student_name || '—'}</td>
                       <td className="px-3 py-2 text-gray-600">{c.student_email || '—'}</td>
@@ -318,6 +323,7 @@ export default function DepositCommissionReports() {
                 </tfoot>
               </table>
             </div>
+            <TablePagination {...detailBar} />
           </DialogContent>
         </Dialog>
       </div>

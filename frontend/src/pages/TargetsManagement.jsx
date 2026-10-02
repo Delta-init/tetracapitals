@@ -21,6 +21,7 @@ import { toast } from "sonner";
 import { format } from "date-fns";
 import { logAction } from "../components/utils/AuditLogger";
 import { isMentorRole } from "../components/utils/roles";
+import { Paged, TablePagination } from "@/components/common/TablePagination";
 
 export default function TargetsManagement() {
   const [currentUser, setCurrentUser] = useState(null);
@@ -251,6 +252,7 @@ export default function TargetsManagement() {
             <CardTitle className="text-lg font-semibold tracking-tight">Targets</CardTitle>
           </CardHeader>
           <CardContent className="p-0">
+            <Paged items={enrichedTargets} resetKey={`${searchTerm}|${filterMentor}|${filterPeriodType}`}>{(pageTargets, bar) => (<>
             <div className="overflow-x-auto">
               <Table>
                 <TableHeader>
@@ -276,7 +278,7 @@ export default function TargetsManagement() {
                       </TableCell>
                     </TableRow>
                   ) : (
-                    enrichedTargets.map((target) => (
+                    pageTargets.map((target) => (
                       <TableRow key={target.id} className="hover:bg-gray-50 transition-colors">
                         <TableCell className="font-medium">{target.mentor_name}</TableCell>
                         <TableCell>
@@ -326,6 +328,8 @@ export default function TargetsManagement() {
                 </TableBody>
               </Table>
             </div>
+            <TablePagination {...bar} />
+            </>)}</Paged>
           </CardContent>
         </Card>
 

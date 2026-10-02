@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { PageTitle } from '@/components/common/PageHeader';
+import { Paged, TablePagination } from '@/components/common/TablePagination';
 import { base44 } from "@/api/base44Client";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
@@ -441,58 +442,63 @@ export default function StudentDetail() {
             </CardTitle>
           </CardHeader>
           <CardContent className="p-0">
-            <div className="overflow-x-auto">
-              <table className="w-full">
-                <thead>
-                  <tr className="bg-gray-50 border-b">
-                    <th className="text-left p-3 text-sm font-semibold text-gray-700">Date</th>
-                    <th className="text-left p-3 text-sm font-semibold text-gray-700">Amount</th>
-                    <th className="text-left p-3 text-sm font-semibold text-gray-700">Payment Method</th>
-                    <th className="text-left p-3 text-sm font-semibold text-gray-700">MT5 Login</th>
-                    <th className="text-left p-3 text-sm font-semibold text-gray-700">Transaction ID</th>
-                    <th className="text-left p-3 text-sm font-semibold text-gray-700">Added By</th>
-                    <th className="text-left p-3 text-sm font-semibold text-gray-700">Status</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {deposits.length === 0 ? (
-                    <tr>
-                      <td colSpan={6} className="text-center py-8 text-gray-500">No deposits found</td>
-                    </tr>
-                  ) : (
-                    deposits.map((txn) => (
-                      <tr key={txn.id} className="border-b hover:bg-gray-50">
-                        <td className="p-3 text-sm">{txn.requested_at ? format(new Date(txn.requested_at), 'MMM d, yyyy HH:mm') : '-'}</td>
-                        <td className="p-3 text-sm font-semibold text-gray-900">${txn.amount_usd?.toFixed(2)}</td>
-                        <td className="p-3 text-sm">{txn.payment_method}</td>
-                        <td className="p-3 text-sm font-mono">{txn.mt5_login || '-'}</td>
-                        <td className="p-3 text-sm font-mono">{txn.transaction_id || '-'}</td>
-                        <td className="p-3 text-sm">
-                          {txn.initiating_mentor_name ? (
-                            <>
-                              {txn.initiating_mentor_name}
-                              {txn.initiating_mentor_id === student.primary_mentor_id && <span className="text-xs text-gray-500 block">(Primary)</span>}
-                              {txn.initiating_mentor_id === student.senior_mentor_id && <span className="text-xs text-gray-500 block">(Senior)</span>}
-                              {(() => {
-                                try {
-                                  const co = typeof student.co_mentors_details === 'string' ? JSON.parse(student.co_mentors_details) : student.co_mentors_details;
-                                  return Array.isArray(co) && co.some(cm => cm.mentor_id === txn.initiating_mentor_id) ? <span className="text-xs text-gray-500 block">(Co-Mentor)</span> : null;
-                                } catch (_) { return null; }
-                              })()}
-                            </>
-                          ) : '-'}
-                        </td>
-                        <td className="p-3">
-                          <Badge variant="outline" className={getTransactionStatusColor(txn.status)}>
-                            {txn.status}
-                          </Badge>
-                        </td>
+            <Paged items={deposits} resetKey={studentId}>
+              {(pageRows, bar) => (<>
+                <div className="overflow-x-auto">
+                  <table className="w-full">
+                    <thead>
+                      <tr className="bg-gray-50 border-b">
+                        <th className="text-left p-3 text-sm font-semibold text-gray-700">Date</th>
+                        <th className="text-left p-3 text-sm font-semibold text-gray-700">Amount</th>
+                        <th className="text-left p-3 text-sm font-semibold text-gray-700">Payment Method</th>
+                        <th className="text-left p-3 text-sm font-semibold text-gray-700">MT5 Login</th>
+                        <th className="text-left p-3 text-sm font-semibold text-gray-700">Transaction ID</th>
+                        <th className="text-left p-3 text-sm font-semibold text-gray-700">Added By</th>
+                        <th className="text-left p-3 text-sm font-semibold text-gray-700">Status</th>
                       </tr>
-                    ))
-                  )}
-                </tbody>
-              </table>
-            </div>
+                    </thead>
+                    <tbody>
+                      {deposits.length === 0 ? (
+                        <tr>
+                          <td colSpan={6} className="text-center py-8 text-gray-500">No deposits found</td>
+                        </tr>
+                      ) : (
+                        pageRows.map((txn) => (
+                          <tr key={txn.id} className="border-b hover:bg-gray-50">
+                            <td className="p-3 text-sm">{txn.requested_at ? format(new Date(txn.requested_at), 'MMM d, yyyy HH:mm') : '-'}</td>
+                            <td className="p-3 text-sm font-semibold text-gray-900">${txn.amount_usd?.toFixed(2)}</td>
+                            <td className="p-3 text-sm">{txn.payment_method}</td>
+                            <td className="p-3 text-sm font-mono">{txn.mt5_login || '-'}</td>
+                            <td className="p-3 text-sm font-mono">{txn.transaction_id || '-'}</td>
+                            <td className="p-3 text-sm">
+                              {txn.initiating_mentor_name ? (
+                                <>
+                                  {txn.initiating_mentor_name}
+                                  {txn.initiating_mentor_id === student.primary_mentor_id && <span className="text-xs text-gray-500 block">(Primary)</span>}
+                                  {txn.initiating_mentor_id === student.senior_mentor_id && <span className="text-xs text-gray-500 block">(Senior)</span>}
+                                  {(() => {
+                                    try {
+                                      const co = typeof student.co_mentors_details === 'string' ? JSON.parse(student.co_mentors_details) : student.co_mentors_details;
+                                      return Array.isArray(co) && co.some(cm => cm.mentor_id === txn.initiating_mentor_id) ? <span className="text-xs text-gray-500 block">(Co-Mentor)</span> : null;
+                                    } catch (_) { return null; }
+                                  })()}
+                                </>
+                              ) : '-'}
+                            </td>
+                            <td className="p-3">
+                              <Badge variant="outline" className={getTransactionStatusColor(txn.status)}>
+                                {txn.status}
+                              </Badge>
+                            </td>
+                          </tr>
+                        ))
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+                <TablePagination {...bar} />
+              </>)}
+            </Paged>
           </CardContent>
         </Card>
 
@@ -505,58 +511,63 @@ export default function StudentDetail() {
             </CardTitle>
           </CardHeader>
           <CardContent className="p-0">
-            <div className="overflow-x-auto">
-              <table className="w-full">
-                <thead>
-                  <tr className="bg-gray-50 border-b">
-                    <th className="text-left p-3 text-sm font-semibold text-gray-700">Date</th>
-                    <th className="text-left p-3 text-sm font-semibold text-gray-700">Amount</th>
-                    <th className="text-left p-3 text-sm font-semibold text-gray-700">Payment Method</th>
-                    <th className="text-left p-3 text-sm font-semibold text-gray-700">MT5 Login</th>
-                    <th className="text-left p-3 text-sm font-semibold text-gray-700">Transaction ID</th>
-                    <th className="text-left p-3 text-sm font-semibold text-gray-700">Added By</th>
-                    <th className="text-left p-3 text-sm font-semibold text-gray-700">Status</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {withdrawals.length === 0 ? (
-                    <tr>
-                      <td colSpan={6} className="text-center py-8 text-gray-500">No withdrawals found</td>
-                    </tr>
-                  ) : (
-                    withdrawals.map((txn) => (
-                      <tr key={txn.id} className="border-b hover:bg-gray-50">
-                        <td className="p-3 text-sm">{txn.requested_at ? format(new Date(txn.requested_at), 'MMM d, yyyy HH:mm') : '-'}</td>
-                        <td className="p-3 text-sm font-semibold text-gray-900">${txn.amount_usd?.toFixed(2)}</td>
-                        <td className="p-3 text-sm">{txn.payment_method}</td>
-                        <td className="p-3 text-sm font-mono">{txn.mt5_login || '-'}</td>
-                        <td className="p-3 text-sm font-mono">{txn.transaction_id || '-'}</td>
-                        <td className="p-3 text-sm">
-                          {txn.initiating_mentor_name ? (
-                            <>
-                              {txn.initiating_mentor_name}
-                              {txn.initiating_mentor_id === student.primary_mentor_id && <span className="text-xs text-gray-500 block">(Primary)</span>}
-                              {txn.initiating_mentor_id === student.senior_mentor_id && <span className="text-xs text-gray-500 block">(Senior)</span>}
-                              {(() => {
-                                try {
-                                  const co = typeof student.co_mentors_details === 'string' ? JSON.parse(student.co_mentors_details) : student.co_mentors_details;
-                                  return Array.isArray(co) && co.some(cm => cm.mentor_id === txn.initiating_mentor_id) ? <span className="text-xs text-gray-500 block">(Co-Mentor)</span> : null;
-                                } catch (_) { return null; }
-                              })()}
-                            </>
-                          ) : '-'}
-                        </td>
-                        <td className="p-3">
-                          <Badge variant="outline" className={getTransactionStatusColor(txn.status)}>
-                            {txn.status}
-                          </Badge>
-                        </td>
+            <Paged items={withdrawals} resetKey={studentId}>
+              {(pageRows, bar) => (<>
+                <div className="overflow-x-auto">
+                  <table className="w-full">
+                    <thead>
+                      <tr className="bg-gray-50 border-b">
+                        <th className="text-left p-3 text-sm font-semibold text-gray-700">Date</th>
+                        <th className="text-left p-3 text-sm font-semibold text-gray-700">Amount</th>
+                        <th className="text-left p-3 text-sm font-semibold text-gray-700">Payment Method</th>
+                        <th className="text-left p-3 text-sm font-semibold text-gray-700">MT5 Login</th>
+                        <th className="text-left p-3 text-sm font-semibold text-gray-700">Transaction ID</th>
+                        <th className="text-left p-3 text-sm font-semibold text-gray-700">Added By</th>
+                        <th className="text-left p-3 text-sm font-semibold text-gray-700">Status</th>
                       </tr>
-                    ))
-                  )}
-                </tbody>
-              </table>
-            </div>
+                    </thead>
+                    <tbody>
+                      {withdrawals.length === 0 ? (
+                        <tr>
+                          <td colSpan={6} className="text-center py-8 text-gray-500">No withdrawals found</td>
+                        </tr>
+                      ) : (
+                        pageRows.map((txn) => (
+                          <tr key={txn.id} className="border-b hover:bg-gray-50">
+                            <td className="p-3 text-sm">{txn.requested_at ? format(new Date(txn.requested_at), 'MMM d, yyyy HH:mm') : '-'}</td>
+                            <td className="p-3 text-sm font-semibold text-gray-900">${txn.amount_usd?.toFixed(2)}</td>
+                            <td className="p-3 text-sm">{txn.payment_method}</td>
+                            <td className="p-3 text-sm font-mono">{txn.mt5_login || '-'}</td>
+                            <td className="p-3 text-sm font-mono">{txn.transaction_id || '-'}</td>
+                            <td className="p-3 text-sm">
+                              {txn.initiating_mentor_name ? (
+                                <>
+                                  {txn.initiating_mentor_name}
+                                  {txn.initiating_mentor_id === student.primary_mentor_id && <span className="text-xs text-gray-500 block">(Primary)</span>}
+                                  {txn.initiating_mentor_id === student.senior_mentor_id && <span className="text-xs text-gray-500 block">(Senior)</span>}
+                                  {(() => {
+                                    try {
+                                      const co = typeof student.co_mentors_details === 'string' ? JSON.parse(student.co_mentors_details) : student.co_mentors_details;
+                                      return Array.isArray(co) && co.some(cm => cm.mentor_id === txn.initiating_mentor_id) ? <span className="text-xs text-gray-500 block">(Co-Mentor)</span> : null;
+                                    } catch (_) { return null; }
+                                  })()}
+                                </>
+                              ) : '-'}
+                            </td>
+                            <td className="p-3">
+                              <Badge variant="outline" className={getTransactionStatusColor(txn.status)}>
+                                {txn.status}
+                              </Badge>
+                            </td>
+                          </tr>
+                        ))
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+                <TablePagination {...bar} />
+              </>)}
+            </Paged>
           </CardContent>
         </Card>
 

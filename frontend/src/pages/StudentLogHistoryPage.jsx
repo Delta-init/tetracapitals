@@ -14,6 +14,7 @@ import { format, isWithinInterval, parseISO } from "date-fns";
 import { getEffectiveUser } from "../components/utils/ImpersonationContext";
 import { TAB_COLORS } from "../components/studentlogs/StudentLogHistoryUtils";
 import SearchableStudentSelect from "../components/common/SearchableStudentSelect";
+import { TablePagination, DEFAULT_PAGE_SIZE } from "@/components/common/TablePagination";
 
 const ADMIN_ROLES = ['super_admin', 'academic_head', 'academic_admin', 'admin_supervisor'];
 const ALL_TABS = ['Contact', 'Basic Info', 'Payment', 'Induction', 'Academic', 'Upgrade', 'Convocation', 'Traders Day', 'Live Trade', 'SSF', 'Rejoining', 'Seminar', 'Practice Tracking', 'Feedback & Review', 'Pips Craft', 'Trading'];
@@ -49,9 +50,7 @@ function FieldChangesDetail({ fieldsChanged }) {
   );
 }
 
-function TimelineView({ entries, students }) {
-  const [selectedStudentId, setSelectedStudentId] = useState('');
-  
+function TimelineView({ entries, students, studentId: selectedStudentId, onStudentChange: setSelectedStudentId }) {
   const studentEntries = useMemo(() => {
     if (!selectedStudentId) return [];
     return entries
@@ -154,6 +153,9 @@ export default function StudentLogHistoryPage() {
   const [filterDateFrom, setFilterDateFrom] = useState('');
   const [filterDateTo, setFilterDateTo] = useState('');
   const [expandedRow, setExpandedRow] = useState(null);
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(DEFAULT_PAGE_SIZE);
+  const [debouncedSearch, setDebouncedSearch] = useState('');
 
   useEffect(() => {
     const fetchUser = async () => {
@@ -165,10 +167,29 @@ export default function StudentLogHistoryPage() {
 
   const isAdmin = currentUser && ADMIN_ROLES.includes(currentUser.app_role);
 
-  const { data: allEntries = [] } = useQuery({
-    queryKey: ['student-log-history'],
-    queryFn: () => base44.entities.StudentLogHistory.list('-created_date'),
-    enabled: !!currentUser
+  // Paged on the server (backend/src/functions/pagedLists.ts): who sees which entries, the search and the filters.
+  useEffect(() => {
+    const t = setTimeout(() => setDebouncedSearch(searchTerm.trim()), 300);
+    return () => clearTimeout(t);
+  }, [searchTerm]);
+  const filters = useMemo(() => ({
+    search: debouncedSearch, student: filterStudent, staff: filterStaff, tab: filterTab, role: filterRole,
+    from: filterDateFrom ? new Date(filterDateFrom).toISOString() : '',
+    to: filterDateTo ? new Date(filterDateTo + 'T23:59:59').toISOString() : '',
+  }), [debouncedSearch, filterStudent, filterStaff, filterTab, filterRole, filterDateFrom, filterDateTo]);
+  const filtersKey = JSON.stringify(filters);
+  useEffect(() => { setPage(1); }, [filtersKey, pageSize]);
+  const { data: list, isLoading: entriesLoading, isFetching: entriesFetching } = useQuery({
+    queryKey: ['student-log-history', 'page', page, pageSize, filtersKey],
+    queryFn: async () => (await base44.functions.invoke('listStudentLogHistory', { page, pageSize, filters, withStaff: true })).data,
+    enabled: !!currentUser && viewMode === 'table',
+    placeholderData: (prev) => prev,
+  });
+  // The timeline shows one student's whole history: all of their entries (with the same filters).
+  const { data: timeline } = useQuery({
+    queryKey: ['student-log-history', 'timeline', filtersKey],
+    queryFn: async () => (await base44.functions.invoke('listStudentLogHistory', { all: true, filters })).data,
+    enabled: !!currentUser && viewMode === 'timeline' && !!filterStudent,
   });
 
   const { data: students = [] } = useQuery({
@@ -185,45 +206,11 @@ export default function StudentLogHistoryPage() {
     );
   }
 
-  // Role-based visibility
-  let visibleEntries = allEntries;
-  if (!isAdmin) {
-    visibleEntries = allEntries.filter(e => e.updated_by_id === currentUser.id);
-  }
-
-  // Apply filters
-  let filtered = visibleEntries;
-
-  if (searchTerm) {
-    const t = searchTerm.toLowerCase();
-    const has = (v) => v != null && String(v).toLowerCase().includes(t);
-    filtered = filtered.filter(e =>
-      has(e.student_name) ||
-      has(e.student_code) ||
-      has(e.updated_by_name)
-    );
-  }
-  if (filterStudent) {
-    filtered = filtered.filter(e => e.student_id === filterStudent);
-  }
-  if (filterStaff !== 'all') {
-    filtered = filtered.filter(e => e.updated_by_id === filterStaff);
-  }
-  if (filterTab !== 'all') {
-    filtered = filtered.filter(e => e.tab_section?.includes(filterTab));
-  }
-  if (filterRole !== 'all') {
-    filtered = filtered.filter(e => e.updated_by_role === filterRole);
-  }
-  if (filterDateFrom) {
-    filtered = filtered.filter(e => e.entry_timestamp && new Date(e.entry_timestamp) >= new Date(filterDateFrom));
-  }
-  if (filterDateTo) {
-    filtered = filtered.filter(e => e.entry_timestamp && new Date(e.entry_timestamp) <= new Date(filterDateTo + 'T23:59:59'));
-  }
-
-  // Get unique staff for filter
-  const uniqueStaff = [...new Map(allEntries.map(e => [e.updated_by_id, { id: e.updated_by_id, name: e.updated_by_name }])).values()];
+  // This page of the entries (the server applied who sees what, the search and the filters).
+  const filtered = list?.rows || [];
+  const total = list?.total || 0;
+  // Everyone who made entries, for the admins' Staff filter.
+  const uniqueStaff = list?.staff || [];
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100 p-6">
@@ -340,12 +327,12 @@ export default function StudentLogHistoryPage() {
 
         {/* Content */}
         {viewMode === 'timeline' ? (
-          <TimelineView entries={filtered} students={students} />
+          <TimelineView entries={timeline?.rows || []} students={students} studentId={filterStudent} onStudentChange={setFilterStudent} />
         ) : (
           <Card className="border-gray-200">
             <CardHeader className="border-b border-gray-100 bg-slate-50/70">
               <CardTitle className="text-lg font-semibold">
-                Log Entries ({filtered.length})
+                Log Entries ({total.toLocaleString()})
               </CardTitle>
             </CardHeader>
             <CardContent className="p-0">
@@ -364,7 +351,7 @@ export default function StudentLogHistoryPage() {
                   <TableBody>
                     {filtered.length === 0 ? (
                       <tr>
-                        <td colSpan={6} className="text-center py-10 text-gray-500">No history entries found</td>
+                        <td colSpan={6} className="text-center py-10 text-gray-500">{entriesLoading ? 'Loading history…' : 'No history entries found'}</td>
                       </tr>
                     ) : (
                       filtered.map((entry) => {
@@ -438,6 +425,7 @@ export default function StudentLogHistoryPage() {
                   </TableBody>
                 </Table>
               </div>
+              <TablePagination page={list?.page || page} pageSize={pageSize} total={total} onPageChange={setPage} onPageSizeChange={setPageSize} busy={entriesFetching} />
             </CardContent>
           </Card>
         )}

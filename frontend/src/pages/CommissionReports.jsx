@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { PageTitle } from '@/components/common/PageHeader';
+import { Paged, TablePagination } from '@/components/common/TablePagination';
 import { base44 } from "@/api/base44Client";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
@@ -156,6 +157,9 @@ export default function CommissionReports() {
       l.quarter?.toLowerCase().includes(searchTerm.toLowerCase())
     );
   }
+
+  // The table shows 25 to a page — back to page 1 whenever the search or a filter changes.
+  const pageResetKey = [searchTerm, filterMentor, filterYear, filterQuarter, filterStatus].join('|');
 
   // Get unique values for filters
   const mentorsWithLedgers = [...new Set(ledgers.map(l => l.mentor_id))]
@@ -332,6 +336,7 @@ export default function CommissionReports() {
             <CardTitle className="text-lg font-semibold tracking-tight">Commission Ledgers</CardTitle>
           </CardHeader>
           <CardContent className="p-0">
+            <Paged items={filteredLedgers} resetKey={pageResetKey}>{(pageLedgers, bar) => (<>
             <div className="overflow-x-auto">
               <Table>
                 <TableHeader>
@@ -358,7 +363,7 @@ export default function CommissionReports() {
                       </TableCell>
                     </TableRow>
                   ) : (
-                    filteredLedgers.map((ledger) => {
+                    pageLedgers.map((ledger) => {
                       const statusBadge = getApprovalStatusBadge(ledger);
                       const canAct = canTakeAction(ledger, currentUser);
                       
@@ -421,6 +426,8 @@ export default function CommissionReports() {
                 </TableBody>
               </Table>
             </div>
+            <TablePagination {...bar} />
+            </>)}</Paged>
           </CardContent>
         </Card>
 

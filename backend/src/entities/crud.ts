@@ -40,6 +40,12 @@ function canRead(cfg: EntityConfig, user: AuthUser, doc: any): boolean {
   return false;
 }
 
+/** Whether `user` may list this entity at all — the role test a list applies (row-level scope comes on top). */
+export function userCanListEntity(user: AuthUser, entityName: string): boolean {
+  const cfg = getEntity(entityName);
+  return !!cfg && rolesAllow(cfg.read, user.app_role);
+}
+
 /** Whether `user` may see this record — the same test a fetch by id applies, row-level scope included. */
 export async function userCanReadDoc(user: AuthUser, entityName: string, doc: any): Promise<boolean> {
   const cfg = getEntity(entityName);

@@ -1,5 +1,6 @@
 import React, { useMemo, useState, useEffect } from 'react';
 import { PageTitle } from '@/components/common/PageHeader';
+import { TablePagination, usePagination } from '@/components/common/TablePagination';
 import { getEffectiveUser } from '../components/utils/ImpersonationContext';
 import { useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
@@ -71,6 +72,11 @@ export default function ReportTransactionDetails() {
       return true;
     });
   }, [allAdjustments, filterType, filterId, startDate, endDate]);
+
+  // Both tables show 25 to a page; the totals, counts and the CSV use the full lists.
+  const pageResetKey = `${filterType}|${filterId}|${startDate}|${endDate}|${reportType}`;
+  const { pageItems: pageTransactions, bar: transactionsBar } = usePagination(transactions, { resetKey: pageResetKey });
+  const { pageItems: pageAdjustments, bar: adjustmentsBar } = usePagination(adjustments, { resetKey: pageResetKey });
 
   const totals = useMemo(() => {
     // Group by student, apply $25K cap per student on net deposit
@@ -236,7 +242,7 @@ export default function ReportTransactionDetails() {
                                 <tbody>
                                     {transactions.length === 0 ?
                 <tr><td colSpan={10} className="text-center py-12 text-gray-400">No transactions found.</td></tr> :
-                transactions.map((t, idx) =>
+                pageTransactions.map((t, idx) =>
                 <tr key={t.id} className={`border-b border-gray-100 hover:bg-gray-50 ${idx % 2 !== 0 ? 'bg-gray-50/40' : ''}`}>
                                             <td className="px-4 py-3 text-gray-500 text-xs whitespace-nowrap">
                                                 {t.requested_at ? format(new Date(t.requested_at), 'dd MMM yyyy') : '—'}
@@ -268,6 +274,7 @@ export default function ReportTransactionDetails() {
                                 </tbody>
                             </table>
                         </div>
+                        <TablePagination {...transactionsBar} />
                     </div>
 
                     {/* Manual Adjustments Section */}
@@ -287,7 +294,7 @@ export default function ReportTransactionDetails() {
                                             </tr>
                                         </thead>
                                         <tbody>
-                                            {adjustments.map((a, idx) =>
+                                            {pageAdjustments.map((a, idx) =>
                   <tr key={a.id} className={`border-b border-gray-100 hover:bg-gray-50 ${idx % 2 !== 0 ? 'bg-gray-50/40' : ''}`}>
                                                     <td className="px-4 py-3 text-gray-500 text-xs whitespace-nowrap">
                                                         {a.created_date ? format(new Date(a.created_date), 'dd MMM yyyy') : '—'}
@@ -308,6 +315,7 @@ export default function ReportTransactionDetails() {
                                         </tbody>
                                     </table>
                                 </div>
+                                <TablePagination {...adjustmentsBar} />
                             </div>
                         </div>
         }

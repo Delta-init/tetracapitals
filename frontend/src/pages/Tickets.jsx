@@ -18,6 +18,7 @@ import { canCreateTicket, canRespondToTicket, filterTicketsByRole, getAutoAssign
 import generateTicketNumber from "../components/utils/TicketNumberGenerator";
 import { logAction } from "../components/utils/AuditLogger";
 import { getEffectiveUser } from "../components/utils/ImpersonationContext";
+import { Paged, TablePagination } from "@/components/common/TablePagination";
 
 export default function Tickets() {
   const [currentUser, setCurrentUser] = useState(null);
@@ -413,6 +414,7 @@ export default function Tickets() {
             <CardTitle className="text-lg font-semibold">Tickets ({visibleTickets.length})</CardTitle>
           </CardHeader>
           <CardContent className="p-0">
+            <Paged items={visibleTickets} resetKey={`${searchTerm}|${filterStatus}|${filterPriority}|${filterCategory}`}>{(pageTickets, bar) => (<>
             <div className="overflow-x-auto">
               <Table>
                 <TableHeader>
@@ -432,7 +434,7 @@ export default function Tickets() {
                     <TableRow>
                       <TableCell colSpan={8} className="text-center py-10 text-gray-400">No tickets found</TableCell>
                     </TableRow>
-                  ) : visibleTickets.map(ticket => (
+                  ) : pageTickets.map(ticket => (
                     <TableRow
                       key={ticket.id}
                       className="hover:bg-blue-50 cursor-pointer transition-colors"
@@ -451,6 +453,8 @@ export default function Tickets() {
                 </TableBody>
               </Table>
             </div>
+            <TablePagination {...bar} />
+            </>)}</Paged>
           </CardContent>
         </Card>
       </div>

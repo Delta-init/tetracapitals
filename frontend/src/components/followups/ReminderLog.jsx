@@ -8,6 +8,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { TablePagination, usePagination } from '@/components/common/TablePagination';
 import { AlertTriangle, ChevronDown, ChevronRight, Loader2, Mail, RefreshCw, Send, Zap } from 'lucide-react';
 import { REMINDER, reminderKind, reminderTitle, hhmm, fmtDate, StatusBadge } from './followupUi';
 
@@ -37,6 +38,7 @@ export default function ReminderLog({ currentUser }) {
   const day = date || today;
   const isToday = day === today;
   const rows = data?.rows || [];
+  const { pageItems, bar } = usePagination(rows, { resetKey: day });
   const c = data?.counts || {};
   const mail = data?.mail || {};
 
@@ -127,7 +129,7 @@ export default function ReminderLog({ currentUser }) {
                 <tr><td colSpan={11} className="py-10 text-center text-slate-400">
                   {isToday && !data?.ran_today ? `No reminder emails yet today — they go out at ${data?.send_time || '10:00 UAE'}.` : 'No reminder emails on this day.'}
                 </td></tr>
-              ) : rows.map((r) => {
+              ) : pageItems.map((r) => {
                 const k = REMINDER[reminderKind(r)] || REMINDER.skipped;
                 const Icon = k.icon;
                 const open = expanded === r.id;
@@ -201,6 +203,7 @@ export default function ReminderLog({ currentUser }) {
             </tbody>
           </table>
         </div>
+        <TablePagination {...bar} />
       </CardContent>
 
       <Dialog open={testOpen} onOpenChange={setTestOpen}>

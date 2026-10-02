@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { PageTitle } from '@/components/common/PageHeader';
+import { TablePagination, usePagination } from '@/components/common/TablePagination';
 import { base44 } from "@/api/base44Client";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
@@ -135,6 +136,8 @@ export default function DailyPayouts() {
     released: rows.filter(r => r.released).length,
     total: rows.length,
   }), [rows]);
+  // 25 mentors to a page; the totals above still count every row.
+  const { pageItems: pageRows, bar } = usePagination(rows, { resetKey: selectedDate });
 
   const openRelease = (row) => {
     setReleaseModal({ mentor_id: row.id, mentor_name: row.name, dailyDeposit: row.dailyDeposit, payout: row.payout });
@@ -230,7 +233,7 @@ export default function DailyPayouts() {
                       No deposits {isMentor ? '' : 'from any mentor '}on this date.
                     </TableCell>
                   </TableRow>
-                ) : rows.map((r) => (
+                ) : pageRows.map((r) => (
                   <TableRow key={r.id} className={r.released ? 'bg-green-50/40' : ''}>
                     <TableCell className="font-medium">{r.name}</TableCell>
                     <TableCell><Badge variant="outline">{r.rate}%</Badge></TableCell>
@@ -271,6 +274,7 @@ export default function DailyPayouts() {
                 ))}
               </TableBody>
             </Table>
+            <TablePagination {...bar} />
           </CardContent>
         </Card>
       </div>

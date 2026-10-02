@@ -9,6 +9,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Badge } from "@/components/ui/badge";
 import { Shield, Search, Filter, Calendar } from "lucide-react";
 import { format } from "date-fns";
+import { Paged, TablePagination } from "@/components/common/TablePagination";
 
 export default function AuditLogs() {
   const [currentUser, setCurrentUser] = useState(null);
@@ -242,6 +243,7 @@ export default function AuditLogs() {
             </CardTitle>
           </CardHeader>
           <CardContent className="p-0">
+            <Paged items={filteredLogs} resetKey={`${searchTerm}|${actionFilter}|${userFilter}|${dateFilter}`}>{(pageLogs, bar) => (<>
             <div className="overflow-x-auto">
               <Table>
                 <TableHeader>
@@ -264,7 +266,7 @@ export default function AuditLogs() {
                       </TableCell>
                     </TableRow>
                   ) : (
-                    filteredLogs.map((log) => (
+                    pageLogs.map((log) => (
                       <TableRow key={log.id} className="hover:bg-gray-50 transition-colors">
                         <TableCell className="text-sm font-mono">
                           {log.timestamp ? format(new Date(log.timestamp), 'MMM d, yyyy HH:mm:ss') : '-'}
@@ -317,6 +319,8 @@ export default function AuditLogs() {
                 </TableBody>
               </Table>
             </div>
+            <TablePagination {...bar} />
+            </>)}</Paged>
           </CardContent>
         </Card>
       </div>

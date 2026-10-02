@@ -3,6 +3,7 @@ import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { base44 } from '@/api/base44Client';
 import { PageTitle } from '@/components/common/PageHeader';
+import { TablePagination, usePagination } from '@/components/common/TablePagination';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -30,6 +31,7 @@ export default function StudentTags() {
   const [name, setName] = useState('');
   const [color, setColor] = useState(PRESET_COLORS[0]);
   const { data: tags = [], isLoading } = useStudentTagCatalog();
+  const { pageItems: pageTags, bar } = usePagination(tags);
 
   useEffect(() => { base44.auth.me().then(setCurrentUser).catch(() => setCurrentUser(null)); }, []);
   const refresh = () => queryClient.invalidateQueries({ queryKey: ['student-tags'] });
@@ -109,7 +111,7 @@ export default function StudentTags() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {tags.map(t => {
+                {pageTags.map(t => {
                   const kind = KIND[t.kind] || KIND.custom;
                   return (
                     <TableRow key={t.id}>
@@ -143,6 +145,7 @@ export default function StudentTags() {
               </TableBody>
             </Table>
           )}
+          <TablePagination {...bar} />
         </CardContent>
       </Card>
     </div>

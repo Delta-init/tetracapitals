@@ -7,6 +7,7 @@ import { LayoutDashboard, Users, DollarSign } from 'lucide-react';
 import { getEffectiveUser } from '@/components/utils/ImpersonationContext';
 import { isMentorRole } from '@/components/utils/roles';
 import { FIELDS_BY_CATEGORY, isNumeric, activityCategory } from '@/components/activity/activityFields';
+import { TablePagination, usePagination } from '@/components/common/TablePagination';
 
 // Viewers who see the WHOLE company (not just their own downline).
 const ADMIN_VIEWERS = ['super_admin', 'admin', 'broker_admin', 'academic_head', 'academic_admin', 'admin_supervisor', 'finance_admin'];
@@ -111,7 +112,12 @@ export default function TeamDashboard() {
 
   const maxScore = Math.max(1, ...[...pa, ...mentor].map(r => r.avgScore));
 
-  const Team = ({ title, rows, cols, icon }) => (
+  // Paging lives here, not in Team: Team is redefined on every render.
+  const { pageItems: directoryRows, bar: directoryBar } = usePagination(directory);
+  const { pageItems: mentorRows, bar: mentorBar } = usePagination(mentor, { resetKey: `${start}|${end}` });
+  const { pageItems: paRows, bar: paBar } = usePagination(pa, { resetKey: `${start}|${end}` });
+
+  const Team = ({ title, rows, pageRows, bar, cols, icon }) => (
     <Card>
       <CardHeader className="border-b"><CardTitle className="text-lg flex items-center gap-2">{icon} {title} <span className="text-sm font-normal text-gray-400">({rows.length})</span></CardTitle></CardHeader>
       <CardContent className="p-0">
@@ -128,7 +134,7 @@ export default function TeamDashboard() {
             <tbody>
               {rows.length === 0 ? (
                 <tr><td colSpan={cols.length + 3} className="text-center py-8 text-gray-400">No activity in this range.</td></tr>
-              ) : rows.map((r, i) => (
+              ) : pageRows.map((r, i) => (
                 <tr key={i} className="border-b hover:bg-gray-50">
                   <td className="px-4 py-3 font-medium text-gray-900">{r.name}</td>
                   {title.includes('PA') && <td className="px-3 py-3 text-right">{(r.sums.calls_done ? (r.sums.calls_connected / r.sums.calls_done) * 100 : 0).toFixed(1)}%</td>}
@@ -139,6 +145,7 @@ export default function TeamDashboard() {
             </tbody>
           </table>
         </div>
+        <TablePagination {...bar} />
       </CardContent>
     </Card>
   );
@@ -177,7 +184,7 @@ export default function TeamDashboard() {
                 <tbody>
                   {directory.length === 0 ? (
                     <tr><td colSpan={4} className="text-center py-8 text-gray-400">No team members assigned. Set their “Up Head” to you in Personnel.</td></tr>
-                  ) : directory.map((m, i) => (
+                  ) : directoryRows.map((m, i) => (
                     <tr key={i} className="border-b last:border-0 hover:bg-gray-50">
                       <td className="px-4 py-3 font-medium text-gray-900">{m.name}</td>
                       <td className="px-4 py-3 text-gray-700">{m.role}</td>
@@ -190,6 +197,7 @@ export default function TeamDashboard() {
                 </tbody>
               </table>
             </div>
+            <TablePagination {...directoryBar} />
           </CardContent>
         </Card>
 
@@ -218,8 +226,8 @@ export default function TeamDashboard() {
 
         {isLoading ? <div className="text-center py-10 text-gray-400">Loading…</div> : (
           <>
-            <Team title="Mentor Team" rows={mentor} cols={MENTOR_COLS} icon={<Users className="h-5 w-5 text-indigo-600" />} />
-            <Team title="PA / CSE Team" rows={pa} cols={PA_COLS} icon={<Users className="h-5 w-5 text-teal-600" />} />
+            <Team title="Mentor Team" rows={mentor} pageRows={mentorRows} bar={mentorBar} cols={MENTOR_COLS} icon={<Users className="h-5 w-5 text-indigo-600" />} />
+            <Team title="PA / CSE Team" rows={pa} pageRows={paRows} bar={paBar} cols={PA_COLS} icon={<Users className="h-5 w-5 text-teal-600" />} />
 
             {/* Avg daily score chart */}
             <Card>

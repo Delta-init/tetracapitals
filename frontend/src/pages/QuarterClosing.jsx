@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { PageTitle } from '@/components/common/PageHeader';
+import { Paged, TablePagination } from '@/components/common/TablePagination';
 import { base44 } from "@/api/base44Client";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
@@ -370,6 +371,7 @@ export default function QuarterClosing() {
             <CardTitle className="text-lg font-semibold tracking-tight">Mentor Commission Summary - {quarterLabel}</CardTitle>
           </CardHeader>
           <CardContent className="p-0">
+            <Paged items={mentorData} resetKey={`${selectedYear}|${selectedQuarter}`}>{(pageMentorData, bar) => (<>
             <div className="overflow-x-auto">
               <Table>
                 <TableHeader>
@@ -399,7 +401,7 @@ export default function QuarterClosing() {
                       <TableCell className="text-right text-xs text-gray-400">Distribute above</TableCell>
                     </TableRow>
                   ))}
-                  {mentorData.map((data) => (
+                  {pageMentorData.map((data) => (
                     <TableRow key={data.mentor.id} className="hover:bg-gray-50 transition-colors">
                       <TableCell className="font-medium">{data.mentor.full_name}</TableCell>
                       <TableCell className="font-semibold">
@@ -471,6 +473,8 @@ export default function QuarterClosing() {
                 </TableBody>
               </Table>
             </div>
+            <TablePagination {...bar} />
+            </>)}</Paged>
           </CardContent>
         </Card>
       </div>

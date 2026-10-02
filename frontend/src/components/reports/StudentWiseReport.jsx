@@ -4,6 +4,7 @@ import { Badge } from '@/components/ui/badge';
 import { Download } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { format } from 'date-fns';
+import { TablePagination, usePagination } from '@/components/common/TablePagination';
 
 export default function StudentWiseReport({ transactions, dateLabel, startDate, endDate }) {
     const navigate = useNavigate();
@@ -48,6 +49,8 @@ export default function StudentWiseReport({ transactions, dateLabel, startDate, 
 
         return { rows, totals };
     }, [transactions]);
+    // The parent's mentor filter isn't passed in, so the row count stands in for it.
+    const { pageItems: pageRows, bar } = usePagination(rows, { resetKey: `${startDate}|${endDate}|${rows.length}` });
 
     const handleExport = () => {
         const headers = ['Code', 'Student', 'CS', 'Senior Mentor', 'Deposits (USD)', 'Bonus (USD)', 'Withdrawals (USD)', 'Net (USD)', 'Txns'];
@@ -107,7 +110,7 @@ export default function StudentWiseReport({ transactions, dateLabel, startDate, 
                         <tbody>
                             {rows.length === 0 ? (
                                 <tr><td colSpan={9} className="text-center py-12 text-gray-400">No data found for this period.</td></tr>
-                            ) : rows.map((row, idx) => (
+                            ) : pageRows.map((row, idx) => (
                                 <tr key={row.student_id} onClick={() => navigate(`/ReportTransactionDetails?filterType=student&filterId=${row.student_id}&filterName=${encodeURIComponent(row.student_name)}&startDate=${startDate}&endDate=${endDate}&dateLabel=${encodeURIComponent(dateLabel)}`)} className={`border-b border-gray-100 hover:bg-blue-50 cursor-pointer ${idx % 2 !== 0 ? 'bg-gray-50/40' : ''}`}>
                                     <td className="px-4 py-3 text-gray-500 font-mono text-xs">{row.student_code || '—'}</td>
                                     <td className="px-4 py-3 font-medium text-gray-900">{row.student_name}</td>
@@ -133,6 +136,7 @@ export default function StudentWiseReport({ transactions, dateLabel, startDate, 
                         </tfoot>
                     </table>
                 </div>
+                <TablePagination {...bar} />
             </div>
         </div>
     );

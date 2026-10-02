@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { PageTitle } from '@/components/common/PageHeader';
+import { Paged, TablePagination } from '@/components/common/TablePagination';
 import { base44 } from "@/api/base44Client";
 import { useQuery } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -118,6 +119,7 @@ export default function MyCommissionHistory() {
             <CardTitle className="text-lg font-semibold tracking-tight">Commission Statements</CardTitle>
           </CardHeader>
           <CardContent className="p-0">
+            <Paged items={myLedgers}>{(pageLedgers, bar) => (<>
             <div className="overflow-x-auto">
               <Table>
                 <TableHeader>
@@ -142,7 +144,7 @@ export default function MyCommissionHistory() {
                       </TableCell>
                     </TableRow>
                   ) : (
-                    myLedgers.map((ledger) => (
+                    pageLedgers.map((ledger) => (
                       <TableRow key={ledger.id} className="hover:bg-gray-50 transition-colors">
                         {showMentor && <TableCell className="font-medium">{ledger.mentor_name || '—'}</TableCell>}
                         <TableCell className="font-semibold text-blue-600">{ledger.quarter}</TableCell>
@@ -191,6 +193,8 @@ export default function MyCommissionHistory() {
                 </TableBody>
               </Table>
             </div>
+            <TablePagination {...bar} />
+            </>)}</Paged>
           </CardContent>
         </Card>
       </div>

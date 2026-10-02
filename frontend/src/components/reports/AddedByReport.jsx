@@ -4,6 +4,7 @@ import { Badge } from '@/components/ui/badge';
 import { Download } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { format } from 'date-fns';
+import { TablePagination, usePagination } from '@/components/common/TablePagination';
 
 const ADMIN_ROLES = ['broker_admin', 'super_admin', 'admin', 'finance_admin', 'academic_head', 'academic_admin'];
 
@@ -85,6 +86,7 @@ export default function AddedByReport({ transactions, dateLabel, startDate, endD
 
         return { rows, totals };
     }, [transactions, userMap, mentorFilter]);
+    const { pageItems: pageRows, bar } = usePagination(rows, { resetKey: `${startDate}|${endDate}|${mentorFilter}|${rows.length}` });
 
     const handleExport = () => {
         const headers = ['Added By', 'Students', 'Txns', 'Deposits (USD)', 'Withdrawals (USD)', 'Net (USD)'];
@@ -137,7 +139,7 @@ export default function AddedByReport({ transactions, dateLabel, startDate, endD
                         <tbody>
                             {rows.length === 0 ? (
                                 <tr><td colSpan={6} className="text-center py-12 text-gray-400">No data found for this period.</td></tr>
-                            ) : rows.map((row, idx) => (
+                            ) : pageRows.map((row, idx) => (
                                 <tr key={row.id} onClick={() => navigate(`/ReportTransactionDetails?filterType=added_by&filterId=${row.id}&filterName=${encodeURIComponent(row.name)}&startDate=${startDate}&endDate=${endDate}&dateLabel=${encodeURIComponent(dateLabel)}`)} className={`border-b border-gray-100 hover:bg-blue-50 cursor-pointer ${idx % 2 !== 0 ? 'bg-gray-50/40' : ''}`}>
                                     <td className="px-4 py-3 font-medium text-gray-900">{row.name}</td>
                                     <td className="px-4 py-3 text-center"><Badge variant="secondary">{row.student_count}</Badge></td>
@@ -158,6 +160,7 @@ export default function AddedByReport({ transactions, dateLabel, startDate, endD
                         </tfoot>
                     </table>
                 </div>
+                <TablePagination {...bar} />
             </div>
         </div>
     );

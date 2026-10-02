@@ -1,5 +1,6 @@
 import React, { useState, useMemo } from 'react';
 import { PageTitle } from '@/components/common/PageHeader';
+import { TablePagination, usePagination } from '@/components/common/TablePagination';
 import { base44 } from '@/api/base44Client';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -71,6 +72,8 @@ export default function MonthlyClosing() {
     const poolRows = Object.values(poolMap).map(p => ({ ...p, total: p.withB + p.withoutB })).sort((a, b) => b.total - a.total);
     return { rows, totals, periodCredits, poolRows };
   }, [credits, month, year]);
+  // Staff rows show 25 to a page (the pool lines stay on top); totals and Release cover every row.
+  const { pageItems: pageRows, bar } = usePagination(rows, { resetKey: periodKey });
 
   const pendingIds = periodCredits.filter(c => c.status !== 'released').map(c => c.id).filter(Boolean);
   const releasedCount = periodCredits.length - pendingIds.length;
@@ -167,7 +170,7 @@ export default function MonthlyClosing() {
                       {canApprove && <td className="px-4 py-3 text-right text-xs text-slate-400">Distribute above</td>}
                     </tr>
                   ))}
-                  {rows.map(r => (
+                  {pageRows.map(r => (
                     <tr key={r.key} className="border-b hover:bg-gray-50">
                       <td className="px-4 py-3 font-medium text-gray-900">{r.name}</td>
                       <td className="px-4 py-3 text-right text-green-700">{money(r.withB)}</td>
@@ -207,6 +210,7 @@ export default function MonthlyClosing() {
                 )}
               </table>
             </div>
+            <TablePagination {...bar} />
           </CardContent>
         </Card>
       </div>

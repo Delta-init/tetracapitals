@@ -4,6 +4,7 @@ import { base44 } from '@/api/base44Client';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import PeriodApprovalCell from '@/components/commission/PeriodApprovalCell';
+import { TablePagination, usePagination } from '@/components/common/TablePagination';
 
 const money = (n) => `$${(n || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 
@@ -34,6 +35,8 @@ export default function DepositApprovalsCard({ credits, start, end, periodKey, p
     const total = rows.reduce((a, r) => ({ commission: a.commission + r.commission, count: a.count + r.count }), { commission: 0, count: 0 });
     return { rows, total };
   }, [credits, start, end]);
+  // 25 staff to a page; the total row still adds up every staff.
+  const { pageItems: pageRows, bar } = usePagination(rows, { resetKey: periodKey });
 
   return (
     <Card>
@@ -58,7 +61,7 @@ export default function DepositApprovalsCard({ credits, start, end, periodKey, p
             <tbody>
               {rows.length === 0 ? (
                 <tr><td colSpan={4} className="py-10 text-center text-slate-400">No deposit commission for {periodLabel}.</td></tr>
-              ) : rows.map(r => (
+              ) : pageRows.map(r => (
                 <tr key={r.key} className="border-b hover:bg-slate-50/60">
                   <td className="px-4 py-3 font-medium text-slate-900">{r.name}</td>
                   <td className={`px-4 py-3 text-right font-bold ${r.commission < 0 ? 'text-rose-600' : 'text-blue-700'}`}>{money(r.commission)}</td>
@@ -87,6 +90,7 @@ export default function DepositApprovalsCard({ credits, start, end, periodKey, p
             )}
           </table>
         </div>
+        <TablePagination {...bar} />
       </CardContent>
     </Card>
   );

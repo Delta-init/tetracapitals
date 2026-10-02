@@ -6,7 +6,8 @@ import { Check, X, Eye, TrendingUp, TrendingDown } from "lucide-react";
 import { format } from "date-fns";
 import { canApproveTransactions } from "../utils/DataMasking";
 
-export default function TransactionTable({ transactions, currentUser, onApprove, onReject, onView }) {
+/** `footer` (optional) goes under the rows, inside the card — e.g. the page's <TablePagination />. */
+export default function TransactionTable({ transactions, currentUser, onApprove, onReject, onView, footer = null }) {
   const canApprove = canApproveTransactions(currentUser?.role);
 
   const getStatusColor = (status) => {
@@ -110,6 +111,7 @@ export default function TransactionTable({ transactions, currentUser, onApprove,
           )}
         </TableBody>
       </Table>
+      {footer}
     </div>
   );
 }

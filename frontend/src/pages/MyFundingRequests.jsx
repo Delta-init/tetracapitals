@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { PageTitle } from '@/components/common/PageHeader';
+import { Paged, TablePagination } from '@/components/common/TablePagination';
 import { base44 } from "@/api/base44Client";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
@@ -330,6 +331,37 @@ export default function MyFundingRequests() {
     buffer: teamCommissionDataGrouped.reduce((sum, data) => sum + data.buffer, 0)
   };
 
+  // Request History rows — pending referrals, then adjustments, then requests —
+  // filtered here so the table can show them 25 to a page.
+  const filteredTransactions = myTransactions.filter(t => {
+    const d = new Date(t.requested_at || t.created_date);
+    if (dateFrom && d < new Date(dateFrom)) return false;
+    if (dateTo && d > new Date(dateTo + 'T23:59:59')) return false;
+    if (filterType !== 'ALL' && t.type !== filterType) return false;
+    if (filterStatus !== 'ALL' && t.status !== filterStatus) return false;
+    if (filterSearch) {
+      const q = filterSearch.toLowerCase();
+      const matches = (v) => v != null && String(v).toLowerCase().includes(q);
+      if (!matches(t.student_name) && !matches(t.student_code)) return false;
+    }
+    return true;
+  });
+  const filteredReferrals = pendingReferrals.filter(r => {
+    const d = new Date(r.created_at || r.created_date);
+    if (dateFrom && d < new Date(dateFrom)) return false;
+    if (dateTo && d > new Date(dateTo + 'T23:59:59')) return false;
+    return true;
+  });
+  const filteredAdjustments = myAdjustments.filter(a => {
+    const d = new Date(a.effective_date || a.created_date);
+    if (dateFrom && d < new Date(dateFrom)) return false;
+    if (dateTo && d > new Date(dateTo + 'T23:59:59')) return false;
+    return true;
+  });
+  const historyRows = [...filteredReferrals, ...filteredAdjustments, ...filteredTransactions];
+  // Back to page 1 whenever a filter, or the quarter (it picks the adjustments), changes.
+  const historyResetKey = [filterSearch, filterType, filterStatus, dateFrom, dateTo, selectedQuarter, selectedYear].join('|');
+
   const canCreate = canCreateFundingTransaction(currentUser.app_role);
   // Team tab: roles whose visibility is Team (Chief Mentor by default).
   const hasTeamView = getScope(currentUser) === 'downline';
@@ -573,6 +605,7 @@ export default function MyFundingRequests() {
                 </div>
               </CardHeader>
               <CardContent className="p-0">
+                <Paged items={historyRows} resetKey={historyResetKey}>{(pageHistory, bar) => (<>
                 <div className="overflow-x-auto">
                   <Table>
                     <TableHeader>
@@ -594,31 +627,6 @@ export default function MyFundingRequests() {
                     </TableHeader>
                     <TableBody>
                       {(() => {
-                        const filteredTransactions = myTransactions.filter(t => {
-                          const d = new Date(t.requested_at || t.created_date);
-                          if (dateFrom && d < new Date(dateFrom)) return false;
-                          if (dateTo && d > new Date(dateTo + 'T23:59:59')) return false;
-                          if (filterType !== 'ALL' && t.type !== filterType) return false;
-                          if (filterStatus !== 'ALL' && t.status !== filterStatus) return false;
-                          if (filterSearch) {
-                            const q = filterSearch.toLowerCase();
-                            const matches = (v) => v != null && String(v).toLowerCase().includes(q);
-                            if (!matches(t.student_name) && !matches(t.student_code)) return false;
-                          }
-                          return true;
-                        });
-                        const filteredReferrals = pendingReferrals.filter(r => {
-                          const d = new Date(r.created_at || r.created_date);
-                          if (dateFrom && d < new Date(dateFrom)) return false;
-                          if (dateTo && d > new Date(dateTo + 'T23:59:59')) return false;
-                          return true;
-                        });
-                        const filteredAdjustments = myAdjustments.filter(a => {
-                          const d = new Date(a.effective_date || a.created_date);
-                          if (dateFrom && d < new Date(dateFrom)) return false;
-                          if (dateTo && d > new Date(dateTo + 'T23:59:59')) return false;
-                          return true;
-                        });
                         if (filteredTransactions.length === 0 && filteredReferrals.length === 0 && filteredAdjustments.length === 0) {
                           return (
                             <TableRow>
@@ -628,9 +636,10 @@ export default function MyFundingRequests() {
                             </TableRow>
                           );
                         }
+                        const onPage = new Set(pageHistory);
                         return (
                           <>
-                            {filteredReferrals.map((referral) => (
+                            {filteredReferrals.filter(r => onPage.has(r)).map((referral) => (
                               <TableRow key={`ref-${referral.id}`} className="hover:bg-orange-50 bg-orange-50/40 transition-colors">
                                 <TableCell className="text-sm">
                                   {referral.created_at ? format(new Date(referral.created_at), 'MMM d, yyyy HH:mm') : '-'}
@@ -665,7 +674,7 @@ export default function MyFundingRequests() {
                                 </TableCell>
                               </TableRow>
                             ))}
-                            {filteredAdjustments.map((adj) => (
+                            {filteredAdjustments.filter(a => onPage.has(a)).map((adj) => (
                               <TableRow key={`adj-${adj.id}`} className="hover:bg-purple-50 bg-purple-50/30 transition-colors">
                                 <TableCell className="text-sm">{adj.created_date ? format(new Date(adj.created_date), 'MMM d, yyyy HH:mm') : '-'}</TableCell>
                                 <TableCell><Badge variant="outline" className="bg-purple-100 text-purple-800 border-purple-200">ADJUSTMENT</Badge></TableCell>
@@ -688,7 +697,7 @@ export default function MyFundingRequests() {
                                 <TableCell>-</TableCell>
                               </TableRow>
                             ))}
-                            {filteredTransactions.map((transaction) => {
+                            {filteredTransactions.filter(t => onPage.has(t)).map((transaction) => {
                               const commissionEarned = transaction.commission_amount || 0;
                               return (
                                 <TableRow key={transaction.id} className="hover:bg-gray-50 transition-colors">
@@ -754,6 +763,8 @@ export default function MyFundingRequests() {
                     </TableBody>
                   </Table>
                 </div>
+                <TablePagination {...bar} />
+                </>)}</Paged>
               </CardContent>
             </Card>
           </TabsContent>
@@ -826,6 +837,7 @@ export default function MyFundingRequests() {
                   <CardTitle className="text-lg font-semibold">Team Request History</CardTitle>
                 </CardHeader>
                 <CardContent className="p-0">
+                  <Paged items={teamTransactions}>{(pageTeamTransactions, bar) => (<>
                   <div className="overflow-x-auto">
                     <Table>
                       <TableHeader>
@@ -851,7 +863,7 @@ export default function MyFundingRequests() {
                             </TableCell>
                           </TableRow>
                         ) : (
-                          teamTransactions.map((transaction) => {
+                          pageTeamTransactions.map((transaction) => {
                             const txAmount = transaction.amount_usd || 0;
                             const uplinePercentage = (transaction.upline_commission_percentage || 0) / 100;
                             let uplineCommission = 0;
@@ -920,6 +932,8 @@ export default function MyFundingRequests() {
                       </TableBody>
                     </Table>
                   </div>
+                  <TablePagination {...bar} />
+                  </>)}</Paged>
                 </CardContent>
               </Card>
             </TabsContent>

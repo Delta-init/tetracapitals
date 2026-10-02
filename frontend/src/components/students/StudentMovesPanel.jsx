@@ -9,6 +9,7 @@ import { Badge } from '@/components/ui/badge';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { TablePagination, usePagination } from '@/components/common/TablePagination';
 import { ArrowRight, Download, Loader2, Route, Search } from 'lucide-react';
 import { createPageUrl } from '@/utils';
 
@@ -63,6 +64,7 @@ export default function StudentMovesPanel({ teamId = null, showMap = true, title
     (dir === 'all' || dirOf(m) === dir) &&
     (!needle || [m.studentName, m.studentCode, m.from?.name, m.to?.name].some(v => String(v || '').toLowerCase().includes(needle)))
   );
+  const { pageItems, bar } = usePagination(visible, { resetKey: `${teamId}|${days}|${kind}|${team}|${dir}|${needle}` });
 
   const counts = useMemo(() => {
     const c = {};
@@ -123,43 +125,45 @@ export default function StudentMovesPanel({ teamId = null, showMap = true, title
   );
 
   const list = (
-    <div className="overflow-x-auto">
-      <table className="w-full text-sm">
-        <thead>
-          <tr className="border-b bg-slate-50/80">
-            {['Date', 'Kind', 'Student', 'From', '', 'To', 'Now with', ''].map((h, i) => (
-              <th key={i} className="whitespace-nowrap px-4 py-3 text-left text-[11px] font-semibold uppercase tracking-wider text-slate-500">{h}</th>
-            ))}
-          </tr>
-        </thead>
-        <tbody>
-          {isLoading ? (
-            <tr><td colSpan={8} className="py-10 text-center text-slate-400"><Loader2 className="mx-auto h-5 w-5 animate-spin" /></td></tr>
-          ) : error ? (
-            <tr><td colSpan={8} className="py-10 text-center text-rose-600">{error.message || 'Could not load moves'}</td></tr>
-          ) : visible.length === 0 ? (
-            <tr><td colSpan={8} className="py-10 text-center text-slate-400">No moves in this period.</td></tr>
-          ) : visible.slice(0, 500).map((m, i) => (
-            <tr key={`${m.studentId}-${m.at}-${i}`} className="border-b border-slate-100 hover:bg-brand-cyan/[0.04]">
-              <td className="whitespace-nowrap px-4 py-2.5 text-slate-500">{fmt(m.at)}</td>
-              <td className="px-4 py-2.5"><Badge variant="outline" className={KINDS[m.kind]?.cls}>{KINDS[m.kind]?.label || m.kind}</Badge></td>
-              <td className="px-4 py-2.5">
-                <Link to={`${createPageUrl('StudentDetail')}?id=${m.studentId}`} className="font-medium text-slate-900 hover:text-blue-600">{m.studentName}</Link>
-                <div className="font-mono text-xs text-slate-400">{m.studentCode}</div>
-              </td>
-              <td className="px-4 py-2.5 text-slate-600">{NEW_KINDS.includes(m.kind) ? <span className="text-slate-400">new</span> : who(m.from)}</td>
-              <td className="px-1 py-2.5 text-slate-300"><ArrowRight className="h-4 w-4" /></td>
-              <td className="px-4 py-2.5 font-medium text-slate-800">{who(m.to)}</td>
-              <td className="px-4 py-2.5 text-slate-500">{m.now && m.now.id !== m.to?.id ? who(m.now) : <span className="text-slate-300">same</span>}</td>
-              <td className="px-4 py-2.5 text-right">
-                <Button variant="ghost" size="sm" onClick={() => setPathOf(m)} title="Full path"><Route className="h-4 w-4" /></Button>
-              </td>
+    <>
+      <div className="overflow-x-auto">
+        <table className="w-full text-sm">
+          <thead>
+            <tr className="border-b bg-slate-50/80">
+              {['Date', 'Kind', 'Student', 'From', '', 'To', 'Now with', ''].map((h, i) => (
+                <th key={i} className="whitespace-nowrap px-4 py-3 text-left text-[11px] font-semibold uppercase tracking-wider text-slate-500">{h}</th>
+              ))}
             </tr>
-          ))}
-        </tbody>
-      </table>
-      {visible.length > 500 && <p className="px-4 py-2 text-xs text-slate-400">Showing the latest 500 of {visible.length}; narrow the filters or export CSV for all.</p>}
-    </div>
+          </thead>
+          <tbody>
+            {isLoading ? (
+              <tr><td colSpan={8} className="py-10 text-center text-slate-400"><Loader2 className="mx-auto h-5 w-5 animate-spin" /></td></tr>
+            ) : error ? (
+              <tr><td colSpan={8} className="py-10 text-center text-rose-600">{error.message || 'Could not load moves'}</td></tr>
+            ) : visible.length === 0 ? (
+              <tr><td colSpan={8} className="py-10 text-center text-slate-400">No moves in this period.</td></tr>
+            ) : pageItems.map((m, i) => (
+              <tr key={`${m.studentId}-${m.at}-${i}`} className="border-b border-slate-100 hover:bg-brand-cyan/[0.04]">
+                <td className="whitespace-nowrap px-4 py-2.5 text-slate-500">{fmt(m.at)}</td>
+                <td className="px-4 py-2.5"><Badge variant="outline" className={KINDS[m.kind]?.cls}>{KINDS[m.kind]?.label || m.kind}</Badge></td>
+                <td className="px-4 py-2.5">
+                  <Link to={`${createPageUrl('StudentDetail')}?id=${m.studentId}`} className="font-medium text-slate-900 hover:text-blue-600">{m.studentName}</Link>
+                  <div className="font-mono text-xs text-slate-400">{m.studentCode}</div>
+                </td>
+                <td className="px-4 py-2.5 text-slate-600">{NEW_KINDS.includes(m.kind) ? <span className="text-slate-400">new</span> : who(m.from)}</td>
+                <td className="px-1 py-2.5 text-slate-300"><ArrowRight className="h-4 w-4" /></td>
+                <td className="px-4 py-2.5 font-medium text-slate-800">{who(m.to)}</td>
+                <td className="px-4 py-2.5 text-slate-500">{m.now && m.now.id !== m.to?.id ? who(m.now) : <span className="text-slate-300">same</span>}</td>
+                <td className="px-4 py-2.5 text-right">
+                  <Button variant="ghost" size="sm" onClick={() => setPathOf(m)} title="Full path"><Route className="h-4 w-4" /></Button>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      <TablePagination {...bar} />
+    </>
   );
 
   return (

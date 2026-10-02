@@ -3,6 +3,7 @@ import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { base44 } from '@/api/base44Client';
 import { PageTitle } from '@/components/common/PageHeader';
+import { TablePagination, usePagination } from '@/components/common/TablePagination';
 import StatsCard from '@/components/dashboard/StatsCard';
 import { Card, CardContent, CardHeader } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -82,6 +83,7 @@ export default function StudentFollowups() {
   );
   const counts = Object.fromEntries(Object.entries(TABS).map(([k, t]) => [k, base.filter(t.test).length]));
   const rows = base.filter(TABS[tab].test);
+  const { pageItems, bar } = usePagination(rows, { resetKey: `${tab}|${stage}|${outcome}|${team}|${tag}|${needle}` });
   const refresh = () => queryClient.invalidateQueries({ queryKey: ['followups'] });
   const showMentor = new Set(followups.map(f => f.mentor_id)).size > 1;
 
@@ -177,7 +179,7 @@ export default function StudentFollowups() {
                     <tr><td colSpan={16} className="py-12 text-center text-slate-400">
                       {followups.length ? `Nothing ${TABS[tab].label.toLowerCase()}.` : 'No follow-ups yet — open one with New follow-up.'}
                     </td></tr>
-                  ) : rows.map(f => (
+                  ) : pageItems.map(f => (
                     <tr key={f.id}
                       className="group cursor-pointer border-b border-slate-100 align-top hover:bg-cyan-50/40"
                       onClick={(e) => { if (!e.target.closest('button, a')) navigate(`${createPageUrl('StudentDetail')}?id=${f.student_id}`); }}>
@@ -215,6 +217,7 @@ export default function StudentFollowups() {
                 </tbody>
               </table>
             </div>
+            <TablePagination {...bar} />
           </CardContent>
         </Card>
 

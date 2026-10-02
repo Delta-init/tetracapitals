@@ -14,6 +14,7 @@ import StudentLogDetails from "../components/studentlogs/StudentLogDetails";
 import { isMentorRole as isMentorTier } from "@/components/utils/roles";
 import { getEffectiveUser } from "../components/utils/ImpersonationContext";
 import { detectChanges, getTabsFromChanges } from "../components/studentlogs/StudentLogHistoryUtils";
+import { TablePagination, DEFAULT_PAGE_SIZE } from "@/components/common/TablePagination";
 
 export default function StudentLogs() {
   const [currentUser, setCurrentUser] = useState(null);
@@ -22,6 +23,9 @@ export default function StudentLogs() {
   const [showEditDialog, setShowEditDialog] = useState(false);
   const [showDetailsDialog, setShowDetailsDialog] = useState(false);
   const [selectedLog, setSelectedLog] = useState(null);
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(DEFAULT_PAGE_SIZE);
+  const [debouncedSearch, setDebouncedSearch] = useState('');
 
   const queryClient = useQueryClient();
 
@@ -34,19 +38,29 @@ export default function StudentLogs() {
     fetchUser();
   }, []);
 
-  const { data: logs = [] } = useQuery({
-    queryKey: ['student-logs'],
-    queryFn: () => base44.entities.StudentLog.list('-created_date'),
-    enabled: !!currentUser
+  // Paged on the server (backend/src/functions/pagedLists.ts) — which logs a mentor sees, and the search, too.
+  useEffect(() => {
+    const t = setTimeout(() => setDebouncedSearch(searchTerm.trim()), 300);
+    return () => clearTimeout(t);
+  }, [searchTerm]);
+  useEffect(() => { setPage(1); }, [debouncedSearch, pageSize]);
+  const { data: list, isLoading: logsLoading, isFetching: logsFetching } = useQuery({
+    queryKey: ['student-logs', 'page', page, pageSize, debouncedSearch],
+    queryFn: async () => (await base44.functions.invoke('listStudentLogs', { page, pageSize, filters: { search: debouncedSearch } })).data,
+    enabled: !!currentUser,
+    placeholderData: (prev) => prev,
   });
+  const logs = list?.rows || [];
+  const total = list?.total || 0;
 
   // Mentor / staff tier (includes custom Role-Management roles)
   const isMentorRole = currentUser && isMentorTier(currentUser.app_role);
 
+  // Students to pick from in the Add / Edit form — loaded when it opens.
   const { data: students = [] } = useQuery({
     queryKey: ['students'],
     queryFn: () => base44.entities.Student.list(),
-    enabled: !!currentUser
+    enabled: !!currentUser && (showAddDialog || showEditDialog)
   });
 
   const createMutation = useMutation({
@@ -77,8 +91,7 @@ export default function StudentLogs() {
   });
 
   const updateMutation = useMutation({
-    mutationFn: async ({ id, data }) => {
-      const oldLog = logs.find(l => l.id === id);
+    mutationFn: async ({ id, data, oldLog }) => {
       const updatedLog = await base44.entities.StudentLog.update(id, data);
       // Detect changes and record history
       const changes = detectChanges(oldLog, data);
@@ -134,41 +147,8 @@ export default function StudentLogs() {
     }
   }
 
-  // Filter logs based on user role
-  let visibleLogs = logs;
-  
-  // If current user is a mentor, filter logs to only show their students' logs
-  if (isMentorRole) {
-    const mentoredStudentIds = new Set();
-    students.forEach(student => {
-      if (student.primary_mentor_id === currentUser.id || student.senior_mentor_id === currentUser.id) {
-        mentoredStudentIds.add(student.id);
-      }
-    });
-    // For 'assistance' role, also consider assigned_mentor_id if it exists
-    if (currentUser.app_role === 'assistance' && currentUser.assigned_mentor_id) {
-      students.forEach(student => {
-        if (student.primary_mentor_id === currentUser.assigned_mentor_id || student.senior_mentor_id === currentUser.assigned_mentor_id) {
-          mentoredStudentIds.add(student.id);
-        }
-      });
-    }
-
-    visibleLogs = logs.filter(log => mentoredStudentIds.has(log.student_id));
-  }
-  
-  // Filter logs by search term
-  let filteredLogs = visibleLogs;
-  if (searchTerm) {
-    const lowerSearch = searchTerm.toLowerCase();
-    const has = (v) => v != null && String(v).toLowerCase().includes(lowerSearch);
-    filteredLogs = visibleLogs.filter(log =>
-      has(log.student_name) ||
-      has(log.student_code) ||
-      has(log.email) ||
-      has(log.phone_number)
-    );
-  }
+  // This page of the logs they may see (the server applied who sees what, and the search).
+  const filteredLogs = logs;
 
   const handleAdd = () => {
     setSelectedLog(null);
@@ -187,15 +167,25 @@ export default function StudentLogs() {
 
   const handleSubmit = (formData) => {
     if (selectedLog) {
-      updateMutation.mutate({ id: selectedLog.id, data: formData });
+      updateMutation.mutate({ id: selectedLog.id, data: formData, oldLog: selectedLog });
     } else {
       createMutation.mutate(formData);
     }
   };
 
-  const handleExport = () => {
-    if (filteredLogs.length === 0) {
+  const handleExport = async () => {
+    if (total === 0) {
       toast.error('No logs to export');
+      return;
+    }
+    // Every log the search matches, not just this page.
+    let filteredLogs;
+    try {
+      const d = (await base44.functions.invoke('listStudentLogs', { all: true, filters: { search: debouncedSearch } })).data;
+      if (d?.truncated) toast.warning(`Only the first ${d.rows.length.toLocaleString()} of ${d.total.toLocaleString()}`);
+      filteredLogs = d?.rows || [];
+    } catch (e) {
+      toast.error(e?.message || 'Could not load the logs to export');
       return;
     }
 
@@ -283,7 +273,7 @@ export default function StudentLogs() {
         {/* Logs Table */}
         <Card className="border-gray-200">
           <CardHeader className="border-b border-gray-100 bg-slate-50/70">
-            <CardTitle className="text-lg font-semibold tracking-tight">Student Logs ({filteredLogs.length})</CardTitle>
+            <CardTitle className="text-lg font-semibold tracking-tight">Student Logs ({total.toLocaleString()})</CardTitle>
           </CardHeader>
           <CardContent className="p-0">
             <div className="overflow-x-auto">
@@ -305,7 +295,7 @@ export default function StudentLogs() {
                   {filteredLogs.length === 0 ? (
                     <TableRow>
                       <TableCell colSpan={9} className="text-center py-8 text-gray-500">
-                        No student logs found
+                        {logsLoading ? 'Loading student logs…' : 'No student logs found'}
                       </TableCell>
                     </TableRow>
                   ) : (
@@ -370,6 +360,7 @@ export default function StudentLogs() {
                 </TableBody>
               </Table>
             </div>
+            <TablePagination page={list?.page || page} pageSize={pageSize} total={total} onPageChange={setPage} onPageSizeChange={setPageSize} busy={logsFetching} />
           </CardContent>
         </Card>
 

@@ -5,6 +5,7 @@ import { Badge } from '@/components/ui/badge';
 import { Download, RefreshCw } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { format } from 'date-fns';
+import { TablePagination, usePagination } from '@/components/common/TablePagination';
 
 export default function CommissionByMentorReport({ startDate, endDate, dateLabel, isMentor, mentorId }) {
     const navigate = useNavigate();
@@ -46,6 +47,7 @@ export default function CommissionByMentorReport({ startDate, endDate, dateLabel
         acc.buffer_25 += r.buffer_25 || 0;
         return acc;
     }, { total_deposit: 0, total_bonus: 0, total_withdrawal: 0, net_deposit: 0, commissionable_net: 0, gross_commission: 0, manual_adjustment: 0, adjusted_gross: 0, release_75: 0, buffer_25: 0 });
+    const { pageItems: pageRows, bar } = usePagination(rows, { resetKey: `${startDate}|${endDate}` });
 
     const handleExport = () => {
         const headers = ['Mentor', 'Total Deposit', 'Total Bonus', 'Total Withdrawal', 'Net Deposit', 'Commissionable Net (capped)', 'Gross Commission (4%)', 'Manual Adjustments', 'Adjusted Gross', 'Release (75%)', 'Buffer (25%)', 'Txns'];
@@ -127,7 +129,7 @@ export default function CommissionByMentorReport({ startDate, endDate, dateLabel
                         <tbody>
                             {rows.length === 0 ? (
                                 <tr><td colSpan={12} className="text-center py-12 text-gray-400">No commission data found for this period.</td></tr>
-                            ) : rows.map((row, idx) => (
+                            ) : pageRows.map((row, idx) => (
                                 <tr key={row.mentor_id} onClick={() => navigate(`/ReportTransactionDetails?filterType=mentor&filterId=${row.mentor_id}&filterName=${encodeURIComponent(row.mentor_name)}&startDate=${startDate}&endDate=${endDate}&dateLabel=${encodeURIComponent(dateLabel)}`)} className={`border-b border-gray-100 hover:bg-blue-50 cursor-pointer ${idx % 2 !== 0 ? 'bg-gray-50/40' : ''}`}>
                                     <td className="px-4 py-3 font-medium text-gray-900">{row.mentor_name}</td>
                                     <td className="px-4 py-3 text-center"><Badge variant="outline">{row.transaction_count}</Badge></td>
@@ -163,6 +165,7 @@ export default function CommissionByMentorReport({ startDate, endDate, dateLabel
                         </tfoot>
                     </table>
                 </div>
+                <TablePagination {...bar} />
             </div>
         </div>
     );

@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { PageTitle } from '@/components/common/PageHeader';
+import { TablePagination, usePagination } from '@/components/common/TablePagination';
 import { base44 } from "@/api/base44Client";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
@@ -185,6 +186,8 @@ export default function CommissionTools() {
     queryFn: () => base44.entities.ManualCommissionAdjustment.list('-created_date'),
     enabled: !!currentUser,
   });
+  // The adjustments log shows 25 to a page.
+  const { pageItems: pageAdjustments, bar: adjustmentsBar } = usePagination(adjustments);
 
   const createAdjMutation = useMutation({
     mutationFn: async () => {
@@ -432,7 +435,7 @@ export default function CommissionTools() {
                 {adjustments.length === 0 ? (
                   <TableRow><TableCell colSpan={isSuperAdmin ? 8 : 7} className="text-center py-8 text-gray-500">No adjustments yet.</TableCell></TableRow>
                 ) : (
-                  adjustments.map(adj => (
+                  pageAdjustments.map(adj => (
                     <TableRow key={adj.id} className="hover:bg-gray-50">
                       <TableCell className="text-sm">{format(new Date(adj.effective_date || adj.created_date), 'MMM d, yyyy')}</TableCell>
                       <TableCell className="text-sm font-medium text-purple-700">{quarterLabelFor(adj.effective_date, adj.created_date)}</TableCell>
@@ -473,6 +476,7 @@ export default function CommissionTools() {
                 )}
               </TableBody>
             </Table>
+            <TablePagination {...adjustmentsBar} />
           </CardContent>
         </Card>
 

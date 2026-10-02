@@ -14,6 +14,7 @@ import { Plus, Upload } from "lucide-react";
 import { canApproveTransactions } from "../components/utils/DataMasking";
 import { isMentorRole } from "@/components/utils/roles";
 import { toast } from "sonner";
+import { TablePagination, DEFAULT_PAGE_SIZE } from "@/components/common/TablePagination";
 
 export default function Transactions() {
   const [currentUser, setCurrentUser] = useState(null);
@@ -35,6 +36,8 @@ export default function Transactions() {
     user_id: ''
   });
   const [rejectionReason, setRejectionReason] = useState('');
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(DEFAULT_PAGE_SIZE);
 
   const queryClient = useQueryClient();
 
@@ -46,16 +49,20 @@ export default function Transactions() {
     fetchUser();
   }, []);
 
-  const { data: transactions = [] } = useQuery({
-    queryKey: ['transactions'],
-    queryFn: () => base44.entities.FundingTransaction.list('-requested_at'),
-    enabled: !!currentUser
+  // Paged on the server (backend/src/functions/pagedLists.ts): a mentor's own students' transactions, and the status tab.
+  useEffect(() => { setPage(1); }, [filterStatus, pageSize]);
+  const { data: list, isFetching: listFetching } = useQuery({
+    queryKey: ['transactions', 'page', page, pageSize, filterStatus],
+    queryFn: async () => (await base44.functions.invoke('listTransactions', { page, pageSize, filters: { status: filterStatus } })).data,
+    enabled: !!currentUser,
+    placeholderData: (prev) => prev,
   });
 
-  const { data: students = [] } = useQuery({
-    queryKey: ['students'],
-    queryFn: () => base44.entities.Student.list(),
-    enabled: !!currentUser
+  // A mentor's own students, for New Request — loaded when it opens.
+  const { data: myStudents = [] } = useQuery({
+    queryKey: ['students', 'mine', currentUser?.id],
+    queryFn: () => base44.entities.Student.filter({ primary_mentor_id: currentUser.id }, 'full_name'),
+    enabled: !!currentUser && showAddDialog
   });
 
   const createMutation = useMutation({
@@ -111,7 +118,7 @@ export default function Transactions() {
   };
 
   const handleSubmit = () => {
-    const student = students.find(s => s.id === formData.student_id);
+    const student = myStudents.find(s => s.id === formData.student_id);
     const dataToSave = {
       type: formData.type.toUpperCase(),
       student_id: formData.student_id,
@@ -174,17 +181,8 @@ export default function Transactions() {
 
   if (!currentUser) return <div className="flex items-center justify-center h-screen">Loading...</div>;
 
-  // Filter transactions
-  const myStudents = students.filter(s => s.primary_mentor_id === currentUser.id);
-  const myStudentIds = myStudents.map(s => s.id);
-  
-  let filteredTransactions = isMentorRole(currentUser.app_role)
-    ? transactions.filter(t => t.primary_mentor_id === currentUser.id)
-    : transactions;
-
-  if (filterStatus !== 'all') {
-    filteredTransactions = filteredTransactions.filter(t => t.status?.toUpperCase() === filterStatus.toUpperCase());
-  }
+  // This page (the server applied who sees what, and the status tab).
+  const filteredTransactions = list?.rows || [];
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100 p-6">
@@ -219,6 +217,7 @@ export default function Transactions() {
           onView={(t) => setSelectedTransaction(t)}
           onApprove={handleApprove}
           onReject={handleReject}
+          footer={<TablePagination page={list?.page || page} pageSize={pageSize} total={list?.total || 0} onPageChange={setPage} onPageSizeChange={setPageSize} busy={listFetching} />}
         />
 
         {/* Add Dialog */}
@@ -240,7 +239,7 @@ export default function Transactions() {
                   <SelectContent>
                     {myStudents.map((student) => (
                       <SelectItem key={student.id} value={student.id}>
-                        {student.name}
+                        {student.full_name}
                       </SelectItem>
                     ))}
                   </SelectContent>

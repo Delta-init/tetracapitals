@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import PageHeader from '@/components/common/PageHeader';
+import { Paged, TablePagination } from '@/components/common/TablePagination';
 import StatsCard from '@/components/dashboard/StatsCard';
 import { Clock as PendingIcon, CheckCircle2 as ApprovedIcon, XCircle as RejectedIcon, DollarSign as AmountIcon } from 'lucide-react';
 import { base44 } from "@/api/base44Client";
@@ -233,6 +234,9 @@ export default function FundingRequests() {
         has(student?.email);
     });
   }
+
+  // The table shows 25 to a page — back to page 1 whenever the search or a filter changes.
+  const pageResetKey = [searchTerm, filterStatus, filterType, filterMentor, filterPaymentMethod, filterTag, filterDateFrom, filterDateTo].join('|');
 
   // Get unique mentors for filter
   const uniqueMentors = [...new Set(transactions.map(t => t.primary_mentor_name))].filter(Boolean);
@@ -689,6 +693,12 @@ export default function FundingRequests() {
               {['super_admin', 'broker_admin'].includes(currentUser.app_role) && selectedPendingIds.length > 0 && (
                 <div className="flex items-center gap-2">
                   <span className="text-sm text-gray-600">{selectedPendingIds.length} selected</span>
+                  {selectedPendingIds.length < pendingTransactions.length && (
+                    <button type="button" className="text-sm font-medium text-blue-600 hover:underline" onClick={() => handleSelectAll(true)}>
+                      Select all {pendingTransactions.length} pending
+                    </button>
+                  )}
+                  <button type="button" className="text-sm text-gray-500 hover:underline" onClick={() => setSelectedIds([])}>Clear</button>
                   <Button
                     size="sm"
                     onClick={handleBulkApprove}
@@ -713,6 +723,11 @@ export default function FundingRequests() {
               {currentUser.app_role === 'super_admin' && selectedIds.length > 0 && (
                 <div className="flex items-center gap-2">
                   <span className="text-sm text-gray-600">{selectedIds.length} selected</span>
+                  {selectedIds.length < filteredTransactions.length && (
+                    <button type="button" className="text-sm font-medium text-blue-600 hover:underline" onClick={() => setSelectedIds(filteredTransactions.map(t => t.id))}>
+                      Select all {filteredTransactions.length}
+                    </button>
+                  )}
                   <Button
                     size="sm"
                     onClick={() => setShowBulkUpdateDialog(true)}
@@ -737,27 +752,28 @@ export default function FundingRequests() {
             </div>
           </CardHeader>
           <CardContent className="p-0">
+            <Paged items={filteredTransactions} resetKey={pageResetKey}>{(pageTransactions, bar) => (<>
             <div className="overflow-x-auto">
               <Table>
                 <TableHeader>
                   <TableRow className="bg-gray-50">
                     {['super_admin', 'broker_admin'].includes(currentUser.app_role) && (
                       <TableHead className="w-12">
-                        <Checkbox
-                          checked={
-                            currentUser.app_role === 'super_admin' 
-                              ? filteredTransactions.length > 0 && selectedIds.length === filteredTransactions.length
-                              : pendingTransactions.length > 0 && selectedPendingIds.length === pendingTransactions.length
-                          }
-                          onCheckedChange={(checked) => {
-                            if (currentUser.app_role === 'super_admin') {
-                              setSelectedIds(checked ? filteredTransactions.map(t => t.id) : []);
-                            } else {
-                              handleSelectAll(checked);
-                            }
-                          }}
-                          disabled={currentUser.app_role === 'super_admin' ? filteredTransactions.length === 0 : pendingTransactions.length === 0}
-                        />
+                        {(() => {
+                          // Ticks this page's rows; "Select all N" above the table takes in the other pages.
+                          const pageIds = (currentUser.app_role === 'super_admin'
+                            ? pageTransactions
+                            : pageTransactions.filter(t => t.status === 'PENDING' && !withAccounts(t))).map(t => t.id);
+                          return (
+                            <Checkbox
+                              checked={pageIds.length > 0 && pageIds.every(id => selectedIds.includes(id))}
+                              onCheckedChange={(checked) => setSelectedIds(prev => (checked
+                                ? [...new Set([...prev, ...pageIds])]
+                                : prev.filter(id => !pageIds.includes(id))))}
+                              disabled={pageIds.length === 0}
+                            />
+                          );
+                        })()}
                       </TableHead>
                     )}
                     <TableHead className="font-semibold">Requested</TableHead>
@@ -789,7 +805,7 @@ export default function FundingRequests() {
                       </TableCell>
                     </TableRow>
                   ) : (
-                    filteredTransactions.map((transaction) => {
+                    pageTransactions.map((transaction) => {
                       const student = students.find(s => s.id === transaction.student_id);
                       
                       return (
@@ -949,6 +965,8 @@ export default function FundingRequests() {
                 </TableBody>
               </Table>
             </div>
+            <TablePagination {...bar} />
+            </>)}</Paged>
           </CardContent>
         </Card>
 

@@ -29,6 +29,8 @@ import { getStudentTags, setStudentTag } from "./studentTags";
 import { getPushConfig, savePushSubscription, deletePushSubscription, sendTestPush } from "./push";
 import { getNavCounts, markStudentSeen } from "./navCounts";
 import { getTabbyLinks, createTabbyLink, cancelTabbyLink } from "./tabbyLinks";
+import { listStudents, getStudentListOptions, findStudentByEmail } from "./studentsList";
+import { listStudentLogs, listStudentLogHistory, listTransactions } from "./pagedLists";
 import {
   getWhatsAppStatus, connectWhatsApp, disconnectWhatsApp, getWhatsAppChats, getWhatsAppMessages, markWhatsAppRead,
   sendWhatsApp, sendWhatsAppFile, linkWhatsAppChat, getStudentWhatsApp, getWhatsAppUnread,
@@ -75,6 +77,12 @@ const AUTHED: Record<string, AuthedHandler> = {
   getTabbyLinks,
   createTabbyLink,
   cancelTabbyLink,
+  listStudents,
+  getStudentListOptions,
+  findStudentByEmail,
+  listStudentLogs,
+  listStudentLogHistory,
+  listTransactions,
   getWhatsAppStatus,
   connectWhatsApp,
   disconnectWhatsApp,

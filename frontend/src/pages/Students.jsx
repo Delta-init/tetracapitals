@@ -1,10 +1,11 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { enrolmentOf, ENROLMENT, EnrolledSwitch, isEnrolled } from '@/components/students/enrolment';
-import { commonOf, isStudentOf } from '@/components/students/common';
+import { enrolmentOf, ENROLMENT, EnrolledSwitch } from '@/components/students/enrolment';
+import { isStudentOf } from '@/components/students/common';
 import { StudentTagChips, tagNamesOf, useStudentTagCatalog } from '@/components/students/tags';
 import PageHeader from '@/components/common/PageHeader';
 import { Link, useNavigate } from 'react-router-dom';
-import { courseLabel, productsByStudent, courseProductOptions, matchesCourseProduct, studentCourses, studentBalance, balanceText } from '@/components/utils/studentProducts';
+import { courseLabel, studentCourses, studentBalance, balanceText } from '@/components/utils/studentProducts';
+import { TablePagination, DEFAULT_PAGE_SIZE } from '@/components/common/TablePagination';
 import { base44 } from "@/api/base44Client";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
@@ -16,7 +17,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import StudentForm from "../components/students/StudentForm";
 import StudentRequestForm from "../components/students/StudentRequestForm";
 import BulkImportStudentsDialog from "../components/students/BulkImportStudentsDialog";
-import { isMentorRole as isMentorTier, getScope, downlineIds } from "@/components/utils/roles";
+import { isMentorRole as isMentorTier, getScope } from "@/components/utils/roles";
 
 import { Plus, Search, Eye, Users, UserCheck, Upload, Download, Filter, ArrowUp, Share2, Trash2, ArrowRightLeft, Sparkles } from "lucide-react";
 import TransferStudentsDialog from "../components/students/TransferStudentsDialog";
@@ -82,7 +83,11 @@ export default function Students() {
   const [filterDateRange, setFilterDateRange] = useState('all');
   const [customDateFrom, setCustomDateFrom] = useState(null);
   const [customDateTo, setCustomDateTo] = useState(null);
-  const [selectedStudentIds, setSelectedStudentIds] = useState([]);
+  // Ticked rows, kept across pages: id → student.
+  const [selected, setSelected] = useState({});
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(DEFAULT_PAGE_SIZE);
+  const [debouncedSearch, setDebouncedSearch] = useState('');
   const [showBulkUpgradeDialog, setShowBulkUpgradeDialog] = useState(false);
 
   const queryClient = useQueryClient();
@@ -101,19 +106,60 @@ export default function Students() {
   }, []);
 
   const { data: tagCatalog = [] } = useStudentTagCatalog();
-  const { data: students = [] } = useQuery({
-    queryKey: ['students'],
-    queryFn: () => base44.entities.Student.list('-created_date'),
-    enabled: !!currentUser
+
+  // The list is paged on the server (backend/src/functions/studentsList.ts): the tab, search and every filter go
+  // there, one page comes back with how many match.
+  const isMentorUser = !!currentUser && isMentorTier(currentUser.app_role);
+  const isAdminUser = !!currentUser && ['super_admin', 'broker_admin', 'academic_head'].includes(currentUser.app_role);
+  const serverTab = !currentUser ? null : (isMentorUser || isAdminUser) ? activeTab : 'all';
+  useEffect(() => {
+    const t = setTimeout(() => setDebouncedSearch(searchTerm.trim()), 300);
+    return () => clearTimeout(t);
+  }, [searchTerm]);
+  // "Last 7 / 30 days" counts back from when it was picked, so the request stays the same while it is on.
+  const dateRange = useMemo(() => {
+    const now = new Date();
+    if (filterDateRange === 'weekly') { const from = new Date(now); from.setDate(from.getDate() - 7); return { from, to: now }; }
+    if (filterDateRange === 'monthly') { const from = new Date(now); from.setMonth(from.getMonth() - 1); return { from, to: now }; }
+    if (filterDateRange === 'custom' && customDateFrom && customDateTo) return { from: customDateFrom, to: customDateTo };
+    return null;
+  }, [filterDateRange, customDateFrom, customDateTo]);
+  const listFilters = useMemo(() => ({
+    search: debouncedSearch, onlyNew, tag: filterTag, enrolment: filterEnrolment, course: filterCourse, balance: filterBalance,
+    from: dateRange ? new Date(dateRange.from).toISOString() : '', to: dateRange ? new Date(dateRange.to).toISOString() : '',
+    status: filterStatus, team: filterTeam, level: filterLevel, mentor: filterMentor,
+  }), [debouncedSearch, onlyNew, filterTag, filterEnrolment, filterCourse, filterBalance, dateRange, filterStatus, filterTeam, filterLevel, filterMentor]);
+  const filtersKey = JSON.stringify(listFilters);
+  // A new tab, search or filter starts at page 1 with nothing ticked.
+  useEffect(() => { setPage(1); setSelected({}); }, [serverTab, filtersKey]);
+  useEffect(() => { setPage(1); }, [pageSize]);
+
+  const { data: list, isLoading: listLoading, isFetching: listFetching } = useQuery({
+    queryKey: ['students', 'page', serverTab, page, pageSize, filtersKey],
+    queryFn: async () => (await base44.functions.invoke('listStudents', { tab: serverTab, page, pageSize, filters: listFilters })).data,
+    enabled: !!serverTab,
+    // Keep this tab's rows on screen while the next page loads (not another tab's).
+    placeholderData: (prev, prevQuery) => (prevQuery?.queryKey?.[2] === serverTab ? prev : undefined),
+  });
+  const rows = list?.rows || [];
+  const total = list?.total || 0;
+  const counts = list?.counts || {};
+
+  // The choices in the Course / Product and CS filters.
+  const { data: listOptions } = useQuery({
+    queryKey: ['students', 'options'],
+    queryFn: async () => (await base44.functions.invoke('getStudentListOptions', {})).data,
+    enabled: !!currentUser,
+    staleTime: 5 * 60_000,
   });
 
-  // Approved deposits → each student's products (tags such as DSLP, MMC).
-  const { data: productTransactions = [] } = useQuery({
-    queryKey: ['student-product-transactions'],
-    queryFn: () => base44.entities.FundingTransaction.list('-requested_at'),
-    enabled: !!currentUser,
-  });
-  const studentProducts = useMemo(() => productsByStudent(productTransactions), [productTransactions]);
+  // Everyone matching the tab and filters (export, "select all") — up to 10,000.
+  const fetchAllMatching = async () => {
+    const d = (await base44.functions.invoke('listStudents', { tab: serverTab, all: true, filters: listFilters })).data;
+    if (d?.truncated) toast.warning(`Only the first ${d.rows.length.toLocaleString()} of ${d.total.toLocaleString()} — narrow the filters`);
+    return d?.rows || [];
+  };
+  const findByEmail = async (email) => (email ? (await base44.functions.invoke('findStudentByEmail', { email })).data?.student : null);
 
   const { data: users = [] } = useQuery({
     queryKey: ['users'],
@@ -131,18 +177,13 @@ export default function Students() {
     enabled: !!currentUser && currentUser.app_role === 'academic_admin'
   });
 
-  const { data: allStudentsForCoManaged = [] } = useQuery({
-    queryKey: ['all-students-co-managed'],
-    queryFn: () => base44.entities.Student.list('-created_date'),
-    enabled: !!currentUser && isMentorRole(currentUser?.app_role)
-  });
 
 
 
   const createMutation = useMutation({
     mutationFn: async (data) => {
       // Check for duplicate email
-      const existingStudent = students.find(s => s.email?.toLowerCase() === data.email?.toLowerCase());
+      const existingStudent = await findByEmail(data.email);
       if (existingStudent) {
         throw new Error(`A student with email ${data.email} already exists (${existingStudent.student_code} - ${existingStudent.full_name})`);
       }
@@ -168,7 +209,7 @@ export default function Students() {
   const createRequestMutation = useMutation({
     mutationFn: async (data) => {
       // Check for duplicate email — block for all roles
-      const existingStudent = students.find(s => s.email?.toLowerCase() === data.email?.toLowerCase());
+      const existingStudent = await findByEmail(data.email);
       if (existingStudent) {
         if (isStudentOf(existingStudent, currentUser.id)) {
           throw new Error('DUPLICATE_OWN_STUDENT');
@@ -265,7 +306,7 @@ export default function Students() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['students'] });
-      setSelectedStudentIds([]);
+      setSelected({});
       setShowBulkUpgradeDialog(false);
       toast.success('Students upgraded to Level 2 successfully');
     },
@@ -336,11 +377,6 @@ export default function Students() {
 
   if (!currentUser) return <div className="flex items-center justify-center h-screen">Loading...</div>;
 
-  // Must be defined before query usage above — hoisted via function declaration
-  function isMentorRole(role) {
-    return isMentorTier(role);
-  }
-
   const canCreate = canSubmitStudentRequest(currentUser.app_role);
   const isMentor = isMentorTier(currentUser.app_role);
   // Team tab: roles whose visibility is Team (Chief Mentor by default).
@@ -348,39 +384,30 @@ export default function Students() {
   const isAssistance = currentUser.app_role === 'assistance';
   const isAdmin = ['super_admin', 'broker_admin', 'academic_head'].includes(currentUser.app_role);
   const isSuperAdmin = currentUser.app_role === 'super_admin';
-  const newForMe = students.filter(s => isNewFor(s, currentUser.id)).length;
+  const newForMe = counts.new_for_me || 0;
 
-  // Co-managed students: where current user appears in co_mentors_details (mentors)
-  const coManagedStudents = isMentor ? (allStudentsForCoManaged.length ? allStudentsForCoManaged : students).filter(s => {
-    if (!s.co_mentors_details) return false;
-    try {
-      const co = JSON.parse(s.co_mentors_details);
-      return Array.isArray(co) && co.some(m => m.mentor_id === currentUser.id);
-    } catch (_) { return false; }
-  }) : [];
-
-  // All co-managed students for admin view
-  const allCoManagedStudents = isAdmin ? students.filter(s => {
-    if (!s.co_mentors_details) return false;
-    try {
-      const co = JSON.parse(s.co_mentors_details);
-      return Array.isArray(co) && co.length > 0;
-    } catch (_) { return false; }
-  }) : [];
-
-  const handleSelectAll = (checked, currentFilteredStudents) => {
-    if (checked) {
-      setSelectedStudentIds(currentFilteredStudents.map(s => s.id));
-    } else {
-      setSelectedStudentIds([]);
-    }
+  // Tick boxes: a row, this page, or everyone matching (across pages).
+  const pageAllSelected = rows.length > 0 && rows.every(s => selected[s.id]);
+  const handleSelectAll = (checked) => {
+    setSelected(prev => {
+      const next = { ...prev };
+      for (const s of rows) { if (checked) next[s.id] = s; else delete next[s.id]; }
+      return next;
+    });
   };
-
-  const handleSelectStudent = (studentId, checked) => {
-    if (checked) {
-      setSelectedStudentIds(prev => [...prev, studentId]);
-    } else {
-      setSelectedStudentIds(prev => prev.filter(id => id !== studentId));
+  const handleSelectStudent = (student, checked) => {
+    setSelected(prev => {
+      const next = { ...prev };
+      if (checked) next[student.id] = student; else delete next[student.id];
+      return next;
+    });
+  };
+  const selectAllMatching = async () => {
+    try {
+      const everyone = await fetchAllMatching();
+      setSelected(Object.fromEntries(everyone.map(s => [s.id, s])));
+    } catch (e) {
+      toast.error(e?.message || 'Could not select them all');
     }
   };
 
@@ -389,143 +416,17 @@ export default function Students() {
     ['junior_mentor', 'chief_mentor', 'senior_mentor', 'subjunior_mentor'].includes(u.app_role)
   );
 
-  // For mentors: filter students into My, Team, and Open Pool
-  // For assistance: show only students of their assigned mentor
-  // For academic_admin: show only students they created
-  // For admins: show all students + open pool tab
-  let myStudents = [];
-  let teamStudents = [];
-  let openPoolStudents = [];
-  let allStudents = students;
+  // The CS filter's choices (every CS among the students they may see).
+  const uniqueMentors = listOptions?.mentors || [];
 
-  if (isAssistance && currentUser.assigned_mentor_id) {
-    // Assistance sees only students assigned to their mentor
-    allStudents = students.filter(s => s.primary_mentor_id === currentUser.assigned_mentor_id);
-  } else if (isMentor) {
-    // Filter MY students - students where I am the primary mentor, or a CS they are Common with
-    myStudents = students.filter(s => isStudentOf(s, currentUser.id));
-    
-    // Filter TEAM students - students of people on my team (Up Head chain), or
-    // where I'm listed as their senior mentor, but NOT my own students
-    const team = hasTeamView ? downlineIds(currentUser.id, users) : null;
-    teamStudents = hasTeamView ? students.filter(s =>
-      !isStudentOf(s, currentUser.id) &&
-      (team.has(s.primary_mentor_id) || commonOf(s).some(c => team.has(c.id)) || s.senior_mentor_id === currentUser.id)
-    ) : [];
-    
-    // Filter OPEN POOL students - students without assigned mentors
-    openPoolStudents = students.filter(s => s.assignment_status === 'open_pool');
-  } else if (isAdmin) {
-    // Admins see open pool students in separate tab
-    openPoolStudents = students.filter(s => s.assignment_status === 'open_pool');
-  }
-
-  // Get unique mentors for filter
-  const uniqueMentors = [...new Set(students.map(s => s.primary_mentor_name))].filter(Boolean).sort();
-
-  // Get date range based on filter
-  const getDateRange = () => {
-    const now = new Date();
-    if (filterDateRange === 'weekly') {
-      const weekAgo = new Date(now);
-      weekAgo.setDate(weekAgo.getDate() - 7);
-      return { from: weekAgo, to: now };
-    } else if (filterDateRange === 'monthly') {
-      const monthAgo = new Date(now);
-      monthAgo.setMonth(monthAgo.getMonth() - 1);
-      return { from: monthAgo, to: now };
-    } else if (filterDateRange === 'custom' && customDateFrom && customDateTo) {
-      return { from: customDateFrom, to: customDateTo };
-    }
-    return null;
-  };
-
-  // Get base student list based on role and active tab
-  let baseStudents;
-  if (isMentor) {
-    baseStudents = activeTab === 'my' ? myStudents : activeTab === 'team' ? teamStudents : openPoolStudents;
-  } else if (isAssistance) {
-    baseStudents = allStudents;
-  } else if (isAdmin) {
-    baseStudents = activeTab === 'open_pool' ? openPoolStudents : allStudents;
-  } else {
-    baseStudents = allStudents;
-  }
-
-  // Apply all filters to base list
-  let filteredStudents = baseStudents;
-
-  // Apply search filter
-  if (searchTerm) {
-    const q = searchTerm.toLowerCase();
-    const has = (v) => v != null && String(v).toLowerCase().includes(q);
-    filteredStudents = filteredStudents.filter(s =>
-      has(s.full_name) ||
-      has(s.student_code) ||
-      has(s.email) ||
-      has(s.phone)
-    );
-  }
-
-  // Apply mentor filter (only for "all" tab)
-  if (filterMentor !== 'all' && activeTab === 'all') {
-    filteredStudents = filteredStudents.filter(s => s.primary_mentor_name === filterMentor);
-  }
-
-  // Apply status filter
-  if (filterStatus !== 'all') {
-    filteredStudents = filteredStudents.filter(s => s.status === filterStatus);
-  }
-
-  // Only the students given to you that you haven't opened yet
-  if (onlyNew) {
-    filteredStudents = filteredStudents.filter(s => isNewFor(s, currentUser.id));
-  }
-
-  // Apply the tag and Enrolled filters (Enrolled = Enrolment Closed; Not enrolled = Open or Old)
-  if (filterTag !== 'all') {
-    filteredStudents = filteredStudents.filter(s => tagNamesOf(s).includes(filterTag));
-  }
-  if (filterEnrolment !== 'all') {
-    filteredStudents = filteredStudents.filter(s => isEnrolled(s) === (filterEnrolment === 'enrolled'));
-  }
-
-  // Apply course / product filter
-  if (filterCourse !== 'all') {
-    filteredStudents = filteredStudents.filter(s => matchesCourseProduct(s, studentProducts, filterCourse));
-  }
-
-  // Apply balance filter (from Course fees): still owing, or paid in full
-  if (filterBalance !== 'all') {
-    filteredStudents = filteredStudents.filter(s => { const b = studentBalance(s); return filterBalance === 'owing' ? b.owing : b.known && !b.owing; });
-  }
-
-  // Apply team filter
-  if (filterTeam !== 'all') {
-    filteredStudents = filteredStudents.filter(s => (filterTeam === 'none' ? !s.team_id : s.team_id === filterTeam));
-  }
-
-  // Apply level filter
-  if (filterLevel !== 'all') {
-    filteredStudents = filteredStudents.filter(s => (s.student_level || 'LEVEL_1') === filterLevel);
-  }
-
-  // Apply date filter (when they were added) — every tab
-  const dateRange = getDateRange();
-  if (dateRange) {
-    filteredStudents = filteredStudents.filter(s => {
-      if (!s.created_date) return false;
-      const createdDate = new Date(s.created_date);
-      return createdDate >= dateRange.from && createdDate <= dateRange.to;
-    });
-  }
-  
-  // Apply masking to displayed students
-  const displayStudents = filteredStudents.map(s => applyStudentMasking(s, currentUser.app_role));
-  
-  // Filter selected students to only Level 1 (after filteredStudents is defined)
-  const selectedLevel1Students = filteredStudents.filter(s => 
-    selectedStudentIds.includes(s.id) && (s.student_level || 'LEVEL_1') === 'LEVEL_1'
+  // This page of the tab — the server applied the search and every filter.
+  const displayStudents = rows.map(s => applyStudentMasking(s, currentUser.app_role));
+  // Ticked rows for Transfer (any level); Upgrade uses only Level 1.
+  const selectedStudents = Object.values(selected);
+  const selectedLevel1Students = selectedStudents.filter(s => (s.student_level || 'LEVEL_1') === 'LEVEL_1');
+  const emptyText = (text) => (listLoading ? 'Loading students…' : text);
+  const pager = (
+    <TablePagination page={list?.page || page} pageSize={pageSize} total={total} onPageChange={setPage} onPageSizeChange={setPageSize} busy={listFetching} />
   );
 
   const handleBulkUpgrade = () => {
@@ -542,9 +443,7 @@ export default function Students() {
     if (e.target.closest('button, a, input, [role="checkbox"], [role="menuitem"]')) return;
     navigate(`${createPageUrl('StudentDetail')}?id=${id}`);
   };
-  const courseOptions = courseProductOptions(students, studentProducts);
-  // Selected rows for Transfer (any level); Upgrade still uses only Level 1.
-  const selectedStudents = students.filter(s => selectedStudentIds.includes(s.id));
+  const courseOptions = { courses: listOptions?.courses || [], products: listOptions?.products || [] };
   const teamOptions = listTeams(users);
   const canDelete = canDeleteStudent(currentUser.app_role);
   
@@ -554,9 +453,17 @@ export default function Students() {
       : 'bg-gray-100 text-gray-800 border-gray-200';
   };
 
-  const handleExportStudents = () => {
-    if (filteredStudents.length === 0) {
+  const handleExportStudents = async () => {
+    if (total === 0) {
       toast.error('No students to export');
+      return;
+    }
+    // Everyone the tab and filters match, not just this page.
+    let filteredStudents;
+    try {
+      filteredStudents = await fetchAllMatching();
+    } catch (e) {
+      toast.error(e?.message || 'Could not load the students to export');
       return;
     }
 
@@ -828,7 +735,7 @@ export default function Students() {
               {isMentor && (
                 <TabsTrigger value="co_managed" className="flex items-center gap-1">
                   <Share2 className="h-3.5 w-3.5" />
-                  Co-Managed ({coManagedStudents.length})
+                  Co-Managed ({(counts.co_managed ?? 0).toLocaleString()})
                 </TabsTrigger>
               )}
 
@@ -839,7 +746,7 @@ export default function Students() {
               {['broker_admin', 'super_admin'].includes(currentUser.app_role) && (
                 <TabsTrigger value="admin_co_managed" className="flex items-center gap-1">
                   <Share2 className="h-3.5 w-3.5" />
-                  Co-Managed ({allCoManagedStudents.length})
+                  Co-Managed ({(counts.admin_co_managed ?? 0).toLocaleString()})
                 </TabsTrigger>
               )}
             </TabsList>
@@ -851,7 +758,7 @@ export default function Students() {
                   <div className="p-4 bg-gradient-to-r from-blue-50 to-indigo-50 border-b border-gray-200">
                     <h3 className="text-lg font-semibold flex items-center gap-2 tracking-tight">
                       <UserCheck className="h-5 w-5 text-blue-600" />
-                      My Students ({displayStudents.length})
+                      My Students ({total.toLocaleString()})
                     </h3>
                   </div>
                   <Table>
@@ -875,7 +782,7 @@ export default function Students() {
                       {displayStudents.length === 0 ? (
                         <TableRow>
                           <TableCell colSpan={12} className="text-center py-8 text-gray-500">
-                            No students found
+                            {emptyText('No students found')}
                           </TableCell>
                         </TableRow>
                       ) : (
@@ -930,6 +837,7 @@ export default function Students() {
                       )}
                     </TableBody>
                   </Table>
+                  {pager}
                 </div>
               </TabsContent>
             )}
@@ -941,7 +849,7 @@ export default function Students() {
                 <div className="p-4 bg-gradient-to-r from-purple-50 to-pink-50 border-b border-purple-200">
                   <h3 className="text-lg font-semibold flex items-center gap-2 tracking-tight">
                     <Users className="h-5 w-5 text-purple-600" />
-                    Team Students ({displayStudents.length})
+                    Team Students ({total.toLocaleString()})
                   </h3>
                 </div>
                 <Table>
@@ -965,7 +873,7 @@ export default function Students() {
                     {displayStudents.length === 0 ? (
                      <TableRow>
                        <TableCell colSpan={12} className="text-center py-8 text-gray-500">
-                         No team students found
+                         {emptyText('No team students found')}
                        </TableCell>
                      </TableRow>
                     ) : (
@@ -1020,6 +928,7 @@ export default function Students() {
                     )}
                   </TableBody>
                 </Table>
+                {pager}
               </div>
             </TabsContent>
           )}
@@ -1031,17 +940,28 @@ export default function Students() {
                 <div className="p-4 bg-slate-50/70 border-b border-gray-200">
                   <h3 className="text-lg font-semibold flex items-center gap-2 tracking-tight">
                     <Users className="h-5 w-5 text-blue-600" />
-                    All Students ({displayStudents.length})
+                    All Students ({total.toLocaleString()})
                   </h3>
                 </div>
+                {canEdit && selectedStudents.length > 0 && (
+                  <div className="flex flex-wrap items-center gap-3 border-b border-gray-200 bg-blue-50/60 px-4 py-2 text-sm text-slate-700">
+                    <span className="font-medium">{selectedStudents.length.toLocaleString()} selected</span>
+                    {pageAllSelected && selectedStudents.length < total && (
+                      <button type="button" className="font-medium text-blue-600 hover:underline" onClick={selectAllMatching}>
+                        Select all {total.toLocaleString()} matching
+                      </button>
+                    )}
+                    <button type="button" className="text-slate-500 hover:underline" onClick={() => setSelected({})}>Clear</button>
+                  </div>
+                )}
                 <Table>
                   <TableHeader>
                     <TableRow className="bg-gray-50">
                       {canEdit && (
                         <TableHead className="w-12">
                           <Checkbox
-                            checked={filteredStudents.length > 0 && filteredStudents.every(s => selectedStudentIds.includes(s.id))}
-                            onCheckedChange={(checked) => handleSelectAll(checked, filteredStudents)}
+                            checked={pageAllSelected}
+                            onCheckedChange={(checked) => handleSelectAll(!!checked)}
                           />
                         </TableHead>
                       )}
@@ -1063,7 +983,7 @@ export default function Students() {
                     {displayStudents.length === 0 ? (
                       <TableRow>
                         <TableCell colSpan={canEdit ? 13 : 12} className="text-center py-8 text-gray-500">
-                          No students found
+                          {emptyText('No students found')}
                         </TableCell>
                       </TableRow>
                     ) : (
@@ -1072,8 +992,8 @@ export default function Students() {
                           {canEdit && (
                             <TableCell>
                               <Checkbox
-                                checked={selectedStudentIds.includes(student.id)}
-                                onCheckedChange={(checked) => handleSelectStudent(student.id, checked)}
+                                checked={!!selected[student.id]}
+                                onCheckedChange={(checked) => handleSelectStudent(student, !!checked)}
                               />
                             </TableCell>
                           )}
@@ -1126,6 +1046,7 @@ export default function Students() {
                     )}
                   </TableBody>
                 </Table>
+                {pager}
               </div>
             </TabsContent>
           )}
@@ -1137,7 +1058,7 @@ export default function Students() {
                 <div className="p-4 bg-gradient-to-r from-purple-50 to-indigo-50 border-b border-purple-200">
                   <h3 className="text-lg font-semibold flex items-center gap-2 tracking-tight">
                     <Share2 className="h-5 w-5 text-purple-600" />
-                    Co-Managed Clients ({coManagedStudents.length})
+                    Co-Managed Clients ({total.toLocaleString()})
                   </h3>
                   <p className="text-sm text-gray-500 mt-1">Clients where you are a co-mentor. Commission is attributed to your deposits only.</p>
                 </div>
@@ -1160,14 +1081,14 @@ export default function Students() {
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {coManagedStudents.length === 0 ? (
+                    {displayStudents.length === 0 ? (
                       <TableRow>
                         <TableCell colSpan={13} className="text-center py-8 text-gray-500">
-                          No co-managed clients yet. Send a referral request from a Fund Request to get started.
+                          {emptyText('No co-managed clients yet. Send a referral request from a Fund Request to get started.')}
                         </TableCell>
                       </TableRow>
                     ) : (
-                      coManagedStudents.map((student) => {
+                      displayStudents.map((student) => {
         const _coMentors = Array.isArray(student.co_mentors_details)
           ? student.co_mentors_details
           : (() => { try { return JSON.parse(student.co_mentors_details || '[]'); } catch(_) { return []; } })();
@@ -1219,6 +1140,7 @@ export default function Students() {
                     )}
                   </TableBody>
                 </Table>
+                {pager}
               </div>
             </TabsContent>
           )}
@@ -1230,7 +1152,7 @@ export default function Students() {
               <div className="p-4 bg-gradient-to-r from-green-50 to-emerald-50 border-b border-green-200">
                 <h3 className="text-lg font-semibold flex items-center gap-2 tracking-tight">
                   <Users className="h-5 w-5 text-green-600" />
-                  Delta Open Students ({displayStudents.length})
+                  Delta Open Students ({total.toLocaleString()})
                 </h3>
                 <p className="text-sm text-gray-600 mt-1">Students available for mentor assignment</p>
               </div>
@@ -1253,7 +1175,7 @@ export default function Students() {
                   {displayStudents.length === 0 ? (
                     <TableRow>
                       <TableCell colSpan={10} className="text-center py-8 text-gray-500">
-                        No open pool students available
+                        {emptyText('No open pool students available')}
                       </TableCell>
                     </TableRow>
                   ) : (
@@ -1316,6 +1238,7 @@ export default function Students() {
                   )}
                 </TableBody>
               </Table>
+              {pager}
             </div>
           </TabsContent>
 
@@ -1326,7 +1249,7 @@ export default function Students() {
                 <div className="p-4 bg-gradient-to-r from-purple-50 to-indigo-50 border-b border-purple-200">
                   <h3 className="text-lg font-semibold flex items-center gap-2 tracking-tight">
                     <Share2 className="h-5 w-5 text-purple-600" />
-                    Co-Managed Clients ({allCoManagedStudents.length})
+                    Co-Managed Clients ({total.toLocaleString()})
                   </h3>
                   <p className="text-sm text-gray-500 mt-1">All co-managed client relationships across all mentors</p>
                 </div>
@@ -1350,14 +1273,14 @@ export default function Students() {
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {allCoManagedStudents.length === 0 ? (
+                    {displayStudents.length === 0 ? (
                       <TableRow>
                         <TableCell colSpan={14} className="text-center py-8 text-gray-500">
-                          No co-managed clients found
+                          {emptyText('No co-managed clients found')}
                         </TableCell>
                       </TableRow>
                     ) : (
-                      allCoManagedStudents.flatMap((student) => {
+                      displayStudents.flatMap((student) => {
                         let coMentors = [];
                         try { coMentors = JSON.parse(student.co_mentors_details || '[]'); } catch (_) {}
                         return coMentors.map((co, idx) => {
@@ -1393,6 +1316,7 @@ export default function Students() {
                     )}
                   </TableBody>
                 </Table>
+                {pager}
               </div>
             </TabsContent>
           )}
@@ -1403,7 +1327,7 @@ export default function Students() {
             <div className="p-4 bg-slate-50/70 border-b border-gray-200">
               <h3 className="text-lg font-semibold flex items-center gap-2 tracking-tight">
                 <Users className="h-5 w-5 text-blue-600" />
-                All Students ({displayStudents.length})
+                All Students ({total.toLocaleString()})
               </h3>
             </div>
             <Table>
@@ -1427,7 +1351,7 @@ export default function Students() {
                 {displayStudents.length === 0 ? (
                   <TableRow>
                     <TableCell colSpan={12} className="text-center py-8 text-gray-500">
-                      No students found
+                      {emptyText('No students found')}
                     </TableCell>
                   </TableRow>
                 ) : (
@@ -1482,6 +1406,7 @@ export default function Students() {
                 )}
               </TableBody>
             </Table>
+            {pager}
           </div>
         )}
 
@@ -1519,8 +1444,7 @@ export default function Students() {
           users={users}
           onDone={() => {
             queryClient.invalidateQueries({ queryKey: ['students'] });
-            queryClient.invalidateQueries({ queryKey: ['all-students-co-managed'] });
-            setSelectedStudentIds([]);
+            setSelected({});
           }}
         />
 

@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { PageTitle } from '@/components/common/PageHeader';
+import { Paged, TablePagination } from '@/components/common/TablePagination';
 import { base44 } from "@/api/base44Client";
 import { useQuery } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
@@ -120,72 +121,77 @@ export default function MT5Accounts() {
 
         {/* Table */}
         <div className="rounded-2xl border border-slate-200/70 bg-white overflow-hidden shadow-soft">
-          <Table>
-            <TableHeader>
-              <TableRow className="bg-gray-50">
-                <TableHead className="font-semibold">MT5 Login</TableHead>
-                <TableHead className="font-semibold">Student Name</TableHead>
-                <TableHead className="font-semibold">Student Code</TableHead>
-                <TableHead className="font-semibold">Platform</TableHead>
-                <TableHead className="font-semibold">Account Type</TableHead>
-                <TableHead className="font-semibold">Currency</TableHead>
-                <TableHead className="font-semibold">Primary</TableHead>
-                <TableHead className="font-semibold">Created</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {filteredAccounts.length === 0 ? (
-                <TableRow>
-                  <TableCell colSpan={8} className="text-center py-8 text-gray-500">
-                    No MT5 accounts found
-                  </TableCell>
-                </TableRow>
-              ) : (
-                filteredAccounts.map((account) => (
-                  <TableRow key={account.id} className="hover:bg-gray-50 transition-colors">
-                    <TableCell className="font-mono font-semibold text-gray-900">
-                      {account.mt5_login}
-                    </TableCell>
-                    <TableCell>
-                      <Link 
-                        to={createPageUrl('StudentDetail') + '?id=' + account.student_id}
-                        className="font-medium text-blue-600 hover:text-blue-800 hover:underline"
-                      >
-                        {account.student_name}
-                      </Link>
-                    </TableCell>
-                    <TableCell className="font-mono text-sm text-blue-600">
-                      {account.student_code}
-                    </TableCell>
-                    <TableCell>
-                      <Badge variant="outline" className={getPlatformColor(account.platform)}>
-                        {account.platform}
-                      </Badge>
-                    </TableCell>
-                    <TableCell className="text-sm">
-                      {account.account_type || '-'}
-                    </TableCell>
-                    <TableCell className="text-sm font-medium">
-                      {account.base_currency}
-                    </TableCell>
-                    <TableCell>
-                      {account.is_primary && (
-                        <Badge className="bg-emerald-100 text-emerald-800 border-emerald-200">
-                          <CheckCircle className="h-3 w-3 mr-1" />
-                          Primary
-                        </Badge>
-                      )}
-                    </TableCell>
-                    <TableCell className="text-sm">
-                      {account.created_date 
-                        ? format(new Date(account.created_date), 'MMM d, yyyy')
-                        : '-'}
-                    </TableCell>
+          <Paged items={filteredAccounts} resetKey={searchTerm}>
+            {(pageRows, bar) => (<>
+              <Table>
+                <TableHeader>
+                  <TableRow className="bg-gray-50">
+                    <TableHead className="font-semibold">MT5 Login</TableHead>
+                    <TableHead className="font-semibold">Student Name</TableHead>
+                    <TableHead className="font-semibold">Student Code</TableHead>
+                    <TableHead className="font-semibold">Platform</TableHead>
+                    <TableHead className="font-semibold">Account Type</TableHead>
+                    <TableHead className="font-semibold">Currency</TableHead>
+                    <TableHead className="font-semibold">Primary</TableHead>
+                    <TableHead className="font-semibold">Created</TableHead>
                   </TableRow>
-                ))
-              )}
-            </TableBody>
-          </Table>
+                </TableHeader>
+                <TableBody>
+                  {filteredAccounts.length === 0 ? (
+                    <TableRow>
+                      <TableCell colSpan={8} className="text-center py-8 text-gray-500">
+                        No MT5 accounts found
+                      </TableCell>
+                    </TableRow>
+                  ) : (
+                    pageRows.map((account) => (
+                      <TableRow key={account.id} className="hover:bg-gray-50 transition-colors">
+                        <TableCell className="font-mono font-semibold text-gray-900">
+                          {account.mt5_login}
+                        </TableCell>
+                        <TableCell>
+                          <Link 
+                            to={createPageUrl('StudentDetail') + '?id=' + account.student_id}
+                            className="font-medium text-blue-600 hover:text-blue-800 hover:underline"
+                          >
+                            {account.student_name}
+                          </Link>
+                        </TableCell>
+                        <TableCell className="font-mono text-sm text-blue-600">
+                          {account.student_code}
+                        </TableCell>
+                        <TableCell>
+                          <Badge variant="outline" className={getPlatformColor(account.platform)}>
+                            {account.platform}
+                          </Badge>
+                        </TableCell>
+                        <TableCell className="text-sm">
+                          {account.account_type || '-'}
+                        </TableCell>
+                        <TableCell className="text-sm font-medium">
+                          {account.base_currency}
+                        </TableCell>
+                        <TableCell>
+                          {account.is_primary && (
+                            <Badge className="bg-emerald-100 text-emerald-800 border-emerald-200">
+                              <CheckCircle className="h-3 w-3 mr-1" />
+                              Primary
+                            </Badge>
+                          )}
+                        </TableCell>
+                        <TableCell className="text-sm">
+                          {account.created_date 
+                            ? format(new Date(account.created_date), 'MMM d, yyyy')
+                            : '-'}
+                        </TableCell>
+                      </TableRow>
+                    ))
+                  )}
+                </TableBody>
+              </Table>
+              <TablePagination {...bar} />
+            </>)}
+          </Paged>
         </div>
       </div>
     </div>

@@ -21,6 +21,7 @@ import { createPageUrl } from '@/utils';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import StudentMovesPanel from '@/components/students/StudentMovesPanel';
 import { CallButton } from '@/components/followups/CallFlow';
+import { TablePagination, usePagination } from '@/components/common/TablePagination';
 
 const ROUND_ROBIN = '__round_robin__';
 const REASSIGNERS = ['super_admin', 'admin'];
@@ -92,6 +93,7 @@ export default function TeamDetail() {
     (personFilter === 'all' || s.primary_mentor_id === personFilter) &&
     (!needle || [s.full_name, s.email, s.student_code, s.primary_mentor_name].some(v => String(v || '').toLowerCase().includes(needle)))
   );
+  const { pageItems: pageStudents, bar } = usePagination(visible, { resetKey: `${teamId}|${needle}|${personFilter}` });
 
   const members = useMemo(() => [...(team?.members || [])].sort((a, b) =>
     (tierRank(a.app_role) - tierRank(b.app_role)) || String(a.full_name || '').localeCompare(String(b.full_name || ''))), [team]);
@@ -127,7 +129,12 @@ export default function TeamDetail() {
   }
 
   const toggle = (id, on) => setSelected(prev => (on ? [...prev, id] : prev.filter(x => x !== id)));
-  const allOn = visible.length > 0 && visible.every(s => selected.includes(s.id));
+  // The header box ticks this page; "Select all N" takes in the other pages.
+  const allOn = pageStudents.length > 0 && pageStudents.every(s => selected.includes(s.id));
+  const togglePage = (on) => {
+    const ids = pageStudents.map(s => s.id);
+    setSelected(prev => (on ? [...new Set([...prev, ...ids])] : prev.filter(id => !ids.includes(id))));
+  };
   const selectedStudents = teamStudents.filter(s => selected.includes(s.id));
   const colCount = 9 + (canReassign ? 1 : 0);
 
@@ -147,9 +154,17 @@ export default function TeamDetail() {
             </p>
           </div>
           {canReassign && selectedStudents.length > 0 && (
-            <Button onClick={() => setDialogFor(selectedStudents)}>
-              <ArrowRightLeft className="h-4 w-4" /> Reassign {selectedStudents.length}
-            </Button>
+            <div className="flex flex-wrap items-center gap-3">
+              {selectedStudents.length < visible.length && (
+                <button type="button" className="text-sm font-medium text-blue-600 hover:underline" onClick={() => setSelected(visible.map(s => s.id))}>
+                  Select all {visible.length}
+                </button>
+              )}
+              <button type="button" className="text-sm text-slate-500 hover:underline" onClick={() => setSelected([])}>Clear</button>
+              <Button onClick={() => setDialogFor(selectedStudents)}>
+                <ArrowRightLeft className="h-4 w-4" /> Reassign {selectedStudents.length}
+              </Button>
+            </div>
           )}
         </div>
 
@@ -222,7 +237,7 @@ export default function TeamDetail() {
                     <tr className="border-b bg-slate-50/80">
                       {canReassign && (
                         <th className="w-10 px-4 py-3">
-                          <Checkbox checked={allOn} onCheckedChange={(on) => setSelected(on ? visible.map(s => s.id) : [])} />
+                          <Checkbox checked={allOn} onCheckedChange={(on) => togglePage(!!on)} />
                         </th>
                       )}
                       <th className="px-4 py-3 text-left text-[11px] font-semibold uppercase tracking-wider text-slate-500">Code</th>
@@ -241,7 +256,7 @@ export default function TeamDetail() {
                       <tr><td colSpan={colCount} className="py-10 text-center text-slate-400">Loading…</td></tr>
                     ) : visible.length === 0 ? (
                       <tr><td colSpan={colCount} className="py-10 text-center text-slate-400">No students{needle || personFilter !== 'all' ? ' match' : ' yet'}.</td></tr>
-                    ) : visible.map(s => (
+                    ) : pageStudents.map(s => (
                       <tr key={s.id} className="cursor-pointer border-b border-slate-100 hover:bg-brand-cyan/[0.04]" onClick={(e) => { if (!e.target.closest('button, a, input, [role="checkbox"]')) navigate(`${createPageUrl('StudentDetail')}?id=${s.id}`); }}>
                         {canReassign && (
                           <td className="px-4 py-2.5"><Checkbox checked={selected.includes(s.id)} onCheckedChange={(on) => toggle(s.id, on)} /></td>
@@ -270,6 +285,7 @@ export default function TeamDetail() {
                   </tbody>
                 </table>
               </div>
+              <TablePagination {...bar} />
             </CardContent>
           </Card>
         </div>

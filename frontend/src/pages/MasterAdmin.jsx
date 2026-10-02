@@ -19,6 +19,7 @@ import PersonnelForm from '../components/personnel/PersonnelForm';
 import TagsPicker from '../components/funding/TagsPicker';
 import { startImpersonation } from '../components/utils/ImpersonationContext';
 import { logAction } from '../components/utils/AuditLogger';
+import { TablePagination, usePagination } from '@/components/common/TablePagination';
 
 const PAYMENT_METHODS = ['AED TRANSFER','UPI','CARD PAYMENT','USDT','INR TRANSFER','Cash deposit','Cash Withdrawal','Bank Withdrawal','Other'];
 
@@ -183,6 +184,9 @@ export default function MasterAdmin() {
       );
     }).slice(0, 500);
   }, [transactions, txSearch, txTypeFilter, txStatusFilter]);
+  // Only the rows on screen are paged; select-all and the counts use the whole list.
+  const { pageItems: pageTxs, bar: txBar } = usePagination(visibleTxs, { resetKey: `${txSearch}|${txTypeFilter}|${txStatusFilter}` });
+  const { pageItems: pageUsers, bar: usersBar } = usePagination(users);
 
   // ── Bulk selection ─────────────────────────────────────────────────────────
   const toggleSelect = (id) => setSelectedIds(prev => {
@@ -190,11 +194,12 @@ export default function MasterAdmin() {
     next.has(id) ? next.delete(id) : next.add(id);
     return next;
   });
-  const allVisibleSelected = visibleTxs.length > 0 && visibleTxs.every(t => selectedIds.has(t.id));
+  // The header box ticks this page; "Select all N" in the bulk bar takes in the other pages.
+  const allVisibleSelected = pageTxs.length > 0 && pageTxs.every(t => selectedIds.has(t.id));
   const toggleSelectAllVisible = () => setSelectedIds(prev => {
     const next = new Set(prev);
-    if (visibleTxs.every(t => next.has(t.id))) visibleTxs.forEach(t => next.delete(t.id));
-    else visibleTxs.forEach(t => next.add(t.id));
+    if (pageTxs.every(t => next.has(t.id))) pageTxs.forEach(t => next.delete(t.id));
+    else pageTxs.forEach(t => next.add(t.id));
     return next;
   });
   const applyBulkDate = () => {
@@ -361,6 +366,11 @@ export default function MasterAdmin() {
               <Card className="border-blue-300 bg-blue-50">
                 <CardContent className="p-3 flex flex-wrap items-center gap-3">
                   <span className="text-sm font-semibold text-blue-800">{selectedIds.size} selected</span>
+                  {selectedIds.size < visibleTxs.length && (
+                    <button type="button" className="text-sm font-medium text-blue-600 hover:underline" onClick={() => setSelectedIds(new Set(visibleTxs.map(t => t.id)))}>
+                      Select all {visibleTxs.length}
+                    </button>
+                  )}
                   <span className="text-sm text-gray-600">Set <strong>Requested date</strong> to:</span>
                   <Input type="date" value={bulkDate} onChange={e => setBulkDate(e.target.value)} className="w-44 h-9" />
                   <Button size="sm" onClick={applyBulkDate} disabled={!bulkDate || bulkEditMutation.isPending} className="bg-blue-600 hover:bg-blue-700">
@@ -393,7 +403,7 @@ export default function MasterAdmin() {
                   <TableBody>
                     {visibleTxs.length === 0 ? (
                       <TableRow><TableCell colSpan={9} className="text-center py-8 text-gray-500">No transactions match.</TableCell></TableRow>
-                    ) : visibleTxs.map(t => (
+                    ) : pageTxs.map(t => (
                       <TableRow key={t.id} className={`hover:bg-gray-50 ${selectedIds.has(t.id) ? 'bg-blue-50' : ''}`}>
                         <TableCell className="w-8">
                           <input type="checkbox" checked={selectedIds.has(t.id)} onChange={() => toggleSelect(t.id)} aria-label="Select row" className="h-4 w-4 cursor-pointer align-middle" />
@@ -423,6 +433,7 @@ export default function MasterAdmin() {
                   </TableBody>
                 </Table>
                 </div>
+                <TablePagination {...txBar} />
               </CardContent>
             </Card>
           </TabsContent>
@@ -448,7 +459,7 @@ export default function MasterAdmin() {
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {users.map(u => (
+                    {pageUsers.map(u => (
                       <TableRow key={u.id} className="hover:bg-gray-50">
                         <TableCell className="font-medium">{u.full_name}</TableCell>
                         <TableCell className="text-sm">{u.email}</TableCell>
@@ -479,6 +490,7 @@ export default function MasterAdmin() {
                   </TableBody>
                 </Table>
                 </div>
+                <TablePagination {...usersBar} />
               </CardContent>
             </Card>
           </TabsContent>

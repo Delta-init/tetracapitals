@@ -14,6 +14,7 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { ArrowLeft, CalendarDays, ChevronLeft, ChevronRight, Loader2, Plus, Search, UserRound, Users2, X } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { createPageUrl } from '@/utils';
+import { TablePagination, usePagination } from '@/components/common/TablePagination';
 
 /* ────────────────────────────────────────────────────────────────────────────
    Mentor Calendar — the Sales CRM's Mentors page, ported. When the academy's
@@ -97,6 +98,8 @@ export default function MentorCalendar() {
     const q = query.trim().toLowerCase();
     return q ? all.filter(m => String(m.name || '').toLowerCase().includes(q) || String(m.email || '').toLowerCase().includes(q)) : all;
   }, [schedule.data, query]);
+  // One page for both layouts. Stepping the week keeps the page: the mentors are the same.
+  const { pageItems: pageShown, bar } = usePagination(shown, { resetKey: query });
 
   /* ── booking: opened from the day it is for, with that mentor already chosen ── */
   const [booking, setBooking] = useState(null); // { mentor, day }
@@ -382,7 +385,7 @@ export default function MentorCalendar() {
                 <ChevronRight className="h-4 w-4" />
               </Button>
             </div>
-            {shown.map(m => {
+            {pageShown.map(m => {
               const day = days[dayIndex];
               const cell = dayCell(m, day);
               return (
@@ -401,6 +404,7 @@ export default function MentorCalendar() {
                 </Card>
               );
             })}
+            <TablePagination {...bar} className="rounded-lg border" />
           </div>
         )}
 
@@ -420,7 +424,7 @@ export default function MentorCalendar() {
                   </tr>
                 </thead>
                 <tbody>
-                  {shown.map(m => (
+                  {pageShown.map(m => (
                     <tr key={m.id} className="border-b border-slate-100 align-top last:border-0">
                       <td className="px-3 py-2.5">
                         <p className="truncate font-medium text-slate-900">{m.name || m.email}</p>
@@ -439,6 +443,7 @@ export default function MentorCalendar() {
                 </tbody>
               </table>
             </div>
+            <TablePagination {...bar} />
           </Card>
         )}
       </div>

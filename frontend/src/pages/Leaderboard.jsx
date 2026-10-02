@@ -13,6 +13,7 @@ import { calculateMentorPoints, calculateStreakBonus, awardBadges, calculateWeek
 import { toast } from "sonner";
 import { logAction } from "../components/utils/AuditLogger";
 import { isMentorRole } from "../components/utils/roles";
+import { Paged, TablePagination } from "@/components/common/TablePagination";
 
 export default function Leaderboard() {
   const [currentUser, setCurrentUser] = useState(null);
@@ -260,6 +261,8 @@ export default function Leaderboard() {
             <CardTitle className="text-lg font-semibold tracking-tight">Full Rankings</CardTitle>
           </CardHeader>
           <CardContent className="p-0">
+            {/* rank comes from the full list above, so every page shows the overall rank */}
+            <Paged items={rankedMentors}>{(pageMentors, bar) => (<>
             <div className="overflow-x-auto">
               <Table>
                 <TableHeader>
@@ -284,7 +287,7 @@ export default function Leaderboard() {
                       </TableCell>
                     </TableRow>
                   ) : (
-                    rankedMentors.map((mentor) => (
+                    pageMentors.map((mentor) => (
                       <TableRow 
                         key={mentor.id} 
                         className={`hover:bg-gray-50 transition-colors ${mentor.mentor_id === currentUser.id ? 'bg-blue-50' : ''}`}
@@ -325,6 +328,8 @@ export default function Leaderboard() {
                 </TableBody>
               </Table>
             </div>
+            <TablePagination {...bar} />
+            </>)}</Paged>
           </CardContent>
         </Card>
 

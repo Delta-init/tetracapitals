@@ -11,6 +11,7 @@ import { Award, Users, TrendingUp, DollarSign, Target, Calendar, Search } from "
 import { getEffectiveUser } from "../components/utils/ImpersonationContext";
 import { isMentorRole } from "@/components/utils/roles";
 import { format } from "date-fns";
+import { Paged, TablePagination } from "@/components/common/TablePagination";
 
 export default function MentorPerformance() {
   const [currentUser, setCurrentUser] = useState(null);
@@ -279,6 +280,7 @@ export default function MentorPerformance() {
             <CardTitle className="text-lg font-semibold tracking-tight">Performance Metrics</CardTitle>
           </CardHeader>
           <CardContent className="p-0">
+            <Paged items={mentorPerformanceData} resetKey={`${searchTerm}|${filterRole}`}>{(pageData, bar) => (<>
             <div className="overflow-x-auto">
               <Table>
                 <TableHeader>
@@ -304,7 +306,7 @@ export default function MentorPerformance() {
                       </TableCell>
                     </TableRow>
                   ) : (
-                    mentorPerformanceData.map((data) => (
+                    pageData.map((data) => (
                       <TableRow key={data.mentor.id} className="hover:bg-gray-50 transition-colors">
                         <TableCell>
                           <div>
@@ -380,6 +382,8 @@ export default function MentorPerformance() {
                 </TableBody>
               </Table>
             </div>
+            <TablePagination {...bar} />
+            </>)}</Paged>
           </CardContent>
         </Card>
 

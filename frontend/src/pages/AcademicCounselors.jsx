@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { PageTitle } from '@/components/common/PageHeader';
+import { TablePagination, usePagination } from '@/components/common/TablePagination';
 import { base44 } from "@/api/base44Client";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
@@ -39,6 +40,7 @@ export default function AcademicCounselors() {
     queryFn: () => base44.entities.AcademicCounselor.list('-created_date'),
     enabled: !!currentUser
   });
+  const { pageItems: pageCounselors, bar } = usePagination(counselors);
 
   const createMutation = useMutation({
     mutationFn: (data) => base44.entities.AcademicCounselor.create(data),
@@ -154,7 +156,7 @@ export default function AcademicCounselors() {
                       </TableCell>
                     </TableRow>
                   ) : (
-                    counselors.map((counselor) => (
+                    pageCounselors.map((counselor) => (
                       <TableRow key={counselor.id} className="hover:bg-gray-50 transition-colors">
                         <TableCell className="font-medium">{counselor.counselor_name}</TableCell>
                         <TableCell className="text-sm">{counselor.email || '-'}</TableCell>
@@ -196,6 +198,7 @@ export default function AcademicCounselors() {
                 </TableBody>
               </Table>
             </div>
+            <TablePagination {...bar} />
           </CardContent>
         </Card>
 

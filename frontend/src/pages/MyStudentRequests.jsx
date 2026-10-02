@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { PageTitle } from '@/components/common/PageHeader';
+import { Paged, TablePagination } from '@/components/common/TablePagination';
 import { base44 } from "@/api/base44Client";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -172,45 +173,50 @@ export default function MyStudentRequests() {
               </CardTitle>
             </CardHeader>
             <CardContent className="p-0">
-              <Table>
-                <TableHeader>
-                  <TableRow className="bg-purple-100/50">
-                    <TableHead className="font-semibold">Student</TableHead>
-                    <TableHead className="font-semibold">From Mentor</TableHead>
-                    <TableHead className="font-semibold">Deposit Amount</TableHead>
-                    <TableHead className="font-semibold">Notes</TableHead>
-                    <TableHead className="font-semibold">Requested</TableHead>
-                    <TableHead className="font-semibold text-right">Actions</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {pendingIncoming.map((ref) => (
-                    <TableRow key={ref.id} className="bg-white">
-                      <TableCell className="font-medium">{ref.student_name} <span className="text-xs text-gray-400 font-mono">{ref.student_code}</span></TableCell>
-                      <TableCell className="text-sm text-blue-700 font-medium">{ref.initiating_mentor_name}</TableCell>
-                      <TableCell className="text-sm font-semibold text-green-700">${(ref.requested_deposit_amount || 0).toLocaleString()}</TableCell>
-                      <TableCell className="text-sm text-gray-600 max-w-xs truncate">{ref.notes || '-'}</TableCell>
-                      <TableCell className="text-sm">{ref.created_at ? format(new Date(ref.created_at), 'MMM d, yyyy') : '-'}</TableCell>
-                      <TableCell className="text-right">
-                        <div className="flex justify-end gap-2">
-                          <Button size="sm" className="bg-green-600 hover:bg-green-700"
-                            onClick={() => respondReferralMutation.mutate({ referral_id: ref.id, action: 'approve' })}
-                            disabled={respondReferralMutation.isPending}
-                          >
-                            <CheckCircle className="h-3.5 w-3.5 mr-1" /> Approve
-                          </Button>
-                          <Button size="sm" variant="destructive"
-                            onClick={() => { setSelectedReferral(ref); setRejectDialogOpen(true); }}
-                            disabled={respondReferralMutation.isPending}
-                          >
-                            <XCircle className="h-3.5 w-3.5 mr-1" /> Reject
-                          </Button>
-                        </div>
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
+              <Paged items={pendingIncoming}>
+                {(pageRows, bar) => (<>
+                  <Table>
+                    <TableHeader>
+                      <TableRow className="bg-purple-100/50">
+                        <TableHead className="font-semibold">Student</TableHead>
+                        <TableHead className="font-semibold">From Mentor</TableHead>
+                        <TableHead className="font-semibold">Deposit Amount</TableHead>
+                        <TableHead className="font-semibold">Notes</TableHead>
+                        <TableHead className="font-semibold">Requested</TableHead>
+                        <TableHead className="font-semibold text-right">Actions</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {pageRows.map((ref) => (
+                        <TableRow key={ref.id} className="bg-white">
+                          <TableCell className="font-medium">{ref.student_name} <span className="text-xs text-gray-400 font-mono">{ref.student_code}</span></TableCell>
+                          <TableCell className="text-sm text-blue-700 font-medium">{ref.initiating_mentor_name}</TableCell>
+                          <TableCell className="text-sm font-semibold text-green-700">${(ref.requested_deposit_amount || 0).toLocaleString()}</TableCell>
+                          <TableCell className="text-sm text-gray-600 max-w-xs truncate">{ref.notes || '-'}</TableCell>
+                          <TableCell className="text-sm">{ref.created_at ? format(new Date(ref.created_at), 'MMM d, yyyy') : '-'}</TableCell>
+                          <TableCell className="text-right">
+                            <div className="flex justify-end gap-2">
+                              <Button size="sm" className="bg-green-600 hover:bg-green-700"
+                                onClick={() => respondReferralMutation.mutate({ referral_id: ref.id, action: 'approve' })}
+                                disabled={respondReferralMutation.isPending}
+                              >
+                                <CheckCircle className="h-3.5 w-3.5 mr-1" /> Approve
+                              </Button>
+                              <Button size="sm" variant="destructive"
+                                onClick={() => { setSelectedReferral(ref); setRejectDialogOpen(true); }}
+                                disabled={respondReferralMutation.isPending}
+                              >
+                                <XCircle className="h-3.5 w-3.5 mr-1" /> Reject
+                              </Button>
+                            </div>
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                  <TablePagination {...bar} />
+                </>)}
+              </Paged>
             </CardContent>
           </Card>
         )}
@@ -228,49 +234,54 @@ export default function MyStudentRequests() {
               </CardTitle>
             </CardHeader>
             <CardContent className="p-0">
-              <div className="overflow-x-auto">
-                <Table>
-                  <TableHeader>
-                    <TableRow className="bg-blue-100/50">
-                      <TableHead className="font-semibold">Student</TableHead>
-                      <TableHead className="font-semibold">To Mentor</TableHead>
-                      <TableHead className="font-semibold">Deposit Amount</TableHead>
-                      <TableHead className="font-semibold">Status</TableHead>
-                      <TableHead className="font-semibold">Requested</TableHead>
-                      <TableHead className="font-semibold">Responded</TableHead>
-                      <TableHead className="font-semibold">Notes / Rejection</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {outgoingReferrals.map((ref) => (
-                      <TableRow key={ref.id} className="bg-white">
-                        <TableCell className="font-medium">
-                          {ref.student_name} <span className="text-xs text-gray-400 font-mono">{ref.student_code}</span>
-                        </TableCell>
-                        <TableCell className="text-sm text-purple-700 font-medium">{ref.receiving_mentor_name}</TableCell>
-                        <TableCell className="text-sm font-semibold text-green-700">${(ref.requested_deposit_amount || 0).toLocaleString()}</TableCell>
-                        <TableCell>
-                          <Badge variant="outline" className={`${getReferralStatusColor(ref.status)} flex items-center gap-1 w-fit`}>
-                            {getReferralStatusIcon(ref.status)}
-                            <span className="text-xs capitalize">{ref.status}</span>
-                          </Badge>
-                        </TableCell>
-                        <TableCell className="text-sm">{ref.created_at ? format(new Date(ref.created_at), 'MMM d, yyyy HH:mm') : '-'}</TableCell>
-                        <TableCell className="text-sm">
-                          {ref.responded_at ? format(new Date(ref.responded_at), 'MMM d, yyyy HH:mm') : <span className="text-gray-400">—</span>}
-                        </TableCell>
-                        <TableCell className="text-sm max-w-xs">
-                          {ref.status === 'rejected' && ref.rejection_reason
-                            ? <span className="text-red-600">{ref.rejection_reason}</span>
-                            : ref.status === 'approved'
-                              ? <span className="text-green-600">Student added as co-managed; deposit queued for admin approval.</span>
-                              : <span className="text-gray-500">Awaiting response from {ref.receiving_mentor_name}</span>}
-                        </TableCell>
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
-              </div>
+              <Paged items={outgoingReferrals}>
+                {(pageRows, bar) => (<>
+                  <div className="overflow-x-auto">
+                    <Table>
+                      <TableHeader>
+                        <TableRow className="bg-blue-100/50">
+                          <TableHead className="font-semibold">Student</TableHead>
+                          <TableHead className="font-semibold">To Mentor</TableHead>
+                          <TableHead className="font-semibold">Deposit Amount</TableHead>
+                          <TableHead className="font-semibold">Status</TableHead>
+                          <TableHead className="font-semibold">Requested</TableHead>
+                          <TableHead className="font-semibold">Responded</TableHead>
+                          <TableHead className="font-semibold">Notes / Rejection</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {pageRows.map((ref) => (
+                          <TableRow key={ref.id} className="bg-white">
+                            <TableCell className="font-medium">
+                              {ref.student_name} <span className="text-xs text-gray-400 font-mono">{ref.student_code}</span>
+                            </TableCell>
+                            <TableCell className="text-sm text-purple-700 font-medium">{ref.receiving_mentor_name}</TableCell>
+                            <TableCell className="text-sm font-semibold text-green-700">${(ref.requested_deposit_amount || 0).toLocaleString()}</TableCell>
+                            <TableCell>
+                              <Badge variant="outline" className={`${getReferralStatusColor(ref.status)} flex items-center gap-1 w-fit`}>
+                                {getReferralStatusIcon(ref.status)}
+                                <span className="text-xs capitalize">{ref.status}</span>
+                              </Badge>
+                            </TableCell>
+                            <TableCell className="text-sm">{ref.created_at ? format(new Date(ref.created_at), 'MMM d, yyyy HH:mm') : '-'}</TableCell>
+                            <TableCell className="text-sm">
+                              {ref.responded_at ? format(new Date(ref.responded_at), 'MMM d, yyyy HH:mm') : <span className="text-gray-400">—</span>}
+                            </TableCell>
+                            <TableCell className="text-sm max-w-xs">
+                              {ref.status === 'rejected' && ref.rejection_reason
+                                ? <span className="text-red-600">{ref.rejection_reason}</span>
+                                : ref.status === 'approved'
+                                  ? <span className="text-green-600">Student added as co-managed; deposit queued for admin approval.</span>
+                                  : <span className="text-gray-500">Awaiting response from {ref.receiving_mentor_name}</span>}
+                            </TableCell>
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
+                  </div>
+                  <TablePagination {...bar} />
+                </>)}
+              </Paged>
             </CardContent>
           </Card>
         )}
@@ -340,70 +351,75 @@ export default function MyStudentRequests() {
             </CardTitle>
           </CardHeader>
           <CardContent className="p-0">
-            <div className="overflow-x-auto">
-              <Table>
-                <TableHeader>
-                  <TableRow className="bg-gray-50">
-                    <TableHead className="font-semibold">Requested</TableHead>
-                    <TableHead className="font-semibold">Student Name</TableHead>
-                    <TableHead className="font-semibold">Email</TableHead>
-                    <TableHead className="font-semibold">Phone</TableHead>
-                    <TableHead className="font-semibold">Country</TableHead>
-                    <TableHead className="font-semibold">Status</TableHead>
-                    <TableHead className="font-semibold">Notes</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {filteredRequests.length === 0 ? (
-                    <TableRow>
-                      <TableCell colSpan={7} className="text-center py-8 text-gray-500">
-                        No requests found. Submit a student request from the Students page.
-                      </TableCell>
-                    </TableRow>
-                  ) : (
-                    filteredRequests.map((request) => (
-                      <TableRow key={request.id} className="hover:bg-gray-50 transition-colors">
-                        <TableCell className="text-sm">
-                          {request.requested_at ? format(new Date(request.requested_at), 'MMM d, yyyy HH:mm') : '-'}
-                        </TableCell>
-                        <TableCell className="font-medium">{request.full_name}</TableCell>
-                        <TableCell className="text-sm">{request.email}</TableCell>
-                        <TableCell className="text-sm">{request.phone || '-'}</TableCell>
-                        <TableCell className="text-sm">{request.country || '-'}</TableCell>
-                        <TableCell>
-                          <Badge variant="outline" className={`${getStatusColor(request.status)} flex items-center gap-1 w-fit`}>
-                            {getStatusIcon(request.status)}
-                            <span className="text-xs">
-                              {request.status === 'PENDING_LEVEL_UPGRADE' ? 'Pending Upgrade' :
-                               request.status.replace(/_/g, ' ')}
-                            </span>
-                          </Badge>
-                        </TableCell>
-                        <TableCell className="text-sm max-w-xs">
-                          {request.status === 'REJECTED' && (
-                            <div className="text-red-600">
-                              {request.level_upgrade_rejection_reason || 'Upgrade rejected'}
-                            </div>
-                          )}
-                          {request.status === 'TRANSFERRED' && (
-                            <div className="text-purple-600">Student transferred successfully</div>
-                          )}
-                          {request.status === 'APPROVED' && request.request_type === 'LEVEL_UPGRADE' && (
-                            <div className="text-green-600">Upgraded to Level 2</div>
-                          )}
-                          {request.status === 'APPROVED' && request.request_type !== 'LEVEL_UPGRADE' && (
-                            <div className="text-green-600">Student created</div>
-                          )}
-                          {request.status === 'PENDING_LEVEL_UPGRADE' && (
-                            <div className="text-gray-500">Awaiting upgrade approval</div>
-                          )}
-                        </TableCell>
+            <Paged items={filteredRequests} resetKey={searchTerm}>
+              {(pageRows, bar) => (<>
+                <div className="overflow-x-auto">
+                  <Table>
+                    <TableHeader>
+                      <TableRow className="bg-gray-50">
+                        <TableHead className="font-semibold">Requested</TableHead>
+                        <TableHead className="font-semibold">Student Name</TableHead>
+                        <TableHead className="font-semibold">Email</TableHead>
+                        <TableHead className="font-semibold">Phone</TableHead>
+                        <TableHead className="font-semibold">Country</TableHead>
+                        <TableHead className="font-semibold">Status</TableHead>
+                        <TableHead className="font-semibold">Notes</TableHead>
                       </TableRow>
-                    ))
-                  )}
-                </TableBody>
-              </Table>
-            </div>
+                    </TableHeader>
+                    <TableBody>
+                      {filteredRequests.length === 0 ? (
+                        <TableRow>
+                          <TableCell colSpan={7} className="text-center py-8 text-gray-500">
+                            No requests found. Submit a student request from the Students page.
+                          </TableCell>
+                        </TableRow>
+                      ) : (
+                        pageRows.map((request) => (
+                          <TableRow key={request.id} className="hover:bg-gray-50 transition-colors">
+                            <TableCell className="text-sm">
+                              {request.requested_at ? format(new Date(request.requested_at), 'MMM d, yyyy HH:mm') : '-'}
+                            </TableCell>
+                            <TableCell className="font-medium">{request.full_name}</TableCell>
+                            <TableCell className="text-sm">{request.email}</TableCell>
+                            <TableCell className="text-sm">{request.phone || '-'}</TableCell>
+                            <TableCell className="text-sm">{request.country || '-'}</TableCell>
+                            <TableCell>
+                              <Badge variant="outline" className={`${getStatusColor(request.status)} flex items-center gap-1 w-fit`}>
+                                {getStatusIcon(request.status)}
+                                <span className="text-xs">
+                                  {request.status === 'PENDING_LEVEL_UPGRADE' ? 'Pending Upgrade' :
+                                   request.status.replace(/_/g, ' ')}
+                                </span>
+                              </Badge>
+                            </TableCell>
+                            <TableCell className="text-sm max-w-xs">
+                              {request.status === 'REJECTED' && (
+                                <div className="text-red-600">
+                                  {request.level_upgrade_rejection_reason || 'Upgrade rejected'}
+                                </div>
+                              )}
+                              {request.status === 'TRANSFERRED' && (
+                                <div className="text-purple-600">Student transferred successfully</div>
+                              )}
+                              {request.status === 'APPROVED' && request.request_type === 'LEVEL_UPGRADE' && (
+                                <div className="text-green-600">Upgraded to Level 2</div>
+                              )}
+                              {request.status === 'APPROVED' && request.request_type !== 'LEVEL_UPGRADE' && (
+                                <div className="text-green-600">Student created</div>
+                              )}
+                              {request.status === 'PENDING_LEVEL_UPGRADE' && (
+                                <div className="text-gray-500">Awaiting upgrade approval</div>
+                              )}
+                            </TableCell>
+                          </TableRow>
+                        ))
+                      )}
+                    </TableBody>
+                  </Table>
+                </div>
+                <TablePagination {...bar} />
+              </>)}
+            </Paged>
           </CardContent>
         </Card>
         {/* Reject Referral Dialog */}

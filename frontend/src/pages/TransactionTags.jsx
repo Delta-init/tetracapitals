@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { PageTitle } from '@/components/common/PageHeader';
+import { TablePagination, usePagination } from '@/components/common/TablePagination';
 import { base44 } from "@/api/base44Client";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
@@ -31,6 +32,8 @@ export default function TransactionTags() {
     queryKey: ['transaction-tags-all'],
     queryFn: () => base44.entities.TransactionTag.list('name'),
   });
+  // The products table shows 25 to a page.
+  const { pageItems: pageTags, bar } = usePagination(tags);
 
   const createMutation = useMutation({
     mutationFn: (data) => base44.entities.TransactionTag.create(data),
@@ -156,7 +159,7 @@ export default function TransactionTags() {
             <div className="p-6 text-center text-gray-500">Loading…</div>
           ) : tags.length === 0 ? (
             <div className="p-6 text-center text-gray-500">No products yet. Add one above to get started.</div>
-          ) : (
+          ) : (<>
             <Table>
               <TableHeader>
                 <TableRow>
@@ -170,7 +173,7 @@ export default function TransactionTags() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {tags.map(t => (
+                {pageTags.map(t => (
                   <TableRow key={t.id}>
                     <TableCell>
                       <Badge
@@ -269,7 +272,8 @@ export default function TransactionTags() {
                 ))}
               </TableBody>
             </Table>
-          )}
+            <TablePagination {...bar} />
+          </>)}
         </CardContent>
       </Card>
     </div>

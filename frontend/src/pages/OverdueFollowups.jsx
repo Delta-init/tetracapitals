@@ -3,6 +3,7 @@ import { Link, useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { base44 } from '@/api/base44Client';
 import { PageTitle } from '@/components/common/PageHeader';
+import { Paged, TablePagination } from '@/components/common/TablePagination';
 import StatsCard from '@/components/dashboard/StatsCard';
 import { Card, CardContent, CardHeader } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -136,6 +137,16 @@ export default function OverdueFollowups() {
     </div>
   );
 
+  // 25 a page — a bar under each CS's table when grouped by CS.
+  const pagedTable = (list) => (
+    <Paged items={list} resetKey={`${needle}|${cs}|${late}`}>
+      {(pageRows, bar) => (<>
+        {table(pageRows)}
+        <TablePagination {...bar} />
+      </>)}
+    </Paged>
+  );
+
   return (
     <div className="min-h-screen p-6">
       <div className="mx-auto max-w-[1600px] space-y-6">
@@ -191,11 +202,11 @@ export default function OverdueFollowups() {
                       <span className="font-semibold text-slate-800">{g.name}</span>
                       <span className="text-xs text-slate-500">{g.rows.length} overdue · the oldest {g.rows[0].late} day{g.rows[0].late === 1 ? '' : 's'} late</span>
                     </div>
-                    {table(g.rows)}
+                    {pagedTable(g.rows)}
                   </section>
                 ))}
               </div>
-            ) : table(rows)}
+            ) : pagedTable(rows)}
           </CardContent>
         </Card>
       </div>

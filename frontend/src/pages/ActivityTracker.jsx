@@ -11,6 +11,7 @@ import { ClipboardList, Plus, Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { getEffectiveUser } from '@/components/utils/ImpersonationContext';
 import { FIELDS_BY_CATEGORY, activityCategory, connectionRate, isNumeric, computeDailyScore } from '@/components/activity/activityFields';
+import { TablePagination, usePagination } from '@/components/common/TablePagination';
 
 const today = () => new Date().toISOString().slice(0, 10);
 const money = (n) => `$${(Number(n) || 0).toLocaleString('en-US', { maximumFractionDigits: 0 })}`;
@@ -30,6 +31,7 @@ export default function ActivityTracker() {
   });
 
   const myLogs = useMemo(() => [...logs].sort((a, b) => String(b.date).localeCompare(String(a.date))), [logs]);
+  const { pageItems: pageLogs, bar } = usePagination(myLogs);
 
   const [editing, setEditing] = useState(null); // the log being added/edited (or null)
 
@@ -92,7 +94,7 @@ export default function ActivityTracker() {
                     <tr><td colSpan={10} className="text-center py-10 text-gray-400">Loading…</td></tr>
                   ) : myLogs.length === 0 ? (
                     <tr><td colSpan={10} className="text-center py-10 text-gray-400">No entries yet. Click “Add / Edit Today”.</td></tr>
-                  ) : myLogs.map(log => (
+                  ) : pageLogs.map(log => (
                     <tr key={log.id} onClick={() => openEdit(log)} className="border-b hover:bg-indigo-50 cursor-pointer">
                       <td className="px-4 py-3 font-medium text-gray-900 whitespace-nowrap">{log.date}</td>
                       {fields.filter(f => isNumeric(f.type)).slice(0, 7).map(f => (
@@ -104,6 +106,7 @@ export default function ActivityTracker() {
                 </tbody>
               </table>
             </div>
+            <TablePagination {...bar} />
           </CardContent>
         </Card>
       </div>

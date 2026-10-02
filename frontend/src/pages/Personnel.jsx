@@ -28,6 +28,7 @@ import PersonnelForm from '../components/personnel/PersonnelForm';
 import { canViewPersonnel, canEditPersonnel, filterPersonnelByRole } from '../components/utils/PersonnelAccessControl';
 import { logAction } from '../components/utils/AuditLogger';
 import { startImpersonation, isImpersonating } from '../components/utils/ImpersonationContext';
+import { Paged, TablePagination } from '@/components/common/TablePagination';
 
 export default function Personnel() {
   const [currentUser, setCurrentUser] = useState(null);
@@ -326,6 +327,7 @@ export default function Personnel() {
 
         {/* Users Table */}
         <div className="bg-white/80 backdrop-blur-sm rounded-xl shadow-lg border-none overflow-hidden">
+          <Paged items={filteredUsers} resetKey={`${searchTerm}|${roleFilter}`}>{(pageUsers, bar) => (<>
           <Table>
             <TableHeader>
               <TableRow>
@@ -346,7 +348,7 @@ export default function Personnel() {
                   </TableCell>
                 </TableRow>
               ) : (
-                filteredUsers.map((user) => (
+                pageUsers.map((user) => (
                   <TableRow key={user.id}>
                     <TableCell className="font-medium">
                       {user.full_name}
@@ -408,6 +410,8 @@ export default function Personnel() {
               )}
             </TableBody>
           </Table>
+          <TablePagination {...bar} />
+          </>)}</Paged>
         </div>
       </div>
 

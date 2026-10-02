@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { PageTitle } from '@/components/common/PageHeader';
+import { Paged, TablePagination } from '@/components/common/TablePagination';
 import { base44 } from "@/api/base44Client";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
@@ -335,70 +336,75 @@ export default function StudentRequestApprovals() {
                 </CardTitle>
               </CardHeader>
               <CardContent className="p-0">
-                <div className="overflow-x-auto">
-                  <Table>
-                    <TableHeader>
-                      <TableRow className="bg-gray-50">
-                        <TableHead className="font-semibold">Requested</TableHead>
-                        <TableHead className="font-semibold">Request Type</TableHead>
-                        <TableHead className="font-semibold">Student Name</TableHead>
-                        <TableHead className="font-semibold">Email</TableHead>
-                        <TableHead className="font-semibold">Current Mentor</TableHead>
-                        <TableHead className="font-semibold">Requested By</TableHead>
-                        <TableHead className="font-semibold">New Mentor</TableHead>
-                        <TableHead className="font-semibold">Status</TableHead>
-                        <TableHead className="font-semibold text-right">Actions</TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {pendingRequests.length === 0 ? (
-                        <TableRow>
-                          <TableCell colSpan={9} className="text-center py-8 text-gray-500">
-                            No pending requests
-                          </TableCell>
-                        </TableRow>
-                      ) : (
-                        pendingRequests.map((request) => {
-                          const existingStudent = request.existing_student_id ? students.find(s => s.id === request.existing_student_id) : null;
-                          return (
-                            <TableRow key={request.id} className="hover:bg-gray-50 transition-colors">
-                              <TableCell className="text-sm">
-                                {request.requested_at ? format(new Date(request.requested_at), 'MMM d, yyyy HH:mm') : '-'}
-                              </TableCell>
-                              <TableCell>
-                                <Badge variant="outline" className={request.request_type === 'TRANSFER' ? 'bg-purple-100 text-purple-800' : 'bg-blue-100 text-blue-800'}>
-                                  {request.request_type === 'TRANSFER' ? 'Transfer' : 'Level Upgrade'}
-                                </Badge>
-                              </TableCell>
-                              <TableCell className="font-medium">{request.full_name}</TableCell>
-                              <TableCell className="text-sm">{request.email}</TableCell>
-                              <TableCell className="text-sm">
-                                {request.request_type === 'TRANSFER' ? request.previous_mentor_name : existingStudent?.primary_mentor_name || '-'}
-                              </TableCell>
-                              <TableCell className="text-sm">{request.requested_by_name}</TableCell>
-                              <TableCell className="text-sm">{request.requested_primary_mentor_name}</TableCell>
-                              <TableCell>
-                                <Badge variant="outline" className={getStatusColor(request.status)}>
-                                  {request.status.replace(/_/g, ' ')}
-                                </Badge>
-                              </TableCell>
-                              <TableCell className="text-right">
-                                <div className="flex justify-end gap-2">
-                                  <Button size="sm" variant="ghost" onClick={() => handleApprove(request)} className="text-green-600 hover:text-green-700 hover:bg-green-50">
-                                    <CheckCircle className="h-4 w-4" />
-                                  </Button>
-                                  <Button size="sm" variant="ghost" onClick={() => handleReject(request)} className="text-red-600 hover:text-red-700 hover:bg-red-50">
-                                    <XCircle className="h-4 w-4" />
-                                  </Button>
-                                </div>
+                <Paged items={pendingRequests} resetKey={searchTerm}>
+                  {(pageRows, bar) => (<>
+                    <div className="overflow-x-auto">
+                      <Table>
+                        <TableHeader>
+                          <TableRow className="bg-gray-50">
+                            <TableHead className="font-semibold">Requested</TableHead>
+                            <TableHead className="font-semibold">Request Type</TableHead>
+                            <TableHead className="font-semibold">Student Name</TableHead>
+                            <TableHead className="font-semibold">Email</TableHead>
+                            <TableHead className="font-semibold">Current Mentor</TableHead>
+                            <TableHead className="font-semibold">Requested By</TableHead>
+                            <TableHead className="font-semibold">New Mentor</TableHead>
+                            <TableHead className="font-semibold">Status</TableHead>
+                            <TableHead className="font-semibold text-right">Actions</TableHead>
+                          </TableRow>
+                        </TableHeader>
+                        <TableBody>
+                          {pendingRequests.length === 0 ? (
+                            <TableRow>
+                              <TableCell colSpan={9} className="text-center py-8 text-gray-500">
+                                No pending requests
                               </TableCell>
                             </TableRow>
-                          );
-                        })
-                      )}
-                    </TableBody>
-                  </Table>
-                </div>
+                          ) : (
+                            pageRows.map((request) => {
+                              const existingStudent = request.existing_student_id ? students.find(s => s.id === request.existing_student_id) : null;
+                              return (
+                                <TableRow key={request.id} className="hover:bg-gray-50 transition-colors">
+                                  <TableCell className="text-sm">
+                                    {request.requested_at ? format(new Date(request.requested_at), 'MMM d, yyyy HH:mm') : '-'}
+                                  </TableCell>
+                                  <TableCell>
+                                    <Badge variant="outline" className={request.request_type === 'TRANSFER' ? 'bg-purple-100 text-purple-800' : 'bg-blue-100 text-blue-800'}>
+                                      {request.request_type === 'TRANSFER' ? 'Transfer' : 'Level Upgrade'}
+                                    </Badge>
+                                  </TableCell>
+                                  <TableCell className="font-medium">{request.full_name}</TableCell>
+                                  <TableCell className="text-sm">{request.email}</TableCell>
+                                  <TableCell className="text-sm">
+                                    {request.request_type === 'TRANSFER' ? request.previous_mentor_name : existingStudent?.primary_mentor_name || '-'}
+                                  </TableCell>
+                                  <TableCell className="text-sm">{request.requested_by_name}</TableCell>
+                                  <TableCell className="text-sm">{request.requested_primary_mentor_name}</TableCell>
+                                  <TableCell>
+                                    <Badge variant="outline" className={getStatusColor(request.status)}>
+                                      {request.status.replace(/_/g, ' ')}
+                                    </Badge>
+                                  </TableCell>
+                                  <TableCell className="text-right">
+                                    <div className="flex justify-end gap-2">
+                                      <Button size="sm" variant="ghost" onClick={() => handleApprove(request)} className="text-green-600 hover:text-green-700 hover:bg-green-50">
+                                        <CheckCircle className="h-4 w-4" />
+                                      </Button>
+                                      <Button size="sm" variant="ghost" onClick={() => handleReject(request)} className="text-red-600 hover:text-red-700 hover:bg-red-50">
+                                        <XCircle className="h-4 w-4" />
+                                      </Button>
+                                    </div>
+                                  </TableCell>
+                                </TableRow>
+                              );
+                            })
+                          )}
+                        </TableBody>
+                      </Table>
+                    </div>
+                    <TablePagination {...bar} />
+                  </>)}
+                </Paged>
               </CardContent>
             </Card>
           </TabsContent>
@@ -413,58 +419,63 @@ export default function StudentRequestApprovals() {
                 </CardTitle>
               </CardHeader>
               <CardContent className="p-0">
-                <div className="overflow-x-auto">
-                  <Table>
-                    <TableHeader>
-                      <TableRow className="bg-gray-50">
-                        <TableHead className="font-semibold">Requested At</TableHead>
-                        <TableHead className="font-semibold">Request Type</TableHead>
-                        <TableHead className="font-semibold">Student Name</TableHead>
-                        <TableHead className="font-semibold">Email</TableHead>
-                        <TableHead className="font-semibold">Requested By</TableHead>
-                        <TableHead className="font-semibold">New Mentor</TableHead>
-                        <TableHead className="font-semibold">Approved By</TableHead>
-                        <TableHead className="font-semibold">Approved At</TableHead>
-                        <TableHead className="font-semibold">Status</TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {approvedRequests.length === 0 ? (
-                        <TableRow>
-                          <TableCell colSpan={9} className="text-center py-8 text-gray-500">
-                            No approved requests
-                          </TableCell>
-                        </TableRow>
-                      ) : (
-                        approvedRequests.map((request) => (
-                          <TableRow key={request.id} className="hover:bg-gray-50 transition-colors">
-                            <TableCell className="text-sm">
-                              {request.requested_at ? format(new Date(request.requested_at), 'MMM d, yyyy HH:mm') : '-'}
-                            </TableCell>
-                            <TableCell>
-                              <Badge variant="outline" className={request.request_type === 'TRANSFER' ? 'bg-purple-100 text-purple-800' : 'bg-blue-100 text-blue-800'}>
-                                {request.request_type === 'TRANSFER' ? 'Transfer' : 'Level Upgrade'}
-                              </Badge>
-                            </TableCell>
-                            <TableCell className="font-medium">{request.full_name}</TableCell>
-                            <TableCell className="text-sm">{request.email}</TableCell>
-                            <TableCell className="text-sm font-medium text-blue-700">{request.requested_by_name || '-'}</TableCell>
-                            <TableCell className="text-sm">{request.requested_primary_mentor_name || '-'}</TableCell>
-                            <TableCell className="text-sm font-medium text-green-700">{request.level_upgrade_approved_by_name || '-'}</TableCell>
-                            <TableCell className="text-sm">
-                              {request.level_upgrade_approved_at ? format(new Date(request.level_upgrade_approved_at), 'MMM d, yyyy HH:mm') : '-'}
-                            </TableCell>
-                            <TableCell>
-                              <Badge variant="outline" className={getStatusColor(request.status)}>
-                                {request.status.replace(/_/g, ' ')}
-                              </Badge>
-                            </TableCell>
+                <Paged items={approvedRequests} resetKey={searchTerm}>
+                  {(pageRows, bar) => (<>
+                    <div className="overflow-x-auto">
+                      <Table>
+                        <TableHeader>
+                          <TableRow className="bg-gray-50">
+                            <TableHead className="font-semibold">Requested At</TableHead>
+                            <TableHead className="font-semibold">Request Type</TableHead>
+                            <TableHead className="font-semibold">Student Name</TableHead>
+                            <TableHead className="font-semibold">Email</TableHead>
+                            <TableHead className="font-semibold">Requested By</TableHead>
+                            <TableHead className="font-semibold">New Mentor</TableHead>
+                            <TableHead className="font-semibold">Approved By</TableHead>
+                            <TableHead className="font-semibold">Approved At</TableHead>
+                            <TableHead className="font-semibold">Status</TableHead>
                           </TableRow>
-                        ))
-                      )}
-                    </TableBody>
-                  </Table>
-                </div>
+                        </TableHeader>
+                        <TableBody>
+                          {approvedRequests.length === 0 ? (
+                            <TableRow>
+                              <TableCell colSpan={9} className="text-center py-8 text-gray-500">
+                                No approved requests
+                              </TableCell>
+                            </TableRow>
+                          ) : (
+                            pageRows.map((request) => (
+                              <TableRow key={request.id} className="hover:bg-gray-50 transition-colors">
+                                <TableCell className="text-sm">
+                                  {request.requested_at ? format(new Date(request.requested_at), 'MMM d, yyyy HH:mm') : '-'}
+                                </TableCell>
+                                <TableCell>
+                                  <Badge variant="outline" className={request.request_type === 'TRANSFER' ? 'bg-purple-100 text-purple-800' : 'bg-blue-100 text-blue-800'}>
+                                    {request.request_type === 'TRANSFER' ? 'Transfer' : 'Level Upgrade'}
+                                  </Badge>
+                                </TableCell>
+                                <TableCell className="font-medium">{request.full_name}</TableCell>
+                                <TableCell className="text-sm">{request.email}</TableCell>
+                                <TableCell className="text-sm font-medium text-blue-700">{request.requested_by_name || '-'}</TableCell>
+                                <TableCell className="text-sm">{request.requested_primary_mentor_name || '-'}</TableCell>
+                                <TableCell className="text-sm font-medium text-green-700">{request.level_upgrade_approved_by_name || '-'}</TableCell>
+                                <TableCell className="text-sm">
+                                  {request.level_upgrade_approved_at ? format(new Date(request.level_upgrade_approved_at), 'MMM d, yyyy HH:mm') : '-'}
+                                </TableCell>
+                                <TableCell>
+                                  <Badge variant="outline" className={getStatusColor(request.status)}>
+                                    {request.status.replace(/_/g, ' ')}
+                                  </Badge>
+                                </TableCell>
+                              </TableRow>
+                            ))
+                          )}
+                        </TableBody>
+                      </Table>
+                    </div>
+                    <TablePagination {...bar} />
+                  </>)}
+                </Paged>
               </CardContent>
             </Card>
           </TabsContent>
@@ -479,54 +490,59 @@ export default function StudentRequestApprovals() {
                 </CardTitle>
               </CardHeader>
               <CardContent className="p-0">
-                <div className="overflow-x-auto">
-                  <Table>
-                    <TableHeader>
-                      <TableRow className="bg-gray-50">
-                        <TableHead className="font-semibold">Requested At</TableHead>
-                        <TableHead className="font-semibold">Request Type</TableHead>
-                        <TableHead className="font-semibold">Student Name</TableHead>
-                        <TableHead className="font-semibold">Email</TableHead>
-                        <TableHead className="font-semibold">Requested By</TableHead>
-                        <TableHead className="font-semibold">Rejected By</TableHead>
-                        <TableHead className="font-semibold">Rejected At</TableHead>
-                        <TableHead className="font-semibold">Rejection Reason</TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {rejectedRequests.length === 0 ? (
-                        <TableRow>
-                          <TableCell colSpan={8} className="text-center py-8 text-gray-500">
-                            No rejected requests
-                          </TableCell>
-                        </TableRow>
-                      ) : (
-                        rejectedRequests.map((request) => (
-                          <TableRow key={request.id} className="hover:bg-gray-50 transition-colors">
-                            <TableCell className="text-sm">
-                              {request.requested_at ? format(new Date(request.requested_at), 'MMM d, yyyy HH:mm') : '-'}
-                            </TableCell>
-                            <TableCell>
-                              <Badge variant="outline" className={request.request_type === 'TRANSFER' ? 'bg-purple-100 text-purple-800' : 'bg-blue-100 text-blue-800'}>
-                                {request.request_type === 'TRANSFER' ? 'Transfer' : 'Level Upgrade'}
-                              </Badge>
-                            </TableCell>
-                            <TableCell className="font-medium">{request.full_name}</TableCell>
-                            <TableCell className="text-sm">{request.email}</TableCell>
-                            <TableCell className="text-sm font-medium text-blue-700">{request.requested_by_name || '-'}</TableCell>
-                            <TableCell className="text-sm font-medium text-red-700">{request.level_upgrade_approved_by_name || '-'}</TableCell>
-                            <TableCell className="text-sm">
-                              {request.level_upgrade_approved_at ? format(new Date(request.level_upgrade_approved_at), 'MMM d, yyyy HH:mm') : '-'}
-                            </TableCell>
-                            <TableCell className="text-sm text-red-600 max-w-xs">
-                              {request.level_upgrade_rejection_reason || '-'}
-                            </TableCell>
+                <Paged items={rejectedRequests} resetKey={searchTerm}>
+                  {(pageRows, bar) => (<>
+                    <div className="overflow-x-auto">
+                      <Table>
+                        <TableHeader>
+                          <TableRow className="bg-gray-50">
+                            <TableHead className="font-semibold">Requested At</TableHead>
+                            <TableHead className="font-semibold">Request Type</TableHead>
+                            <TableHead className="font-semibold">Student Name</TableHead>
+                            <TableHead className="font-semibold">Email</TableHead>
+                            <TableHead className="font-semibold">Requested By</TableHead>
+                            <TableHead className="font-semibold">Rejected By</TableHead>
+                            <TableHead className="font-semibold">Rejected At</TableHead>
+                            <TableHead className="font-semibold">Rejection Reason</TableHead>
                           </TableRow>
-                        ))
-                      )}
-                    </TableBody>
-                  </Table>
-                </div>
+                        </TableHeader>
+                        <TableBody>
+                          {rejectedRequests.length === 0 ? (
+                            <TableRow>
+                              <TableCell colSpan={8} className="text-center py-8 text-gray-500">
+                                No rejected requests
+                              </TableCell>
+                            </TableRow>
+                          ) : (
+                            pageRows.map((request) => (
+                              <TableRow key={request.id} className="hover:bg-gray-50 transition-colors">
+                                <TableCell className="text-sm">
+                                  {request.requested_at ? format(new Date(request.requested_at), 'MMM d, yyyy HH:mm') : '-'}
+                                </TableCell>
+                                <TableCell>
+                                  <Badge variant="outline" className={request.request_type === 'TRANSFER' ? 'bg-purple-100 text-purple-800' : 'bg-blue-100 text-blue-800'}>
+                                    {request.request_type === 'TRANSFER' ? 'Transfer' : 'Level Upgrade'}
+                                  </Badge>
+                                </TableCell>
+                                <TableCell className="font-medium">{request.full_name}</TableCell>
+                                <TableCell className="text-sm">{request.email}</TableCell>
+                                <TableCell className="text-sm font-medium text-blue-700">{request.requested_by_name || '-'}</TableCell>
+                                <TableCell className="text-sm font-medium text-red-700">{request.level_upgrade_approved_by_name || '-'}</TableCell>
+                                <TableCell className="text-sm">
+                                  {request.level_upgrade_approved_at ? format(new Date(request.level_upgrade_approved_at), 'MMM d, yyyy HH:mm') : '-'}
+                                </TableCell>
+                                <TableCell className="text-sm text-red-600 max-w-xs">
+                                  {request.level_upgrade_rejection_reason || '-'}
+                                </TableCell>
+                              </TableRow>
+                            ))
+                          )}
+                        </TableBody>
+                      </Table>
+                    </div>
+                    <TablePagination {...bar} />
+                  </>)}
+                </Paged>
               </CardContent>
             </Card>
           </TabsContent>

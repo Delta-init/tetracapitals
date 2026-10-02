@@ -14,6 +14,7 @@ import {
   formatPeriodLabel
 } from "../components/utils/TargetMetricsUtils";
 import { format } from "date-fns";
+import { Paged, TablePagination } from "@/components/common/TablePagination";
 
 export default function MyTargets() {
   const [currentUser, setCurrentUser] = useState(null);
@@ -166,6 +167,7 @@ export default function MyTargets() {
             <CardTitle className="text-lg font-semibold tracking-tight">All Targets</CardTitle>
           </CardHeader>
           <CardContent className="p-0">
+            <Paged items={enrichedTargets}>{(pageTargets, bar) => (<>
             <div className="overflow-x-auto">
               <Table>
                 <TableHeader>
@@ -189,7 +191,7 @@ export default function MyTargets() {
                       </TableCell>
                     </TableRow>
                   ) : (
-                    enrichedTargets.map((target) => (
+                    pageTargets.map((target) => (
                       <TableRow key={target.id} className="hover:bg-gray-50 transition-colors">
                         <TableCell>
                           <Badge variant="outline" className="bg-blue-50 text-blue-700 border-blue-200">
@@ -226,6 +228,8 @@ export default function MyTargets() {
                 </TableBody>
               </Table>
             </div>
+            <TablePagination {...bar} />
+            </>)}</Paged>
           </CardContent>
         </Card>
       </div>

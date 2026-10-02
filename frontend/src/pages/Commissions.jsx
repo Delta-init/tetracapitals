@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import PageHeader from '@/components/common/PageHeader';
+import { Paged, TablePagination } from '@/components/common/TablePagination';
 import StatsCard from '@/components/dashboard/StatsCard';
 import { base44 } from "@/api/base44Client";
 import { useQuery } from "@tanstack/react-query";
@@ -82,6 +83,7 @@ export default function Commissions() {
 
         {/* Commission Table */}
         <div className="overflow-hidden rounded-2xl border border-slate-200/70 bg-white shadow-soft">
+          <Paged items={filteredCommissions}>{(pageCommissions, bar) => (<>
           <Table>
             <TableHeader>
               <TableRow className="bg-gray-50">
@@ -104,7 +106,7 @@ export default function Commissions() {
                   </TableCell>
                 </TableRow>
               ) : (
-                filteredCommissions.map((commission) => (
+                pageCommissions.map((commission) => (
                   <TableRow key={commission.id} className="hover:bg-gray-50 transition-colors">
                     <TableCell className="font-medium">{commission.mentor_name}</TableCell>
                     <TableCell className="font-mono text-sm font-semibold text-blue-600">{commission.quarter}</TableCell>
@@ -135,6 +137,8 @@ export default function Commissions() {
               )}
             </TableBody>
           </Table>
+          <TablePagination {...bar} />
+          </>)}</Paged>
         </div>
       </div>
     </div>

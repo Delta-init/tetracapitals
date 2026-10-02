@@ -4,6 +4,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { base44 } from '@/api/base44Client';
 import { PageTitle } from '@/components/common/PageHeader';
+import { TablePagination, usePagination } from '@/components/common/TablePagination';
 import StatsCard from '@/components/dashboard/StatsCard';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -36,6 +37,7 @@ export default function InactivityTransfers() {
   });
   const settings = data?.settings;
   const due = data?.due || [];
+  const { pageItems: pageDue, bar } = usePagination(due);
 
   const [days, setDays] = useState('');
   useEffect(() => { if (settings) setDays(String(settings.days)); }, [settings?.days]);
@@ -160,7 +162,7 @@ export default function InactivityTransfers() {
                     <tr><td colSpan={5} className="py-10 text-center text-slate-400">Loading…</td></tr>
                   ) : due.length === 0 ? (
                     <tr><td colSpan={5} className="py-10 text-center text-slate-400">Nobody is due to move.</td></tr>
-                  ) : due.map(d => (
+                  ) : pageDue.map(d => (
                     <tr key={d.id} className="border-b border-slate-100 hover:bg-brand-cyan/[0.04]">
                       <td className="px-4 py-2.5">
                         <Link to={`${createPageUrl('StudentDetail')}?id=${d.id}`} className="font-medium text-slate-900 hover:text-blue-600">{d.name}</Link>
@@ -175,6 +177,7 @@ export default function InactivityTransfers() {
                 </tbody>
               </table>
             </div>
+            <TablePagination {...bar} />
           </CardContent>
         </Card>
 
