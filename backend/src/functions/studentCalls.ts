@@ -280,18 +280,29 @@ async function extensionOf(user: AuthUser): Promise<string> {
 
 /**
  * POST /api/functions/getClickToCall — whether this person's Call buttons place the call through 3CX (their
- * extension is known and 3CX is connected); otherwise they stay a tel: link for the 3CX app.
+ * extension is known and 3CX is connected); otherwise they stay a tel: link for the 3CX app. `web_client_url` is
+ * where the 3CX web client opens (the 3CX call starts there).
  */
 export async function getClickToCall(_req: Request, user: AuthUser): Promise<Response> {
   const extension = await extensionOf(user);
-  return json({ enabled: threecxConfigured() && !!extension, extension });
+  return json({ enabled: threecxConfigured() && !!extension, extension, web_client_url: threecxConfigured() ? config.threecx.url : "" });
+}
+
+/** An app on a computer — the 3CX web client's browser phone first — not the phone app alone. */
+function computerDevice(devices: any[]): any | null {
+  const ua = (d: any) => String(d?.user_agent ?? "");
+  return devices.find((d) => /web|browser|webrtc/i.test(ua(d)))
+    ?? devices.find((d) => ua(d) && !/mobile|android|iphone|ios/i.test(ua(d)))
+    ?? null;
 }
 
 /**
- * POST /api/functions/callStudent { studentId, dial } — the Call button. 3CX rings the caller's own extension
- * (whichever app or phone is signed in on it) and, once they answer, dials the student (Call Control makecall).
- * `dial` is the number the button shows, and must be one of the student's numbers. Whoever may see the student may
- * call them. The call itself reaches the Calls page with the 5-minute sync, like any other.
+ * POST /api/functions/callStudent { studentId, dial } — the Call button. The call starts on the caller's 3CX web
+ * client: 3CX's own call window pops up there, they answer it (the green handset) and 3CX dials the student (Call
+ * Control makecall from that device — explicit when more than one app is signed in). Without the web client (or
+ * another app on a computer) open on their extension, they are told to open it. `dial` is the number the button
+ * shows, and must be one of the student's numbers. Whoever may see the student may call them. The call itself
+ * reaches the Calls page with the call sync, like any other.
  */
 export async function callStudent(req: Request, user: AuthUser): Promise<Response> {
   const body: any = await req.json().catch(() => ({}));
@@ -320,17 +331,27 @@ export async function callStudent(req: Request, user: AuthUser): Promise<Respons
     }
     const dn: any = await state.json().catch(() => null);
     const devices = Array.isArray(dn?.devices) ? dn.devices : [];
-    if (!devices.length) return error(`Nothing is signed in on your extension ${extension} — open your 3CX app (or desk phone) and try again`, 409);
+    const device = computerDevice(devices);
+    if (!device) {
+      return error(`Your 3CX web client is not open on extension ${extension} — open it, sign in, let it use the microphone so it can take calls, then call again`,
+        409, { web_client_url: config.threecx.url });
+    }
 
-    const res = await threecxPost(`/callcontrol/${ext}/makecall`, { destination: dial, timeout: 30 });
+    // That device by itself; the extension as a whole if 3CX will not take the device (it still rings the web client).
+    let res = await threecxPost(`/callcontrol/${ext}/devices/${encodeURIComponent(String(device.device_id ?? ""))}/makecall`, { destination: dial, timeout: 30 });
+    if (!res.ok && res.status !== 403) {
+      await res.body?.cancel();
+      res = await threecxPost(`/callcontrol/${ext}/makecall`, { destination: dial, timeout: 30 });
+    }
     const out: any = await res.json().catch(() => null);
     if (!res.ok || /fail/i.test(String(out?.finalstatus ?? ""))) {
       const said = String(out?.reasontext || out?.reason || "").trim();
       return error(`3CX could not place the call — ${res.status === 403 ? `the API client may not control extension ${extension}`
-        : res.status === 424 ? "your 3CX app or phone did not answer 3CX" : said || `HTTP ${res.status}`}`, 502);
+        : res.status === 424 ? "your 3CX web client did not answer 3CX" : said || `HTTP ${res.status}`}`, 502);
     }
+    const app = String(device.user_agent ?? "") || "3CX web client";
     return json({
-      ok: true, extension, dial, ringing: devices.map((d: any) => String(d?.user_agent ?? "")).filter(Boolean),
+      ok: true, extension, dial, device: app, ringing: [app],
       call_id: out?.result?.callid ?? null, participant_id: out?.result?.id ?? null,
     });
   } catch (err) {

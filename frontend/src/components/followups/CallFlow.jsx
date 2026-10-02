@@ -11,10 +11,10 @@ import { dialInfo } from './phone';
 /* ────────────────────────────────────────────────────────────────────────────
    Call, then log. A Call button asks how to call, every time:
      - 3CX call (when the caller's 3CX extension is known and 3CX connected):
-       the portal asks 3CX to ring their own extension — app or desk phone —
-       and dial the student once they answer (backend callStudent); a call
-       window follows it from 3CX (ringing, calling, connected, ended) and can
-       hang up;
+       the call starts on their 3CX web client — 3CX's own call window pops up
+       there, they answer it and 3CX dials the student (backend callStudent);
+       a call window here follows it from 3CX (ringing, calling, connected,
+       ended) and can hang up;
      - Phone call: a tel: link for the phone app.
    Then it opens the right place to record the call:
      - a follow-up row → its Log dialog;
@@ -174,7 +174,7 @@ function CallChoiceDialog({ choice, clickToCall, onClose, onPhone, onStarted }) 
     try {
       const r = (await base44.functions.invoke('callStudent', { studentId: who.id, dial: info.dial })).data;
       onStarted({
-        dial: r?.dial || info.dial, extension: r?.extension || clickToCall?.extension,
+        dial: r?.dial || info.dial, extension: r?.extension || clickToCall?.extension, device: r?.device || '',
         callId: r?.call_id ?? null, participantId: r?.participant_id ?? null, ringing: r?.ringing || [],
       });
     } catch (e) {
@@ -202,7 +202,7 @@ function CallChoiceDialog({ choice, clickToCall, onClose, onPhone, onStarted }) 
               <span className="block font-semibold text-slate-900">3CX call</span>
               <span className="block text-sm text-slate-500">
                 {can3cx
-                  ? `3CX rings your extension ${clickToCall.extension} first — answer it, then ${firstName(who?.full_name)} is dialled. The call shows here.`
+                  ? `Opens in your 3CX web client (extension ${clickToCall.extension}) — answer 3CX's call there, then ${firstName(who?.full_name)} is dialled. The call shows here too.`
                   : clickToCall?.extension ? '3CX is not connected on the server' : 'No 3CX extension on your account — an admin adds it on Personnel'}
               </span>
             </span>
@@ -219,6 +219,11 @@ function CallChoiceDialog({ choice, clickToCall, onClose, onPhone, onStarted }) 
             </span>
           </a>
           {problem && <p className="text-sm text-rose-600">{problem}</p>}
+          {can3cx && clickToCall?.web_client_url && (
+            <a href={clickToCall.web_client_url} target="_blank" rel="noreferrer" className="block text-center text-xs font-medium text-emerald-700 underline">
+              Open the 3CX web client
+            </a>
+          )}
         </div>
       </DialogContent>
     </Dialog>
@@ -290,8 +295,8 @@ function CallWindow({ call, onClose, onLog }) {
   };
 
   const status = state?.participant?.status || '';
-  const devices = (state?.devices?.length ? state.devices : call?.ringing) || [];
-  const ringingYou = `Ringing your 3CX${devices.length ? ` (${devices.join(', ')})` : ''}…`;
+  const where = call?.device || '3CX web client';   // the app the call started on
+  const ringingYou = `Ringing your ${where}…`;
   const name = firstName(call?.who?.full_name);
   const line = ended ? (connectedAt ? 'Call ended' : 'The call ended before it connected')
     : !state?.participant ? ringingYou
@@ -299,10 +304,10 @@ function CallWindow({ call, onClose, onLog }) {
     : /dial/i.test(status) ? `Calling ${name}…`
     : /ring/i.test(status) ? ringingYou
     : status;
-  // 3CX "Dialing" covers both steps — your own 3CX app ringing, then the student's phone — so say what has to happen.
+  // 3CX "Dialing" covers both steps — your 3CX web client ringing, then the student's phone — so say what has to happen.
   const hint = connectedAt ? ''
-    : !ended ? `3CX rings your own 3CX app first — answer it there, then ${name}'s phone rings.`
-    : `If your 3CX app didn't ring, open it (with notifications on) and call again — or use Phone call. If you answered it, ${name} didn't pick up.`;
+    : !ended ? `Answer 3CX's call in your ${where} (the green handset) — then ${name}'s phone rings.`
+    : `If 3CX's call didn't pop up in your ${where}, open it, let it use the microphone and call again — or use Phone call. If you answered it, ${name} didn't pick up.`;
 
   return (
     <Dialog open={!!call} onOpenChange={(o) => { if (!o) onClose(); }}>
