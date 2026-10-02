@@ -1,16 +1,19 @@
 import React, { createContext, useCallback, useContext, useMemo, useState } from 'react';
-import { useQueryClient } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { base44 } from '@/api/base44Client';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
-import { Phone, PhoneOff, Plus } from 'lucide-react';
+import { Loader2, Phone, PhoneOff, Plus } from 'lucide-react';
 import { LogFollowupDialog, NewFollowupDialog, StageBadge, StatusBadge, fmtDate } from './followupUi';
 import { dialInfo } from './phone';
 
 /* ────────────────────────────────────────────────────────────────────────────
-   Call, then log. Every Call button dials through 3CX (tel: link, handled by
-   the 3CX desktop app) and then opens the right place to record the call:
+   Call, then log. Every Call button dials through 3CX. With the caller's 3CX
+   extension known (and 3CX connected), the portal asks 3CX to ring their own
+   extension — app or desk phone — and dial the student once they answer,
+   without leaving the page (backend callStudent); otherwise it is a tel: link
+   for the 3CX app. Then it opens the right place to record the call:
      - a follow-up row → its Log dialog;
      - a student → their one open follow-up's Log dialog; a picker when they
        have several; "New follow-up" (then Log) when they have none.
@@ -121,6 +124,15 @@ export function CallFlowProvider({ children }) {
   );
 }
 
+/** Whether this person's Call buttons place the call through 3CX (their extension is known), asked once. */
+function useClickToCall() {
+  return useQuery({
+    queryKey: ['click-to-call'],
+    queryFn: async () => (await base44.functions.invoke('getClickToCall', {})).data,
+    staleTime: 5 * 60_000,
+  }).data;
+}
+
 /**
  * The green Call button (3CX). `student` needs { id, full_name, phone };
  * pass `followup` on a follow-up row so the call is logged against it.
@@ -128,8 +140,11 @@ export function CallFlowProvider({ children }) {
  */
 export function CallButton({ student, followup = null, variant = 'button', className = '' }) {
   const flow = useCallFlow();
+  const clickToCall = useClickToCall();
+  const [ringing, setRinging] = useState(false);
   const info = dialInfo(student?.phone ?? followup?.phone);
   const size = variant === 'icon' ? 'h-8 w-8 justify-center' : 'h-8 gap-1.5 px-3';
+  const who = student || { id: followup?.student_id, full_name: followup?.student_name, phone: followup?.phone };
 
   if (!info.ok) {
     return (
@@ -142,14 +157,44 @@ export function CallButton({ student, followup = null, variant = 'button', class
       </span>
     );
   }
+  const look = `inline-flex flex-shrink-0 items-center rounded-lg text-xs font-semibold transition-colors ${variant === 'icon'
+    ? 'text-emerald-600 hover:bg-emerald-50 hover:text-emerald-700'
+    : 'bg-emerald-600 text-white shadow-sm hover:bg-emerald-700'} ${info.check ? 'ring-1 ring-amber-300' : ''} ${size} ${className}`;
+
+  if (clickToCall?.enabled) {
+    // 3CX rings the caller's own extension first; once they pick up, it dials the student.
+    const ring = async (e) => {
+      e.stopPropagation();
+      if (ringing) return;
+      setRinging(true);
+      try {
+        await base44.functions.invoke('callStudent', { studentId: who.id, dial: info.dial });
+        toast.success(`Ringing your 3CX (ext ${clickToCall.extension}) — pick up to call ${who.full_name || info.dial}`);
+        flow?.startCall(who, followup);
+      } catch (err) {
+        toast.error(err?.message || '3CX could not place the call');
+      } finally {
+        setRinging(false);
+      }
+    };
+    return (
+      <button
+        type="button"
+        onClick={ring}
+        disabled={ringing}
+        title={`Call ${info.dial} — 3CX rings your extension ${clickToCall.extension} first${info.note ? ` — ${info.note}` : ''}`}
+        className={`${look} disabled:opacity-60`}
+      >
+        {ringing ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Phone className="h-3.5 w-3.5" />}{variant !== 'icon' && 'Call'}
+      </button>
+    );
+  }
   return (
     <a
       href={`tel:${info.dial}`}
       title={`Call ${info.dial} with 3CX${info.note ? ` — ${info.note}` : ''}`}
-      onClick={(e) => { e.stopPropagation(); flow?.startCall(student || { id: followup?.student_id, full_name: followup?.student_name, phone: followup?.phone }, followup); }}
-      className={`inline-flex flex-shrink-0 items-center rounded-lg text-xs font-semibold transition-colors ${variant === 'icon'
-        ? 'text-emerald-600 hover:bg-emerald-50 hover:text-emerald-700'
-        : 'bg-emerald-600 text-white shadow-sm hover:bg-emerald-700'} ${info.check ? 'ring-1 ring-amber-300' : ''} ${size} ${className}`}
+      onClick={(e) => { e.stopPropagation(); flow?.startCall(who, followup); }}
+      className={look}
     >
       <Phone className="h-3.5 w-3.5" />{variant !== 'icon' && 'Call'}
     </a>

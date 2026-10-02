@@ -4,6 +4,7 @@
 // apostrophe), "971554482549" (country code, no +), "0505955098" (UAE, no
 // country code), "91 85939 07058", even an email address. 3CX dials exactly
 // what it is given, so:
+//   - several numbers in one field ("050… / 055…") → the first;
 //   - apostrophes / quotes / spaces / dashes are dropped;
 //   - "+…" is kept; "00…" becomes "+…";
 //   - a UAE-shaped number with no country code gets +971:
@@ -16,7 +17,8 @@
 const invalid = (reason) => ({ ok: false, reason });
 
 export function dialInfo(raw) {
-  const p = String(raw ?? '').replace(/^[\s'`"]+/, '').replace(/[\s'`"]+$/, '');
+  const first = String(raw ?? '').split(/[\n\r/,;|]+| - /).map(s => s.trim()).find(Boolean) ?? '';
+  const p = first.replace(/^[\s'`"]+/, '').replace(/[\s'`"]+$/, '');
   if (!p) return invalid('No phone number');
   if (p.includes('*')) return invalid('Phone number hidden');
   if (/[a-z@]/i.test(p)) return invalid('Not a phone number');

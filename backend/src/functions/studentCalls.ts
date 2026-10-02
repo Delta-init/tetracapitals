@@ -4,10 +4,10 @@ import { json, error, forbidden, notFound } from "../lib/response";
 import { toObjectId } from "../lib/id";
 import type { AuthUser } from "../auth/middleware";
 import { isAdmin, visibleMentorIds, isStudentOf, studentsOf } from "../students/followups";
-import { threecxConfigured, threecxFetch, threecxJson } from "../lib/threecx";
+import { threecxConfigured, threecxFetch, threecxJson, threecxPost } from "../lib/threecx";
 import {
   CALLS, BACKFILL_DAYS, LINK_TTL_S, getCallSettings, syncCalls, syncExtensions, recordingPath, recordingSource, recordingCount,
-  callLogPath, groupRows, parseCall, studentsByPhone,
+  callLogPath, groupRows, parseCall, studentsByPhone, phoneKey,
 } from "../students/calls";
 
 const DAY_MS = 86_400_000;
@@ -267,4 +267,70 @@ export async function testThreecx(_req: Request, user: AuthUser): Promise<Respon
     steps.push({ name: "Recordings", ok: true, detail: "No recorded call with a student in the last 24 hours to try" });
   }
   return json({ ok: steps.every((s) => s.ok), steps, sample, parsed });
+}
+
+/* ── The Call button: 3CX rings your own extension, then dials the student ── */
+
+/** The caller's 3CX extension — typed on Personnel, or filled in from 3CX by email. */
+async function extensionOf(user: AuthUser): Promise<string> {
+  const oid = toObjectId(user.id);
+  const me: any = oid ? await col("users").findOne({ _id: oid as any }, { projection: { extension: 1 } }) : null;
+  return str(me?.extension, 10);
+}
+
+/**
+ * POST /api/functions/getClickToCall — whether this person's Call buttons place the call through 3CX (their
+ * extension is known and 3CX is connected); otherwise they stay a tel: link for the 3CX app.
+ */
+export async function getClickToCall(_req: Request, user: AuthUser): Promise<Response> {
+  const extension = await extensionOf(user);
+  return json({ enabled: threecxConfigured() && !!extension, extension });
+}
+
+/**
+ * POST /api/functions/callStudent { studentId, dial } — the Call button. 3CX rings the caller's own extension
+ * (whichever app or phone is signed in on it) and, once they answer, dials the student (Call Control makecall).
+ * `dial` is the number the button shows, and must be one of the student's numbers. Whoever may see the student may
+ * call them. The call itself reaches the Calls page with the 5-minute sync, like any other.
+ */
+export async function callStudent(req: Request, user: AuthUser): Promise<Response> {
+  const body: any = await req.json().catch(() => ({}));
+  if (!threecxConfigured()) return error("3CX is not connected on this server", 409);
+  const extension = await extensionOf(user);
+  if (!extension) return error("Your 3CX extension is not set — an admin adds it on Personnel", 409);
+  const sid = toObjectId(str(body?.studentId, 40));
+  if (!sid) return error("studentId is required", 400);
+  const s: any = await col("students").findOne({ _id: sid as any }, { projection: { phone: 1, primary_mentor_id: 1, common_cs: 1 } });
+  if (!s) return notFound();
+  const visible = await visibleMentorIds(user);
+  if (visible && !isStudentOf(s, visible)) return forbidden("You can call only students you can see");
+  const dial = str(body?.dial, 24).replace(/[^\d+]/g, "");
+  const theirs = new Set(String(s.phone ?? "").split(/[\n\r/,;|]+| - /).map(phoneKey).filter(Boolean));
+  if (!/^\+?\d{7,15}$/.test(dial) || !theirs.has(phoneKey(dial))) return error("That number is not on this student", 400);
+
+  const ext = encodeURIComponent(extension);
+  try {
+    // Something has to be signed in on the extension for 3CX to ring it.
+    const state = await threecxFetch(`/callcontrol/${ext}`, { timeoutMs: 15_000 });
+    if (!state.ok) {
+      await state.body?.cancel();
+      return error(state.status === 404 ? `3CX has no extension ${extension}`
+        : state.status === 403 ? `3CX does not let the portal control extension ${extension} — check the API client's Call Control access in 3CX`
+        : `3CX could not look up extension ${extension} (HTTP ${state.status})`, 502);
+    }
+    const dn: any = await state.json().catch(() => null);
+    const devices = Array.isArray(dn?.devices) ? dn.devices : [];
+    if (!devices.length) return error(`Nothing is signed in on your extension ${extension} — open your 3CX app (or desk phone) and try again`, 409);
+
+    const res = await threecxPost(`/callcontrol/${ext}/makecall`, { destination: dial, timeout: 30 });
+    const out: any = await res.json().catch(() => null);
+    if (!res.ok || /fail/i.test(String(out?.finalstatus ?? ""))) {
+      const said = String(out?.reasontext || out?.reason || "").trim();
+      return error(`3CX could not place the call — ${res.status === 403 ? `the API client may not control extension ${extension}`
+        : res.status === 424 ? "your 3CX app or phone did not answer 3CX" : said || `HTTP ${res.status}`}`, 502);
+    }
+    return json({ ok: true, extension, dial, ringing: devices.map((d: any) => String(d?.user_agent ?? "")).filter(Boolean), call_id: out?.result?.callid ?? null });
+  } catch (err) {
+    return error(message(err), 502);
+  }
 }

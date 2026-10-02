@@ -23,7 +23,7 @@ import { reassignStudents } from "./reassignStudents";
 import { getStudentMoves } from "./getStudentMoves";
 import { getFollowups, createFollowup, logFollowup, getFollowupTeams } from "./studentFollowups";
 import { getReminderLog, resendReminder, runRemindersNow, sendTestReminder } from "./followupReminders";
-import { getCalls, getCallRecording, syncCallsNow, testThreecx } from "./studentCalls";
+import { getCalls, getCallRecording, syncCallsNow, testThreecx, getClickToCall, callStudent } from "./studentCalls";
 import { setEnrolment, getLmsEnrolment, syncLmsEnrolmentNow } from "./studentEnrolment";
 import { updateStudentDetails } from "./studentDetails";
 import { getOnboardingDraft, setOnboarding } from "./studentOnboarding";
@@ -63,6 +63,8 @@ const AUTHED: Record<string, AuthedHandler> = {
   getCallRecording,
   syncCallsNow,
   testThreecx,
+  getClickToCall,
+  callStudent,
   getMentorSchedule,
   getMentorClass,
   bookMentorMeeting,
