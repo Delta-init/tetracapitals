@@ -11,6 +11,12 @@
  * Students not in the portal are made (no CS on their tab: Delta Open Students). Students are found as the CS-sheet
  * import finds them — the same email, or the same phone (any number in the cell, last 9 digits) — every matching
  * record. A row with no email and no phone is skipped.
+ *   - a payment row already on them from an earlier run whose amounts, status or remarks changed on the tracker is
+ *     brought up to date; each row's remarks are added to their Notes ("Tracker · <tab> · <course>: <remarks>").
+ *   --cs-only (2026-10-02): only CS people hold students — a tab whose person is not a CS (a mentor) stands for the CS
+ *     people of that person's team: the student stays with one of them if already with one, else goes to them in turn.
+ *   --by-hand: Enrolment Closed is marked as set by hand where they have no Delta LMS account, so the hourly LMS check
+ *     keeps it (the app's own rule for a switch that disagrees with the LMS).
  *
  *   cd backend
  *   bun src/scripts/import-enrolment-tracker.ts --file=<the tracker's JSON>            shows what it would do
@@ -58,6 +64,11 @@ const phoneKeys = (v: unknown) => [...new Set(String(v ?? "").replace(/\.0$/, ""
 const minor = (v: number | null) => (v === null || v === undefined || !Number.isFinite(v) ? null : Math.round(v * 100));
 const tagOf = (course: string) => `${CLOSED_PREFIX}${course}`;
 const coursesOf = (rows: Row[]) => [...new Set(rows.map((r) => r.course).filter(Boolean))];
+const csOnly = process.argv.includes("--cs-only");
+const byHand = process.argv.includes("--by-hand");
+/** What a payment row is compared on, to bring one from an earlier run up to date. */
+const FEE_KEYS = ["course", "currency", "fee_minor", "paid_minor", "balance_minor", "bonus_given", "bonus_minor", "payment_status", "remarks"] as const;
+const noteOf = (r: Row) => `Tracker · ${r.tab} · ${r.course || "no course"}: ${r.remarks}`;
 
 /** One tracker row as a Course fees entry — the same shape finance's are, plus where it came from. */
 function feeEntry(r: Row, csName: string) {
@@ -156,9 +167,47 @@ async function importRows(file: string) {
     }
   }
 
+  // --cs-only: a tab whose person is not a CS stands for the CS people of that person's team.
+  const teams = csOnly ? await loadTeams() : null;
+  const teamFor = (r: Row) => {
+    const u = csOf(r);
+    if (!teams || !u || u.app_role === "cs") return null;
+    const t = teams.teamOf(String(u._id));
+    if (!t?.cs.length) throw new Error(`${r.tab}: ${u.email} is on no team with CS people — nothing done`);
+    return t;
+  };
+  const given = new Map<string, number>(), turn = new Map<string, number>(), chosen = new Map<string, string>();
+  const viaMentor: string[] = [];
+  /** Who a student's rows give them to: their CS tabs' people — or, with only mentor tabs, one CS of that team. */
+  const csIdsFor = (rs: Row[], current: string): string[] => {
+    if (!csOnly) return csIdsOf(rs);
+    const own = csIdsOf(rs.filter((r) => !teamFor(r)));
+    const mapped = rs.filter((r) => teamFor(r));
+    if (own.length || !mapped.length) return own;
+    const before = mapped.map((r) => chosen.get(`${r.tab}:${r.row}`)).find(Boolean);
+    if (before) return [before];
+    const team = teamFor(mapped[0]!)!;
+    let to = team.cs.some((c) => c.id === current) ? current : "";
+    if (!to) {
+      // Fewest given this way so far, in turn when level
+      let best = -1;
+      const start = turn.get(team.id) ?? 0;
+      for (let k = 0; k < team.cs.length; k++) {
+        const i = (start + k) % team.cs.length;
+        if (best < 0 || (given.get(team.cs[i]!.id) ?? 0) < (given.get(team.cs[best]!.id) ?? 0)) best = i;
+      }
+      to = team.cs[best]!.id;
+      turn.set(team.id, best + 1);
+      given.set(to, (given.get(to) ?? 0) + 1);
+    }
+    for (const r of mapped) chosen.set(`${r.tab}:${r.row}`, to);
+    viaMentor.push(`${[...new Set(mapped.map((r) => r.tab))].join("+")} → ${nameOf(to)}${to === current ? " (already with them)" : ""}`);
+    return [to];
+  };
+
   // 2. What happens to each record.
   const plans = [...targets.values()].map(({ s, rows: rs }) => {
-    const csIds = csIdsOf(rs);
+    const csIds = csIdsFor(rs, String(s.primary_mentor_id ?? ""));
     const current = String(s.primary_mentor_id ?? "");
     const sheetCs = s.cs_sheet?.cs ? userByEmail.get(String(s.cs_sheet.cs).toLowerCase()) : null;
     // Given to the CS they are with by that CS's own sheet: they stay, and the tracker's CS is added as Common.
@@ -171,12 +220,23 @@ async function importRows(file: string) {
     const own: string[] = Array.isArray(s.tags) ? s.tags : [];
     const tags = coursesOf(rs).map(tagOf).filter((t) => !own.includes(t));
     const close = s.enrolment_status !== "closed";
-    const haveFees = new Set((Array.isArray(s.course_fees) ? s.course_fees : []).map((f: any) => f?.invoice_id));
-    const entries = rs.map((r) => feeEntry(r, csName(r))).filter((e) => !haveFees.has(e.invoice_id));
+    const manual = byHand && s.lms_account?.exists !== true && s.enrolment_manual !== true;
+    const fees: any[] = Array.isArray(s.course_fees) ? s.course_fees : [];
+    const haveFees = new Set(fees.map((f: any) => f?.invoice_id));
+    const fresh = rs.map((r) => feeEntry(r, csName(r)));
+    const entries = fresh.filter((e) => !haveFees.has(e.invoice_id));
+    // On them from an earlier run, changed on the tracker since: brought up to date in place.
+    const updates = fresh.filter((e) => {
+      const f = fees.find((x: any) => x?.invoice_id === e.invoice_id);
+      return !!f && FEE_KEYS.some((k) => JSON.stringify(f[k] ?? null) !== JSON.stringify((e as any)[k] ?? null));
+    });
+    const had = String(s.notes ?? "").trim();
+    const lines = [...new Set(rs.filter((r) => r.remarks).map(noteOf))].filter((l) => !had.includes(l));
+    const noteText = lines.length ? [had, lines.join("\n")].filter(Boolean).join("\n\n") : null;
     const who = `${s.student_code} ${String(s.full_name ?? "").trim()}`;
     if (keptBySheet && common.length) notes.push(`${who} — on ${s.cs_sheet.cs}'s own sheet: stays with ${s.primary_mentor_name}, Common with ${common.map(nameOf).join(", ")}`);
     else if (common.length) notes.push(`${who} — on ${[...new Set(rs.map((r) => r.tab))].join(" and ")}: with ${nameOf(main)}, Common with ${common.map(nameOf).join(", ")}`);
-    return { s, rows: rs, main, move, common, mark, tags, close, entries };
+    return { s, rows: rs, main, move, common, mark, tags, close, manual, entries, updates, notes: noteText };
   });
 
   const needTags = [...new Set([...plans.flatMap((p) => p.tags), ...creates.flatMap((c) => coursesOf(c.rows).map(tagOf))])];
@@ -199,6 +259,19 @@ async function importRows(file: string) {
   console.log(`  course tags put on: ${Object.entries(tagCount).sort((a, b) => b[1] - a[1]).map(([t, c]) => `${t} ${c}`).join(" · ") || "none"}`);
   if (newTagNames.length) console.log(`  new on the Student Tags list: ${newTagNames.join(", ")}`);
   console.log(`  payment rows added: ${plans.reduce((s, p) => s + p.entries.length, 0) + creates.reduce((s, c) => s + c.rows.length, 0)}`);
+  console.log(`  payment rows brought up to date: ${plans.reduce((s, p) => s + p.updates.length, 0)}`);
+  for (const p of plans) for (const e of p.updates) {
+    const f = (p.s.course_fees as any[]).find((x: any) => x?.invoice_id === e.invoice_id);
+    console.log(`    ${p.s.student_code} ${e.invoice_id}: ${FEE_KEYS.filter((k) => JSON.stringify(f[k] ?? null) !== JSON.stringify((e as any)[k] ?? null)).map((k) => `${k} ${JSON.stringify(f[k] ?? null)} → ${JSON.stringify((e as any)[k] ?? null)}`).join("; ")}`);
+  }
+  console.log(`  remarks added to their Notes: ${count((p) => !!p.notes)} student(s)`);
+  if (byHand) console.log(`  Enrolment marked as set by hand (no Delta LMS account): ${count((p) => p.manual)}`);
+  if (csOnly) {
+    const by: Record<string, number> = {};
+    for (const v of viaMentor) by[v] = (by[v] ?? 0) + 1;
+    console.log(`  mentor tabs → a CS of that mentor's team: ${viaMentor.length}`);
+    for (const [k, c] of Object.entries(by).sort()) console.log(`    ${k}: ${c}`);
+  }
   console.log(`  new students: ${creates.length}`);
   for (const c of creates) {
     const r = c.rows[0]!, cs = csOf(r), others = csIdsOf(c.rows).filter((id) => id !== (cs ? String(cs._id) : ""));
@@ -255,12 +328,25 @@ async function importRows(file: string) {
       }
       if (p.close) {
         const from = s.enrolment_status === "old" ? "old" : "open";
-        await change(s, { enrolment_status: "closed", enrolment_updated_at: now, enrolment_updated_by_id: "", enrolment_updated_by_name: ACTOR.full_name!, updated_date: now });
+        await change(s, { enrolment_status: "closed", enrolment_updated_at: now, enrolment_updated_by_id: "", enrolment_updated_by_name: ACTOR.full_name!,
+          ...(p.manual ? { enrolment_manual: true } : {}), updated_date: now });
         await insertHistory([closedLine(sid, from, p.rows)]);
+      } else if (p.manual) {
+        // Enrolled already but no Delta LMS account: kept as set by hand, so the hourly LMS check leaves it.
+        await change(s, { enrolment_manual: true, updated_date: now });
       }
       if (p.tags.length) {
         await change(s, { tags: [...(Array.isArray(s.tags) ? s.tags : []), ...p.tags], updated_date: now });
         await insertHistory(p.tags.map((t) => tagLine(sid, t)));
+      }
+      if (p.notes) await change(s, { notes: p.notes, updated_date: now });
+      // Before new rows are pushed, so --undo (which takes those off first) finds this change as it left it.
+      if (p.updates.length) {
+        const next = (s.course_fees as any[]).map((f: any) => {
+          const u = p.updates.find((e) => e.invoice_id === f?.invoice_id);
+          return u ? { ...f, ...Object.fromEntries(FEE_KEYS.map((k) => [k, (u as any)[k]])), updated_at: now } : f;
+        });
+        await change(s, { course_fees: next, updated_date: now });
       }
       if (p.entries.length) {
         log.added.push({ id: sid, invoice_ids: p.entries.map((e) => e.invoice_id), updated_before: s.updated_date ?? null, fees_existed: "course_fees" in s });
@@ -270,7 +356,8 @@ async function importRows(file: string) {
     }
     // 2. The students not here yet
     const docs: any[] = creates.map(({ rows: rs }) => {
-      const r = rs[0]!, cs = csOf(r), emails = emailsOf(r.email);
+      const r = rs[0]!, mapped = csOnly ? csIdsFor(rs, "") : null, emails = emailsOf(r.email);
+      const cs = mapped ? (mapped[0] ? userById.get(mapped[0]) : null) : csOf(r);
       return {
         full_name: r.name || emails[0]?.split("@")[0] || r.phone, email: emails[0] ?? "", phone: r.phone, country: "",
         // Text in the email column that is no email is kept where somebody can read it, not stored as one.
@@ -280,6 +367,7 @@ async function importRows(file: string) {
         assignment_status: cs ? "assigned" : "open_pool", status: "ACTIVE", student_level: "LEVEL_1",
         source: "cs_tracker", import_batch: log.batch, ...(cs ? { cs_sheet: marker(String(cs._id)) } : {}),
         enrolment_status: "closed", enrolment_updated_at: now, enrolment_updated_by_id: "", enrolment_updated_by_name: ACTOR.full_name,
+        ...(byHand ? { enrolment_manual: true } : {}),
         course_fees: rs.map((x) => feeEntry(x, csName(x))),
         created_date: now, updated_date: now, created_by_id: "", created_by_name: ACTOR.full_name,
       };
@@ -290,7 +378,7 @@ async function importRows(file: string) {
       docs.forEach((d, i) => {
         const rs = creates[i]!.rows;
         d.tags = coursesOf(rs).map(tagOf);
-        const others = csIdsOf(rs).filter((id) => id !== d.primary_mentor_id);
+        const others = (csOnly ? csIdsFor(rs, "") : csIdsOf(rs)).filter((id) => id !== d.primary_mentor_id);
         if (others.length) d.common_cs = others.map((id) => commonEntry(id, rowFor(rs, id)));
       });
       for (const d of docs) d.student_code = await nextStudentCode();
@@ -307,6 +395,8 @@ async function importRows(file: string) {
       `${plans.reduce((s, p) => s + p.tags.length, 0) + docs.reduce((s, d) => s + d.tags.length, 0)} course tag(s) put on, ` +
       `${plans.reduce((s, p) => s + p.entries.length, 0) + docs.reduce((s, d) => s + d.course_fees.length, 0)} payment row(s) added, ` +
       `${docs.length} new student(s)${docs.length ? ` (${docs[0].student_code} → ${docs[docs.length - 1].student_code})` : ""}.`);
+    console.log(`  ${plans.reduce((s, p) => s + p.updates.length, 0)} payment row(s) brought up to date, remarks added to the Notes of ${count((p) => !!p.notes)}, ` +
+      `${count((p) => p.manual) + (byHand ? docs.length : 0)} marked enrolled by hand.`);
   } finally {
     if (log.changes.length || log.added.length || log.created.length || log.tag_ids.length) {
       await Bun.write(undoPath, JSON.stringify(log, null, 1));
