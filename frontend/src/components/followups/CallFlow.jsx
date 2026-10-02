@@ -1,19 +1,22 @@
-import React, { createContext, useCallback, useContext, useMemo, useState } from 'react';
+import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { base44 } from '@/api/base44Client';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
-import { Loader2, Phone, PhoneOff, Plus } from 'lucide-react';
+import { Loader2, Phone, PhoneCall, PhoneOff, Plus, Smartphone } from 'lucide-react';
 import { LogFollowupDialog, NewFollowupDialog, StageBadge, StatusBadge, fmtDate } from './followupUi';
 import { dialInfo } from './phone';
 
 /* ────────────────────────────────────────────────────────────────────────────
-   Call, then log. Every Call button dials through 3CX. With the caller's 3CX
-   extension known (and 3CX connected), the portal asks 3CX to ring their own
-   extension — app or desk phone — and dial the student once they answer,
-   without leaving the page (backend callStudent); otherwise it is a tel: link
-   for the 3CX app. Then it opens the right place to record the call:
+   Call, then log. A Call button asks how to call, every time:
+     - 3CX call (when the caller's 3CX extension is known and 3CX connected):
+       the portal asks 3CX to ring their own extension — app or desk phone —
+       and dial the student once they answer (backend callStudent); a call
+       window follows it from 3CX (ringing, calling, connected, ended) and can
+       hang up;
+     - Phone call: a tel: link for the phone app.
+   Then it opens the right place to record the call:
      - a follow-up row → its Log dialog;
      - a student → their one open follow-up's Log dialog; a picker when they
        have several; "New follow-up" (then Log) when they have none.
@@ -32,6 +35,9 @@ export function CallFlowProvider({ children }) {
   const [logging, setLogging] = useState(null);     // follow-up being logged
   const [choosing, setChoosing] = useState(null);   // { student, followups }
   const [creating, setCreating] = useState(null);   // { student, afterCall }
+  const [callChoice, setCallChoice] = useState(null);   // { who, followup, info } — Call pressed: 3CX or phone?
+  const [liveCall, setLiveCall] = useState(null);       // a 3CX call under way, for the call window
+  const clickToCall = useClickToCall();
 
   const refresh = useCallback(() => {
     queryClient.invalidateQueries({ queryKey: ['followups'] });
@@ -60,11 +66,27 @@ export function CallFlowProvider({ children }) {
     }
   }, []);
 
-  const value = useMemo(() => ({ startCall, openLog }), [startCall, openLog]);
+  /** A Call button was pressed: ask how to call. */
+  const chooseCall = useCallback((who, followup, info) => setCallChoice({ who, followup, info }), []);
+
+  const value = useMemo(() => ({ startCall, openLog, chooseCall }), [startCall, openLog, chooseCall]);
 
   return (
     <CallFlowContext.Provider value={value}>
       {children}
+
+      <CallChoiceDialog
+        choice={callChoice}
+        clickToCall={clickToCall}
+        onClose={() => setCallChoice(null)}
+        onPhone={() => { const c = callChoice; setCallChoice(null); if (c) startCall(c.who, c.followup); }}
+        onStarted={(call) => { const c = callChoice; setCallChoice(null); if (c) setLiveCall({ ...call, who: c.who, followup: c.followup }); }}
+      />
+      <CallWindow
+        call={liveCall}
+        onClose={() => setLiveCall(null)}
+        onLog={() => { const c = liveCall; setLiveCall(null); if (c) startCall(c.who, c.followup); }}
+      />
 
       <LogFollowupDialog followup={logging} onClose={() => setLogging(null)} onSaved={refresh} />
 
@@ -133,15 +155,187 @@ function useClickToCall() {
   }).data;
 }
 
+const stop = (e) => e.stopPropagation();   // the windows open from clickable table rows
+const firstName = (name) => String(name || '').trim().split(/\s+/)[0] || 'the student';
+const clock = (ms) => { const s = Math.max(0, Math.floor(ms / 1000)); return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`; };
+const OPTION = 'flex w-full items-start gap-3 rounded-xl border px-3 py-3 text-left transition-colors';
+
+/** Call pressed: a 3CX call (3CX rings your extension first) or a phone call — asked every time. */
+function CallChoiceDialog({ choice, clickToCall, onClose, onPhone, onStarted }) {
+  const [busy, setBusy] = useState(false);
+  const [problem, setProblem] = useState('');
+  useEffect(() => { setBusy(false); setProblem(''); }, [choice]);
+  const who = choice?.who;
+  const info = choice?.info;
+  const can3cx = !!clickToCall?.enabled;
+  const call3cx = async () => {
+    setBusy(true);
+    setProblem('');
+    try {
+      const r = (await base44.functions.invoke('callStudent', { studentId: who.id, dial: info.dial })).data;
+      onStarted({
+        dial: r?.dial || info.dial, extension: r?.extension || clickToCall?.extension,
+        callId: r?.call_id ?? null, participantId: r?.participant_id ?? null, ringing: r?.ringing || [],
+      });
+    } catch (e) {
+      setProblem(e?.message || '3CX could not place the call');
+    } finally {
+      setBusy(false);
+    }
+  };
+  return (
+    <Dialog open={!!choice} onOpenChange={(o) => { if (!o && !busy) onClose(); }}>
+      <DialogContent className="max-w-md" onClick={stop}>
+        <DialogHeader>
+          <DialogTitle className="text-brand-navy">Call {who?.full_name || info?.dial}</DialogTitle>
+          <DialogDescription>{info?.dial}{info?.note ? ` — ${info.note}` : ''}</DialogDescription>
+        </DialogHeader>
+        <div className="space-y-2">
+          <button
+            type="button"
+            disabled={!can3cx || busy}
+            onClick={call3cx}
+            className={`${OPTION} ${can3cx ? 'border-emerald-200 hover:bg-emerald-50' : 'cursor-not-allowed border-slate-200 opacity-60'}`}
+          >
+            {busy ? <Loader2 className="mt-0.5 h-5 w-5 flex-shrink-0 animate-spin text-emerald-600" /> : <PhoneCall className="mt-0.5 h-5 w-5 flex-shrink-0 text-emerald-600" />}
+            <span>
+              <span className="block font-semibold text-slate-900">3CX call</span>
+              <span className="block text-sm text-slate-500">
+                {can3cx
+                  ? `3CX rings your extension ${clickToCall.extension} first — answer it, then ${firstName(who?.full_name)} is dialled. The call shows here.`
+                  : clickToCall?.extension ? '3CX is not connected on the server' : 'No 3CX extension on your account — an admin adds it on Personnel'}
+              </span>
+            </span>
+          </button>
+          <a
+            href={`tel:${info?.dial ?? ''}`}
+            onClick={() => setTimeout(onPhone, 0)}   // the browser follows the link before this window closes
+            className={`${OPTION} border-slate-200 hover:bg-slate-50`}
+          >
+            <Smartphone className="mt-0.5 h-5 w-5 flex-shrink-0 text-slate-600" />
+            <span>
+              <span className="block font-semibold text-slate-900">Phone call</span>
+              <span className="block text-sm text-slate-500">Opens your phone app to dial {info?.dial}</span>
+            </span>
+          </a>
+          {problem && <p className="text-sm text-rose-600">{problem}</p>}
+        </div>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 /**
- * The green Call button (3CX). `student` needs { id, full_name, phone };
+ * The call window for a 3CX call: what 3CX says about it every 2 seconds — ringing your 3CX, calling the student,
+ * connected (with a timer), ended — with Hang up and Log the call. The call itself is on the 3CX app or phone;
+ * closing this window does not end it. 3CX's own status word shows too, so a stage read wrongly can be seen.
+ */
+function CallWindow({ call, onClose, onLog }) {
+  const [state, setState] = useState(null);       // the latest getMyCallState
+  const [ended, setEnded] = useState(false);
+  const [connectedAt, setConnectedAt] = useState(null);
+  const [problem, setProblem] = useState('');
+  const [hanging, setHanging] = useState(false);
+  const [, setTick] = useState(0);
+  const seen = useRef(false);
+  const started = useRef(0);
+
+  useEffect(() => {   // a new call: start over
+    setState(null); setEnded(false); setConnectedAt(null); setProblem(''); setHanging(false);
+    seen.current = false;
+    started.current = Date.now();
+  }, [call]);
+
+  useEffect(() => {   // follow it from 3CX every 2 seconds until it ends
+    if (!call || ended) return undefined;
+    let gone = false;
+    const look = async () => {
+      try {
+        const s = (await base44.functions.invoke('getMyCallState', { callId: call.callId, dial: call.dial })).data;
+        if (gone) return;
+        setState(s);
+        setProblem('');
+        if (s?.participant) {
+          seen.current = true;
+          if (/connect/i.test(s.participant.status)) setConnectedAt(at => at ?? Date.now());
+        } else if (seen.current || Date.now() - started.current > 60_000) {
+          setEnded(true);
+        }
+      } catch (e) {
+        if (!gone) setProblem(e?.message || 'Could not read the call from 3CX');
+      }
+    };
+    look();
+    const id = setInterval(look, 2000);
+    return () => { gone = true; clearInterval(id); };
+  }, [call, ended]);
+
+  useEffect(() => {   // the talk timer
+    if (!connectedAt || ended) return undefined;
+    const id = setInterval(() => setTick(t => t + 1), 1000);
+    return () => clearInterval(id);
+  }, [connectedAt, ended]);
+
+  const hangUp = async () => {
+    if (!state?.participant?.id) return;
+    setHanging(true);
+    try {
+      await base44.functions.invoke('hangUpMyCall', { participantId: state.participant.id });
+      setEnded(true);
+    } catch (e) {
+      setProblem(e?.message || 'Could not hang up');
+    } finally {
+      setHanging(false);
+    }
+  };
+
+  const status = state?.participant?.status || '';
+  const devices = (state?.devices?.length ? state.devices : call?.ringing) || [];
+  const ringingYou = `Ringing your 3CX${devices.length ? ` (${devices.join(', ')})` : ''}…`;
+  const line = ended ? 'Call ended'
+    : !state?.participant ? ringingYou
+    : /connect/i.test(status) ? `Connected · ${clock(Date.now() - (connectedAt ?? Date.now()))}`
+    : /dial/i.test(status) ? `Calling ${firstName(call?.who?.full_name)}…`
+    : /ring/i.test(status) ? ringingYou
+    : status;
+
+  return (
+    <Dialog open={!!call} onOpenChange={(o) => { if (!o) onClose(); }}>
+      <DialogContent className="max-w-sm" onClick={stop}>
+        <DialogHeader className="items-center text-center sm:text-center">
+          <div className={`mx-auto flex h-14 w-14 items-center justify-center rounded-full ${ended ? 'bg-slate-100 text-slate-500' : 'bg-emerald-50 text-emerald-600'}`}>
+            {ended ? <PhoneOff className="h-6 w-6" /> : <PhoneCall className={`h-6 w-6 ${connectedAt ? '' : 'animate-pulse'}`} />}
+          </div>
+          <DialogTitle className="text-brand-navy">{call?.who?.full_name || call?.dial}</DialogTitle>
+          <DialogDescription>{call?.dial} · from your extension {call?.extension}</DialogDescription>
+        </DialogHeader>
+        <div className="space-y-1 text-center">
+          <p className={`text-lg font-semibold ${ended ? 'text-slate-500' : 'text-emerald-700'}`}>{line}</p>
+          {status && !ended && <p className="text-xs text-slate-400">3CX: {status}{state?.participant?.party ? ` · ${state.participant.party}` : ''}</p>}
+          {!ended && <p className="text-xs text-slate-400">The call is on your 3CX app or phone — closing this window does not end it.</p>}
+          {problem && <p className="text-xs text-rose-600">{problem}</p>}
+        </div>
+        <DialogFooter className="gap-2 sm:justify-center">
+          {!ended && (
+            <Button variant="destructive" onClick={hangUp} disabled={hanging || !state?.participant?.id}>
+              {hanging ? <Loader2 className="h-4 w-4 animate-spin" /> : <PhoneOff className="h-4 w-4" />} Hang up
+            </Button>
+          )}
+          <Button variant={ended ? 'default' : 'outline'} onClick={onLog}>Log the call</Button>
+          <Button variant="ghost" onClick={onClose}>Close</Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+/**
+ * The green Call button. `student` needs { id, full_name, phone };
  * pass `followup` on a follow-up row so the call is logged against it.
- * variant: "button" (Call label) or "icon".
+ * variant: "button" (Call label) or "icon". It asks how to call: 3CX or phone.
  */
 export function CallButton({ student, followup = null, variant = 'button', className = '' }) {
   const flow = useCallFlow();
-  const clickToCall = useClickToCall();
-  const [ringing, setRinging] = useState(false);
   const info = dialInfo(student?.phone ?? followup?.phone);
   const size = variant === 'icon' ? 'h-8 w-8 justify-center' : 'h-8 gap-1.5 px-3';
   const who = student || { id: followup?.student_id, full_name: followup?.student_name, phone: followup?.phone };
@@ -157,46 +351,20 @@ export function CallButton({ student, followup = null, variant = 'button', class
       </span>
     );
   }
-  const look = `inline-flex flex-shrink-0 items-center rounded-lg text-xs font-semibold transition-colors ${variant === 'icon'
-    ? 'text-emerald-600 hover:bg-emerald-50 hover:text-emerald-700'
-    : 'bg-emerald-600 text-white shadow-sm hover:bg-emerald-700'} ${info.check ? 'ring-1 ring-amber-300' : ''} ${size} ${className}`;
-
-  if (clickToCall?.enabled) {
-    // 3CX rings the caller's own extension first; once they pick up, it dials the student.
-    const ring = async (e) => {
-      e.stopPropagation();
-      if (ringing) return;
-      setRinging(true);
-      try {
-        await base44.functions.invoke('callStudent', { studentId: who.id, dial: info.dial });
-        toast.success(`Ringing your 3CX (ext ${clickToCall.extension}) — pick up to call ${who.full_name || info.dial}`);
-        flow?.startCall(who, followup);
-      } catch (err) {
-        toast.error(err?.message || '3CX could not place the call');
-      } finally {
-        setRinging(false);
-      }
-    };
-    return (
-      <button
-        type="button"
-        onClick={ring}
-        disabled={ringing}
-        title={`Call ${info.dial} — 3CX rings your extension ${clickToCall.extension} first${info.note ? ` — ${info.note}` : ''}`}
-        className={`${look} disabled:opacity-60`}
-      >
-        {ringing ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Phone className="h-3.5 w-3.5" />}{variant !== 'icon' && 'Call'}
-      </button>
-    );
-  }
   return (
-    <a
-      href={`tel:${info.dial}`}
-      title={`Call ${info.dial} with 3CX${info.note ? ` — ${info.note}` : ''}`}
-      onClick={(e) => { e.stopPropagation(); flow?.startCall(who, followup); }}
-      className={look}
+    <button
+      type="button"
+      onClick={(e) => {
+        e.stopPropagation();
+        if (flow) flow.chooseCall(who, followup, info);
+        else window.location.href = `tel:${info.dial}`;
+      }}
+      title={`Call ${info.dial}${info.note ? ` — ${info.note}` : ''}`}
+      className={`inline-flex flex-shrink-0 items-center rounded-lg text-xs font-semibold transition-colors ${variant === 'icon'
+        ? 'text-emerald-600 hover:bg-emerald-50 hover:text-emerald-700'
+        : 'bg-emerald-600 text-white shadow-sm hover:bg-emerald-700'} ${info.check ? 'ring-1 ring-amber-300' : ''} ${size} ${className}`}
     >
       <Phone className="h-3.5 w-3.5" />{variant !== 'icon' && 'Call'}
-    </a>
+    </button>
   );
 }

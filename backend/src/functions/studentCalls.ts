@@ -329,7 +329,64 @@ export async function callStudent(req: Request, user: AuthUser): Promise<Respons
       return error(`3CX could not place the call — ${res.status === 403 ? `the API client may not control extension ${extension}`
         : res.status === 424 ? "your 3CX app or phone did not answer 3CX" : said || `HTTP ${res.status}`}`, 502);
     }
-    return json({ ok: true, extension, dial, ringing: devices.map((d: any) => String(d?.user_agent ?? "")).filter(Boolean), call_id: out?.result?.callid ?? null });
+    return json({
+      ok: true, extension, dial, ringing: devices.map((d: any) => String(d?.user_agent ?? "")).filter(Boolean),
+      call_id: out?.result?.callid ?? null, participant_id: out?.result?.id ?? null,
+    });
+  } catch (err) {
+    return error(message(err), 502);
+  }
+}
+
+/**
+ * POST /api/functions/getMyCallState { callId?, dial? } — the call window: this call on the caller's own extension,
+ * as 3CX has it now (status, the other party), and what is signed in on the extension. Only their own extension.
+ */
+export async function getMyCallState(req: Request, user: AuthUser): Promise<Response> {
+  const body: any = await req.json().catch(() => ({}));
+  if (!threecxConfigured()) return error("3CX is not connected on this server", 409);
+  const extension = await extensionOf(user);
+  if (!extension) return error("Your 3CX extension is not set", 409);
+  const callId = Number(body?.callId) || 0;
+  const key = phoneKey(str(body?.dial, 24));
+  try {
+    const r = await threecxFetch(`/callcontrol/${encodeURIComponent(extension)}`, { timeoutMs: 10_000 });
+    if (!r.ok) {
+      await r.body?.cancel();
+      return error(`3CX could not look up extension ${extension} (HTTP ${r.status})`, 502);
+    }
+    const dn: any = await r.json().catch(() => null);
+    const parts: any[] = Array.isArray(dn?.participants) ? dn.participants : [];
+    // This call: by its 3CX call id, else by the student's number, else the only one there is.
+    const mine = parts.find((p) => callId && Number(p?.callid) === callId)
+      ?? parts.find((p) => key && [p?.party_caller_id, p?.party_dn].some((n) => phoneKey(String(n ?? "")) === key))
+      ?? (parts.length === 1 ? parts[0] : null);
+    return json({
+      extension,
+      devices: (Array.isArray(dn?.devices) ? dn.devices : []).map((d: any) => String(d?.user_agent ?? "")).filter(Boolean),
+      participant: mine ? {
+        id: mine.id ?? null, status: String(mine.status ?? ""), callid: mine.callid ?? null,
+        party: String(mine.party_caller_name || mine.party_caller_id || mine.party_dn || ""),
+      } : null,
+    });
+  } catch (err) {
+    return error(message(err), 502);
+  }
+}
+
+/** POST /api/functions/hangUpMyCall { participantId } — Hang up: drops the caller's own leg of the call (3CX "drop"). */
+export async function hangUpMyCall(req: Request, user: AuthUser): Promise<Response> {
+  const body: any = await req.json().catch(() => ({}));
+  const id = Number(body?.participantId);
+  if (!Number.isInteger(id) || id <= 0) return error("participantId is required", 400);
+  if (!threecxConfigured()) return error("3CX is not connected on this server", 409);
+  const extension = await extensionOf(user);
+  if (!extension) return error("Your 3CX extension is not set", 409);
+  try {
+    const res = await threecxPost(`/callcontrol/${encodeURIComponent(extension)}/participants/${id}/drop`, {});
+    const out: any = await res.json().catch(() => null);
+    if (!res.ok) return error(`3CX could not hang up — ${String(out?.reasontext || out?.reason || "").trim() || `HTTP ${res.status}`}`, 502);
+    return json({ ok: true });
   } catch (err) {
     return error(message(err), 502);
   }
