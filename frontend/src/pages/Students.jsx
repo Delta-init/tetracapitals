@@ -56,15 +56,19 @@ const NewForYou = ({ student, me }) => (isNewFor(student, me)
   ? <span title="Given to you — not opened yet" className="ml-1.5 rounded bg-emerald-100 px-1.5 py-0.5 align-middle text-[10px] font-semibold uppercase tracking-wide text-emerald-700">New</span>
   : null);
 
-/** Delta LMS classes: how many they attended (and missed) — from the hourly LMS check; the student page lists them. */
+/**
+ * Delta LMS classes in their own courses: attended, booked (passed, not marked yet) and upcoming — from the hourly
+ * LMS check; the student page lists them.
+ */
 function ClassesCell({ student }) {
   const c = student.lms_classes;
-  if (!c) return <span className="text-slate-300">—</span>;
-  const title = [`${c.attended} attended`, `${c.missed} missed`, c.upcoming ? `${c.upcoming} upcoming` : '', c.last_attended_at ? `last attended ${format(new Date(c.last_attended_at), 'd MMM yyyy')}` : ''].filter(Boolean).join(' · ');
+  if (!c || !(c.attended || c.booked || c.upcoming)) return <span className="text-slate-300">—</span>;
+  const title = [`${c.attended} attended`, `${c.booked} booked`, `${c.upcoming} upcoming`, c.last_attended_at ? `last attended ${format(new Date(c.last_attended_at), 'd MMM yyyy')}` : ''].filter(Boolean).join(' · ');
   return (
     <span className="whitespace-nowrap text-sm" title={title}>
       <span className={c.attended ? 'font-medium text-emerald-700' : 'text-slate-500'}>{c.attended} attended</span>
-      {c.missed > 0 && <span className="text-xs text-rose-600"> · {c.missed} missed</span>}
+      {c.booked > 0 && <span className="text-xs text-slate-600"> · {c.booked} booked</span>}
+      {c.upcoming > 0 && <span className="text-xs text-sky-700"> · {c.upcoming} upcoming</span>}
     </span>
   );
 }
@@ -517,7 +521,7 @@ export default function Students() {
     };
 
     const csvContent = [
-      ['Student Code', 'Full Name', 'Email', 'Phone', 'Country', 'User ID', 'CS', 'Senior Mentor', 'Team', 'Course', 'Status', 'Enrolment', 'Classes Attended', 'Classes Missed', 'Tags', 'Created Date', 'Notes'].join(','),
+      ['Student Code', 'Full Name', 'Email', 'Phone', 'Country', 'User ID', 'CS', 'Senior Mentor', 'Team', 'Course', 'Status', 'Enrolment', 'Classes Attended', 'Classes Booked', 'Classes Upcoming', 'Tags', 'Created Date', 'Notes'].join(','),
       ...filteredStudents.map(s => [
         escapeCSV(s.student_code || ''),
         escapeCSV(s.full_name || ''),
@@ -532,7 +536,8 @@ export default function Students() {
         escapeCSV(s.status || ''),
         escapeCSV(ENROLMENT[enrolmentOf(s)].label),
         escapeCSV(s.lms_classes?.attended ?? ''),
-        escapeCSV(s.lms_classes?.missed ?? ''),
+        escapeCSV(s.lms_classes?.booked ?? ''),
+        escapeCSV(s.lms_classes?.upcoming ?? ''),
         escapeCSV(tagNamesOf(s).join(', ')),
         escapeCSV(s.created_date ? format(new Date(s.created_date), 'yyyy-MM-dd') : ''),
         escapeCSV(s.notes || '')
@@ -657,7 +662,8 @@ export default function Students() {
                 <SelectContent>
                   <SelectItem value="all">Any classes</SelectItem>
                   <SelectItem value="attended">Attended a class</SelectItem>
-                  <SelectItem value="not_attended">Never attended</SelectItem>
+                  <SelectItem value="booked">Booked a class</SelectItem>
+                  <SelectItem value="upcoming">Upcoming class</SelectItem>
                 </SelectContent>
               </Select>
 

@@ -145,9 +145,8 @@ async function filters(user: AuthUser, tab: Tab, f: any): Promise<Record<string,
   if (tag && tag !== "all") out.push(tagFilter(tag));
   if (f?.enrolment === "enrolled") out.push({ enrolment_status: "closed" });
   if (f?.enrolment === "not_enrolled") out.push({ enrolment_status: { $ne: "closed" } });
-  // LMS classes (the hourly LMS check keeps the counts on the student).
-  if (f?.classes === "attended") out.push({ "lms_classes.attended": { $gt: 0 } });
-  if (f?.classes === "not_attended") out.push({ "lms_classes.attended": { $not: { $gt: 0 } } });
+  // LMS classes in their own courses (the hourly LMS check keeps the counts on the student).
+  if (["attended", "booked", "upcoming"].includes(f?.classes)) out.push({ [`lms_classes.${f.classes}`]: { $gt: 0 } });
   const course = str(f?.course);
   if (course && course !== "all") {
     const c = await courseFilter(course);

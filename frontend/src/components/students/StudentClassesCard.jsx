@@ -8,9 +8,10 @@ import { GraduationCap } from 'lucide-react';
 import { Paged, TablePagination } from '@/components/common/TablePagination';
 
 /* ────────────────────────────────────────────────────────────────────────────
-   The student's live classes in the Delta LMS — booked, attended, missed,
-   cancelled — by their email, across both academies
-   (backend/src/functions/lmsClasses.ts → the LMS's /service/class-attendance).
+   The student's live classes in the Delta LMS, by their email, across both
+   academies (backend/src/functions/lmsClasses.ts → the LMS's
+   /service/class-attendance): only classes of courses they are enrolled in
+   (the LMS decides), and of those only the attended, booked and upcoming ones.
 ──────────────────────────────────────────────────────────────────────────── */
 
 const STATUS = {
@@ -20,6 +21,7 @@ const STATUS = {
   booked: { label: 'Booked', cls: 'border-slate-200 bg-slate-50 text-slate-600', hint: 'The class has passed; the LMS has not settled attendance yet' },
   cancelled: { label: 'Cancelled', cls: 'border-slate-200 bg-slate-100 text-slate-500' },
 };
+const SHOWN = ['attended', 'booked', 'upcoming'];
 const when = (iso) => (iso ? format(new Date(iso), 'd MMM yyyy, HH:mm') : '—');
 
 export default function StudentClassesCard({ student }) {
@@ -31,7 +33,7 @@ export default function StudentClassesCard({ student }) {
   });
   if (!isLoading && (!data || !data.configured)) return null;   // no LMS link on this server
   const c = data?.counts || {};
-  const classes = data?.classes || [];
+  const classes = (data?.classes || []).filter(k => SHOWN.includes(k.status));
 
   return (
     <Card className="overflow-hidden border-gray-200">
@@ -40,8 +42,8 @@ export default function StudentClassesCard({ student }) {
           <span className="flex items-center gap-2"><GraduationCap className="h-5 w-5 text-indigo-600" />Classes (Delta LMS)</span>
           {data?.available && (
             <span className="flex flex-wrap gap-1.5 text-xs font-normal">
-              {['attended', 'missed', 'upcoming', 'booked', 'cancelled'].filter(k => k === 'attended' || k === 'missed' || c[k]).map(k => (
-                <Badge key={k} variant="outline" className={STATUS[k].cls}>{STATUS[k].label} {c[k] ?? 0}</Badge>
+              {SHOWN.map(k => (
+                <Badge key={k} variant="outline" className={STATUS[k].cls} title={STATUS[k].hint}>{STATUS[k].label} {c[k] ?? 0}</Badge>
               ))}
             </span>
           )}
@@ -54,7 +56,7 @@ export default function StudentClassesCard({ student }) {
           <p className="px-4 py-6 text-center text-sm text-slate-500">{data.message || 'The LMS could not be asked'}</p>
         ) : classes.length === 0 ? (
           <p className="px-4 py-6 text-center text-sm text-slate-400">
-            {data.message || (data.has_account ? 'No classes booked in the LMS yet.' : 'No Delta LMS account with this email.')}
+            {data.message || (data.has_account ? 'No attended, booked or upcoming classes in their courses.' : 'No Delta LMS account with this email.')}
           </p>
         ) : (
           <Paged items={classes} resetKey={student.id}>
