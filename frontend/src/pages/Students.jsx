@@ -19,7 +19,7 @@ import StudentRequestForm from "../components/students/StudentRequestForm";
 import BulkImportStudentsDialog from "../components/students/BulkImportStudentsDialog";
 import { isMentorRole as isMentorTier, getScope } from "@/components/utils/roles";
 
-import { Plus, Search, Eye, Users, UserCheck, Upload, Download, Filter, ArrowUp, Share2, Trash2, ArrowRightLeft, Sparkles } from "lucide-react";
+import { Plus, Search, Eye, Users, UserCheck, Upload, Download, Filter, ArrowUp, Share2, Trash2, ArrowRightLeft, Sparkles, RefreshCw, Loader2 } from "lucide-react";
 import TransferStudentsDialog from "../components/students/TransferStudentsDialog";
 import { CallButton } from "@/components/followups/CallFlow";
 import { listTeams } from "@/components/utils/teams";
@@ -152,6 +152,32 @@ export default function Students() {
     enabled: !!currentUser,
     staleTime: 5 * 60_000,
   });
+
+  // Enrolled comes from the Delta LMS (checked every hour); admins can check now.
+  const canCheckLms = !!currentUser && ['super_admin', 'admin'].includes(currentUser.app_role);
+  const { data: lmsInfo } = useQuery({
+    queryKey: ['lms-enrolment'],
+    queryFn: async () => (await base44.functions.invoke('getLmsEnrolment', {})).data,
+    enabled: canCheckLms,
+  });
+  const [lmsChecking, setLmsChecking] = useState(false);
+  const checkLms = async () => {
+    setLmsChecking(true);
+    try {
+      const r = (await base44.functions.invoke('syncLmsEnrolmentNow', {})).data;
+      toast.success(`${r.with_account.toLocaleString()} of ${r.students.toLocaleString()} have a Delta LMS account — ${r.enrolled} now enrolled, ${r.not_enrolled} not enrolled${r.kept_by_hand ? `, ${r.kept_by_hand} kept as set by hand` : ''}`);
+      queryClient.invalidateQueries({ queryKey: ['students'] });
+      queryClient.invalidateQueries({ queryKey: ['lms-enrolment'] });
+    } catch (e) {
+      toast.error(e?.message || 'The LMS check did not run');
+    } finally {
+      setLmsChecking(false);
+    }
+  };
+  const lmsLast = lmsInfo?.last_run;
+  const lmsTitle = lmsLast
+    ? `Last LMS check ${new Date(lmsLast.at).toLocaleString('en-GB', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })}${lmsLast.ok ? ` — ${lmsLast.with_account} of ${lmsLast.students} have an account` : ` — not run: ${lmsLast.error}`}`
+    : 'Enrolled = has a Delta LMS account, checked every hour';
 
   // Everyone matching the tab and filters (export, "select all") — up to 10,000.
   const fetchAllMatching = async () => {
@@ -531,6 +557,12 @@ export default function Students() {
               >
                 <ArrowUp className="h-4 w-4 mr-2" />
                 Upgrade {selectedLevel1Students.length} to Level 2
+              </Button>
+            )}
+            {canCheckLms && lmsInfo?.configured && (
+              <Button onClick={checkLms} variant="outline" disabled={lmsChecking} title={lmsTitle}>
+                {lmsChecking ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <RefreshCw className="h-4 w-4 mr-2" />}
+                Check LMS
               </Button>
             )}
             {['super_admin', 'broker_admin'].includes(currentUser.app_role) && (

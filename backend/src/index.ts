@@ -7,6 +7,7 @@ import { startInactivityWorker } from "./students/inactivity";
 import { startReminderWorker } from "./students/followupReminders";
 import { startCallSyncWorker } from "./students/calls";
 import { startWhatsApp } from "./whatsapp/service";
+import { startLmsEnrolmentWorker } from "./students/lmsEnrolment";
 
 async function main() {
   await connectDb();
@@ -36,6 +37,8 @@ async function main() {
   startCallSyncWorker();
   // Each CS's linked WhatsApp, back after a restart (WHATSAPP=off to keep a server out of it).
   startWhatsApp();
+  // Enrolled = has a Delta LMS account, checked every hour (LMS_ENROLMENT_SYNC=off to keep a server out of it).
+  startLmsEnrolmentWorker();
 }
 
 const shutdown = async (signal: string) => {

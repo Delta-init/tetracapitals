@@ -1,6 +1,7 @@
 import { col } from "../db";
 import { config } from "../config";
 import { ok, refuse, secretMatches, text, isEmail, answer, studentWithEmail, createStudent } from "../students/intake";
+import { lmsEnrolledFields } from "../students/lmsEnrolment";
 
 /* ────────────────────────────────────────────────────────────────────────────
    POST /api/v1/integrations/lms/students — a new student, from the Delta LMS.
@@ -55,6 +56,8 @@ export async function handleLmsStudents(req: Request): Promise<Response> {
       lms_user_id: lmsUserId,
       lms_course: course,
       lms_academy: academy,
+      // An LMS account: enrolled from the start.
+      ...lmsEnrolledFields(),
     },
     arrived: `Arrived from the Delta LMS${course ? ` — ${course}` : ""}${academy ? ` (${academy})` : ""}`,
     createdBy: "delta-lms",

@@ -13,10 +13,12 @@ import { isStudentOf } from '@/components/students/common';
    Enrolment: Enrolled (stored "closed" — the "Closed - <course>" tags say
    which course), Not enrolled ("open", or unset), or Old — from a CS's earlier
    list, not enrolled.
-   Changed on the student page and with the Students table's switch, by their
-   CS (or a CS they are Common with), the people above them (CS Manager,
-   Chief) and admin roles (the server checks); each change goes in the
-   student's history.
+   The Delta LMS sets it every hour: an LMS account = Enrolled, none = Not
+   enrolled (backend/src/students/lmsEnrolment.ts). It can still be changed on
+   the student page and with the Students table's switch, by their CS (or a CS
+   they are Common with), the people above them (CS Manager, Chief) and admin
+   roles (the server checks); a change against what the LMS says stays until
+   the LMS agrees. Each change goes in the student's history.
 ──────────────────────────────────────────────────────────────────────────── */
 
 export const enrolmentOf = (s) => (s?.enrolment_status === 'closed' || s?.enrolment_status === 'old' ? s.enrolment_status : 'open');
@@ -28,11 +30,17 @@ export const ENROLMENT = {
 };
 const day = (iso) => (iso ? new Date(iso).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }) : '');
 const changedBy = (s) => `${s?.enrolment_updated_at ? ` · ${day(s.enrolment_updated_at)}` : ''}${s?.enrolment_updated_by_name ? ` by ${s.enrolment_updated_by_name}` : ''}`;
+/** What the LMS says about them, and whether a person set it against that. */
+const lmsNote = (s) => {
+  const acc = s?.lms_account;
+  const lms = !acc ? '' : acc.exists ? ' · has a Delta LMS account' : ' · no Delta LMS account';
+  return `${lms}${s?.enrolment_manual ? ' · set by hand — kept until the LMS agrees' : ''}`;
+};
 const DONE = { closed: 'marked as enrolled', open: 'marked as not enrolled', old: 'marked as old' };
 
 export function EnrolmentBadge({ student }) {
   const k = enrolmentOf(student);
-  return <Badge variant="outline" className={ENROLMENT[k].cls} title={`${ENROLMENT[k].hint}${changedBy(student)}`}>{ENROLMENT[k].label}</Badge>;
+  return <Badge variant="outline" className={ENROLMENT[k].cls} title={`${ENROLMENT[k].hint}${lmsNote(student)}${changedBy(student)}`}>{ENROLMENT[k].label}</Badge>;
 }
 
 /** Shown to whoever the server would let change it; anyone else just sees the badge. */
@@ -44,8 +52,8 @@ function useSetEnrolment(student) {
   const queryClient = useQueryClient();
   return async (to) => {
     await base44.functions.invoke('setEnrolment', { studentId: student.id, status: to });
-    // The Students list shows it at once; the server's copy follows.
-    queryClient.setQueryData(['students'], (list) => (Array.isArray(list) ? list.map(s => (s.id === student.id ? { ...s, enrolment_status: to } : s)) : list));
+    // The Students list shows it at once (its pages from the server); the server's copy follows.
+    queryClient.setQueriesData({ queryKey: ['students', 'page'] }, (d) => (d?.rows ? { ...d, rows: d.rows.map(s => (s.id === student.id ? { ...s, enrolment_status: to } : s)) } : d));
     queryClient.invalidateQueries({ queryKey: ['students'] });
     queryClient.invalidateQueries({ queryKey: ['student', student.id] });
     queryClient.invalidateQueries({ queryKey: ['student-history', student.id] });
@@ -90,7 +98,7 @@ export function EnrolledSwitch({ student, currentUser }) {
   const set = useSetEnrolment(student);
   const [busy, setBusy] = useState(false);
   const on = isEnrolled(student);
-  const title = `${ENROLMENT[enrolmentOf(student)].hint}${changedBy(student)}`;
+  const title = `${ENROLMENT[enrolmentOf(student)].hint}${lmsNote(student)}${changedBy(student)}`;
   if (!mayChange(currentUser, student)) {
     return <Badge variant="outline" className={on ? ENROLMENT.closed.cls : 'border-slate-200 bg-slate-50 text-slate-500'} title={title}>{on ? 'Yes' : 'No'}</Badge>;
   }
@@ -109,6 +117,7 @@ export function EnrolledSwitch({ student, currentUser }) {
     <span className="inline-flex items-center gap-2 whitespace-nowrap" title={title}>
       <Switch checked={on} disabled={busy} onCheckedChange={flip} aria-label={`${student.full_name || 'Student'} enrolled`} />
       <span className={`text-xs ${on ? 'font-medium text-emerald-700' : 'text-slate-500'}`}>{on ? 'Enrolled' : 'Not enrolled'}</span>
+      {student.enrolment_manual && <span className="text-[10px] font-medium uppercase tracking-wide text-amber-600">by hand</span>}
     </span>
   );
 }

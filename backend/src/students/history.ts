@@ -72,7 +72,7 @@ export function describePerson(index: TeamIndex, id: unknown, fallbackName: unkn
 // inactivity rule (inactivity.ts) counts from. `common_cs` — the other CSs a
 // student is Common with — only the CS-sheet import sets; `tags` only
 // setStudentTag. Never set by a client.
-const SERVER_OWNED = ["team_id", "team_name", "first_assignee_id", "first_assignee_name", "first_assignee_role", "first_assigned_at", "assigned_at", "common_cs", "tags", "new_for_id", "new_since"];
+const SERVER_OWNED = ["team_id", "team_name", "first_assignee_id", "first_assignee_name", "first_assignee_role", "first_assigned_at", "assigned_at", "common_cs", "tags", "new_for_id", "new_since", "lms_account", "enrolment_manual"];
 
 /**
  * Before a student is made in Tetra Commission itself (the Students page, or

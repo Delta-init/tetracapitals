@@ -1,6 +1,7 @@
 import { col } from "../db";
 import { config } from "../config";
 import { ok, refuse, secretMatches, text, isEmail, answer, studentWithEmail, createStudent } from "../students/intake";
+import { lmsEnrolledFields } from "../students/lmsEnrolment";
 
 /* ────────────────────────────────────────────────────────────────────────────
    POST /api/v1/integrations/finance/students — a new Delta LMS student.
@@ -135,6 +136,8 @@ export async function handleFinanceStudents(req: Request): Promise<Response> {
       lms_user_id: text(body.lmsUserId, 64),
       // Written with the student, so a new student never exists without the course they paid for.
       course_fees: fee ? [fee] : [],
+      // With an LMS account: enrolled from the start (the hourly LMS check confirms it).
+      ...(text(body.lmsUserId, 64) ? lmsEnrolledFields() : {}),
     },
     arrived: `Arrived from the Delta sales CRM, via finance — ${course || "a course"}${invoiceNumber ? `, invoice ${invoiceNumber}` : ""}`,
     createdBy: "delta-finance",
