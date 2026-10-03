@@ -30,6 +30,7 @@ import { useFinanceLink, WithAccountsBadge, FinanceApprovalNote } from "../compo
 import { toast } from "sonner";
 import { format } from "date-fns";
 import { logAction } from "../components/utils/AuditLogger";
+import { PaymentDetails } from "../components/funding/FundingRequestForm";
 
 export default function FundingRequests() {
   const [currentUser, setCurrentUser] = useState(null);
@@ -890,6 +891,7 @@ export default function FundingRequests() {
                         </TableCell>
                         <TableCell className="font-semibold text-gray-900">
                           ${transaction.amount_usd?.toFixed(2)}
+                          <PaymentDetails tx={transaction} />
                         </TableCell>
                         <TableCell className="text-sm">{transaction.payment_method}</TableCell>
                         <TableCell>

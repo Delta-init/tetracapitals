@@ -20,6 +20,7 @@ export default function TransactionTags() {
   const [currentUser, setCurrentUser] = useState(null);
   const [name, setName] = useState('');
   const [amount, setAmount] = useState('');
+  const [feeAed, setFeeAed] = useState('');   // a course's fee in AED: a course payment's balance and MT5 bonus
   const [bonusType, setBonusType] = useState('with'); // 'with' = added to MT5, 'without' = not added
   const [color, setColor] = useState(PRESET_COLORS[0]);
   const queryClient = useQueryClient();
@@ -43,6 +44,7 @@ export default function TransactionTags() {
       toast.success('Product added');
       setName('');
       setAmount('');
+      setFeeAed('');
       setBonusType('with');
       setColor(PRESET_COLORS[0]);
     },
@@ -77,7 +79,7 @@ export default function TransactionTags() {
     if (tags.some(t => t.name.toLowerCase() === trimmed.toLowerCase())) {
       toast.error('That product already exists'); return;
     }
-    createMutation.mutate({ name: trimmed, color, amount_usd: parseFloat(amount) || 0, bonus_type: bonusType, active: true });
+    createMutation.mutate({ name: trimmed, color, amount_usd: parseFloat(amount) || 0, fee_aed: parseFloat(feeAed) || 0, bonus_type: bonusType, active: true });
   };
 
   if (!currentUser) {
@@ -97,7 +99,7 @@ export default function TransactionTags() {
       <div>
         <PageTitle eyebrow="Funding" icon={TagIcon}>Products</PageTitle>
         <p className="mt-2 max-w-3xl text-sm text-slate-500 sm:text-base">
-          Manage the products staff select when logging a <strong>BONUS</strong> — each carries its amount and With/Without-bonus type.
+          Manage the products staff select when logging a <strong>BONUS</strong> — each carries its amount, its course fee in AED (a course payment's balance, and its MT5 bonus of $500 per AED 2,000 paid) and With/Without-bonus type.
         </p>
       </div>
 
@@ -120,6 +122,15 @@ export default function TransactionTags() {
               placeholder="Amount (USD)"
               value={amount}
               onChange={(e) => setAmount(e.target.value)}
+              className="md:w-40"
+            />
+            <Input
+              type="number"
+              step="0.01"
+              min="0"
+              placeholder="Course fee (AED)"
+              value={feeAed}
+              onChange={(e) => setFeeAed(e.target.value)}
               className="md:w-40"
             />
             <select
@@ -165,6 +176,7 @@ export default function TransactionTags() {
                 <TableRow>
                   <TableHead>Name</TableHead>
                   <TableHead>Amount (USD)</TableHead>
+                  <TableHead>Course fee (AED)</TableHead>
                   <TableHead>Bonus type</TableHead>
                   <TableHead>Includes (bundled)</TableHead>
                   <TableHead>Color</TableHead>
@@ -195,6 +207,21 @@ export default function TransactionTags() {
                           if (v !== (t.amount_usd ?? 0)) updateMutation.mutate({ id: t.id, data: { amount_usd: v } });
                         }}
                         className="w-28 h-8"
+                      />
+                    </TableCell>
+                    <TableCell>
+                      <Input
+                        type="number"
+                        step="0.01"
+                        min="0"
+                        key={`${t.id}-fee-${t.fee_aed ?? 0}`}
+                        defaultValue={t.fee_aed ?? 0}
+                        onBlur={(e) => {
+                          const v = parseFloat(e.target.value) || 0;
+                          if (v !== (t.fee_aed ?? 0)) updateMutation.mutate({ id: t.id, data: { fee_aed: v } });
+                        }}
+                        className="w-28 h-8"
+                        aria-label={`${t.name} course fee in AED`}
                       />
                     </TableCell>
                     <TableCell>

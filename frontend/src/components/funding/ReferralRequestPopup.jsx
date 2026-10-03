@@ -10,6 +10,9 @@ import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Users, Send, Loader2 } from "lucide-react";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import TagsPicker from "./TagsPicker";
+// The amount box and the course payment, as on the main form (FundingRequestForm, which opens this one — the two import
+// each other, so these are only used inside functions).
+import { CurrencyAmount, CoursePaymentPanel, convert, courseFeeAed, coursePayment, paidBefore, paymentNote } from "./FundingRequestForm";
 
 import { toast } from "sonner";
 
@@ -17,7 +20,8 @@ const PAYMENT_METHODS = ['AED TRANSFER','UPI','CARD PAYMENT','USDT','INR TRANSFE
 
 export default function ReferralRequestPopup({ student, currentUser, onClose, transactionType = 'DEPOSIT', initialTags = [] }) {
   const isBonus = transactionType === 'BONUS';
-  const [depositAmount, setDepositAmount] = useState('');
+  const [depositAmount, setDepositAmount] = useState('');   // as typed, in `currency`
+  const [currency, setCurrency] = useState(isBonus ? 'AED' : 'USD');
   const [paymentMethod, setPaymentMethod] = useState('');
   const [mt5Login, setMt5Login] = useState('');
   const [screenshotUrl, setScreenshotUrl] = useState('');
@@ -26,13 +30,24 @@ export default function ReferralRequestPopup({ student, currentUser, onClose, tr
   const [submitting, setSubmitting] = useState(false);
   const [tags, setTags] = useState(initialTags || []);
 
-  // Product catalog (with per-product amount + bundled "includes"), so BONUS
-  // amount auto-fills from the chosen product — same as the main funding form.
+  // Product catalog (with each course's fee + bundled "includes") — a BONUS is a course payment, worked out as on
+  // the main funding form.
   const { data: bonusTags = [] } = useQuery({
     queryKey: ['transaction-tags-catalog'],
     queryFn: async () => (await base44.entities.TransactionTag.list('name')).filter(t => t.active !== false),
     staleTime: 5 * 60_000,
   });
+  const product = isBonus ? bonusTags.find(t => t.name === tags[0]) || null : null;
+  const { data: earlier = [], isFetching: loadingEarlier } = useQuery({
+    queryKey: ['course-payments', student.id, product?.name],
+    queryFn: () => base44.entities.FundingTransaction.filter({ student_id: student.id, type: 'BONUS' }),
+    enabled: !!product,
+  });
+  const money = convert(depositAmount, currency);
+  const feeAed = courseFeeAed(product);
+  const payment = product
+    ? coursePayment({ feeAed, beforeAed: paidBefore(earlier, product.name), todayAed: money.aed, withBonus: product.bonus_type !== 'without' })
+    : null;
 
   const handleFileUpload = async (e) => {
     const file = e.target.files?.[0];
@@ -53,8 +68,12 @@ export default function ReferralRequestPopup({ student, currentUser, onClose, tr
       toast.error('Please pick a product for the bonus');
       return;
     }
-    if (!depositAmount || parseFloat(depositAmount) <= 0) {
-      toast.error(isBonus ? 'The selected product has no amount set — ask an admin' : 'Please enter a valid deposit amount');
+    if (!(money.usd > 0)) {
+      toast.error(isBonus ? 'Enter what the student paid today' : 'Please enter a valid deposit amount');
+      return;
+    }
+    if (product && loadingEarlier) {
+      toast.error("Still loading the course's earlier payments — try again in a moment");
       return;
     }
     if (!paymentMethod) {
@@ -69,11 +88,12 @@ export default function ReferralRequestPopup({ student, currentUser, onClose, tr
         student_code: student.student_code,
         receiving_mentor_id: student.primary_mentor_id,
         receiving_mentor_name: student.primary_mentor_name,
-        requested_deposit_amount: parseFloat(depositAmount),
+        // In USD, as everything adds up; what was typed — and, for a course payment, the bonus — go in the notes.
+        requested_deposit_amount: money.usd,
         payment_method: paymentMethod,
         mt5_login: mt5Login,
         screenshot_url: screenshotUrl,
-        notes,
+        notes: [notes.trim(), paymentNote({ amount: depositAmount, currency, product, feeAed, payment })].filter(Boolean).join('\n'),
         transaction_type: transactionType,
         tags: isBonus ? tags : [],
       });
@@ -119,16 +139,14 @@ export default function ReferralRequestPopup({ student, currentUser, onClose, tr
               <TagsPicker
                 value={tags}
                 onChange={(picked) => {
-                  // Auto-fill the amount from the chosen product, and pull in any
-                  // bundled products (amount stays the primary product's price).
+                  // Pull in any bundled products — included, not added on top. The
+                  // amount is what the student paid today, not the product's price.
                   const primary = picked[0];
-                  const product = bonusTags.find(t => t.name === primary);
-                  const included = Array.isArray(product?.includes)
-                    ? product.includes.filter(n => n && n !== primary)
+                  const picked0 = bonusTags.find(t => t.name === primary);
+                  const included = Array.isArray(picked0?.includes)
+                    ? picked0.includes.filter(n => n && n !== primary)
                     : [];
                   setTags(primary ? [primary, ...included] : []);
-                  const amt = product?.amount_usd;
-                  setDepositAmount(amt != null ? String(amt) : '');
                 }}
               />
               {tags.length > 1 && (
@@ -137,29 +155,20 @@ export default function ReferralRequestPopup({ student, currentUser, onClose, tr
                 </p>
               )}
               <p className="text-xs text-muted-foreground">
-                Pick the product — its amount fills in automatically. Products &amp; amounts are managed by admins.
+                Pick the course, then type what the student paid today — the MT5 bonus, what waits on hold and the balance work themselves out.
               </p>
             </div>
           )}
 
-          <div className="space-y-2">
-            <Label>
-              Amount (USD) *
-              {isBonus && <span className="ml-1 text-xs font-normal text-gray-500">(set by product)</span>}
-            </Label>
-            <Input
-              type="number"
-              step="0.01"
-              min="0.01"
-              value={depositAmount}
-              onChange={(e) => setDepositAmount(e.target.value)}
-              placeholder={isBonus ? 'Select a product first' : '0.00'}
-              disabled={isBonus}
-            />
-            {isBonus && (
-              <p className="text-xs text-muted-foreground">Auto-filled from the product. An admin can adjust it when approving.</p>
-            )}
-          </div>
+          <CurrencyAmount
+            id="referral-amount"
+            label={isBonus ? 'Payment received today *' : 'Amount *'}
+            amount={depositAmount}
+            currency={currency}
+            onAmount={setDepositAmount}
+            onCurrency={setCurrency}
+          />
+          <CoursePaymentPanel product={product} feeAed={feeAed} payment={payment} />
 
           <div className="space-y-2">
             <Label>Payment Method *</Label>

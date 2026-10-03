@@ -11,7 +11,7 @@ import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Plus, TrendingUp, TrendingDown, DollarSign, Award, Wallet, Eye, Users, Clock, Filter, X } from "lucide-react";
 import { Input } from "@/components/ui/input";
-import FundingRequestForm from "../components/funding/FundingRequestForm";
+import FundingRequestForm, { PaymentDetails } from "../components/funding/FundingRequestForm";
 import TagChips from "../components/funding/TagChips";
 import { useFinanceLink, WithAccountsBadge, FinanceApprovalNote } from "../components/funding/FinanceApproval";
 import {
@@ -758,7 +758,7 @@ export default function MyFundingRequests() {
                                   <TableCell className="font-mono text-sm text-blue-600">{transaction.student_code}</TableCell>
                                   <TableCell className="text-sm">{transaction.meeting_mentor_name || '-'}</TableCell>
                                   <TableCell className="font-mono text-sm">{transaction.mt5_login || '-'}</TableCell>
-                                  <TableCell className="font-semibold text-gray-900">${transaction.amount_usd?.toFixed(2)}</TableCell>
+                                  <TableCell className="font-semibold text-gray-900">${transaction.amount_usd?.toFixed(2)}<PaymentDetails tx={transaction} /></TableCell>
                                   {!isAssistance && (
                                     <TableCell className={`font-semibold ${commissionEarned >= 0 ? 'text-green-600' : 'text-red-600'}`}>
                                       {transaction.status === 'APPROVED' ? `$${commissionEarned.toFixed(2)}` : '-'}
@@ -946,6 +946,7 @@ export default function MyFundingRequests() {
                               </TableCell>
                               <TableCell className="font-semibold text-gray-900">
                                 ${transaction.amount_usd?.toFixed(2)}
+                                <PaymentDetails tx={transaction} />
                               </TableCell>
                               <TableCell className={`font-semibold ${uplineCommission >= 0 ? 'text-green-600' : 'text-red-600'}`}>
                                 {transaction.status === 'APPROVED' 
