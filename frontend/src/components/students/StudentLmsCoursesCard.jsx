@@ -3,16 +3,18 @@ import { format } from 'date-fns';
 import { base44 } from '@/api/base44Client';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { Award, BookOpen } from 'lucide-react';
+import { Award, BookOpen, Lock, LockOpen } from 'lucide-react';
 import { PROGRAMME, ACCESS } from '@/components/students/LmsCourseList';
 
 /* ────────────────────────────────────────────────────────────────────────────
    The Delta LMS courses the student is on, fresh from the LMS by their email,
    across both academies (backend/src/functions/lmsCourses.ts → the LMS's
    /service/enrolments): each course, how they were put on it, how much of it
-   the fee has opened, their progress, and whether they finished it — with the
-   certificate — or dropped it. The Students table shows the same courses under
-   the Enrolled switch, as the hourly LMS check last saw them.
+   the fee has opened, how many of its modules they can open and how many are
+   locked (by the fee, or by an admin by hand), their progress, and whether
+   they finished it — with the certificate — or dropped it. The Students table
+   shows the same courses under the Enrolled switch, as the hourly LMS check
+   last saw them.
 ──────────────────────────────────────────────────────────────────────────── */
 
 const HOW = { purchase: 'Bought', finance: 'Finance invoice', admin: 'By admin', script: 'By script', free: 'Free' };
@@ -23,6 +25,21 @@ const STATUS = {
 };
 const ACCESS_CLS = { paid: 'text-emerald-700', partial: 'text-amber-700', unpaid: 'text-rose-700' };
 const day = (iso) => (iso ? format(new Date(iso), 'd MMM yyyy') : '—');
+
+/** How many of the course's modules they can open. "—" from an LMS that does not say yet. */
+function Modules({ modules: m }) {
+  if (!m || typeof m.total !== 'number') return <span className="text-slate-400">—</span>;
+  if (m.total === 0) return <span className="text-xs text-slate-400">No modules</span>;
+  if (!m.locked) {
+    return <span className="inline-flex items-center gap-1 whitespace-nowrap text-emerald-700"><LockOpen className="h-3.5 w-3.5" />All {m.total} unlocked</span>;
+  }
+  return (
+    <div className="whitespace-nowrap">
+      <div className="text-slate-700">{m.unlocked} of {m.total} unlocked</div>
+      <div className="flex items-center gap-1 text-xs text-amber-700"><Lock className="h-3 w-3" />{m.locked} locked</div>
+    </div>
+  );
+}
 
 export default function StudentLmsCoursesCard({ student }) {
   const { data, isLoading } = useQuery({
@@ -64,7 +81,7 @@ export default function StudentLmsCoursesCard({ student }) {
               <thead>
                 <tr className="border-b bg-slate-50/80 text-left text-[11px] font-semibold uppercase tracking-wider text-slate-500">
                   <th className="px-4 py-2.5">Course</th><th className="px-4 py-2.5">Enrolled</th><th className="px-4 py-2.5">Fee</th>
-                  <th className="px-4 py-2.5">Progress</th><th className="px-4 py-2.5">Status</th>
+                  <th className="px-4 py-2.5">Progress</th><th className="px-4 py-2.5">Modules</th><th className="px-4 py-2.5">Status</th>
                 </tr>
               </thead>
               <tbody>
@@ -89,6 +106,7 @@ export default function StudentLmsCoursesCard({ student }) {
                           <span className="text-xs text-slate-600">{c.progress || 0}%</span>
                         </div>
                       </td>
+                      <td className="px-4 py-2.5"><Modules modules={c.modules} /></td>
                       <td className="px-4 py-2.5">
                         <Badge variant="outline" className={s.cls}>{s.label}</Badge>
                         {c.status === 'completed' && (
