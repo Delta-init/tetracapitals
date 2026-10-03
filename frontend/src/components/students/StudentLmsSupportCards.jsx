@@ -1,21 +1,26 @@
 import { Fragment, useState } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { format } from 'date-fns';
+import { toast } from 'sonner';
 import { base44 } from '@/api/base44Client';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { LifeBuoy, ClipboardCheck, ChevronDown, ChevronRight, Paperclip } from 'lucide-react';
+import { Button } from '@/components/ui/button';
+import { Textarea } from '@/components/ui/textarea';
+import { LifeBuoy, ClipboardCheck, ChevronDown, ChevronRight, Paperclip, CheckCircle2, Loader2, Send } from 'lucide-react';
 import { Paged, TablePagination } from '@/components/common/TablePagination';
 
 /* ────────────────────────────────────────────────────────────────────────────
    The student's Help & Support tickets and class assignments in the Delta LMS,
    by their email, across both academies (backend/src/functions/lmsSupport.ts →
-   the LMS's /service/support-tickets and /service/class-assignments). For
-   reading: tickets are answered and assignments reviewed on the LMS. Their CS
-   hears of each as it happens, by email and the bell (students/lmsActivity.ts).
+   the LMS's /service/support-tickets and /service/class-assignments). A ticket
+   can be answered or marked resolved here (and on the Support Tickets page):
+   the answer goes to the student's ticket from the LMS's shared support
+   account, signed with your name. Assignments are reviewed on the LMS. Their
+   CS hears of each as it happens, by email and the bell (students/lmsActivity.ts).
 ──────────────────────────────────────────────────────────────────────────── */
 
-const TICKET = {
+export const TICKET = {
   open: { label: 'Open', cls: 'border-amber-200 bg-amber-50 text-amber-700', hint: 'Waiting for support to answer' },
   pending: { label: 'Waiting on student', cls: 'border-sky-200 bg-sky-50 text-sky-700', hint: 'Support answered; waiting for the student' },
   resolved: { label: 'Resolved', cls: 'border-emerald-200 bg-emerald-50 text-emerald-700' },
@@ -27,8 +32,77 @@ const WORK = {
   rejected: { label: 'Rejected', cls: 'border-rose-200 bg-rose-50 text-rose-700' },
 };
 const FROM = { student: 'Student', support: 'Support', automatic: 'Automatic reply' };
-const when = (iso) => (iso ? format(new Date(iso), 'd MMM yyyy, HH:mm') : '—');
+export const when = (iso) => (iso ? format(new Date(iso), 'd MMM yyyy, HH:mm') : '—');
 const Empty = ({ children }) => <p className="px-4 py-6 text-center text-sm text-slate-400">{children}</p>;
+
+/** A ticket's conversation, oldest first: the student's messages stand out from support's and the automatic reply. */
+export function TicketThread({ ticket }) {
+  return (
+    <div className="space-y-2">
+      {(ticket.messages || []).map((m, i) => (
+        <div key={i} className={`rounded-lg border px-3 py-2 ${m.from === 'student' ? 'border-amber-200 bg-white' : 'border-slate-200 bg-slate-50'}`}>
+          <div className="mb-1 flex justify-between gap-2 text-xs text-slate-500">
+            <span className="font-semibold">{FROM[m.from] || m.from}</span><span>{when(m.at)}</span>
+          </div>
+          <div className="whitespace-pre-wrap text-sm text-slate-800">{m.body}</div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+/**
+ * Answer a ticket, or mark it resolved — on the LMS, as the help desk would: the answer comes from the shared
+ * support account, signed with your name, and the ticket then waits on the student (who the LMS tells).
+ */
+export function TicketAnswer({ studentId, ticket }) {
+  const qc = useQueryClient();
+  const [text, setText] = useState('');
+  const done = () => {
+    qc.invalidateQueries({ queryKey: ['student-lms-support', studentId] });
+    qc.invalidateQueries({ queryKey: ['lms-support-tickets'] });
+    qc.invalidateQueries({ queryKey: ['student-history', studentId] });
+  };
+  const answer = useMutation({
+    mutationFn: async () => (await base44.functions.invoke('answerLmsTicket', { studentId, ticketId: ticket.id, body: text.trim() })).data,
+    onSuccess: () => { setText(''); toast.success('Answer sent — the student sees it on their ticket in the LMS'); done(); },
+    onError: (e) => toast.error(e?.message || 'The answer could not be sent'),
+  });
+  const resolve = useMutation({
+    mutationFn: async () => (await base44.functions.invoke('resolveLmsTicket', { studentId, ticketId: ticket.id })).data,
+    onSuccess: () => { toast.success('Marked resolved'); done(); },
+    onError: (e) => toast.error(e?.message || 'Could not mark it resolved'),
+  });
+  if (ticket.status === 'closed') {
+    return <p className="mt-2 text-xs text-slate-400">Closed on the LMS — the student can open a new ticket if they still need help.</p>;
+  }
+  const busy = answer.isPending || resolve.isPending;
+  return (
+    <div className="mt-3 space-y-2" onClick={(e) => e.stopPropagation()}>
+      <Textarea
+        rows={3}
+        value={text}
+        onChange={(e) => setText(e.target.value)}
+        maxLength={4000}
+        placeholder="Answer the student — it goes to their ticket in the LMS, signed with your name"
+        className="bg-white text-sm"
+      />
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <span className="text-xs text-slate-400">Sent from Delta's support account in the LMS, signed with your name.</span>
+        <div className="flex gap-2">
+          {ticket.status !== 'resolved' && (
+            <Button size="sm" variant="outline" className="gap-1.5" disabled={busy} onClick={() => resolve.mutate()}>
+              {resolve.isPending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <CheckCircle2 className="h-3.5 w-3.5" />} Mark resolved
+            </Button>
+          )}
+          <Button size="sm" className="gap-1.5" disabled={busy || !text.trim()} onClick={() => answer.mutate()}>
+            {answer.isPending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Send className="h-3.5 w-3.5" />} Send answer
+          </Button>
+        </div>
+      </div>
+    </div>
+  );
+}
 
 export default function StudentLmsSupportCards({ student }) {
   const { data, isLoading } = useQuery({
@@ -101,17 +175,8 @@ function TicketsCard({ student, tickets, notice, none }) {
                             {open && (
                               <tr className="border-b border-slate-100 bg-slate-50/60">
                                 <td colSpan={5} className="px-4 py-3">
-                                  <div className="space-y-2">
-                                    {(t.messages || []).map((m, i) => (
-                                      <div key={i} className={`rounded-lg border px-3 py-2 ${m.from === 'student' ? 'border-amber-200 bg-white' : 'border-slate-200 bg-slate-50'}`}>
-                                        <div className="mb-1 flex justify-between gap-2 text-xs text-slate-500">
-                                          <span className="font-semibold">{FROM[m.from] || m.from}</span><span>{when(m.at)}</span>
-                                        </div>
-                                        <div className="whitespace-pre-wrap text-sm text-slate-800">{m.body}</div>
-                                      </div>
-                                    ))}
-                                  </div>
-                                  <p className="mt-2 text-xs text-slate-400">Answered on the Delta LMS help desk.</p>
+                                  <TicketThread ticket={t} />
+                                  <TicketAnswer studentId={student.id} ticket={t} />
                                 </td>
                               </tr>
                             )}

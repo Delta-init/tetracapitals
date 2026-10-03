@@ -40,6 +40,7 @@ const DOT = {
   details_changed: 'bg-indigo-400',
   onboarding_changed: 'bg-teal-500',
   payment_link: 'bg-emerald-600',
+  lms_ticket: 'bg-amber-600',
   pool_changed: 'bg-cyan-500',
   request: 'bg-slate-400',
 };

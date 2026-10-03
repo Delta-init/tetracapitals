@@ -29,7 +29,8 @@ export type HistoryType =
   | "tag_changed"
   | "details_changed"
   | "onboarding_changed"
-  | "payment_link";
+  | "payment_link"
+  | "lms_ticket";
 
 export interface HistoryEntry {
   student_id: string;
