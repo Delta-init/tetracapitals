@@ -5,6 +5,10 @@ import { lmsEnrolledFields } from "../students/lmsEnrolment";
 import { languageOf } from "../students/language";
 import { salesCrmOf, salesCrmName } from "../students/salesCrm";
 import { recordHistory } from "../students/history";
+import { leadersOf } from "../students/followupReminders";
+import { loadTeams } from "../students/teams";
+import { notify } from "../lib/notify";
+import { toObjectId } from "../lib/id";
 
 /* ────────────────────────────────────────────────────────────────────────────
    POST /api/v1/integrations/finance/students — a new Delta LMS student.
@@ -39,6 +43,9 @@ import { recordHistory } from "../students/history";
    And which sales CRM sold it (students/salesCrm.ts): on the course's fees,
    and on the student — the CRM they first came through, so a later course
    from another CRM is tagged on its own fees and leaves the student's alone.
+
+   A new student is told at once: their CS gets "New student" (intake.ts),
+   their CS's leaders and the Super Admins a notice of their own (tellLeaders).
 ──────────────────────────────────────────────────────────────────────────── */
 
 /** One course's money, as finance approved it. Minor units (cents / fils). */
@@ -132,6 +139,46 @@ async function recordSalesCrm(student: { _id: unknown; sales_crm?: unknown }, sa
   await col("students").updateOne({ _id: student._id as never, sales_crm: { $in: [null, ""] } }, { $set: { sales_crm: salesCrm } });
 }
 
+const TEST_EMAIL = /@deltatest\.dev$/i;
+
+/**
+ * A new student from finance, told at once to their CS's leaders — the team's Chief Mentor and any CS Manager above
+ * the CS, as the follow-up and onboarding alerts — and to every Super Admin: the bell and a push to their devices,
+ * no email (the user, 2026-10-03). The CS has their own "New student". A test CS's student tells nobody; test and
+ * inactive accounts are never told. Never throws: the student is what matters.
+ */
+async function tellLeaders(studentId: string, course: string): Promise<void> {
+  try {
+    const s: any = await col("students").findOne(
+      { _id: toObjectId(studentId) as any },
+      { projection: { full_name: 1, student_code: 1, primary_mentor_id: 1, primary_mentor_name: 1, team_name: 1 } },
+    );
+    if (!s) return;
+    const teams = await loadTeams();
+    const cs = String(s.primary_mentor_id ?? "");
+    if (cs && TEST_EMAIL.test(String(teams.userById.get(cs)?.email ?? ""))) return;
+    const superAdmins = [...teams.userById.values()].filter((u) => u.app_role === "super_admin").map((u) => String(u._id));
+    const ids = [...new Set([...(cs ? leadersOf(cs, teams) : []), ...superAdmins])].filter((id) => id !== cs);
+    if (!ids.length) return;
+    const people = (await col("users")
+      .find({ _id: { $in: ids.map(toObjectId).filter(Boolean) as any[] } }, { projection: { email: 1, status: 1, is_test: 1 } })
+      .toArray()) as any[];
+    const told = people.filter((u) => u.status !== "inactive" && !u.is_test && !TEST_EMAIL.test(String(u.email ?? ""))).map((u) => String(u._id));
+    const name = String(s.full_name ?? "").trim() || s.student_code || "A student";
+    const where = cs ? `Given to ${s.primary_mentor_name || "their CS"}${s.team_name ? `, ${s.team_name}` : ""}` : "No CS to give them to — in Delta Open Students";
+    await notify(told, {
+      type: "student_arrived",
+      title: `New student from finance: ${name}`,
+      body: `${name}${s.student_code ? ` (${s.student_code})` : ""}${course ? ` — ${course}` : ""}. ${where}; not onboarded yet.`,
+      link: `/StudentDetail?id=${String(s._id)}`,
+      tag: `arrived-${String(s._id)}`,
+      renotify: true,
+    });
+  } catch (err) {
+    console.error("[finance students] could not tell the leaders", err instanceof Error ? err.message : err);
+  }
+}
+
 export async function handleFinanceStudents(req: Request): Promise<Response> {
   if (!config.financeS2sSecret) return refuse(503, "INTEGRATION_DISABLED", "The Delta finance link is not configured on this server");
   if (!secretMatches(req.headers.get("x-finance-secret"), config.financeS2sSecret)) return refuse(401, "UNAUTHORISED", "Bad secret");
@@ -168,7 +215,7 @@ export async function handleFinanceStudents(req: Request): Promise<Response> {
     return ok(answer(existing, false, "email", `${email} is already a student here — left as they are${fee ? ", with this course's fees added" : ""}`));
   }
 
-  return ok(await createStudent({
+  const created = await createStudent({
     name,
     email,
     phone: text(body.phone, 40),
@@ -191,5 +238,7 @@ export async function handleFinanceStudents(req: Request): Promise<Response> {
     createdBy: "delta-finance",
     createdByName: "Delta LMS (via finance)",
     unique: { field: "finance_invoice_id", value: invoiceId, existing: "invoice", detail: "This invoice's student is already here" },
-  }));
+  });
+  if (created.created) void tellLeaders(created.studentId, course);
+  return ok(created);
 }

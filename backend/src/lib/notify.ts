@@ -13,8 +13,11 @@ import { toObjectId } from "./id";
    the Team page's reassign, the inactivity rule — never a bulk import script),
    the day's follow-ups — due today, overdue, tomorrow's — with the 10:00
    reminder email, follow-ups that went overdue in the team you lead (the
-   leader alert, same time), and a WhatsApp message to your linked WhatsApp
-   (push only — the WhatsApp page keeps count).
+   leader alert, same time), a new student from finance in the team you lead
+   — or anywhere, for a Super Admin (finance/students.ts) — and one still not
+   onboarded 6 hours on, with an email (students/onboardingAlerts.ts), and a
+   WhatsApp message to your linked WhatsApp (push only — the WhatsApp page
+   keeps count).
    A notice that fails never undoes the thing it is about.
 ──────────────────────────────────────────────────────────────────────────── */
 
