@@ -21,6 +21,7 @@ import StudentCallsSection from "@/components/calls/StudentCallsSection";
 import StudentWhatsAppCard from "@/components/students/StudentWhatsAppCard";
 import TabbyLinksCard from "@/components/students/TabbyLinksCard";
 import StudentClassesCard from "@/components/students/StudentClassesCard";
+import StudentLmsCoursesCard from "@/components/students/StudentLmsCoursesCard";
 import StudentLmsSupportCards from "@/components/students/StudentLmsSupportCards";
 import { CallButton } from "@/components/followups/CallFlow";
 import { EnrolmentControl } from "@/components/students/enrolment";
@@ -399,6 +400,9 @@ export default function StudentDetail() {
 
         {/* What each course cost and what was paid, as Delta finance approved it */}
         <CourseFeesCard fees={displayStudent.course_fees} />
+
+        {/* The courses they are on in the Delta LMS: progress, fee access, completed or dropped */}
+        <StudentLmsCoursesCard student={displayStudent} />
 
         {/* Their live classes in the Delta LMS: attended, missed, upcoming */}
         <StudentClassesCard student={displayStudent} />

@@ -21,6 +21,13 @@ import { recordHistory, type HistoryEntry } from "./history";
    themselves (functions/lmsClasses.ts). An LMS that doesn't answer that yet
    leaves the counts as they were and the enrolment check still runs.
 
+   And the LMS courses each student is on (POST /service/enrolments) — the
+   course, its programme, their progress, whether they finished or dropped it,
+   how much the fee has opened — kept as lms_courses, shown under the Enrolled
+   switch in the Students table and on the student page; the student page's
+   Courses card asks for them fresh (functions/lmsCourses.ts). The same rule:
+   an LMS that doesn't answer leaves them as they were.
+
    Safe by design: all of the LMS's answers are read before anything changes,
    so an LMS that is down or half-answers changes nobody; and a run that finds
    far fewer accounts than the last one stops and says so (the wrong LMS, a
@@ -45,6 +52,18 @@ export interface LmsEnrolmentRun {
   kept_by_hand: number;          // hand-set, disagreeing with the LMS — left
   back_to_lms: number;           // hand-set, now agreeing — the LMS decides again
   classes?: { ok: boolean; with_classes?: number; error?: string };
+  courses?: { ok: boolean; with_courses?: number; error?: string };
+}
+
+/** One LMS course a student is on, as kept on them for the Students table. */
+export interface LmsCourseSummary {
+  course_id: string;
+  title: string;
+  program: string;
+  academy: string;
+  status: string;      // active, completed or dropped
+  progress: number;    // percent
+  access: string;      // paid, partial, unpaid — "" when no fee gates it
 }
 
 /** The fields a student made from an LMS account starts with (intake): Enrolled. */
@@ -106,7 +125,7 @@ export async function syncLmsEnrolment(by = "Schedule"): Promise<LmsEnrolmentRun
   }
   try {
     const students = (await col("students")
-      .find({}, { projection: { email: 1, enrolment_status: 1, enrolment_manual: 1, lms_account: 1, lms_classes: 1 } })
+      .find({}, { projection: { email: 1, enrolment_status: 1, enrolment_manual: 1, lms_account: 1, lms_classes: 1, lms_courses: 1 } })
       .toArray()) as any[];
     run.students = students.length;
     const emailOf = (s: any) => String(s.email ?? "").trim().toLowerCase();
@@ -155,6 +174,7 @@ export async function syncLmsEnrolment(by = "Schedule"): Promise<LmsEnrolmentRun
     for (let i = 0; i < ops.length; i += 1000) await col("students").bulkWrite(ops.slice(i, i + 1000), { ordered: false });
     await recordHistory(history);
     run.classes = await syncClassCounts(students, emails, emailOf);
+    run.courses = await syncCourseLists(students, emails, emailOf);
     run.ok = true;
     await col("app_settings").updateOne({ _id: SETTINGS_ID } as any, { $set: { last_run: run, last_ok_run: run, running_until: null } }, { upsert: true });
     return run;
@@ -162,6 +182,37 @@ export async function syncLmsEnrolment(by = "Schedule"): Promise<LmsEnrolmentRun
     run.error = err instanceof Error ? err.message : String(err);
     await col("app_settings").updateOne({ _id: SETTINGS_ID } as any, { $set: { last_run: run, running_until: null } }, { upsert: true });
     return run;
+  }
+}
+
+/** Each student's LMS courses — every batch answered, or nothing changes. Written only where they changed. Never throws. */
+async function syncCourseLists(students: any[], emails: string[], emailOf: (s: any) => string): Promise<NonNullable<LmsEnrolmentRun["courses"]>> {
+  try {
+    const lists = new Map<string, LmsCourseSummary[]>();
+    for (let i = 0; i < emails.length; i += BATCH) {
+      const data = await callLms<{ students: any[] }>("/enrolments", { method: "POST", body: { emails: emails.slice(i, i + BATCH) }, verb: "share the courses" });
+      if (!Array.isArray(data?.students)) throw new Error("The LMS did not list the courses");
+      for (const s of data.students) {
+        lists.set(String(s.email ?? "").toLowerCase(), (Array.isArray(s.courses) ? s.courses : []).map((c: any) => ({
+          course_id: String(c.courseId ?? ""), title: String(c.title ?? ""), program: String(c.program ?? ""), academy: String(c.academy ?? ""),
+          status: String(c.status ?? "active"), progress: Number(c.progress) || 0, access: String(c.access ?? ""),
+        })));
+      }
+    }
+    const ops: any[] = [];
+    let withCourses = 0;
+    for (const s of students) {
+      const next = lists.get(emailOf(s)) ?? [];
+      if (next.length) withCourses++;
+      const before = Array.isArray(s.lms_courses) ? s.lms_courses : null;
+      if (!next.length && !before?.length) continue;                       // none then, none now
+      if (before && JSON.stringify(before) === JSON.stringify(next)) continue;
+      ops.push({ updateOne: { filter: { _id: s._id }, update: { $set: { lms_courses: next, lms_courses_checked_at: new Date().toISOString() } } } });
+    }
+    for (let i = 0; i < ops.length; i += 1000) await col("students").bulkWrite(ops.slice(i, i + 1000), { ordered: false });
+    return { ok: true, with_courses: withCourses };
+  } catch (err) {
+    return { ok: false, error: err instanceof Error ? err.message : String(err) };
   }
 }
 

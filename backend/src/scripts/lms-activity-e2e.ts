@@ -14,7 +14,11 @@
  *     up: the bell still rings;
  *   - the LMS down loses nothing; two runs at once tell once;
  *   - the student page shows the tickets and assignments to whoever may see
- *     the student, and says plainly when the LMS is too old to share them.
+ *     the student, and says plainly when the LMS is too old to share them;
+ *   - and their LMS courses (functions/lmsCourses.ts) the same way; the hourly
+ *     LMS check keeps each student's courses for the Students table
+ *     (students/lmsEnrolment.ts) — written when they change, left as they
+ *     were when the LMS doesn't answer for them.
  *
  * Run through ./test-lms-activity.sh (throwaway mongod, the API — no .env).
  * Refuses anything but a scratch database on 127.0.0.1.
@@ -39,12 +43,14 @@ function check(label: string, ok: boolean, detail = "") {
 }
 const step = (s: string) => console.log(`\n\x1b[1m${s}\x1b[0m`);
 
-/* ── A stand-in LMS: the three /service routes, behind its secret ── */
+/* ── A stand-in LMS: the /service routes the portal asks, behind its secret ── */
 let lmsMode: "ok" | "down" | "old" = "ok";
+let noEnrolments = false;                     // an LMS that answers everything but /enrolments
 const events: any[] = [];
 const asked: string[] = [];
 const tickets = new Map<string, any[]>();
 const assignments = new Map<string, any[]>();
+const courses = new Map<string, any[]>();     // email → the courses /enrolments answers with (an account, too)
 const lms = Bun.serve({
   port: Number(process.env.E2E_FAKE_LMS_PORT),
   async fetch(req) {
@@ -61,6 +67,17 @@ const lms = Bun.serve({
     const email = String(body.email ?? "").toLowerCase();
     if (url.pathname === "/api/v1/service/support-tickets") return Response.json({ success: true, data: { email, exists: tickets.has(email), tickets: tickets.get(email) ?? [] } });
     if (url.pathname === "/api/v1/service/class-assignments") return Response.json({ success: true, data: { email, exists: assignments.has(email), assignments: assignments.get(email) ?? [] } });
+    const emails: string[] = Array.isArray(body.emails) ? body.emails.map((e: string) => String(e).toLowerCase()) : [];
+    if (url.pathname === "/api/v1/service/enrolments" && !noEnrolments) {
+      return Response.json({ success: true, data: { students: emails.map((e) => ({ email: e, exists: courses.has(e), courses: courses.get(e) ?? [] })) } });
+    }
+    // What the hourly LMS check also asks: who has an account, and their classes.
+    if (url.pathname === "/api/v1/service/accounts") {
+      return Response.json({ success: true, data: { accounts: emails.map((e) => ({ email: e, exists: courses.has(e), status: "active", inOrganization: true })) } });
+    }
+    if (url.pathname === "/api/v1/service/class-attendance") {
+      return Response.json({ success: true, data: { students: emails.map((e) => ({ email: e, exists: courses.has(e), attended: 0, missed: 0, upcoming: 0, booked: 0, cancelled: 0, lastAttendedAt: "" })) } });
+    }
     return Response.json({ success: false, error: { message: "Route not found" } }, { status: 404 });
   },
 });
@@ -249,6 +266,48 @@ lmsMode = "old";
 const old = await call("POST", "/api/functions/getStudentLmsSupport", { studentId: String(leila._id) }, as(caraToken));
 check("an LMS too old to share them: said plainly", old.status === 200 && old.body?.available === false && /needs its update/.test(old.body?.message ?? ""), JSON.stringify(old.body));
 lmsMode = "ok";
+
+step("The student's LMS courses");
+const LEILA_EMAIL = "leila.learner@e2e-lms.test";
+const course = (over: Record<string, unknown>) => ({
+  enrolmentId: "e1", courseId: "c1", title: "Market Break-Out Trading", slug: "mbo", program: "4x-trading", academy: "Delta Dubai",
+  status: "active", progress: 35, enrolledAt: now, completedAt: "", certificate: false, how: "finance", access: "partial", ...over,
+});
+courses.set(LEILA_EMAIL, [course({}), course({ enrolmentId: "e2", courseId: "c2", title: "Old Course", slug: "old", program: "", academy: "", status: "dropped", progress: 10, how: "admin", access: "" })]);
+const coursesPage = await call("POST", "/api/functions/getStudentLmsCourses", { studentId: String(leila._id) }, as(caraToken));
+check("their CS sees their courses, fresh from the LMS — how they got each, the fee, their progress",
+  coursesPage.status === 200 && coursesPage.body?.available === true && coursesPage.body?.has_account === true && coursesPage.body?.courses?.length === 2 &&
+  coursesPage.body.courses[0].how === "finance" && coursesPage.body.courses[0].access === "partial" && coursesPage.body.courses[0].progress === 35,
+  JSON.stringify(coursesPage.body).slice(0, 300));
+check("another CS does not", (await call("POST", "/api/functions/getStudentLmsCourses", { studentId: String(leila._id) }, as(await login(cody)))).status === 403);
+lmsMode = "old";
+const oldCourses = await call("POST", "/api/functions/getStudentLmsCourses", { studentId: String(leila._id) }, as(caraToken));
+check("an LMS too old to share them: said plainly", oldCourses.body?.available === false && /needs its update/.test(oldCourses.body?.message ?? ""), JSON.stringify(oldCourses.body));
+lmsMode = "ok";
+
+const { syncLmsEnrolment } = await import("../students/lmsEnrolment");
+const leilaDoc = async () => ((await db.collection("students").findOne({ _id: leila._id })) as any);
+let sync = await syncLmsEnrolment("Test");
+let leilaNow = await leilaDoc();
+check("the hourly check keeps their courses on them, for the Students table",
+  sync.ok && sync.courses?.ok === true && sync.courses?.with_courses === 1 && leilaNow?.lms_courses?.length === 2 &&
+  JSON.stringify(leilaNow.lms_courses[0]) === JSON.stringify({ course_id: "c1", title: "Market Break-Out Trading", program: "4x-trading", academy: "Delta Dubai", status: "active", progress: 35, access: "partial" }),
+  JSON.stringify({ run: sync.courses, kept: leilaNow?.lms_courses }));
+check("...and nothing on a student who is on no course", (await db.collection("students").countDocuments({ lms_courses: { $exists: true } })) === 1);
+const firstCheck = leilaNow?.lms_courses_checked_at;
+await new Promise((r) => setTimeout(r, 20));
+sync = await syncLmsEnrolment("Test");
+check("the same courses again: not written again", sync.ok && (await leilaDoc())?.lms_courses_checked_at === firstCheck);
+courses.set(LEILA_EMAIL, [course({ progress: 50 })]);
+sync = await syncLmsEnrolment("Test");
+leilaNow = await leilaDoc();
+check("progress moves, a course drops off: written", leilaNow?.lms_courses?.length === 1 && leilaNow.lms_courses[0].progress === 50 && leilaNow.lms_courses_checked_at !== firstCheck,
+  JSON.stringify(leilaNow?.lms_courses));
+noEnrolments = true;
+sync = await syncLmsEnrolment("Test");
+check("an LMS that doesn't share courses yet: the check still runs, and the courses are left as they were",
+  sync.ok && sync.courses?.ok === false && (await leilaDoc())?.lms_courses?.[0]?.progress === 50, JSON.stringify(sync.courses));
+noEnrolments = false;
 
 await closeDb();
 await client.close();

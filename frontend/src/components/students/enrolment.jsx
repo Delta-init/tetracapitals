@@ -11,6 +11,7 @@ import { isAdminRole } from '@/components/utils/roles';
 import { isStudentOf } from '@/components/students/common';
 import { useStudentTagCatalog } from '@/components/students/tags';
 import { courseLabel } from '@/components/utils/studentProducts';
+import { LmsCourseList } from '@/components/students/LmsCourseList';
 
 /* ────────────────────────────────────────────────────────────────────────────
    Enrolment: Enrolled (stored "closed" — the "Closed - <course>" tags say
@@ -154,23 +155,27 @@ export function EnrolmentControl({ student, currentUser }) {
     }
   };
   return (
-    <span className="inline-flex items-center gap-2">
-      <span className="text-sm text-slate-500">Enrolment</span>
-      <EnrolmentBadge student={student} />
-      {mayChange(currentUser, student) && ['closed', 'old', 'open'].filter(to => to !== k).map(to => (
-        <Button key={to} size="sm" variant="outline" className="h-7 gap-1 px-2 text-xs" disabled={!!busy} onClick={() => change(to)}>
-          {busy === to ? <Loader2 className="h-3 w-3 animate-spin" /> : to === 'closed' ? <CheckCircle2 className="h-3 w-3" /> : to === 'open' ? <RotateCcw className="h-3 w-3" /> : <Archive className="h-3 w-3" />}
-          {ENROLMENT[to].action}
-        </Button>
-      ))}
-      {asking && <EnrolCourseDialog student={student} open onOpenChange={setAsking} />}
-    </span>
+    <div>
+      <span className="inline-flex items-center gap-2">
+        <span className="text-sm text-slate-500">Enrolment</span>
+        <EnrolmentBadge student={student} />
+        {mayChange(currentUser, student) && ['closed', 'old', 'open'].filter(to => to !== k).map(to => (
+          <Button key={to} size="sm" variant="outline" className="h-7 gap-1 px-2 text-xs" disabled={!!busy} onClick={() => change(to)}>
+            {busy === to ? <Loader2 className="h-3 w-3 animate-spin" /> : to === 'closed' ? <CheckCircle2 className="h-3 w-3" /> : to === 'open' ? <RotateCcw className="h-3 w-3" /> : <Archive className="h-3 w-3" />}
+            {ENROLMENT[to].action}
+          </Button>
+        ))}
+        {asking && <EnrolCourseDialog student={student} open onOpenChange={setAsking} />}
+      </span>
+      {/* Their Delta LMS courses, under the enrolment */}
+      <LmsCourseList student={student} max={6} />
+    </div>
   );
 }
 
 /**
  * The Students table's Enrolled: a switch (Enrolled ↔ Not enrolled) for whoever may change it, Yes / No for anyone
- * else. It is a button, so clicking it never opens the student.
+ * else, and under it the student's Delta LMS courses. The switch is a button, so clicking it never opens the student.
  */
 export function EnrolledSwitch({ student, currentUser }) {
   const set = useSetEnrolment(student);
@@ -179,7 +184,12 @@ export function EnrolledSwitch({ student, currentUser }) {
   const on = isEnrolled(student);
   const title = `${ENROLMENT[enrolmentOf(student)].hint}${lmsNote(student)}${changedBy(student)}`;
   if (!mayChange(currentUser, student)) {
-    return <Badge variant="outline" className={on ? ENROLMENT.closed.cls : 'border-slate-200 bg-slate-50 text-slate-500'} title={title}>{on ? 'Yes' : 'No'}</Badge>;
+    return (
+      <div>
+        <Badge variant="outline" className={on ? ENROLMENT.closed.cls : 'border-slate-200 bg-slate-50 text-slate-500'} title={title}>{on ? 'Yes' : 'No'}</Badge>
+        <LmsCourseList student={student} />
+      </div>
+    );
   }
   const flip = async (next) => {
     if (next) { setAsking(true); return; }   // enrolled in which course? asked first
@@ -194,11 +204,14 @@ export function EnrolledSwitch({ student, currentUser }) {
     }
   };
   return (
-    <span className="inline-flex items-center gap-2 whitespace-nowrap" title={title}>
-      <Switch checked={on} disabled={busy} onCheckedChange={flip} aria-label={`${student.full_name || 'Student'} enrolled`} />
-      <span className={`text-xs ${on ? 'font-medium text-emerald-700' : 'text-slate-500'}`}>{on ? 'Enrolled' : 'Not enrolled'}</span>
-      {student.enrolment_manual && <span className="text-[10px] font-medium uppercase tracking-wide text-amber-600">by hand</span>}
-      {asking && <EnrolCourseDialog student={student} open onOpenChange={setAsking} />}
-    </span>
+    <div>
+      <span className="inline-flex items-center gap-2 whitespace-nowrap" title={title}>
+        <Switch checked={on} disabled={busy} onCheckedChange={flip} aria-label={`${student.full_name || 'Student'} enrolled`} />
+        <span className={`text-xs ${on ? 'font-medium text-emerald-700' : 'text-slate-500'}`}>{on ? 'Enrolled' : 'Not enrolled'}</span>
+        {student.enrolment_manual && <span className="text-[10px] font-medium uppercase tracking-wide text-amber-600">by hand</span>}
+        {asking && <EnrolCourseDialog student={student} open onOpenChange={setAsking} />}
+      </span>
+      <LmsCourseList student={student} />
+    </div>
   );
 }

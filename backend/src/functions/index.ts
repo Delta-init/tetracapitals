@@ -29,6 +29,7 @@ import { updateStudentDetails } from "./studentDetails";
 import { getOnboardingDraft, setOnboarding } from "./studentOnboarding";
 import { getStudentClasses } from "./lmsClasses";
 import { getStudentLmsSupport } from "./lmsSupport";
+import { getStudentLmsCourses } from "./lmsCourses";
 import { getStudentTags, setStudentTag } from "./studentTags";
 import { getPushConfig, savePushSubscription, deletePushSubscription, sendTestPush } from "./push";
 import { getNavCounts, markStudentSeen } from "./navCounts";
@@ -81,6 +82,7 @@ const AUTHED: Record<string, AuthedHandler> = {
   syncLmsEnrolmentNow,
   getStudentClasses,
   getStudentLmsSupport,
+  getStudentLmsCourses,
   getStudentTags,
   setStudentTag,
   getPushConfig,
