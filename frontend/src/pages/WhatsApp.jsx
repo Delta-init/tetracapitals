@@ -11,7 +11,7 @@ import { Badge } from '@/components/ui/badge';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import SearchableSelect from '@/components/common/SearchableSelect';
-import { ArrowLeft, Link2, Loader2, MessageCircle, Plus, Search, Smartphone, Unlink } from 'lucide-react';
+import { ArrowLeft, Link2, Loader2, Maximize2, MessageCircle, Minimize2, Plus, Search, Smartphone, Unlink } from 'lucide-react';
 import { getEffectiveUser } from '@/components/utils/ImpersonationContext';
 import { createPageUrl } from '@/utils';
 import { Composer, Thread, WA_GREEN, shortTime, numbersOf } from '@/components/whatsapp/waUi';
@@ -126,6 +126,26 @@ export default function WhatsApp() {
   const [draft, setDraft] = useState(null);       // a chat started from a student, before its first message
   const [picking, setPicking] = useState(null);   // a student with several numbers: which one
   const [linking, setLinking] = useState(false);
+  // Full screen: the chats and the chat fill the window — the browser's own full screen where it has one; Esc leaves.
+  const [full, setFull] = useState(false);
+  const toggleFull = () => {
+    if (!full) {
+      setFull(true);
+      document.documentElement.requestFullscreen?.().catch(() => {});
+    } else {
+      setFull(false);
+      if (document.fullscreenElement) document.exitFullscreen?.().catch(() => {});
+    }
+  };
+  useEffect(() => {
+    if (!full) return undefined;
+    const left = () => { if (!document.fullscreenElement) setFull(false); };   // the browser's Esc
+    const esc = (e) => { if (e.key === 'Escape' && !document.fullscreenElement) setFull(false); };
+    document.addEventListener('fullscreenchange', left);
+    window.addEventListener('keydown', esc);
+    return () => { document.removeEventListener('fullscreenchange', left); window.removeEventListener('keydown', esc); };
+  }, [full]);
+  useEffect(() => () => { if (document.fullscreenElement) document.exitFullscreen?.().catch(() => {}); }, []);
 
   const owners = st?.owners || [];
   const viewing = ownerId || (st?.can_link ? st?.me?.id : owners[0]?.id) || '';
@@ -243,14 +263,19 @@ export default function WhatsApp() {
       )}
 
       {viewing && (
-        <Card className="overflow-hidden border-slate-200">
-          <div className="grid h-[70vh] min-h-[480px] grid-cols-1 md:grid-cols-[340px_1fr]">
+        <Card className={`overflow-hidden border-slate-200 ${full ? 'fixed inset-0 z-50 !m-0 rounded-none border-0' : ''}`}>
+          <div className={`grid ${full ? 'h-full' : 'h-[70vh] min-h-[480px]'} grid-cols-1 md:grid-cols-[340px_1fr]`}>
             {/* Chats */}
             <div className={`flex min-h-0 flex-col border-r ${chat ? 'hidden md:flex' : 'flex'}`}>
               <div className="space-y-2 border-b p-3">
-                <div className="relative">
-                  <Search className="absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
-                  <Input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search name, number or code" className="h-9 pl-8" />
+                <div className="flex items-center gap-1.5">
+                  <div className="relative flex-1">
+                    <Search className="absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+                    <Input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search name, number or code" className="h-9 pl-8" />
+                  </div>
+                  <Button variant="ghost" size="icon" className="h-9 w-9 shrink-0" onClick={toggleFull} title={full ? 'Exit full screen' : 'Full screen'} aria-label={full ? 'Exit full screen' : 'Full screen'}>
+                    {full ? <Minimize2 className="h-4 w-4" /> : <Maximize2 className="h-4 w-4" />}
+                  </Button>
                 </div>
                 {mine && st?.can_link && (
                   <>
@@ -324,6 +349,10 @@ export default function WhatsApp() {
                     {chat.students?.length === 0 && thread?.messages?.length > 0 && (
                       <Button variant="outline" size="sm" onClick={() => setLinking(true)}><Link2 className="mr-1 h-4 w-4" />Link to a student</Button>
                     )}
+                    {/* On a phone the chat list (with its own button) is hidden while a chat is open. */}
+                    <Button variant="ghost" size="icon" className="h-8 w-8 md:hidden" onClick={toggleFull} aria-label={full ? 'Exit full screen' : 'Full screen'}>
+                      {full ? <Minimize2 className="h-4 w-4" /> : <Maximize2 className="h-4 w-4" />}
+                    </Button>
                   </div>
                   <Thread messages={thread?.messages || []} className="min-h-0 flex-1" empty={canSend ? 'Write the first message' : 'No messages yet'} />
                   {canSend
