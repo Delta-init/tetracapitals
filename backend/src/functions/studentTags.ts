@@ -40,6 +40,8 @@ export async function setStudentTag(req: Request, user: AuthUser): Promise<Respo
   const tag: any = await col("student_tags").findOne({ name });
   if (!tag) return error(`There is no tag "${name}"`, 404);
   if (tag.kind === "auto") return error(`"${name}" follows the student — it is not put on by hand`, 400);
+  // Courses come through finance (the user, 2026-10-03): a CS neither puts a course on nor takes one off by hand.
+  if (tag.kind === "closed" && user.app_role === "cs") return forbidden("Courses come through finance — a CS can't add or remove a course");
 
   const own: string[] = Array.isArray(s.tags) ? s.tags : [];
   if (on === own.includes(name)) return json({ tags: tagNamesOf(s), unchanged: true });

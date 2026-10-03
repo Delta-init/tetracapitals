@@ -78,6 +78,8 @@ export function StudentTagsEditor({ student, currentUser }) {
   const names = tagNamesOf(student);
   const own = new Set(Array.isArray(student?.tags) ? student.tags : []);
   const canChange = mayChange(currentUser, student);
+  // Courses come through finance: a CS sees course tags but neither adds nor removes one (the server says the same).
+  const courseLocked = currentUser?.app_role === 'cs';
 
   const change = async (tag, on) => {
     setBusy(tag);
@@ -95,7 +97,7 @@ export function StudentTagsEditor({ student, currentUser }) {
   };
 
   const addable = catalog
-    .filter(t => t.kind !== 'auto' && t.active !== false && !own.has(t.name))
+    .filter(t => t.kind !== 'auto' && t.active !== false && !own.has(t.name) && !(courseLocked && t.kind === 'closed'))
     .map(t => ({ value: t.name, label: t.name }));
 
   return (
@@ -105,7 +107,7 @@ export function StudentTagsEditor({ student, currentUser }) {
       {names.map(n => (n === 'Common'
         ? <CommonBadge key={n} student={student} />
         : <TagChip key={n} name={n} color={colorOf(catalog, n)} busy={busy === n}
-            onRemove={canChange && own.has(n) ? () => change(n, false) : undefined} />))}
+            onRemove={canChange && own.has(n) && !(courseLocked && n.startsWith(CLOSED_PREFIX)) ? () => change(n, false) : undefined} />))}
       {canChange && addable.length > 0 && (
         <div className="w-56">
           <SearchableSelect value="" onValueChange={(v) => v && v !== '__none__' && change(v, true)} options={addable}

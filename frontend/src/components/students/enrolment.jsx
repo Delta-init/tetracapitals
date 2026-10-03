@@ -5,12 +5,10 @@ import { base44 } from '@/api/base44Client';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Switch } from '@/components/ui/switch';
-import { Checkbox } from '@/components/ui/checkbox';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Archive, CheckCircle2, ChevronDown, Loader2, Lock, LockOpen, RotateCcw } from 'lucide-react';
 import { isAdminRole } from '@/components/utils/roles';
 import { isStudentOf } from '@/components/students/common';
-import { useStudentTagCatalog } from '@/components/students/tags';
 import { courseLabel } from '@/components/utils/studentProducts';
 import { LmsCourseList, LmsModules } from '@/components/students/LmsCourseList';
 
@@ -19,15 +17,15 @@ import { LmsCourseList, LmsModules } from '@/components/students/LmsCourseList';
    which course), Not enrolled ("open", or unset), or Old — from a CS's earlier
    list, not enrolled.
    The Delta LMS sets it every hour: an LMS account = Enrolled, none = Not
-   enrolled (backend/src/students/lmsEnrolment.ts). It can still be changed on
-   the student page and with the Students table's switch, by their CS (or a CS
-   they are Common with), the people above them (CS Manager, Chief) and admin
-   roles (the server checks); a change against what the LMS says stays until
-   the LMS agrees. Marking a student enrolled asks which course: its
-   "Closed - <course>" tag goes on with it. The switch on an enrolled student
-   opens their courses — the ones they are on, with how far they are in the
-   LMS, and the next one to add — and "Mark as not enrolled" lives there. Each
-   change goes in the student's history.
+   enrolled (backend/src/students/lmsEnrolment.ts). By hand — on the student
+   page and with the Students table's switch, by their CS (or a CS they are
+   Common with), the people above them (CS Manager, Chief) and admin roles (the
+   server checks) — a student can be marked Not enrolled or Old, never
+   Enrolled: courses, and so enrolment, come through finance and the LMS (the
+   user, 2026-10-03). The switch opens the student's courses, view only — the
+   ones they are on, with how far they are in the LMS — and "Mark as not
+   enrolled" lives there. A change against what the LMS says stays until the
+   LMS agrees. Each change goes in the student's history.
 ──────────────────────────────────────────────────────────────────────────── */
 
 export const enrolmentOf = (s) => (s?.enrolment_status === 'closed' || s?.enrolment_status === 'old' ? s.enrolment_status : 'open');
@@ -73,21 +71,16 @@ const CLOSED_PREFIX = 'Closed - ';
 const stop = (e) => e.stopPropagation();   // also opened from clickable table rows
 
 /**
- * The student's courses — asked when somebody marks them enrolled, and opened by the Enrolled switch on a student
- * who already is. Every course tag: the ones they have, ticked and kept, with how far they are in the Delta LMS and
- * which of its modules they can open ("Show modules" lists each); the ones they are on in the LMS without the tag,
- * ticked to add until somebody unticks them; and any other ticked is their next course. Adding only — a course they
- * have stays. Ticking records the course here, as its "Closed - <course>" tag; putting them on it in the LMS still
- * comes through finance. On an enrolled student this is also where "Mark as not enrolled" lives, since the switch
- * opens it rather than turning enrolment off.
+ * The student's courses — opened by the Enrolled switch. View only (the user, 2026-10-03): the courses they are on —
+ * their "Closed - <course>" tags, and the Delta LMS courses they are on without one — each with how far they are in
+ * the LMS and which of its modules they can open ("Show modules" lists each). Nobody adds a course here: courses come
+ * through finance. On an enrolled student this is where "Mark as not enrolled" lives, since the switch opens it
+ * rather than turning enrolment off.
  */
-function EnrolCoursesDialog({ student, open, onOpenChange }) {
-  const queryClient = useQueryClient();
+function StudentCoursesDialog({ student, open, onOpenChange }) {
   const set = useSetEnrolment(student);
   const enrolled = isEnrolled(student);
   const name = student?.full_name || 'Student';
-  // Until the course tags are in, every LMS course would look untagged: the list waits for them.
-  const { data: catalog = [], isLoading: tagsLoading } = useStudentTagCatalog();
   const { data: lms, isLoading: lmsLoading } = useQuery({
     queryKey: ['student-lms-courses', student?.id],
     queryFn: async () => (await base44.functions.invoke('getStudentLmsCourses', { studentId: student.id })).data,
@@ -95,57 +88,20 @@ function EnrolCoursesDialog({ student, open, onOpenChange }) {
     staleTime: 60_000,
   });
 
-  const own = Array.isArray(student?.tags) ? student.tags : [];
-  const has = (tag) => own.includes(tag);
+  const own = (Array.isArray(student?.tags) ? student.tags : []).filter(t => t.startsWith(CLOSED_PREFIX)).sort((a, b) => a.localeCompare(b));
   const lmsCourses = (lms?.courses || []).filter(c => c.status !== 'dropped');
   const tagOf = (c) => CLOSED_PREFIX + courseLabel(c.title);
   const lmsByTag = new Map(lmsCourses.map(c => [tagOf(c), c]));
-  // Every course tag on offer, and theirs even if it no longer is: theirs first, then the LMS's, then the rest.
-  const offered = catalog.filter(t => t.kind === 'closed' && t.active !== false).map(t => t.name);
-  const rank = (tag) => (has(tag) ? 0 : lmsByTag.has(tag) ? 1 : 2);
-  const tags = [...new Set([...offered, ...own.filter(t => t.startsWith(CLOSED_PREFIX))])]
-    .sort((a, b) => rank(a) - rank(b) || a.localeCompare(b));
-  // On in the LMS under a course no tag names: shown, not added.
-  const untagged = lmsCourses.filter(c => !tags.includes(tagOf(c)));
-
-  const defaults = tags.filter(t => !has(t) && lmsByTag.has(t));
-  const [picked, setPicked] = useState(null);   // null: nobody has touched the ticks yet
-  const chosen = (picked ?? defaults).filter(t => !has(t));
-  const toggle = (tag) => setPicked(p => {
-    const cur = p ?? defaults;
-    return cur.includes(tag) ? cur.filter(x => x !== tag) : [...cur, tag];
-  });
+  // On in the LMS under a course they have no tag for: shown too.
+  const lmsOnly = lmsCourses.filter(c => !own.includes(tagOf(c)));
   const [saving, setSaving] = useState(false);
-  const label = (tag) => tag.slice(CLOSED_PREFIX.length);
-  const close = () => { if (!saving) { setPicked(null); onOpenChange(false); } };
-  const count = (n) => (n === 1 ? '1 course' : `${n} courses`);
+  const close = () => { if (!saving) onOpenChange(false); };
 
-  const save = async () => {
-    setSaving(true);
-    try {
-      if (!enrolled) await set('closed');
-      for (const tag of chosen) await base44.functions.invoke('setStudentTag', { studentId: student.id, tag, on: true });
-      if (chosen.length) {
-        queryClient.invalidateQueries({ queryKey: ['students'] });
-        queryClient.invalidateQueries({ queryKey: ['student', student.id] });
-        queryClient.invalidateQueries({ queryKey: ['student-history', student.id] });
-      }
-      const names = chosen.map(label).join(', ');
-      toast.success(enrolled ? `${name}: ${count(chosen.length)} added — ${names}` : `${name} marked as enrolled${names ? ` — ${names}` : ''}`);
-      setPicked(null);
-      onOpenChange(false);
-    } catch (e) {
-      toast.error(e?.message || (enrolled ? 'Could not add the course' : 'Could not mark them enrolled'));
-    } finally {
-      setSaving(false);
-    }
-  };
   const unenrol = async () => {
     setSaving(true);
     try {
       await set('open');
       toast.success(`${name} ${DONE.open}`);
-      setPicked(null);
       onOpenChange(false);
     } catch (e) {
       toast.error(e?.message || 'Could not change the enrolment');
@@ -158,11 +114,8 @@ function EnrolCoursesDialog({ student, open, onOpenChange }) {
     <Dialog open={open} onOpenChange={(o) => { if (!o) close(); }}>
       <DialogContent className="max-w-lg" onClick={stop}>
         <DialogHeader>
-          <DialogTitle>{enrolled ? `${name}'s courses` : `Which course did ${name} enrol in?`}</DialogTitle>
-          <DialogDescription>
-            {enrolled ? 'Ticked: the courses they are on. Tick their next course to add it.' : 'On the Delta LMS. The course goes on them as a tag, with Enrolled.'}
-            {' '}Adding a course here does not put them on it in the LMS — that comes through finance.
-          </DialogDescription>
+          <DialogTitle>{name}'s courses</DialogTitle>
+          <DialogDescription>The courses they are on, with how far they are in the Delta LMS. Courses are added through finance, not here.</DialogDescription>
         </DialogHeader>
         {lmsLoading ? (
           <p className="text-xs text-slate-400">Asking the LMS how far they are…</p>
@@ -170,44 +123,33 @@ function EnrolCoursesDialog({ student, open, onOpenChange }) {
           <p className="text-xs text-amber-700">{lms.message || 'The LMS could not be asked'}</p>
         ) : null}
         <div className="max-h-[440px] space-y-1.5 overflow-y-auto pr-1">
-          {tagsLoading && <p className="py-4 text-center text-sm text-slate-400">Loading the courses…</p>}
-          {!tagsLoading && tags.map(tag => (
-            <CourseRow key={tag} label={label(tag)} have={has(tag)} ticked={has(tag) || chosen.includes(tag)}
-              onToggle={() => toggle(tag)} course={lmsByTag.get(tag)} disabled={saving} />
+          {own.map(tag => <CourseRow key={tag} label={tag.slice(CLOSED_PREFIX.length)} have course={lmsByTag.get(tag)} />)}
+          {lmsOnly.map(c => (
+            <CourseRow key={c.enrolmentId || c.title} label={c.title || 'A course'} course={c} note="On it in the LMS — no course tag names it" />
           ))}
-          {!tagsLoading && untagged.map(c => (
-            <CourseRow key={c.enrolmentId || c.title} label={c.title || 'A course'} ticked course={c} note="On it in the LMS — no course tag names it" />
-          ))}
-          {!tagsLoading && !tags.length && !untagged.length && <p className="py-4 text-center text-sm text-slate-400">No course tags yet.</p>}
+          {!lmsLoading && !own.length && !lmsOnly.length && <p className="py-4 text-center text-sm text-slate-400">No courses yet — they come through finance.</p>}
         </div>
         <DialogFooter className="gap-2 sm:justify-between sm:gap-0">
           {enrolled ? (
             <Button variant="outline" className="border-rose-200 text-rose-700 hover:bg-rose-50 hover:text-rose-800" onClick={unenrol} disabled={saving}>
-              <RotateCcw className="mr-1.5 h-4 w-4" />{ENROLMENT.open.action}
+              {saving ? <Loader2 className="mr-1.5 h-4 w-4 animate-spin" /> : <RotateCcw className="mr-1.5 h-4 w-4" />}{ENROLMENT.open.action}
             </Button>
           ) : <span />}
-          <div className="flex gap-2">
-            <Button variant="outline" onClick={close} disabled={saving}>Cancel</Button>
-            <Button onClick={save} disabled={saving || (enrolled && !chosen.length)}>
-              {saving && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-              {enrolled ? `Add ${chosen.length ? count(chosen.length) : 'course'}` : `Mark as enrolled${chosen.length ? ` — ${count(chosen.length)}` : ''}`}
-            </Button>
-          </div>
+          <Button variant="outline" onClick={close} disabled={saving}>Close</Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>
   );
 }
 
-/** One course in the dialog: its tick, and how far they are in the LMS when they are on it. */
-function CourseRow({ label, have = false, ticked = false, onToggle, course, disabled = false, note }) {
+/** One course they are on: how far they are in the LMS when it knows. */
+function CourseRow({ label, have = false, course, note }) {
   const [showModules, setShowModules] = useState(false);
   const list = course?.modules?.list;
-  const fixed = have || !onToggle;   // a course they have stays; one no tag names cannot be added
   return (
-    <div className={`rounded-lg border px-3 py-2 transition-colors ${have ? 'border-emerald-200 bg-emerald-50/50' : ticked ? 'border-sky-300 bg-sky-50/50' : 'border-slate-200 hover:bg-slate-50'}`}>
-      <label className={`flex items-start gap-2.5 ${fixed ? 'cursor-default' : 'cursor-pointer'}`}>
-        <Checkbox checked={!!ticked} disabled={fixed || disabled} onCheckedChange={() => onToggle?.()} className="mt-0.5" />
+    <div className={`rounded-lg border px-3 py-2 ${have ? 'border-emerald-200 bg-emerald-50/50' : 'border-indigo-200 bg-indigo-50/40'}`}>
+      <div className="flex items-start gap-2.5">
+        <CheckCircle2 className={`mt-0.5 h-4 w-4 shrink-0 ${have ? 'text-emerald-600' : 'text-indigo-500'}`} />
         <span className="min-w-0 flex-1">
           <span className="flex flex-wrap items-center gap-1.5">
             <span className="text-sm font-medium text-slate-900">{label}</span>
@@ -216,7 +158,7 @@ function CourseRow({ label, have = false, ticked = false, onToggle, course, disa
           </span>
           {note && <span className="mt-0.5 block text-xs text-slate-400">{note}</span>}
         </span>
-      </label>
+      </div>
       {course && (
         <div className="mt-1.5 pl-[26px]">
           <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-slate-500">
@@ -251,14 +193,12 @@ function CourseRow({ label, have = false, ticked = false, onToggle, course, disa
   );
 }
 
-/** The student page's Enrolment: the badge, and a button for each of the other two. */
+/** The student page's Enrolment: the badge, and Mark as not enrolled / Mark as old — never enrolled by hand. */
 export function EnrolmentControl({ student, currentUser }) {
   const set = useSetEnrolment(student);
   const [busy, setBusy] = useState(false);
-  const [asking, setAsking] = useState(false);
   const k = enrolmentOf(student);
   const change = async (to) => {
-    if (to === 'closed') { setAsking(true); return; }
     setBusy(to);
     try {
       await set(to);
@@ -274,13 +214,12 @@ export function EnrolmentControl({ student, currentUser }) {
       <span className="inline-flex items-center gap-2">
         <span className="text-sm text-slate-500">Enrolment</span>
         <EnrolmentBadge student={student} />
-        {mayChange(currentUser, student) && ['closed', 'old', 'open'].filter(to => to !== k).map(to => (
+        {mayChange(currentUser, student) && ['old', 'open'].filter(to => to !== k).map(to => (
           <Button key={to} size="sm" variant="outline" className="h-7 gap-1 px-2 text-xs" disabled={!!busy} onClick={() => change(to)}>
-            {busy === to ? <Loader2 className="h-3 w-3 animate-spin" /> : to === 'closed' ? <CheckCircle2 className="h-3 w-3" /> : to === 'open' ? <RotateCcw className="h-3 w-3" /> : <Archive className="h-3 w-3" />}
+            {busy === to ? <Loader2 className="h-3 w-3 animate-spin" /> : to === 'open' ? <RotateCcw className="h-3 w-3" /> : <Archive className="h-3 w-3" />}
             {ENROLMENT[to].action}
           </Button>
         ))}
-        {asking && <EnrolCoursesDialog student={student} open onOpenChange={setAsking} />}
       </span>
       {/* Their Delta LMS courses, under the enrolment */}
       <LmsCourseList student={student} max={6} />
@@ -290,9 +229,8 @@ export function EnrolmentControl({ student, currentUser }) {
 
 /**
  * The Students table's Enrolled: a switch for whoever may change it, Yes / No for anyone else, and under it the
- * student's Delta LMS courses. On or off, the switch opens the student's courses: the course they enrol in, or —
- * for one already enrolled — their next one, with what they are on, and "Mark as not enrolled". The switch is a
- * button, so clicking it never opens the student.
+ * student's Delta LMS courses. On or off, the switch opens the student's courses, view only — with "Mark as not
+ * enrolled" for one who is enrolled. The switch is a button, so clicking it never opens the student.
  */
 export function EnrolledSwitch({ student, currentUser }) {
   const [asking, setAsking] = useState(false);
@@ -312,7 +250,7 @@ export function EnrolledSwitch({ student, currentUser }) {
         <Switch checked={on} onCheckedChange={() => setAsking(true)} aria-label={`${student.full_name || 'Student'} enrolled — their courses`} />
         <span className={`text-xs ${on ? 'font-medium text-emerald-700' : 'text-slate-500'}`}>{on ? 'Enrolled' : 'Not enrolled'}</span>
         {student.enrolment_manual && <span className="text-[10px] font-medium uppercase tracking-wide text-amber-600">by hand</span>}
-        {asking && <EnrolCoursesDialog student={student} open onOpenChange={setAsking} />}
+        {asking && <StudentCoursesDialog student={student} open onOpenChange={setAsking} />}
       </span>
       <LmsCourseList student={student} />
     </div>
