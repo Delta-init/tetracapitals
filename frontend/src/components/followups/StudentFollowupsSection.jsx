@@ -7,6 +7,7 @@ import { TablePagination, usePagination } from '@/components/common/TablePaginat
 import { PhoneCall, Plus } from 'lucide-react';
 import { StatusBadge, StageBadge, ReminderBadge, NewFollowupDialog, fmtDate, money, reminderKind } from './followupUi';
 import { CallButton, useCallFlow } from './CallFlow';
+import FollowupNotes from './FollowupNotes';
 
 /** A student's follow-ups on their page: each open / closed outcome, the full log, click-to-call. */
 export default function StudentFollowupsSection({ student }) {
@@ -100,6 +101,8 @@ export default function StudentFollowupsSection({ student }) {
             <TablePagination {...bar} />
           </div>
         )}
+
+        {!isLoading && <FollowupNotes studentId={student?.id} history={data?.history} canWrite={!!data?.can_create} />}
 
         {events.length > 0 && (
           <div className="px-5 pb-5">

@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
+import { useQuery } from '@tanstack/react-query';
 import { base44 } from '@/api/base44Client';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
@@ -11,6 +12,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import SearchableSelect from '@/components/common/SearchableSelect';
 import { AlertTriangle, Clock, Eye, Loader2, MailCheck, MailMinus, MailX, Phone } from 'lucide-react';
 import { dialInfo } from './phone';
+import { HistoryEntry } from './FollowupNotes';
 
 // Same lists as the CSE Follow-up Tracker sheet (the server checks them too).
 export const OUTCOMES = ['DSLP', 'DQMP', 'DGMP', 'Additional Deposit / Top-up', 'Other'];
@@ -119,6 +121,14 @@ export function LogFollowupDialog({ followup, onClose, onSaved }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState(null);
   const today = new Date(Date.now() + 330 * 60000).toISOString().slice(0, 10);
+  // What was said and noted on this follow-up before — this log adds to it, never overwrites it.
+  const { data: past } = useQuery({
+    queryKey: ['followups', 'student', followup?.student_id],
+    queryFn: async () => (await base44.functions.invoke('getFollowups', { studentId: followup.student_id })).data,
+    enabled: !!followup?.student_id,
+  });
+  const earlierSaid = (past?.history?.client_said || []).filter(e => e.followup_id === followup?.id);
+  const earlierNotes = (past?.history?.notes || []).filter(e => e.followup_id === followup?.id);
 
   useEffect(() => {
     if (!followup) return;
@@ -130,7 +140,7 @@ export function LogFollowupDialog({ followup, onClose, onSaved }) {
       objectionReason: followup.objection_reason || '',
       convertedDate: followup.converted_date || today,
       dealValue: followup.deal_value ?? '',
-      notes: followup.notes || '',
+      notes: '',
     });
   }, [followup]);
 
@@ -145,7 +155,8 @@ export function LogFollowupDialog({ followup, onClose, onSaved }) {
       await base44.functions.invoke('logFollowup', {
         id: followup.id,
         stage: form.stage,
-        clientSaid: form.clientSaid || followup.client_said,
+        // Only what was written now: the earlier entries are kept as they are.
+        clientSaid: form.clientSaid,
         nextFollowupDate: closed ? '' : form.nextFollowupDate,
         // The reason applies to Objection / Lost only; earlier reasons stay in the log.
         objectionReason: form.stage === 'Lost' || form.stage === 'Objection Stage' ? form.objectionReason : '',
@@ -171,9 +182,25 @@ export function LogFollowupDialog({ followup, onClose, onSaved }) {
           <DialogDescription className="flex flex-wrap items-center gap-x-3 gap-y-1">
             <span>{followup?.target_outcome}</span>
             <CallLink phone={followup?.phone} />
-            {followup?.client_said && <span className="w-full text-xs text-slate-500">Last time: “{followup.client_said}”</span>}
           </DialogDescription>
         </DialogHeader>
+
+        {(earlierSaid.length > 0 || earlierNotes.length > 0) && (
+          <div className="max-h-48 space-y-2 overflow-y-auto rounded-xl border border-slate-200 bg-slate-50 p-3">
+            {earlierSaid.length > 0 && (
+              <div>
+                <p className="mb-1 text-[11px] font-semibold uppercase tracking-wider text-slate-500">What the client said before</p>
+                <ul className="space-y-1.5">{earlierSaid.map((e, i) => <HistoryEntry key={`s${i}`} e={e} quote showFollowup={false} />)}</ul>
+              </div>
+            )}
+            {earlierNotes.length > 0 && (
+              <div>
+                <p className="mb-1 text-[11px] font-semibold uppercase tracking-wider text-slate-500">Notes before</p>
+                <ul className="space-y-1.5">{earlierNotes.map((e, i) => <HistoryEntry key={`n${i}`} e={e} showFollowup={false} />)}</ul>
+              </div>
+            )}
+          </div>
+        )}
 
         <div className="grid gap-4 sm:grid-cols-2">
           <div className="space-y-1.5">

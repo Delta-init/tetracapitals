@@ -86,6 +86,7 @@ export async function getFollowups(req: Request, user: AuthUser): Promise<Respon
         leaders_told_at: f.leader_alert?.due && f.leader_alert.due === f.next_followup_date ? f.leader_alert.at ?? null : null,
         can_edit: canWorkOn(user, s),
         created_date: f.created_date,
+        created_by_name: f.created_by_name ?? "",
       };
     });
 
@@ -117,6 +118,7 @@ export async function getFollowups(req: Request, user: AuthUser): Promise<Respon
   const out: any = { today, followups: rows, stats, lists: { outcomes: TARGET_OUTCOMES, stages: STAGES, lost_reasons: LOST_REASONS } };
   if (studentId) {
     out.events = await col("student_followup_events").find({ student_id: studentId }).sort({ at: -1 }).limit(500).toArray();
+    out.history = historyOf(rows, out.events);
     out.can_create = students[0] ? canWorkOn(user, students[0]) : false;
     // Reminder emails that listed this student's follow-ups, newest first.
     const ids = rows.map((r) => r.id);
@@ -181,9 +183,102 @@ export async function createFollowup(req: Request, user: AuthUser): Promise<Resp
   await recordEvents([{
     followup_id: String(res.insertedId), student_id: doc.student_id, at: now, by_id: user.id, by_name: who(user),
     kind: "created", stage_to: "New", next_followup_date: next,
+    ...(doc.client_said ? { client_said: doc.client_said } : {}),
+    ...(doc.notes ? { notes: doc.notes } : {}),
     text: `Follow-up opened for ${outcome}${next ? `, next follow-up ${next}` : ""}`,
   }]);
   return json({ id: String(res.insertedId) });
+}
+
+/**
+ * What the client said, and the notes, every time — not only the latest the follow-up keeps: each entry as it was
+ * written (when a follow-up was opened or logged, or a note on its own), newest first, with who, when, and the
+ * follow-up and its stage then. A follow-up from before every entry was kept shows its current text once; a log
+ * that only repeated the last "what client said" (as logs used to) isn't counted again.
+ */
+function historyOf(followups: any[], events: any[]) {
+  const byId = new Map(followups.map((f) => [String(f.id), f]));
+  const entry = (e: any, text: string) => {
+    const f = byId.get(String(e.followup_id ?? ""));
+    return {
+      text, at: e.at, by_name: e.by_name ?? "", followup_id: String(e.followup_id ?? ""), outcome: f?.target_outcome ?? "", stage: e.stage_to ?? f?.stage ?? "",
+      ...(e.earlier ? { earlier: true } : {}),
+    };
+  };
+  const said: any[] = [];
+  const notes: any[] = [];
+  const lastSaid = new Map<string, string>();
+  const written = events.filter((e) => e.kind === "created" || e.kind === "logged" || e.kind === "note")
+    .sort((a, b) => String(a.at).localeCompare(String(b.at)));
+  for (const e of written) {
+    const s = String(e.client_said ?? "").trim();
+    if (s && lastSaid.get(String(e.followup_id)) !== s) {
+      said.push(entry(e, s));
+      lastSaid.set(String(e.followup_id), s);
+    }
+    const n = String(e.notes ?? "").trim();
+    if (n) notes.push(entry(e, n));
+  }
+  for (const f of followups) {
+    const earlier = { at: f.created_date, by_name: f.created_by_name ?? "", followup_id: f.id, stage_to: null };
+    const s = String(f.client_said ?? "").trim();
+    const n = String(f.notes ?? "").trim();
+    if (s && !said.some((x) => x.followup_id === f.id && x.text === s)) said.push({ ...entry(earlier, s), earlier: true });
+    if (n && !notes.some((x) => x.followup_id === f.id && x.text === n)) notes.push({ ...entry(earlier, n), earlier: true });
+  }
+  const newest = (a: any, b: any) => String(b.at).localeCompare(String(a.at));
+  return { client_said: said.sort(newest), notes: notes.sort(newest) };
+}
+
+/**
+ * What a follow-up still holds from before every entry was kept — its "what client said" and notes as they were
+ * last written, in no log entry — goes into the log as it is, before a log writes the follow-up anew. Otherwise
+ * the first log after this change would overwrite the one copy there is.
+ */
+async function keepWhatCameBefore(f: any): Promise<void> {
+  const fid = String(f._id);
+  const said = String(f.client_said ?? "").trim();
+  const notes = String(f.notes ?? "").trim();
+  if (!said && !notes) return;
+  const logged = (await col("student_followup_events").find({ followup_id: fid }, { projection: { client_said: 1, notes: 1 } }).toArray()) as any[];
+  const keepSaid = !!said && !logged.some((e) => String(e.client_said ?? "").trim() === said);
+  const keepNotes = !!notes && !logged.some((e) => String(e.notes ?? "").trim() === notes);
+  if (!keepSaid && !keepNotes) return;
+  await recordEvents([{
+    followup_id: fid, student_id: String(f.student_id), at: String(f.updated_date || f.created_date || new Date().toISOString()),
+    by_id: f.created_by_id ? String(f.created_by_id) : null, by_name: String(f.created_by_name ?? ""),
+    kind: "note", earlier: true, stage_to: f.stage ?? null,
+    ...(keepSaid ? { client_said: said } : {}),
+    ...(keepNotes ? { notes } : {}),
+    text: "Kept from before every entry was kept",
+  }]);
+}
+
+/**
+ * POST /api/functions/addFollowupNote { studentId, followupId?, notes }
+ * A note on its own, between calls — as the Sales CRM's notes. On the follow-up named, else on the student's
+ * latest open one (or none). For whoever may work on the student.
+ */
+export async function addFollowupNote(req: Request, user: AuthUser): Promise<Response> {
+  const body: any = await req.json().catch(() => null);
+  const oid = toObjectId(str(body?.studentId, 40));
+  if (!oid) return error("studentId is required", 400);
+  const text = str(body?.notes);
+  if (!text) return error("Write the note first", 400);
+  const student: any = await col("students").findOne({ _id: oid });
+  if (!student) return notFound();
+  if (!canWorkOn(user, student)) return forbidden();
+  const sid = String(student._id);
+  const wanted = toObjectId(str(body?.followupId, 40));
+  const f: any = wanted
+    ? await col("student_followups").findOne({ _id: wanted, student_id: sid })
+    : await col("student_followups").find({ student_id: sid, stage: { $nin: [...CLOSED_STAGES] } }).sort({ updated_date: -1 }).limit(1).next();
+  if (wanted && !f) return notFound("That follow-up isn't this student's");
+  await recordEvents([{
+    followup_id: f ? String(f._id) : "", student_id: sid, at: new Date().toISOString(), by_id: user.id, by_name: who(user),
+    kind: "note", stage_to: f?.stage ?? null, notes: text, text: "Note added",
+  }]);
+  return json({ ok: true });
 }
 
 /**
@@ -218,8 +313,12 @@ export async function logFollowup(req: Request, user: AuthUser): Promise<Respons
     next_followup_date: CLOSED_STAGES.has(stage) ? "" : next,
     updated_date: new Date().toISOString(),
   };
-  if (body?.clientSaid !== undefined) patch.client_said = str(body.clientSaid);
-  if (body?.notes !== undefined) patch.notes = str(body.notes);
+  // What was written this time — the follow-up keeps the latest, and the log keeps each one (historyOf).
+  const said = str(body?.clientSaid);
+  const noteText = str(body?.notes);
+  if (said) patch.client_said = said;
+  if (noteText) patch.notes = noteText;
+  if (said || noteText) await keepWhatCameBefore(f);
   if (stage === "Converted") {
     const cd = str(body?.convertedDate, 10) || today;
     const dv = Number(body?.dealValue);
@@ -238,7 +337,9 @@ export async function logFollowup(req: Request, user: AuthUser): Promise<Respons
   const moved = f.stage !== stage;
   await recordEvents([{
     followup_id: String(oid), student_id: String(f.student_id), at: patch.updated_date, by_id: user.id, by_name: who(user),
-    kind: "logged", stage_from: f.stage, stage_to: stage, client_said: patch.client_said ?? f.client_said ?? "", next_followup_date: patch.next_followup_date,
+    kind: "logged", stage_from: f.stage, stage_to: stage, next_followup_date: patch.next_followup_date,
+    ...(said ? { client_said: said } : {}),
+    ...(noteText ? { notes: noteText } : {}),
     text: `${moved ? `${f.stage} → ${stage}` : stage}${reason ? ` (${reason})` : ""}${stage === "Converted" ? ` — $${Number(patch.deal_value).toLocaleString("en-US")}` : ""}${patch.next_followup_date ? ` · next ${patch.next_followup_date}` : ""}`,
   }]);
   return json({ ok: true, followup_status: followupStatus({ ...f, ...patch }) });

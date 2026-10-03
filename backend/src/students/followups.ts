@@ -82,10 +82,15 @@ export interface FollowupEvent {
   at: string;
   by_id: string | null;
   by_name: string;
-  kind: "created" | "logged" | "auto_converted" | "edited";
+  /** "note": a note written on its own, between calls (addFollowupNote). */
+  kind: "created" | "logged" | "auto_converted" | "edited" | "note";
   stage_from?: string | null;
   stage_to?: string | null;
+  /** What the client said, and the notes — as written this time (only then): every one is kept, none overwritten. */
   client_said?: string;
+  notes?: string;
+  /** Text the follow-up held from before every entry was kept, saved into the log when it was next written to. */
+  earlier?: boolean;
   next_followup_date?: string;
   text: string;
 }
