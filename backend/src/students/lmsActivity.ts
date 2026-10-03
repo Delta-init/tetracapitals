@@ -4,6 +4,7 @@ import { callLms, lmsConfigured } from "../lib/lms";
 import { sendMail, type SendResult } from "../lib/mailer";
 import { notify } from "../lib/notify";
 import { toObjectId } from "../lib/id";
+import { keepClassCompletion, sendDueClassNotices, type LmsClass } from "./classCompletions";
 
 /* ────────────────────────────────────────────────────────────────────────────
    A student's LMS help desk and class assignments, told to their CS.
@@ -28,6 +29,11 @@ import { toObjectId } from "../lib/id";
    The LMS stays where tickets are answered and assignments reviewed; the
    student's page here shows both (functions/lmsSupport.ts).
 
+   The same ask brings the live classes a student attended that are now over
+   (include=classes): those are kept as class completions, and their CS is
+   told ten minutes after the class ended, for a call — no email
+   (students/classCompletions.ts).
+
    LMS_ACTIVITY=off keeps a server out of it.
 ──────────────────────────────────────────────────────────────────────────── */
 
@@ -42,7 +48,7 @@ const MAIL_BATCH = 50;
 /** One thing a student did, as the LMS reports it. */
 export interface LmsActivity {
   key: string;
-  type: "ticket_opened" | "ticket_reply" | "assignment_submitted" | "assignment_reviewed";
+  type: "ticket_opened" | "ticket_reply" | "assignment_submitted" | "assignment_reviewed" | "class_attended";
   at: string;
   student: { lmsUserId: string; email: string; name: string };
   ticket?: { id: string; subject: string; category: string; status: string; message: string };
@@ -50,6 +56,7 @@ export interface LmsActivity {
     id: string; title: string; note: string; files: number; course: string; className: string; classAt: string; mentor: string;
     attempt: number; status: string; decision?: "approved" | "rejected"; reason?: string;
   };
+  class?: LmsClass;
 }
 
 export interface LmsActivityRun {
@@ -62,6 +69,7 @@ export interface LmsActivityRun {
   not_told: number;        // …of somebody who is not a student here, or with nobody to tell
   mailed: number;          // emails the mail server accepted this run
   mail_failed: number;
+  class_notices?: number;  // class completions told this run
 }
 
 type Send = (msg: { to: string; subject: string; html: string; text: string }) => Promise<SendResult>;
@@ -210,8 +218,27 @@ ${button}
 
 /* ── The run ────────────────────────────────────────────────────────────── */
 
+/** A class a student attended, now over: kept as a class completion — told later (sendDueClassNotices), never emailed. */
+async function takeClass(ev: LmsActivity, now: Date): Promise<"told" | "not_told" | "seen"> {
+  const student = ev.class ? await studentFor(ev) : null;
+  try {
+    await col("lms_activity").insertOne({
+      _id: ev.key, type: ev.type, at: ev.at, lms_student: ev.student, class: ev.class ?? null,
+      outcome: student ? "class_completion" : "not_a_student", student_id: student ? String(student._id) : null,
+      mail: { state: "none", attempts: 0, sent_to: [] }, created_date: now.toISOString(),
+    } as any);
+  } catch (err) {
+    if ((err as { code?: number }).code === 11000) return "seen";
+    throw err;
+  }
+  if (!student) return "not_told";
+  await keepClassCompletion(ev.key, ev.class!, student, now);
+  return "told";
+}
+
 /** Kept, and the bell rung, for one event not seen before; "seen" when it was kept already. */
 async function take(ev: LmsActivity, now: Date): Promise<"told" | "not_told" | "seen"> {
+  if (ev.type === "class_attended") return takeClass(ev, now);
   const student = await studentFor(ev);
   const base = { _id: ev.key, type: ev.type, at: ev.at, lms_student: ev.student, ticket: ev.ticket ?? null, assignment: ev.assignment ?? null, created_date: now.toISOString() };
   const record: any = student
@@ -295,7 +322,7 @@ export async function runLmsActivity(opts: { now?: Date; send?: Send } = {}): Pr
       return finish({ ...run, ok: true }, { cursor: run.at, started_at: run.at });
     }
     const since = new Date(new Date(settings.cursor).getTime() - OVERLAP_MS).toISOString();
-    const data = await callLms<{ events: LmsActivity[]; until: string }>("/student-activity", { query: { since }, verb: "share what students did" });
+    const data = await callLms<{ events: LmsActivity[]; until: string }>("/student-activity", { query: { since, include: "classes" }, verb: "share what students did" });
     const events = Array.isArray(data?.events) ? data.events : [];
     run.events = events.length;
     for (const ev of events) {
@@ -305,6 +332,7 @@ export async function runLmsActivity(opts: { now?: Date; send?: Send } = {}): Pr
       run.new++;
       if (r === "told") run.told++; else run.not_told++;
     }
+    run.class_notices = await sendDueClassNotices(now);
     const mail = await sendWaitingMail(opts.send ?? sendMail);
     run.mailed = mail.sent;
     run.mail_failed = mail.failed;
@@ -322,8 +350,8 @@ export function startLmsActivityWorker(): void {
   }
   const tick = async () => {
     const r = await runLmsActivity().catch((err) => ({ ok: false, error: String(err) }) as LmsActivityRun);
-    if (r.ok && (r.new || r.mailed || r.mail_failed)) {
-      console.log(`[lms activity] ${r.new} new: ${r.told} told, ${r.not_told} not (not students here, or nobody to tell); ${r.mailed} email${r.mailed === 1 ? "" : "s"} sent${r.mail_failed ? `, ${r.mail_failed} failed` : ""}`);
+    if (r.ok && (r.new || r.mailed || r.mail_failed || r.class_notices)) {
+      console.log(`[lms activity] ${r.new} new: ${r.told} told, ${r.not_told} not (not students here, or nobody to tell); ${r.mailed} email${r.mailed === 1 ? "" : "s"} sent${r.mail_failed ? `, ${r.mail_failed} failed` : ""}${r.class_notices ? `; ${r.class_notices} class completion${r.class_notices === 1 ? "" : "s"} told` : ""}`);
     } else if (!r.ok && r.error !== "A run is already going") console.error(`[lms activity] not run: ${r.error}`);
   };
   setTimeout(() => void tick(), 30_000);

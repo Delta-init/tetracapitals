@@ -53,6 +53,7 @@ import {
   CreditCard,
   LifeBuoy,
   DoorOpen,
+  BookCheck,
 } from 'lucide-react';
 
 // "StudentLogHistoryPage" -> "Student Log History", "AIInsights" -> "AI Insights"
@@ -96,6 +97,8 @@ export const NAV_ITEMS = [
   { name: 'StudentFollowups', label: 'Follow-ups', page: 'StudentFollowups', icon: PhoneCall, roles: FOLLOWUP_ROLES },
   { name: 'OverdueFollowups', label: 'Overdue follow-ups', page: 'OverdueFollowups', icon: AlarmClock, roles: FOLLOWUP_ROLES, sameAccessAs: 'StudentFollowups' },
   { name: 'StudentCalls', label: 'Calls', page: 'StudentCalls', icon: PhoneIncoming, roles: FOLLOWUP_ROLES, sameAccessAs: 'StudentFollowups' },
+  // A student attended an LMS class that is over: their CS calls them (backend/src/students/classCompletions.ts).
+  { name: 'ClassCompletions', label: 'Class Completions', page: 'ClassCompletions', icon: BookCheck, roles: FOLLOWUP_ROLES, sameAccessAs: 'StudentFollowups' },
   // Each CS's own WhatsApp; their Chief Mentor / CS Manager and Super Admins read it (backend/src/functions/whatsapp.ts).
   { name: 'WhatsApp', label: 'WhatsApp', page: 'WhatsApp', icon: MessageCircle, roles: ['super_admin', 'chief_mentor'], sameAccessAs: 'StudentFollowups' },
   { name: 'MentorCalendar', label: 'Mentor Calendar', page: 'MentorCalendar', icon: CalendarDays, roles: ['all'], everyone: true },
@@ -140,7 +143,7 @@ export const NAV_GROUPS = ['Overview', 'People & Access', 'Students', 'Funding',
 export const GROUP_OF = {
   Dashboard: 'Overview', TeamDashboard: 'Overview', Teams: 'Overview', ActivityTracker: 'Overview', AIInsights: 'Overview', Leaderboard: 'Overview', MentorPerformance: 'Overview', MentorTraining: 'Overview',
   Personnel: 'People & Access', RolesManagement: 'People & Access', Hierarchy: 'People & Access', AcademicCounselors: 'People & Access', MasterAdmin: 'People & Access',
-  Students: 'Students', NotOnboarded: 'Students', StudentFollowups: 'Students', OverdueFollowups: 'Students', StudentCalls: 'Students', WhatsApp: 'Students', MentorCalendar: 'Students', SupportTickets: 'Students', StudentLogs: 'Students', StudentLogHistoryPage: 'Students', MyStudentRequests: 'Students', StudentRequestApprovals: 'Students', RetentionManagement: 'Students', DrawAdminStudents: 'Students', MT5Accounts: 'Students', InactivityTransfers: 'Students', StudentTags: 'Students',
+  Students: 'Students', NotOnboarded: 'Students', StudentFollowups: 'Students', OverdueFollowups: 'Students', StudentCalls: 'Students', ClassCompletions: 'Students', WhatsApp: 'Students', MentorCalendar: 'Students', SupportTickets: 'Students', StudentLogs: 'Students', StudentLogHistoryPage: 'Students', MyStudentRequests: 'Students', StudentRequestApprovals: 'Students', RetentionManagement: 'Students', DrawAdminStudents: 'Students', MT5Accounts: 'Students', InactivityTransfers: 'Students', StudentTags: 'Students',
   FundingActivities: 'Funding', FundingRequests: 'Funding', PaymentLinks: 'Funding', Transactions: 'Funding', TransactionTags: 'Funding',
   CommissionPlans: 'Commission', BonusCommissionReports: 'Commission', DepositCommissionReports: 'Commission', CommissionReports: 'Commission', CommissionTools: 'Commission', Commissions: 'Commission', QuarterClosing: 'Commission', MonthlyClosing: 'Commission', DailyPayouts: 'Commission', MyCommissionHistory: 'Commission', MyTargets: 'Commission', TargetsManagement: 'Commission',
   Tickets: 'More', Reports: 'More', AuditLogs: 'More', GamificationSettings: 'More',
