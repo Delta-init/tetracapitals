@@ -18,9 +18,10 @@ import StudentInfoDialog from '@/components/students/StudentInfoDialog';
    students you can see (your own and Common ones; your team's; everyone's for
    admins), newest activity first (backend/src/functions/lmsSupport.ts,
    getLmsSupportTickets). Open one to read the conversation, answer it — the
-   answer goes to the student's ticket from Delta's support account in the LMS,
-   signed with your name — or mark it resolved. "Student" shows who they are and
-   every number to reach them on, without leaving the list.
+   answer goes to the student's ticket from your own LMS account (the student
+   sees your name), or from Delta's support account signed with your name when
+   you have none — or mark it resolved. "Student" shows who they are and every
+   number to reach them on, without leaving the list.
 ──────────────────────────────────────────────────────────────────────────── */
 
 const FILTERS = [
@@ -62,8 +63,8 @@ export default function SupportTickets() {
           <div>
             <PageTitle eyebrow="Students" icon={LifeBuoy}>Support Tickets</PageTitle>
             <p className="mt-2 max-w-3xl text-sm text-slate-500 sm:text-base">
-              Your students' Help &amp; Support tickets in the Delta LMS. Open one to read it, answer — it goes to their ticket,
-              signed with your name — or mark it resolved.
+              Your students' Help &amp; Support tickets in the Delta LMS. Open one to read it, answer — it goes to their ticket
+              in your name — or mark it resolved.
             </p>
           </div>
           <div className="flex items-center gap-2">

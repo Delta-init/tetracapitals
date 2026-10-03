@@ -169,9 +169,10 @@ const lmsRefusal = (err: unknown) =>
 
 /**
  * POST /api/functions/answerLmsTicket { studentId, ticketId, body }
- * An answer on the student's ticket in the Delta LMS: from the LMS's shared support account, signed with
- * the user's name. The ticket then waits on the student, and the LMS tells them. For whoever may see the
- * student. Noted in the student's history. → { ticket }
+ * An answer on the student's ticket in the Delta LMS: from the user's own LMS account (found by their
+ * email) when they have one as staff — the student sees their name — else from the LMS's shared support
+ * account, signed with their name. The ticket then waits on the student, and the LMS tells them. For
+ * whoever may see the student. Noted in the student's history. → { ticket, from: "own" | "shared" }
  */
 export async function answerLmsTicket(req: Request, user: AuthUser): Promise<Response> {
   const body: any = await req.json().catch(() => ({}));
@@ -181,8 +182,9 @@ export async function answerLmsTicket(req: Request, user: AuthUser): Promise<Res
   if (!text) return error("Write an answer first", 400);
   if (text.length > ANSWER_MAX) return error(`An answer can be at most ${ANSWER_MAX} characters`, 400);
   let ticket: any;
+  let from: string | undefined;
   try {
-    ({ ticket } = await callLms<{ ticket: any }>(`/support-tickets/${found.ticketId}/reply`, {
+    ({ ticket, from } = await callLms<{ ticket: any; from?: string }>(`/support-tickets/${found.ticketId}/reply`, {
       method: "POST",
       body: { email: found.email, body: text, byName: who(user), byEmail: user.email },
       verb: "take the answer",
@@ -197,9 +199,9 @@ export async function answerLmsTicket(req: Request, user: AuthUser): Promise<Res
     text: `Answered the LMS ticket “${str(ticket?.subject, 120) || "a ticket"}”: ${text.length > 140 ? `${text.slice(0, 140)}…` : text}`,
     by_id: user.id,
     by_name: who(user),
-    to: { ticket_id: found.ticketId, status: ticket?.status ?? "" },
+    to: { ticket_id: found.ticketId, status: ticket?.status ?? "", from: from ?? "" },
   }]);
-  return json({ ticket });
+  return json({ ticket, from: from ?? "" });
 }
 
 /**

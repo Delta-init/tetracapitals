@@ -15,9 +15,10 @@ import { Paged, TablePagination } from '@/components/common/TablePagination';
    by their email, across both academies (backend/src/functions/lmsSupport.ts →
    the LMS's /service/support-tickets and /service/class-assignments). A ticket
    can be answered or marked resolved here (and on the Support Tickets page):
-   the answer goes to the student's ticket from the LMS's shared support
-   account, signed with your name. Assignments are reviewed on the LMS. Their
-   CS hears of each as it happens, by email and the bell (students/lmsActivity.ts).
+   the answer goes to the student's ticket from your own LMS account when you
+   have one (the student sees your name), else from the shared support account,
+   signed with your name. Assignments are reviewed on the LMS. Their CS hears
+   of each as it happens, by email and the bell (students/lmsActivity.ts).
 ──────────────────────────────────────────────────────────────────────────── */
 
 export const TICKET = {
@@ -52,8 +53,9 @@ export function TicketThread({ ticket }) {
 }
 
 /**
- * Answer a ticket, or mark it resolved — on the LMS, as the help desk would: the answer comes from the shared
- * support account, signed with your name, and the ticket then waits on the student (who the LMS tells).
+ * Answer a ticket, or mark it resolved — on the LMS, as the help desk would: the answer comes from your own LMS
+ * account when you have one (the student sees your name), else from the shared support account signed with
+ * your name, and the ticket then waits on the student (who the LMS tells).
  */
 export function TicketAnswer({ studentId, ticket }) {
   const qc = useQueryClient();
@@ -65,7 +67,13 @@ export function TicketAnswer({ studentId, ticket }) {
   };
   const answer = useMutation({
     mutationFn: async () => (await base44.functions.invoke('answerLmsTicket', { studentId, ticketId: ticket.id, body: text.trim() })).data,
-    onSuccess: () => { setText(''); toast.success('Answer sent — the student sees it on their ticket in the LMS'); done(); },
+    onSuccess: (r) => {
+      setText('');
+      toast.success(r?.from === 'shared'
+        ? "Answer sent from Delta's support account, signed with your name — you have no LMS account of your own"
+        : 'Answer sent from your LMS account — the student sees it on their ticket');
+      done();
+    },
     onError: (e) => toast.error(e?.message || 'The answer could not be sent'),
   });
   const resolve = useMutation({
@@ -84,11 +92,11 @@ export function TicketAnswer({ studentId, ticket }) {
         value={text}
         onChange={(e) => setText(e.target.value)}
         maxLength={4000}
-        placeholder="Answer the student — it goes to their ticket in the LMS, signed with your name"
+        placeholder="Answer the student — it goes to their ticket in the LMS, in your name"
         className="bg-white text-sm"
       />
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <span className="text-xs text-slate-400">Sent from Delta's support account in the LMS, signed with your name.</span>
+        <span className="text-xs text-slate-400">Sent from your own LMS account; without one, from Delta's support account signed with your name.</span>
         <div className="flex gap-2">
           {ticket.status !== 'resolved' && (
             <Button size="sm" variant="outline" className="gap-1.5" disabled={busy} onClick={() => resolve.mutate()}>
