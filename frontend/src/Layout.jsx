@@ -169,7 +169,8 @@ export default function Layout({ children, currentPageName }) {
     .map(group => ({ group, items: filteredNavigation.filter(i => (GROUP_OF[i.name] || 'More') === group) }))
     .filter(section => section.items.length > 0);
 
-  // Support tickets waiting for an answer (the Support Tickets page's Open tab) — they come from the LMS, so asked less often.
+  // Support tickets waiting for an answer and waiting on the student (the Support Tickets page's Open and
+  // "Waiting on student" tabs) — they come from the LMS, so asked less often.
   const seesTickets = filteredNavigation.some(i => i.name === 'SupportTickets');
   const { data: ticketCount } = useQuery({
     queryKey: ['nav-ticket-count'],
@@ -192,6 +193,19 @@ export default function Layout({ children, currentPageName }) {
     OverdueFollowups: { cls: 'bg-rose-500 text-white', title: 'overdue follow-ups' },
     PaymentLinks: { cls: 'bg-amber-400 text-brand-navy', title: 'payment link requests waiting for you' },
     SupportTickets: { cls: 'bg-amber-400 text-brand-navy', title: 'support tickets waiting for an answer' },
+  };
+  // A second number beside some pages: Support Tickets answered and waiting on the student, in the page's own blue.
+  const secondCountOf = (name) => ({ SupportTickets: ticketCount?.waiting })[name] || 0;
+  const SECOND_STYLE = {
+    SupportTickets: { cls: 'bg-sky-400 text-brand-navy', title: 'support tickets waiting on the student' },
+  };
+  // The numbers a page shows in the sidebar. Collapsed there is room for one: the first that isn't 0.
+  const pillsOf = (name, compact) => {
+    const pills = [
+      countOf(name) > 0 && { n: countOf(name), ...COUNT_STYLE[name] },
+      secondCountOf(name) > 0 && { n: secondCountOf(name), ...SECOND_STYLE[name] },
+    ].filter(Boolean);
+    return compact ? pills.slice(0, 1) : pills;
   };
 
   const hasBadge = (name) =>
@@ -250,6 +264,7 @@ export default function Layout({ children, currentPageName }) {
             {section.items.map((item) => {
               const isActive = isActiveItem(item);
               const label = item.label || humanize(item.name);
+              const pills = pillsOf(item.name, compact);
               return (
                 <Link
                   key={item.name}
@@ -274,12 +289,17 @@ export default function Layout({ children, currentPageName }) {
                     />
                     {!compact && <span className="truncate">{label}</span>}
                   </span>
-                  {countOf(item.name) > 0 ? (
-                    <span
-                      title={`${countOf(item.name)} ${COUNT_STYLE[item.name].title}`}
-                      className={`${compact ? 'absolute right-1 top-0.5 h-4 min-w-[16px] px-1 text-[10px]' : 'relative ml-auto h-5 min-w-[20px] px-1.5 text-[11px]'} flex items-center justify-center rounded-full font-semibold tabular-nums leading-none ${COUNT_STYLE[item.name].cls}`}
-                    >
-                      {countOf(item.name) > 99 ? '99+' : countOf(item.name)}
+                  {pills.length > 0 ? (
+                    <span className={compact ? '' : 'relative ml-auto flex items-center gap-1'}>
+                      {pills.map(p => (
+                        <span
+                          key={p.title}
+                          title={`${p.n} ${p.title}`}
+                          className={`${compact ? 'absolute right-1 top-0.5 h-4 min-w-[16px] px-1 text-[10px]' : 'h-5 min-w-[20px] px-1.5 text-[11px]'} flex items-center justify-center rounded-full font-semibold tabular-nums leading-none ${p.cls}`}
+                        >
+                          {p.n > 99 ? '99+' : p.n}
+                        </span>
+                      ))}
                     </span>
                   ) : hasBadge(item.name) && (
                     <span className={`${compact ? 'absolute right-2 top-1.5' : 'relative ml-auto'} flex h-2 w-2`}>

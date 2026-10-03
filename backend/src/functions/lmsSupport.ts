@@ -155,34 +155,39 @@ export async function getLmsSupportTickets(_req: Request, user: AuthUser): Promi
   }
 }
 
-/* The sidebar's number: the LMS is asked at most once a minute for each person — once for all who see every
+/* The sidebar's numbers: the LMS is asked at most once a minute for each person — once for all who see every
    student — and afresh after an answer or a resolve here. */
 const COUNT_MS = 60_000;
-const openCounts = new Map<string, { at: number; open: Promise<number> }>();
+type TicketCounts = { open: number; waiting: number };
+const ticketCounts = new Map<string, { at: number; counts: Promise<TicketCounts> }>();
 
 /**
  * POST /api/functions/getLmsSupportTicketCount
- * How many of the Support Tickets page's tickets wait for an answer (its Open tab) — for the sidebar.
- * → { open } — null when the LMS isn't linked or can't be asked.
+ * How many of the Support Tickets page's tickets wait for an answer (its Open tab) and how many wait on the
+ * student (its "Waiting on student" tab) — for the sidebar.
+ * → { open, waiting } — both null when the LMS isn't linked or can't be asked.
  */
 export async function getLmsSupportTicketCount(_req: Request, user: AuthUser): Promise<Response> {
   if (!userCanListEntity(user, "Student")) return forbidden();
-  if (!lmsConfigured()) return json({ open: null });
+  if (!lmsConfigured()) return json({ open: null, waiting: null });
   const scope = await buildScopeFilter(user, "Student");
   const key = scope ? user.id : "*";
-  let kept = openCounts.get(key);
+  let kept = ticketCounts.get(key);
   if (!kept || Date.now() - kept.at > COUNT_MS) {
-    const open = studentsByEmail(scope).then(lmsTicketsOf).then(({ tickets }) => tickets.filter((t) => t.status === "open").length);
-    const entry = { at: Date.now(), open };
-    openCounts.set(key, entry);
+    const counts = studentsByEmail(scope).then(lmsTicketsOf).then(({ tickets }) => ({
+      open: tickets.filter((t) => t.status === "open").length,
+      waiting: tickets.filter((t) => t.status === "pending").length,
+    }));
+    const entry = { at: Date.now(), counts };
+    ticketCounts.set(key, entry);
     // A failed ask isn't kept: the next one tries again.
-    open.catch(() => { if (openCounts.get(key) === entry) openCounts.delete(key); });
+    counts.catch(() => { if (ticketCounts.get(key) === entry) ticketCounts.delete(key); });
     kept = entry;
   }
   try {
-    return json({ open: await kept.open });
+    return json(await kept.counts);
   } catch {
-    return json({ open: null });
+    return json({ open: null, waiting: null });
   }
 }
 
@@ -230,7 +235,7 @@ export async function answerLmsTicket(req: Request, user: AuthUser): Promise<Res
   } catch (err) {
     return lmsRefusal(err);
   }
-  openCounts.clear();   // the sidebar's number changes
+  ticketCounts.clear();   // the sidebar's numbers change
   await recordHistory([{
     student_id: String(found.student._id),
     at: new Date().toISOString(),
@@ -262,7 +267,7 @@ export async function resolveLmsTicket(req: Request, user: AuthUser): Promise<Re
   } catch (err) {
     return lmsRefusal(err);
   }
-  openCounts.clear();
+  ticketCounts.clear();
   await recordHistory([{
     student_id: String(found.student._id),
     at: new Date().toISOString(),
