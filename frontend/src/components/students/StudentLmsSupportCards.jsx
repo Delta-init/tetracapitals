@@ -63,6 +63,7 @@ export function TicketAnswer({ studentId, ticket }) {
   const done = () => {
     qc.invalidateQueries({ queryKey: ['student-lms-support', studentId] });
     qc.invalidateQueries({ queryKey: ['lms-support-tickets'] });
+    qc.invalidateQueries({ queryKey: ['nav-ticket-count'] });
     qc.invalidateQueries({ queryKey: ['student-history', studentId] });
   };
   const answer = useMutation({

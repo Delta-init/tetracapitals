@@ -169,17 +169,29 @@ export default function Layout({ children, currentPageName }) {
     .map(group => ({ group, items: filteredNavigation.filter(i => (GROUP_OF[i.name] || 'More') === group) }))
     .filter(section => section.items.length > 0);
 
+  // Support tickets waiting for an answer (the Support Tickets page's Open tab) — they come from the LMS, so asked less often.
+  const seesTickets = filteredNavigation.some(i => i.name === 'SupportTickets');
+  const { data: ticketCount } = useQuery({
+    queryKey: ['nav-ticket-count'],
+    queryFn: async () => (await base44.functions.invoke('getLmsSupportTicketCount', {})).data,
+    enabled: !!currentUser && seesTickets,
+    refetchInterval: 120_000,
+    staleTime: 60_000,
+  });
+
   const countOf = (name) => ({
     Students: navCounts?.new_students,
     StudentFollowups: navCounts?.followups_today,
     OverdueFollowups: navCounts?.followups_overdue,
     PaymentLinks: navCounts?.payment_links_pending,
+    SupportTickets: ticketCount?.open,
   })[name] || 0;
   const COUNT_STYLE = {
     Students: { cls: 'bg-brand-mint text-brand-navy', title: 'new students given to you — not opened yet' },
     StudentFollowups: { cls: 'bg-amber-400 text-brand-navy', title: 'follow-ups due today' },
     OverdueFollowups: { cls: 'bg-rose-500 text-white', title: 'overdue follow-ups' },
     PaymentLinks: { cls: 'bg-amber-400 text-brand-navy', title: 'payment link requests waiting for you' },
+    SupportTickets: { cls: 'bg-amber-400 text-brand-navy', title: 'support tickets waiting for an answer' },
   };
 
   const hasBadge = (name) =>

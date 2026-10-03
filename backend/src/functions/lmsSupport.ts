@@ -93,6 +93,40 @@ function lmsTrouble(err: unknown) {
   return notYet ? "The LMS doesn't share tickets this way yet — it needs its update" : message;
 }
 
+/** The students in `scope` (null: everyone) with an email — one record an address: the LMS knows a person by it, and so do their tickets. */
+async function studentsByEmail(scope: Record<string, any> | null): Promise<Map<string, any>> {
+  const students = (await col("students")
+    .find(scope ? { $and: [scope, { email: { $regex: "@" } }] } : { email: { $regex: "@" } }, {
+      projection: { full_name: 1, student_code: 1, email: 1, phone: 1, country: 1, primary_mentor_name: 1, team_name: 1, enrolment_status: 1 },
+    })
+    .toArray()) as any[];
+  const byEmail = new Map<string, any>();
+  for (const s of students) {
+    const e = emailOf(s);
+    if (e && !byEmail.has(e)) byEmail.set(e, s);
+  }
+  return byEmail;
+}
+
+/** Their tickets in the LMS — only theirs — and what each gave the LMS to be reached by. Throws when the LMS can't be asked. */
+async function lmsTicketsOf(byEmail: Map<string, any>): Promise<{ tickets: any[]; contact: Map<string, any> }> {
+  const emails = [...byEmail.keys()];
+  const batches: string[][] = [];
+  for (let i = 0; i < emails.length; i += LMS_BATCH) batches.push(emails.slice(i, i + LMS_BATCH));
+  const answers: any[] = [];
+  for (let i = 0; i < batches.length; i += LMS_AT_ONCE) {
+    answers.push(...(await Promise.all(batches.slice(i, i + LMS_AT_ONCE).map((list) =>
+      callLms<{ students: any[]; tickets: any[] }>("/support-tickets", { method: "POST", body: { emails: list }, verb: "share the tickets" })))));
+  }
+  const contact = new Map<string, any>();
+  const tickets: any[] = [];
+  for (const a of answers) {
+    for (const s of a?.students ?? []) contact.set(String(s.email ?? "").toLowerCase(), s);
+    tickets.push(...(a?.tickets ?? []));
+  }
+  return { tickets: tickets.filter((t) => byEmail.has(String(t.email ?? "").toLowerCase())), contact };
+}
+
 /**
  * POST /api/functions/getLmsSupportTickets
  * Every Help & Support ticket in the Delta LMS from the students the user may see — their own (Common ones
@@ -104,47 +138,51 @@ export async function getLmsSupportTickets(_req: Request, user: AuthUser): Promi
   if (!userCanListEntity(user, "Student")) return forbidden();
   if (!lmsConfigured()) return json({ configured: false, available: false, tickets: [] });
 
-  const scope = await buildScopeFilter(user, "Student");
-  const students = (await col("students")
-    .find(scope ? { $and: [scope, { email: { $regex: "@" } }] } : { email: { $regex: "@" } }, {
-      projection: { full_name: 1, student_code: 1, email: 1, phone: 1, country: 1, primary_mentor_name: 1, team_name: 1, enrolment_status: 1 },
-    })
-    .toArray()) as any[];
-  // One record an address: the LMS knows a person by it, and so do their tickets.
-  const byEmail = new Map<string, any>();
-  for (const s of students) {
-    const e = emailOf(s);
-    if (e && !byEmail.has(e)) byEmail.set(e, s);
-  }
-  const emails = [...byEmail.keys()];
-
+  const byEmail = await studentsByEmail(await buildScopeFilter(user, "Student"));
   try {
-    const batches: string[][] = [];
-    for (let i = 0; i < emails.length; i += LMS_BATCH) batches.push(emails.slice(i, i + LMS_BATCH));
-    const answers: any[] = [];
-    for (let i = 0; i < batches.length; i += LMS_AT_ONCE) {
-      answers.push(...(await Promise.all(batches.slice(i, i + LMS_AT_ONCE).map((list) =>
-        callLms<{ students: any[]; tickets: any[] }>("/support-tickets", { method: "POST", body: { emails: list }, verb: "share the tickets" })))));
-    }
-    const contact = new Map<string, any>();
-    const tickets: any[] = [];
-    for (const a of answers) {
-      for (const s of a?.students ?? []) contact.set(String(s.email ?? "").toLowerCase(), s);
-      tickets.push(...(a?.tickets ?? []));
-    }
+    const { tickets, contact } = await lmsTicketsOf(byEmail);
     tickets.sort((x, y) => String(y.lastMessageAt ?? "").localeCompare(String(x.lastMessageAt ?? "")));
     return json({
       configured: true,
       available: true,
-      tickets: tickets
-        .filter((t) => byEmail.has(String(t.email ?? "").toLowerCase()))
-        .map((t) => {
-          const e = String(t.email).toLowerCase();
-          return { ...t, student: studentCard(byEmail.get(e), contact.get(e)) };
-        }),
+      tickets: tickets.map((t) => {
+        const e = String(t.email).toLowerCase();
+        return { ...t, student: studentCard(byEmail.get(e), contact.get(e)) };
+      }),
     });
   } catch (err) {
     return json({ configured: true, available: false, message: lmsTrouble(err), tickets: [] });
+  }
+}
+
+/* The sidebar's number: the LMS is asked at most once a minute for each person — once for all who see every
+   student — and afresh after an answer or a resolve here. */
+const COUNT_MS = 60_000;
+const openCounts = new Map<string, { at: number; open: Promise<number> }>();
+
+/**
+ * POST /api/functions/getLmsSupportTicketCount
+ * How many of the Support Tickets page's tickets wait for an answer (its Open tab) — for the sidebar.
+ * → { open } — null when the LMS isn't linked or can't be asked.
+ */
+export async function getLmsSupportTicketCount(_req: Request, user: AuthUser): Promise<Response> {
+  if (!userCanListEntity(user, "Student")) return forbidden();
+  if (!lmsConfigured()) return json({ open: null });
+  const scope = await buildScopeFilter(user, "Student");
+  const key = scope ? user.id : "*";
+  let kept = openCounts.get(key);
+  if (!kept || Date.now() - kept.at > COUNT_MS) {
+    const open = studentsByEmail(scope).then(lmsTicketsOf).then(({ tickets }) => tickets.filter((t) => t.status === "open").length);
+    const entry = { at: Date.now(), open };
+    openCounts.set(key, entry);
+    // A failed ask isn't kept: the next one tries again.
+    open.catch(() => { if (openCounts.get(key) === entry) openCounts.delete(key); });
+    kept = entry;
+  }
+  try {
+    return json({ open: await kept.open });
+  } catch {
+    return json({ open: null });
   }
 }
 
@@ -192,6 +230,7 @@ export async function answerLmsTicket(req: Request, user: AuthUser): Promise<Res
   } catch (err) {
     return lmsRefusal(err);
   }
+  openCounts.clear();   // the sidebar's number changes
   await recordHistory([{
     student_id: String(found.student._id),
     at: new Date().toISOString(),
@@ -223,6 +262,7 @@ export async function resolveLmsTicket(req: Request, user: AuthUser): Promise<Re
   } catch (err) {
     return lmsRefusal(err);
   }
+  openCounts.clear();
   await recordHistory([{
     student_id: String(found.student._id),
     at: new Date().toISOString(),
