@@ -18,6 +18,9 @@ import { onboardingEmail } from "./studentOnboarding";
    it in on the Payment Links page. It is then emailed to the student (from
    the portal's mailbox as "Delta Institutions"; a reply goes to the CS) and
    shows on the student's page, for the CS to copy or send on their WhatsApp.
+   The CS also has the Payment Links page with what they asked for; their
+   sidebar counts the answers (link ready, turned down) they haven't seen —
+   cs_seen_at, set once they open that page or the student's page.
    Nothing here moves money.
 
    payment_link_requests.status: pending → approved (url) · rejected (reason)
@@ -88,7 +91,17 @@ function view(r: any, user: AuthUser) {
     rejected_by_name: r.rejected_by_name ?? "",
     rejected_at: r.rejected_at ?? null,
     cancelled_at: r.cancelled_at ?? null,
+    // A link ready or a turn-down the CS who asked hasn't seen yet (the sidebar counts these).
+    new: r.requested_by_id === user.id && (r.status === "approved" || r.status === "rejected") && !r.cs_seen_at,
   };
+}
+
+/** The answers (link ready, turned down) to what `user` asked for, marked seen — the sidebar stops counting them. */
+async function markAnswersSeen(user: AuthUser, filter: Record<string, unknown> = {}) {
+  await col(REQUESTS).updateMany(
+    { ...filter, requested_by_id: user.id, status: { $in: ["approved", "rejected"] }, cs_seen_at: { $exists: false } },
+    { $set: { cs_seen_at: new Date().toISOString() } },
+  );
 }
 
 /** The email the student gets: the link, what it is for, and that a reply reaches their CS. */
@@ -106,28 +119,40 @@ function linkEmail(r: any, s: any) {
 }
 
 /**
- * POST /api/functions/getPaymentLinks { studentId }
+ * POST /api/functions/getPaymentLinks { studentId, markSeen? }
  *   → { can_request, can_approve, currency, requests } — a student's requests, for whoever may see the student.
- * POST /api/functions/getPaymentLinks {}
- *   → { requests, email_ready } — every request, for the Payment Links page (Super Admin). A waiting one carries
- *     the student's email, where the link will go.
+ * POST /api/functions/getPaymentLinks { markSeen? }
+ *   → { can_approve, requests, email_ready? } — the Payment Links page: every request for a Super Admin (a waiting
+ *     one carries the student's email, where the link will go); for a CS, the ones they asked for.
+ * markSeen: the answers to what the caller asked for (on that student, or all) are seen — each still shows `new`
+ * in this answer, then the sidebar stops counting it.
  */
 export async function getPaymentLinks(req: Request, user: AuthUser): Promise<Response> {
   const body: any = await req.json().catch(() => ({}));
+  const markSeen = body?.markSeen === true;
   if (body?.studentId) {
     const student = await studentFor(body.studentId);
     if (!student) return notFound();
     if (!(await userCanReadDoc(user, "Student", student))) return forbidden();
     const list = await col(REQUESTS).find({ student_id: String(student._id) }).sort({ created_at: -1 }).limit(50).toArray();
-    return json({ can_request: mayRequest(user, student), can_approve: isSuperAdmin(user), currency: CURRENCY, requests: list.map((r) => view(r, user)) });
+    const requests = list.map((r) => view(r, user));
+    if (markSeen && requests.some((r) => r.new)) await markAnswersSeen(user, { student_id: String(student._id) });
+    return json({ can_request: mayRequest(user, student), can_approve: isSuperAdmin(user), currency: CURRENCY, requests });
   }
 
-  if (!isSuperAdmin(user)) return forbidden("Only a Super Admin sees every payment link request");
+  if (user.app_role === "cs") {
+    const list = await col(REQUESTS).find({ requested_by_id: user.id }).sort({ created_at: -1 }).limit(1000).toArray();
+    const requests = list.map((r) => view(r, user));
+    if (markSeen && requests.some((r) => r.new)) await markAnswersSeen(user);
+    return json({ can_approve: false, requests });
+  }
+  if (!isSuperAdmin(user)) return forbidden("Only a Super Admin, or the CS who asked, sees payment link requests");
   const list = (await col(REQUESTS).find({}).sort({ created_at: -1 }).limit(2000).toArray()) as any[];
   const waiting = [...new Set(list.filter((r) => r.status === "pending").map((r) => r.student_id))].map(toObjectId).filter(Boolean) as ObjectId[];
   const students = waiting.length ? await col("students").find({ _id: { $in: waiting } }, { projection: { email: 1 } }).toArray() : [];
   const emailById = new Map(students.map((s: any) => [String(s._id), emailOf(s)]));
   return json({
+    can_approve: true,
     email_ready: mailConfigured(),
     requests: list.map((r) => ({ ...view(r, user), ...(r.status === "pending" ? { student_email: emailById.get(r.student_id) ?? "" } : {}) })),
   });

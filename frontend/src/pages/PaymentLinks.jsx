@@ -15,31 +15,45 @@ import { Textarea } from '@/components/ui/textarea';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { CheckCircle2, Clock, Copy, CreditCard, Loader2, Search, XCircle } from 'lucide-react';
-import { PaymentStatusBadge, money, when, copyLink } from '@/components/students/PaymentLinksCard';
+import { PaymentStatusBadge, NewChip, money, when, copyLink, useAnswersSeen } from '@/components/students/PaymentLinksCard';
 
-const TABS = [
+// A Super Admin starts on what waits for them; a CS on everything they asked for, the latest first.
+const ADMIN_TABS = [
   { key: 'pending', label: 'Waiting' },
   { key: 'approved', label: 'Sent' },
   { key: 'rejected', label: 'Turned down' },
   { key: 'cancelled', label: 'Cancelled' },
   { key: 'all', label: 'All' },
 ];
+const CS_TABS = [
+  { key: 'all', label: 'All' },
+  { key: 'pending', label: 'Waiting' },
+  { key: 'approved', label: 'Link ready' },
+  { key: 'rejected', label: 'Turned down' },
+  { key: 'cancelled', label: 'Cancelled' },
+];
 const LINK = /^https?:\/\/[^\s/?#]+\.[^\s/?#]+\S*$/i;
 
 /**
- * Payment Links (Super Admin) — what CSs asked for on their students' pages
- * (backend/src/functions/paymentLinks.ts). Make the link wherever you make it,
- * paste it in, and it is emailed to the student and shows to the CS — or turn
- * the request down with a reason the CS sees.
+ * Payment Links (backend/src/functions/paymentLinks.ts). A Super Admin sees
+ * what CSs asked for on their students' pages: make the link wherever you make
+ * it, paste it in, and it is emailed to the student and shows to the CS — or
+ * turn the request down with a reason the CS sees. A CS sees what they asked
+ * for: the links ready (to copy), the turn-downs and why; opening the page
+ * marks the new ones seen.
  */
 export default function PaymentLinks() {
   const queryClient = useQueryClient();
   const { data, isLoading, error } = useQuery({
     queryKey: ['payment-links'],
-    queryFn: async () => (await base44.functions.invoke('getPaymentLinks', {})).data,
+    queryFn: async () => (await base44.functions.invoke('getPaymentLinks', { markSeen: true })).data,
     refetchInterval: 60_000,
   });
-  const [tab, setTab] = useState('pending');
+  useAnswersSeen(data);
+  const admin = !!data?.can_approve;
+  const TABS = admin ? ADMIN_TABS : CS_TABS;
+  const [picked, setTab] = useState(null);
+  const tab = picked ?? (admin ? 'pending' : 'all');
   const [q, setQ] = useState('');
   const [approving, setApproving] = useState(null);
   const [rejecting, setRejecting] = useState(null);
@@ -47,6 +61,11 @@ export default function PaymentLinks() {
     queryClient.invalidateQueries({ queryKey: ['payment-links'] });
     queryClient.invalidateQueries({ queryKey: ['nav-counts'] });
   };
+  const cancel = useMutation({
+    mutationFn: async (id) => (await base44.functions.invoke('cancelPaymentLinkRequest', { id })).data,
+    onSuccess: () => { toast.success('Request cancelled'); done(); },
+    onError: (e) => { toast.error(e?.message || 'Could not cancel it'); done(); },
+  });
 
   const all = data?.requests || [];
   const count = (s) => all.filter(r => r.status === s).length;
@@ -63,7 +82,7 @@ export default function PaymentLinks() {
       <table className="w-full text-sm">
         <thead>
           <tr className="border-b bg-slate-50/80">
-            <TH>Student</TH><TH right>Amount</TH><TH>For</TH><TH>Asked by</TH><TH>Status</TH><TH>Link</TH><TH />
+            <TH>Student</TH><TH right>Amount</TH><TH>For</TH><TH>{admin ? 'Asked by' : 'Asked'}</TH><TH>Status</TH><TH>Link</TH><TH />
           </tr>
         </thead>
         <tbody>
@@ -79,15 +98,20 @@ export default function PaymentLinks() {
                 {r.note && <div className="mt-0.5 text-xs text-slate-500">Note: {r.note}</div>}
               </td>
               <td className="whitespace-nowrap px-3 py-2.5">
-                <div className="text-slate-700">{r.requested_by_name}</div>
-                <div className="text-xs text-slate-400">{[r.team_name, when(r.created_at)].filter(Boolean).join(' · ')}</div>
+                {admin ? (<>
+                  <div className="text-slate-700">{r.requested_by_name}</div>
+                  <div className="text-xs text-slate-400">{[r.team_name, when(r.created_at)].filter(Boolean).join(' · ')}</div>
+                </>) : <div className="text-slate-600">{when(r.created_at)}</div>}
               </td>
               <td className="px-3 py-2.5">
-                <PaymentStatusBadge status={r.status} />
+                <div className="flex flex-wrap items-center gap-1.5">
+                  <PaymentStatusBadge status={r.status} />
+                  {r.new && <NewChip />}
+                </div>
                 <div className="mt-1 text-xs text-slate-400">
                   {r.status === 'approved' && `${r.approved_by_name} · ${when(r.approved_at)}`}
                   {r.status === 'rejected' && `${r.rejected_by_name} · ${when(r.rejected_at)}`}
-                  {r.status === 'cancelled' && `by the CS · ${when(r.cancelled_at)}`}
+                  {r.status === 'cancelled' && `${admin ? 'by the CS' : 'by you'} · ${when(r.cancelled_at)}`}
                 </div>
               </td>
               <td className="max-w-[300px] px-3 py-2.5">
@@ -102,18 +126,23 @@ export default function PaymentLinks() {
                         ? <span className="text-emerald-700">Emailed to {r.emailed_to}</span>
                         : <span className="text-amber-700">{r.email_error ? `Not emailed — ${r.email_error}` : 'Not emailed'}</span>}
                     </div>
-                    {r.admin_note && <div className="text-xs text-slate-500">To the CS: {r.admin_note}</div>}
+                    {r.admin_note && <div className="text-xs text-slate-500">{admin ? 'To the CS' : r.approved_by_name}: {r.admin_note}</div>}
                   </>
                 ) : r.status === 'rejected' ? (
                   <span className="text-xs text-rose-700">{r.reject_reason}</span>
                 ) : <span className="text-slate-300">—</span>}
               </td>
               <td className="whitespace-nowrap px-3 py-2.5 text-right">
-                {r.status === 'pending' && (
+                {r.status === 'pending' && admin && (
                   <div className="flex justify-end gap-1.5">
                     <Button size="sm" className="h-8" onClick={() => setApproving(r)}><CheckCircle2 className="h-3.5 w-3.5" /> Add link</Button>
                     <Button size="sm" variant="ghost" className="h-8 text-slate-500" onClick={() => setRejecting(r)}><XCircle className="h-3.5 w-3.5" /> Turn down</Button>
                   </div>
+                )}
+                {r.status === 'pending' && !admin && r.mine && (
+                  <Button size="sm" variant="ghost" className="h-8 text-slate-500" disabled={cancel.isPending} onClick={() => cancel.mutate(r.id)}>
+                    {cancel.isPending && cancel.variables === r.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <XCircle className="h-3.5 w-3.5" />} Cancel
+                  </Button>
                 )}
               </td>
             </tr>
@@ -129,13 +158,15 @@ export default function PaymentLinks() {
         <div>
           <PageTitle eyebrow="Funding" icon={CreditCard}>Payment Links</PageTitle>
           <p className="mt-2 max-w-3xl text-sm text-slate-500 sm:text-base">
-            What CSs asked for on their students’ pages. Make the link, paste it in, and it is emailed to the student and shows to the CS to copy or send on WhatsApp — or turn the request down and say why.
+            {admin
+              ? 'What CSs asked for on their students’ pages. Make the link, paste it in, and it is emailed to the student and shows to the CS to copy or send on WhatsApp — or turn the request down and say why.'
+              : 'The payment links you asked for on your students’ pages. Once a Super Admin adds the link it is emailed to the student and shows here to copy — or you see why it was turned down. Send it on WhatsApp from the student’s page.'}
           </p>
         </div>
 
         <div className="grid grid-cols-2 gap-4 md:grid-cols-3">
           <StatsCard title="Waiting" value={count('pending')} icon={Clock} color="amber" delay={0.02} />
-          <StatsCard title="Sent" value={count('approved')} icon={CheckCircle2} color="emerald" delay={0.05} />
+          <StatsCard title={admin ? 'Sent' : 'Link ready'} value={count('approved')} icon={CheckCircle2} color="emerald" delay={0.05} />
           <StatsCard title="Turned down" value={count('rejected')} icon={XCircle} color="red" delay={0.08} />
         </div>
 
@@ -152,7 +183,7 @@ export default function PaymentLinks() {
               </div>
               <div className="relative">
                 <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
-                <Input value={q} onChange={e => setQ(e.target.value)} placeholder="Student, CS, team, what for…" className="h-9 w-64 pl-9" />
+                <Input value={q} onChange={e => setQ(e.target.value)} placeholder={admin ? 'Student, CS, team, what for…' : 'Student, what for…'} className="h-9 w-64 pl-9" />
               </div>
             </div>
           </CardHeader>
@@ -163,7 +194,10 @@ export default function PaymentLinks() {
               <p className="py-12 text-center text-sm text-rose-600">{error.message || 'Could not load payment links'}</p>
             ) : rows.length === 0 ? (
               <p className="py-12 text-center text-sm text-slate-400">
-                {needle ? 'Nothing matches that search.' : tab === 'pending' ? 'Nothing waiting — every request has been dealt with.' : 'None yet.'}
+                {needle ? 'Nothing matches that search.'
+                  : tab === 'pending' ? (admin ? 'Nothing waiting — every request has been dealt with.' : 'Nothing waiting.')
+                  : !admin && !all.length ? 'You haven’t asked for a payment link yet — ask on a student’s page.'
+                  : 'None yet.'}
               </p>
             ) : (
               <Paged items={rows} resetKey={`${tab}|${needle}`}>

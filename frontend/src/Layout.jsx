@@ -180,31 +180,25 @@ export default function Layout({ children, currentPageName }) {
     staleTime: 60_000,
   });
 
-  const countOf = (name) => ({
-    Students: navCounts?.new_students,
-    StudentFollowups: navCounts?.followups_today,
-    OverdueFollowups: navCounts?.followups_overdue,
-    PaymentLinks: navCounts?.payment_links_pending,
-    SupportTickets: ticketCount?.open,
-  })[name] || 0;
-  const COUNT_STYLE = {
-    Students: { cls: 'bg-brand-mint text-brand-navy', title: 'new students given to you — not opened yet' },
-    StudentFollowups: { cls: 'bg-amber-400 text-brand-navy', title: 'follow-ups due today' },
-    OverdueFollowups: { cls: 'bg-rose-500 text-white', title: 'overdue follow-ups' },
-    PaymentLinks: { cls: 'bg-amber-400 text-brand-navy', title: 'payment link requests waiting for you' },
-    SupportTickets: { cls: 'bg-amber-400 text-brand-navy', title: 'support tickets waiting for an answer' },
+  // The numbers a page shows in the sidebar, in order, each in the colour its page uses. Payment Links: a Super
+  // Admin gets the requests waiting for them, a CS the links ready and the turn-downs they haven't seen (the
+  // server only counts each for them). Collapsed there is room for one: the first that isn't 0.
+  const PILLS = {
+    Students: [{ n: navCounts?.new_students, cls: 'bg-brand-mint text-brand-navy', title: 'new students given to you — not opened yet' }],
+    StudentFollowups: [{ n: navCounts?.followups_today, cls: 'bg-amber-400 text-brand-navy', title: 'follow-ups due today' }],
+    OverdueFollowups: [{ n: navCounts?.followups_overdue, cls: 'bg-rose-500 text-white', title: 'overdue follow-ups' }],
+    PaymentLinks: [
+      { n: navCounts?.payment_links_pending, cls: 'bg-amber-400 text-brand-navy', title: 'payment link requests waiting for you' },
+      { n: navCounts?.payment_links_ready, cls: 'bg-emerald-400 text-brand-navy', title: 'payment links ready — not seen yet' },
+      { n: navCounts?.payment_links_turned_down, cls: 'bg-rose-500 text-white', title: 'payment link requests turned down — not seen yet' },
+    ],
+    SupportTickets: [
+      { n: ticketCount?.open, cls: 'bg-amber-400 text-brand-navy', title: 'support tickets waiting for an answer' },
+      { n: ticketCount?.waiting, cls: 'bg-sky-400 text-brand-navy', title: 'support tickets waiting on the student' },
+    ],
   };
-  // A second number beside some pages: Support Tickets answered and waiting on the student, in the page's own blue.
-  const secondCountOf = (name) => ({ SupportTickets: ticketCount?.waiting })[name] || 0;
-  const SECOND_STYLE = {
-    SupportTickets: { cls: 'bg-sky-400 text-brand-navy', title: 'support tickets waiting on the student' },
-  };
-  // The numbers a page shows in the sidebar. Collapsed there is room for one: the first that isn't 0.
   const pillsOf = (name, compact) => {
-    const pills = [
-      countOf(name) > 0 && { n: countOf(name), ...COUNT_STYLE[name] },
-      secondCountOf(name) > 0 && { n: secondCountOf(name), ...SECOND_STYLE[name] },
-    ].filter(Boolean);
+    const pills = (PILLS[name] || []).filter(p => p.n > 0);
     return compact ? pills.slice(0, 1) : pills;
   };
 

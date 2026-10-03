@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
@@ -18,7 +18,8 @@ import { WA_GREEN } from '@/components/whatsapp/waUi';
    Payment links on the student page (backend/src/functions/paymentLinks.ts).
    Their CS asks for one — the amount and what it is for; a Super Admin makes
    the link and pastes it in on the Payment Links page. It is emailed to the
-   student and shows here, for the CS to copy or send on their WhatsApp.
+   student and shows here, for the CS to copy or send on their WhatsApp. An
+   answer the CS who asked hadn't seen is marked New, and seen once shown.
 ──────────────────────────────────────────────────────────────────────────── */
 
 export const PAYMENT_STATUS = {
@@ -30,6 +31,16 @@ export const PAYMENT_STATUS = {
 export function PaymentStatusBadge({ status }) {
   const s = PAYMENT_STATUS[status] || PAYMENT_STATUS.cancelled;
   return <Badge variant="outline" className={`whitespace-nowrap ${s.cls}`}>{s.label}</Badge>;
+}
+/** On an answer (link ready, turned down) the CS who asked sees for the first time. */
+export const NewChip = () => (
+  <span className="rounded-full bg-brand-mint/40 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-emerald-800">New</span>
+);
+/** The server marks answers seen as it shows them (markSeen) — the sidebar's numbers drop. */
+export function useAnswersSeen(data) {
+  const queryClient = useQueryClient();
+  const sawNew = (data?.requests || []).some(r => r.new);
+  useEffect(() => { if (sawNew) queryClient.invalidateQueries({ queryKey: ['nav-counts'] }); }, [sawNew, data, queryClient]);
 }
 export const money = (currency, amount) => `${currency} ${Number(amount).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 export const when = (iso) => (iso ? new Date(iso).toLocaleString('en-GB', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' }) : '');
@@ -43,11 +54,12 @@ export default function PaymentLinksCard({ student }) {
   const key = ['payment-links', student?.id];
   const { data } = useQuery({
     queryKey: key,
-    queryFn: async () => (await base44.functions.invoke('getPaymentLinks', { studentId: student.id })).data,
+    queryFn: async () => (await base44.functions.invoke('getPaymentLinks', { studentId: student.id, markSeen: true })).data,
     enabled: !!student?.id,
     // While one waits for a Super Admin, look now and then — the link shows as soon as it is in.
     refetchInterval: (q) => ((q.state.data?.requests || []).some(r => r.status === 'pending') ? 30_000 : false),
   });
+  useAnswersSeen(data);
   // The CS's own WhatsApp, to send the link there (shared with the WhatsApp card on this page).
   const { data: wa } = useQuery({
     queryKey: ['student-whatsapp', student?.id],
@@ -102,6 +114,7 @@ export default function PaymentLinksCard({ student }) {
                     <span className="font-semibold tabular-nums text-slate-900">{money(r.currency, r.amount)}</span>
                     <span className="text-sm text-slate-600">{r.description}</span>
                     <PaymentStatusBadge status={r.status} />
+                    {r.new && <NewChip />}
                   </div>
                   <div className="flex flex-wrap items-center gap-1.5">
                     {r.status === 'approved' && r.url && (<>
