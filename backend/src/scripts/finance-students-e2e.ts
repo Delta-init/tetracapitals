@@ -11,7 +11,8 @@
  *     Delta Open Students;
  *   - the same invoice twice is one student, even when both arrive at once;
  *   - an email already here is left exactly as it is and uses up no turn;
- *   - codes continue the Students page's own STU-NNNN sequence.
+ *   - codes continue the Students page's own STU-NNNN sequence;
+ *   - finance can ask who looks after the students it sent (CS and CS team, live).
  *
  * Run through ./test-finance-students.sh (throwaway mongod, the API — no .env).
  * Refuses anything but a scratch database on 127.0.0.1.
@@ -317,6 +318,35 @@ const patched = await call("PATCH", `/api/entities/Student/${String(tagged?._id)
 check("Case 4 — not even an admin can change it from a screen: only finance sets it",
   ((await db.collection("students").findOne({ _id: tagged._id })) as any)?.sales_crm === "remote", `${patched.status} ${JSON.stringify(patched.body).slice(0, 160)}`);
 check("Case 4 — and finance's door still wants its secret", (await send(enrolment({ crm: "remote" }), "wrong-secret")).status === 401);
+
+step("Who looks after them — finance asking, for the sales CRMs' My Enrolments");
+{
+  const lookup = (body: unknown, secret: string | null = SECRET) =>
+    call("POST", "/api/v1/integrations/finance/students/lookup", body, secret ? { "x-finance-secret": secret } : {});
+  // One finance sent, given to a team and its CS by the round.
+  const looked = await db.collection("students").findOne({ finance_invoice_id: { $exists: true }, assignment_status: "assigned",
+    primary_mentor_name: { $nin: ["", null] }, team_name: { $nin: ["", null] } }) as any;
+  await db.collection("students").insertOne({ student_code: "STU-9990", email: "Waiting.Student@e2e-finance.test", full_name: "Waiting Student",
+    assignment_status: "open_pool", primary_mentor_name: "", team_name: "" });
+  const r = await lookup({ codes: [String(looked?.student_code).toLowerCase(), "STU-0000"], emails: [String(looked?.email).toUpperCase(), "nobody@e2e-finance.test"] });
+  const [byCode, noCode, byEmail, noEmail] = r.body?.data?.students ?? [];
+  check("Case 1 — by student code: their CS and CS team, as they are now",
+    r.status === 200 && byCode?.found && byCode.code === looked?.student_code && byCode.cs === looked?.primary_mentor_name && byCode.team === looked?.team_name && byCode.assignment === "assigned",
+    JSON.stringify(byCode));
+  check("…and by email, whatever its capitals", byEmail?.found && byEmail.code === looked?.student_code, JSON.stringify(byEmail));
+  check("Case 2 — a code or an email nobody has: not found, nothing invented",
+    noCode?.found === false && noCode.cs === "" && noEmail?.found === false, JSON.stringify([noCode, noEmail]));
+  await db.collection("students").updateOne({ _id: looked._id }, { $set: { primary_mentor_name: "Moved Mentor", team_name: "Moved Team" } });
+  const moved = (await lookup({ codes: [looked.student_code] })).body?.data?.students?.[0];
+  check("Case 1 — given to another CS and team: said at once, not as finance was first told", moved?.cs === "Moved Mentor" && moved?.team === "Moved Team", JSON.stringify(moved));
+  const waiting = (await lookup({ emails: ["waiting.student@e2e-finance.test"] })).body?.data?.students?.[0];
+  check("Case 2 — waiting in Delta Open Students: no CS, and says so", waiting?.found && waiting.cs === "" && waiting.assignment === "open_pool", JSON.stringify(waiting));
+  check("Case 2 — asked for nobody: an empty answer", ((await lookup({})).body?.data?.students ?? null)?.length === 0);
+  check("Case 3 — more than 200 at a time: refused", (await lookup({ codes: Array.from({ length: 201 }, (_, i) => `STU-${i}`) })).status === 400);
+  check("Case 3 — not a JSON object: refused", (await call("POST", "/api/v1/integrations/finance/students/lookup", ["STU-1"], { "x-finance-secret": SECRET })).status === 400);
+  check("Case 4 — no secret, or a wrong one: refused",
+    (await lookup({ codes: [looked.student_code] }, null)).status === 401 && (await lookup({ codes: [looked.student_code] }, "wrong-secret")).status === 401);
+}
 
 await db.dropDatabase();
 await client.close();
