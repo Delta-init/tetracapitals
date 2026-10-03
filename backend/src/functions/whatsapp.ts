@@ -220,15 +220,20 @@ export async function sendWhatsApp(req: Request, user: AuthUser): Promise<Respon
   } catch (err) { return fail(err); }
 }
 
-/** POST /api/functions/sendWhatsAppFile (form: chat, caption, file) — a photo, video, voice note or document, up to 25 MB. */
+/**
+ * POST /api/functions/sendWhatsAppFile (form: chat, caption, file, voice?) — a photo, video, audio or document,
+ * up to 25 MB; voice=1: a recording from the portal, sent as a voice note.
+ */
 export async function sendWhatsAppFile(req: Request, user: AuthUser): Promise<Response> {
   if (!canLink(user)) return forbidden("Messages go from a CS's own WhatsApp");
   const form = await req.formData().catch(() => null);
   const file = form?.get("file");
   const chat = str(form?.get("chat"), 120), caption = String(form?.get("caption") ?? "").trim().slice(0, 1000);
+  const voice = String(form?.get("voice") ?? "") === "1";
   if (!chat || !file || typeof file === "string") return error("chat and file are required", 400);
   try {
-    const saved = await sendFile({ id: user.id, name: who(user) }, chat, Buffer.from(await file.arrayBuffer()), file.type || "application/octet-stream", file.name || "file", caption);
+    const saved = await sendFile({ id: user.id, name: who(user) }, chat, Buffer.from(await file.arrayBuffer()), file.type || "application/octet-stream", file.name || "file",
+      voice ? "" : caption, voice);
     return json({ ok: true, chat: saved?.chat ?? chat });
   } catch (err) { return fail(err); }
 }

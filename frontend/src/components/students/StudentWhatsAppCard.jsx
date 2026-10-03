@@ -34,9 +34,10 @@ export default function StudentWhatsAppCard({ student }) {
   const sendText = async (text) => {
     try { await base44.functions.invoke('sendWhatsApp', { chat: number, text }); refresh(); } catch (e) { toast.error(e?.message || 'Not sent'); throw e; }
   };
-  const sendFile = async (file, caption) => {
+  const sendFile = async (file, caption, voice = false) => {
     const form = new FormData();
     form.append('chat', number); form.append('caption', caption); form.append('file', file);
+    if (voice) form.append('voice', '1');
     try { await base44.functions.invokeForm('sendWhatsAppFile', form); refresh(); } catch (e) { toast.error(e?.message || 'Not sent'); throw e; }
   };
   const myMessages = mine.flatMap(t => t.messages).sort((a, b) => String(a.at).localeCompare(String(b.at)));

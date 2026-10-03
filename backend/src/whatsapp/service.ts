@@ -13,6 +13,7 @@ import { config } from "../config";
 import { col } from "../db";
 import { toObjectId } from "../lib/id";
 import { push } from "../lib/notify";
+import { asVoiceNote, VOICE_MIME } from "./voice";
 
 /* ────────────────────────────────────────────────────────────────────────────
    WhatsApp, as in the Carlton CRM (WHATSAPP_INTEGRATION.md there): each CS
@@ -340,10 +341,24 @@ export async function sendText(owner: { id: string; name: string }, chat: string
   return keepSent(owner, to, chat, sent?.key?.id ?? "", text, owner, null);
 }
 
-export async function sendFile(owner: { id: string; name: string }, chat: string, buffer: Buffer, mime: string, fileName: string, caption: string) {
+/**
+ * A file, as a photo, a video, audio or a document by its type — or, with `voice`, a recording made in the
+ * portal as a voice note (the blue microphone on the phone): Opus in Ogg, re-wrapped from the browser's WebM
+ * when it has to be (voice.ts). A recording that can't be one (an older Safari's MP4) goes as plain audio.
+ */
+export async function sendFile(owner: { id: string; name: string }, chat: string, buffer: Buffer, mime: string, fileName: string, caption: string,
+  voice = false) {
   if (buffer.length > MAX_MEDIA_BYTES) throw new WhatsAppError("Files up to 25 MB");
   const sock = connected(owner.id);
   const to = await target(sock, chat);
+  if (voice) {
+    const note = await asVoiceNote(buffer, mime).catch(() => { throw new WhatsAppError("That recording could not be sent as a voice note — record it again"); });
+    if (note) {
+      const sent = await sock.sendMessage(to.jid, { audio: note, mimetype: VOICE_MIME, ptt: true });
+      const saved = await saveMedia(owner.id, note, "audio/ogg", "");
+      return keepSent(owner, to, chat, sent?.key?.id ?? "", LABEL.ptt!, owner, { type: "audio", mime: "audio/ogg", file_name: "", file: saved.file, size: saved.size });
+    }
+  }
   const type = mime.startsWith("image/") ? "image" : mime.startsWith("video/") ? "video" : mime.startsWith("audio/") ? "audio" : "document";
   const content: any = type === "image" ? { image: buffer, caption } : type === "video" ? { video: buffer, caption }
     : type === "audio" ? { audio: buffer, mimetype: mime, ptt: false } : { document: buffer, mimetype: mime, fileName, caption };

@@ -213,11 +213,12 @@ export default function WhatsApp() {
       refresh();
     } catch (e) { toast.error(e?.message || 'Not sent'); throw e; }
   };
-  const sendFile = async (file, caption) => {
+  const sendFile = async (file, caption, voice = false) => {
     const form = new FormData();
     form.append('chat', chat.chat);
     form.append('caption', caption);
     form.append('file', file);
+    if (voice) form.append('voice', '1');
     try {
       const res = (await base44.functions.invokeForm('sendWhatsAppFile', form)).data;
       if (res?.chat && res.chat !== chatId) setChatId(res.chat);
