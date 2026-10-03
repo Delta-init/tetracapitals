@@ -10,8 +10,8 @@ import { callLms, lmsConfigured, LmsError } from "../lib/lms";
  * The LMS courses the student is on, fresh from the Delta LMS by their email,
  * across both academies (the LMS's POST /service/enrolments): each course, its
  * academy and programme, how they were put on it, how much of it the fee has
- * opened, their progress, and whether they finished it (with the certificate)
- * or dropped it. For whoever may see the student. The Students table shows the
+ * opened, its modules (each by name, open or locked), their progress, and
+ * whether they finished it (with the certificate) or dropped it. For whoever may see the student. The Students table shows the
  * same list as the hourly LMS check last kept it (students/lmsEnrolment.ts).
  * → { configured, available, message?, has_account, courses }
  */
@@ -28,7 +28,8 @@ export async function getStudentLmsCourses(req: Request, user: AuthUser): Promis
   if (!email.includes("@")) return json({ configured: true, available: true, message: "No email on this student to look them up in the LMS", courses: [] });
 
   try {
-    const data = await callLms<{ students: any[] }>("/enrolments", { method: "POST", body: { emails: [email] }, verb: "share the courses" });
+    // detail: each module by name, open or locked — one student, so the LMS allows it (an older LMS ignores it).
+    const data = await callLms<{ students: any[] }>("/enrolments", { method: "POST", body: { emails: [email], detail: true }, verb: "share the courses" });
     const s = (data?.students ?? []).find((x) => String(x.email ?? "").toLowerCase() === email);
     return json({ configured: true, available: true, has_account: !!s?.exists, courses: Array.isArray(s?.courses) ? s.courses : [] });
   } catch (err) {

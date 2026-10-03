@@ -1,4 +1,4 @@
-import { GraduationCap } from 'lucide-react';
+import { GraduationCap, Lock, LockOpen } from 'lucide-react';
 
 /* ────────────────────────────────────────────────────────────────────────────
    The Delta LMS courses a student is on, under their Enrolled switch — in the
@@ -10,6 +10,35 @@ import { GraduationCap } from 'lucide-react';
 
 export const PROGRAMME = { '4x-trading': 'FOREX Trading', 'digital-marketing': 'Digital Marketing', ai: 'AI', jura: 'JURA' };
 export const ACCESS = { paid: 'Fully paid', partial: 'Part paid', unpaid: 'Not paid' };
+
+/**
+ * How many of a course's modules they can open — locked until the fee is paid, or by an admin by hand
+ * (the LMS's count). "—" from an LMS that does not say yet; `inline` for one line, and nothing then.
+ */
+export function LmsModules({ modules: m, inline = false }) {
+  if (!m || typeof m.total !== 'number') return inline ? null : <span className="text-slate-400">—</span>;
+  if (m.total === 0) return <span className="text-xs text-slate-400">No modules</span>;
+  if (!m.locked) {
+    return (
+      <span className="inline-flex items-center gap-1 whitespace-nowrap text-emerald-700">
+        <LockOpen className={inline ? 'h-3 w-3' : 'h-3.5 w-3.5'} />All {m.total} {inline ? 'modules ' : ''}unlocked
+      </span>
+    );
+  }
+  if (inline) {
+    return (
+      <span className="inline-flex items-center gap-1 whitespace-nowrap text-slate-600">
+        <Lock className="h-3 w-3 text-amber-600" />{m.unlocked} of {m.total} modules unlocked<span className="text-amber-700">· {m.locked} locked</span>
+      </span>
+    );
+  }
+  return (
+    <div className="whitespace-nowrap">
+      <div className="text-slate-700">{m.unlocked} of {m.total} unlocked</div>
+      <div className="flex items-center gap-1 text-xs text-amber-700"><Lock className="h-3 w-3" />{m.locked} locked</div>
+    </div>
+  );
+}
 
 const describe = (c) => [
   c.title,
