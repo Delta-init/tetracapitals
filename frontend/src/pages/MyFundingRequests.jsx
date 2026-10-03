@@ -31,6 +31,10 @@ import { getEffectiveUser } from "../components/utils/ImpersonationContext";
 import { toast } from "sonner";
 import { format } from "date-fns";
 
+// A CS's bonus, in USD and AED: amounts are kept in USD, AED at the fixed 3.67 (the user, 2026-10-03).
+const AED_PER_USD = 3.67;
+const two = (n) => (n || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
 export default function MyFundingRequests() {
   const [currentUser, setCurrentUser] = useState(null);
   const [showAddDialog, setShowAddDialog] = useState(false);
@@ -149,7 +153,9 @@ export default function MyFundingRequests() {
 
   // Filter transactions based on user role
   const isAssistance = currentUser.app_role === 'assistance';
-  
+  // A CS's Commission Summary is their bonus only — no deposit commission (the user, 2026-10-03).
+  const isCs = currentUser.app_role === 'cs';
+
   let myTransactions, myStudents, teamTransactions = [];
   
   if (isAssistance && currentUser.assigned_mentor_id) {
@@ -211,6 +217,11 @@ export default function MyFundingRequests() {
   const bonusWith = myQuarterCredits.filter(c => c.method === 'bonus_with' && !c.is_pool).reduce((s, c) => s + (c.commission_usd || 0), 0);
   const bonusWithout = myQuarterCredits.filter(c => c.method === 'bonus_without' && !c.is_pool).reduce((s, c) => s + (c.commission_usd || 0), 0);
   const bonusTotal = bonusWith + bonusWithout;
+  // Bonus In: the approved Bonus requests this person raised in the quarter, dated as the deposit figures are.
+  const bonusIn = myTransactions
+    .filter(t => t.type === 'BONUS' && t.status === 'APPROVED')
+    .filter(t => { const d = new Date(t.requested_at || t.created_date); return d >= selectedQuarterRange.start && d <= selectedQuarterRange.end; })
+    .reduce((s, t) => s + (t.amount_usd || 0), 0);
 
   const myAdjustments = manualAdjustments.filter(a => {
     if (a.mentor_id !== currentUser.id) return false;
@@ -445,7 +456,8 @@ export default function MyFundingRequests() {
                 </div>
               </CardHeader>
               <CardContent className="p-6 space-y-6">
-                {/* ── DEPOSIT COMMISSION (quarterly, level-based, with buffer) ── */}
+                {/* ── DEPOSIT COMMISSION (quarterly, level-based, with buffer) — not for a CS ── */}
+                {!isCs && (
                 <div>
                   <div className="flex items-center gap-2 mb-3">
                     <DollarSign className="h-4 w-4 text-blue-600" />
@@ -521,14 +533,29 @@ export default function MyFundingRequests() {
                     </div>
                   </div>
                 </div>
+                )}
 
-                {/* ── BONUS COMMISSION (separate, released monthly) ── */}
-                <div className="pt-5 border-t border-blue-100">
+                {/* ── BONUS COMMISSION (separate, released monthly) — a CS sees what came in and what they earned, in USD and AED ── */}
+                <div className={isCs ? '' : 'pt-5 border-t border-blue-100'}>
                   <div className="flex items-center gap-2 mb-3">
                     <Award className="h-4 w-4 text-purple-600" />
                     <h3 className="text-sm font-bold text-purple-800 uppercase tracking-wide">Bonus Commission — Monthly</h3>
                     <span className="text-xs text-gray-400">tracked separately from deposits · released each month</span>
                   </div>
+                  {isCs ? (
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div className="bg-white rounded-lg p-4 border border-blue-100">
+                      <p className="text-sm text-gray-600 mb-2">Bonus In</p>
+                      <p className="text-2xl font-bold text-blue-700">${two(bonusIn)}</p>
+                      <p className="text-sm font-semibold text-gray-500 mt-1">AED {two(bonusIn * AED_PER_USD)}</p>
+                    </div>
+                    <div className="bg-white rounded-lg p-4 border border-purple-100">
+                      <p className="text-sm text-gray-600 mb-2">Bonus Commission</p>
+                      <p className="text-2xl font-bold text-purple-700">${two(bonusTotal)}</p>
+                      <p className="text-sm font-semibold text-gray-500 mt-1">AED {two(bonusTotal * AED_PER_USD)}</p>
+                    </div>
+                  </div>
+                  ) : (
                   <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                     <div className="bg-white rounded-lg p-4 border border-green-100">
                       <p className="text-sm text-gray-600 mb-2">With Bonus</p>
@@ -543,6 +570,7 @@ export default function MyFundingRequests() {
                       <p className="text-2xl font-bold text-purple-700">${bonusTotal.toFixed(2)}</p>
                     </div>
                   </div>
+                  )}
                 </div>
               </CardContent>
             </Card>)}
