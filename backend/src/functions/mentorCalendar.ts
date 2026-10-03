@@ -61,11 +61,15 @@ export async function getMentorClass(req: Request, _user: AuthUser): Promise<Res
   return lms(() => callLms(`/classes/${encodeURIComponent(classId)}`, { verb: "describe that class" }));
 }
 
-/** POST /api/functions/bookMentorMeeting { mentorEmail, title, kind, scheduledStart, durationMins, attendees, meetingUrl?, notes? } */
+/**
+ * POST /api/functions/bookMentorMeeting { mentorEmail, title, kind, scheduledStart, durationMins, attendees,
+ *   inPerson?, location? (where, when in person), meetingUrl? (online only), notes? }
+ */
 export async function bookMentorMeeting(req: Request, user: AuthUser): Promise<Response> {
   const body: any = await req.json().catch(() => ({}));
   const mentorEmail = str(body?.mentorEmail, 200);
   if (!mentorEmail) return error("Choose a mentor", 400);
+  const inPerson = body?.inPerson === true;
   return lms(() =>
     callLms("/mentor-meetings", {
       method: "POST",
@@ -76,7 +80,10 @@ export async function bookMentorMeeting(req: Request, user: AuthUser): Promise<R
         kind: str(body?.kind, 20),
         scheduledStart: str(body?.scheduledStart, 40),
         durationMins: Number(body?.durationMins ?? 0),
-        meetingUrl: body?.meetingUrl ? str(body.meetingUrl, 500) : undefined,
+        // In person: a place, and no link (the LMS makes no Google Meet for it).
+        inPerson,
+        location: inPerson ? str(body?.location, 300) : undefined,
+        meetingUrl: !inPerson && body?.meetingUrl ? str(body.meetingUrl, 500) : undefined,
         attendees: attendeesOf(body?.attendees),
         notes: body?.notes ? str(body.notes) : undefined,
         bookedByEmail: user.email,
@@ -113,6 +120,8 @@ export async function updateMentorMeeting(req: Request, user: AuthUser): Promise
         ...(has("kind") ? { kind: str(body.kind, 20) } : {}),
         ...(has("scheduledStart") ? { scheduledStart: str(body.scheduledStart, 40) } : {}),
         ...(has("durationMins") ? { durationMins: Number(body.durationMins) } : {}),
+        ...(has("inPerson") ? { inPerson: body.inPerson === true } : {}),
+        ...(has("location") ? { location: str(body.location, 300) } : {}),
         ...(has("meetingUrl") ? { meetingUrl: str(body.meetingUrl, 500) } : {}),
         ...(has("notes") ? { notes: str(body.notes) } : {}),
         ...(Array.isArray(body?.attendees) ? { attendees: attendeesOf(body.attendees) } : {}),

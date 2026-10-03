@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
@@ -11,6 +11,7 @@ import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { Popover, PopoverAnchor, PopoverContent } from '@/components/ui/popover';
 import { ArrowLeft, CalendarDays, ChevronLeft, ChevronRight, Loader2, Plus, Search, UserRound, Users2, X } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { createPageUrl } from '@/utils';
@@ -27,7 +28,10 @@ import { TablePagination, usePagination } from '@/components/common/TablePaginat
    slots are bare "HH:MM" that only mean anything there.
 
    ?student=<id> (the "Book mentor session" button on a student's page) fills
-   the booking in for that student.
+   the booking in for that student. Typing a name in "Who they are meeting"
+   offers the students you can see on the Students page; picking one fills
+   their name and address. A meeting is online (a link, or a Google Meet the
+   LMS makes) or in person (a place, and no link).
 ──────────────────────────────────────────────────────────────────────────── */
 
 const KIND_LABEL = { staff: 'Staff', student: 'Student', client: 'Client' };
@@ -47,7 +51,7 @@ const weekStart = (d) => {
 /** A column is a calendar date, read straight off its own year, month and day (no zone). */
 const columnKey = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 
-const emptyForm = { title: '', kind: 'staff', time: '10:00', durationMins: '30', meetingUrl: '', notes: '' };
+const emptyForm = { title: '', kind: 'staff', time: '10:00', durationMins: '30', inPerson: false, location: '', meetingUrl: '', notes: '' };
 
 export default function MentorCalendar() {
   const qc = useQueryClient();
@@ -146,6 +150,13 @@ export default function MentorCalendar() {
     setEditingId(null);
   };
 
+  // A student picked from the suggestions: their name and address — and so a meeting with a student.
+  const pickStudent = (i, s) => {
+    const name = String(s.full_name || s.student_code || '').trim();
+    setGuests(rows => rows.map((r, j) => (j === i ? { name, email: String(s.email || '').trim() } : r)));
+    setForm(f => ({ ...f, kind: 'student', title: f.title.trim() ? f.title : `Session with ${name}` }));
+  };
+
   // Edit reuses the booking form, filled in.
   const openEdit = (mentor, d) => {
     const when = new Date(d.startsAt);
@@ -155,6 +166,8 @@ export default function MentorCalendar() {
       kind: d.kind,
       time: when.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', timeZone: tz }),
       durationMins: String(d.durationMins),
+      inPerson: Boolean(d.inPerson),
+      location: d.location || '',
       meetingUrl: d.meetingUrl || '',
       notes: d.notes || '',
     });
@@ -226,7 +239,10 @@ export default function MentorCalendar() {
         scheduledStart: startsAt.toISOString(),
         durationMins: Number(form.durationMins),
         attendees: guests.map(g => ({ name: g.name.trim(), email: g.email.trim() })).filter(g => g.name),
-        meetingUrl: form.meetingUrl.trim() || undefined,
+        // In person: where, and no link. Online: a pasted link, or blank for a Google Meet.
+        inPerson: form.inPerson,
+        location: form.inPerson ? form.location.trim() : undefined,
+        meetingUrl: form.inPerson ? undefined : form.meetingUrl.trim() || undefined,
         notes: form.notes.trim() || undefined,
       };
       return editingId ? fn('updateMentorMeeting', { meetingId: editingId, ...payload }) : fn('bookMentorMeeting', payload);
@@ -279,10 +295,10 @@ export default function MentorCalendar() {
             type="button"
             key={v.id}
             onClick={(e) => { e.stopPropagation(); setViewing(v.id); }}
-            title={`${v.title} · with ${v.attendeeNames?.join(', ')} · ${v.durationMins} minutes`}
+            title={`${v.title} · with ${v.attendeeNames?.join(', ')} · ${v.durationMins} minutes${v.inPerson ? ` · in person, ${v.location}` : ''}`}
             className="w-full rounded border border-violet-200 bg-violet-50 px-1.5 py-0.5 text-left text-[11px] text-violet-700 hover:bg-violet-100"
           >
-            <span className="tabular">{at(v.startsAt)}</span> {KIND_LABEL[v.kind] ?? v.kind} · {v.attendeeNames?.join(', ')}
+            <span className="tabular">{at(v.startsAt)}</span> {KIND_LABEL[v.kind] ?? v.kind}{v.inPerson ? ' · in person' : ''} · {v.attendeeNames?.join(', ')}
           </button>
         ))}
       </div>
@@ -493,8 +509,12 @@ export default function MentorCalendar() {
               <Label>Who they are meeting</Label>
               {guests.map((g, i) => (
                 <div key={i} className="flex items-center gap-2">
-                  <Input value={g.name} onChange={e => setGuests(rows => rows.map((r, j) => (j === i ? { ...r, name: e.target.value } : r)))} placeholder="Name" />
-                  <Input type="email" value={g.email} onChange={e => setGuests(rows => rows.map((r, j) => (j === i ? { ...r, email: e.target.value } : r)))} placeholder="Email, so they get the invite" />
+                  <StudentNameInput
+                    value={g.name}
+                    onChange={name => setGuests(rows => rows.map((r, j) => (j === i ? { ...r, name } : r)))}
+                    onPick={s => pickStudent(i, s)}
+                  />
+                  <Input type="email" className="min-w-0 flex-1" value={g.email} onChange={e => setGuests(rows => rows.map((r, j) => (j === i ? { ...r, email: e.target.value } : r)))} placeholder="Email, so they get the invite" />
                   <Button variant="ghost" size="icon" className="shrink-0" title="Remove" disabled={guests.length === 1} onClick={() => setGuests(rows => rows.filter((_, j) => j !== i))}>
                     <X className="h-3.5 w-3.5" />
                   </Button>
@@ -505,9 +525,20 @@ export default function MentorCalendar() {
               </Button>
             </div>
 
+            {/* Online: a link, or blank for a Google Meet. In person: where — and no link at all. */}
             <div className="space-y-1.5 sm:col-span-2">
-              <Label htmlFor="murl">Joining link</Label>
-              <Input id="murl" value={form.meetingUrl} onChange={e => setForm(f => ({ ...f, meetingUrl: e.target.value }))} placeholder="Paste one, or leave blank for a Google Meet" />
+              <Label htmlFor="mmode">Online or offline</Label>
+              <div className="flex flex-col gap-2 sm:flex-row">
+                <select id="mmode" value={form.inPerson ? 'offline' : 'online'} onChange={e => setForm(f => ({ ...f, inPerson: e.target.value === 'offline' }))} className={cn(selectCls, 'sm:w-48 sm:shrink-0')}>
+                  <option value="online">Online</option>
+                  <option value="offline">Offline — in person</option>
+                </select>
+                {form.inPerson ? (
+                  <Input aria-label="Where" value={form.location} onChange={e => setForm(f => ({ ...f, location: e.target.value }))} placeholder="Where — e.g. Dubai office, room 2" />
+                ) : (
+                  <Input aria-label="Joining link" value={form.meetingUrl} onChange={e => setForm(f => ({ ...f, meetingUrl: e.target.value }))} placeholder="Joining link — paste one, or leave blank for a Google Meet" />
+                )}
+              </div>
             </div>
             <div className="space-y-1.5 sm:col-span-2">
               <Label htmlFor="mnotes">Anything else</Label>
@@ -517,7 +548,7 @@ export default function MentorCalendar() {
 
           <DialogFooter className="gap-2 sm:gap-0">
             <Button variant="outline" onClick={() => setBooking(null)}>Cancel</Button>
-            <Button disabled={book.isPending || form.title.trim().length < 3 || !guests.some(g => g.name.trim())} onClick={() => book.mutate()}>
+            <Button disabled={book.isPending || form.title.trim().length < 3 || !guests.some(g => g.name.trim()) || (form.inPerson && form.location.trim().length < 2)} onClick={() => book.mutate()}>
               {book.isPending && <Loader2 className="h-4 w-4 animate-spin" />} {editingId ? 'Save changes' : 'Book it'}
             </Button>
           </DialogFooter>
@@ -537,7 +568,7 @@ export default function MentorCalendar() {
               <>
                 <DialogHeader>
                   <DialogTitle className="text-brand-navy">{d.title}</DialogTitle>
-                  <DialogDescription>{KIND_LABEL[d.kind] ?? d.kind} · {d.durationMins} minutes</DialogDescription>
+                  <DialogDescription>{KIND_LABEL[d.kind] ?? d.kind} · {d.durationMins} minutes · {d.inPerson ? 'In person' : 'Online'}</DialogDescription>
                 </DialogHeader>
                 <div className="space-y-3 text-sm">
                   <Field label="When">
@@ -549,7 +580,8 @@ export default function MentorCalendar() {
                   <Field label={d.attendees?.length === 1 ? 'Attendee' : `Attendees (${d.attendees?.length ?? 0})`}>
                     {(d.attendees ?? []).map((a, i) => <div key={i}>{a.name}{a.email && <span className="text-slate-400"> · {a.email}</span>}</div>)}
                   </Field>
-                  {d.meetingUrl && <Field label="Joining link"><a href={d.meetingUrl} target="_blank" rel="noreferrer" className="break-all text-cyan-700 hover:underline">{d.meetingUrl}</a></Field>}
+                  {d.inPerson && <Field label="Where">In person · {d.location}</Field>}
+                  {!d.inPerson && d.meetingUrl && <Field label="Joining link"><a href={d.meetingUrl} target="_blank" rel="noreferrer" className="break-all text-cyan-700 hover:underline">{d.meetingUrl}</a></Field>}
                   {d.notes && <Field label="Notes">{d.notes}</Field>}
                   <p className="pt-1 text-xs text-slate-400">Booked by {d.bookedByEmail}</p>
                 </div>
@@ -623,3 +655,99 @@ const Field = ({ label, children }) => (
     <div className="text-slate-800">{children}</div>
   </div>
 );
+
+/**
+ * Students you can see on the Students page that match what was typed (name, code, email or phone) — the
+ * page's own search: your own students, a leader's team too, everyone for admins. A few, for a short list.
+ */
+const findStudents = async (q) => {
+  const first = await fn('listStudents', { filters: { search: q }, pageSize: 25 });
+  const team = first?.tabs?.includes('team') && first?.tab !== 'team'
+    ? await fn('listStudents', { tab: 'team', filters: { search: q }, pageSize: 25 })
+    : null;
+  const seen = new Set();
+  return [...(first?.rows ?? []), ...(team?.rows ?? [])].filter(s => !seen.has(s.id) && seen.add(s.id)).slice(0, 8);
+};
+
+/**
+ * The Name box of "Who they are meeting": any name can be typed — staff, an outside client — and from two
+ * letters on it offers the students who match; picking one fills their name and address.
+ */
+function StudentNameInput({ value, onChange, onPick }) {
+  const [open, setOpen] = useState(false);
+  const [active, setActive] = useState(0);
+  const [q, setQ] = useState('');
+  // Asked once the typing pauses, not on every key.
+  useEffect(() => {
+    const t = setTimeout(() => setQ(value.trim()), 250);
+    return () => clearTimeout(t);
+  }, [value]);
+  const found = useQuery({
+    queryKey: ['mentor-calendar', 'students', q],
+    enabled: open && q.length >= 2,
+    staleTime: 30_000,
+    retry: false,
+    queryFn: () => findStudents(q),
+  });
+  const list = found.data ?? [];
+  const showing = open && q.length >= 2 && !found.isError && (found.isFetching || found.isSuccess);
+  const pick = (s) => { onPick(s); setOpen(false); };
+  const box = useRef(null);
+
+  // The list floats above the dialog (not clipped by its scrolling), wider than the box, and flips up when there
+  // is no room below. Typing stays in the box throughout; Escape closes the list, not the dialog.
+  return (
+    <Popover open={showing} onOpenChange={o => { if (!o) setOpen(false); }}>
+      <PopoverAnchor asChild>
+        <div ref={box} className="min-w-0 flex-1">
+          <Input
+            value={value}
+            onChange={e => { onChange(e.target.value); setOpen(true); setActive(0); }}
+            onFocus={() => setOpen(true)}
+            onBlur={() => setOpen(false)}
+            onKeyDown={e => {
+              if (!showing || !list.length) return;
+              if (e.key === 'ArrowDown') { e.preventDefault(); setActive(a => Math.min(a + 1, list.length - 1)); }
+              else if (e.key === 'ArrowUp') { e.preventDefault(); setActive(a => Math.max(a - 1, 0)); }
+              else if (e.key === 'Enter') { e.preventDefault(); pick(list[active] ?? list[0]); }
+            }}
+            placeholder="Name — or type to find a student"
+            autoComplete="off"
+            role="combobox"
+            aria-expanded={showing}
+            aria-autocomplete="list"
+          />
+        </div>
+      </PopoverAnchor>
+      <PopoverContent
+        align="start"
+        role="listbox"
+        className="max-h-72 w-80 max-w-[calc(100vw-2rem)] overflow-y-auto p-1"
+        onOpenAutoFocus={e => e.preventDefault()}
+        onCloseAutoFocus={e => e.preventDefault()}
+        onInteractOutside={e => { if (box.current?.contains(e.target)) e.preventDefault(); }}
+      >
+        {!list.length ? (
+          <p className="px-2 py-1.5 text-xs text-slate-400">{found.isFetching ? 'Looking…' : 'No student matches — the name is used as typed'}</p>
+        ) : list.map((s, i) => (
+          <button
+            type="button"
+            key={s.id}
+            role="option"
+            aria-selected={i === active}
+            // Before the box loses focus, or the click would close the list first.
+            onMouseDown={e => { e.preventDefault(); pick(s); }}
+            onMouseEnter={() => setActive(i)}
+            className={cn('flex w-full items-baseline justify-between gap-3 rounded px-2 py-1.5 text-left', i === active ? 'bg-slate-100' : 'hover:bg-slate-50')}
+          >
+            <span className="min-w-0">
+              <span className="block truncate text-sm text-slate-800">{s.full_name || s.student_code}</span>
+              <span className="block truncate text-xs text-slate-400">{s.email || 'no email'}</span>
+            </span>
+            <span className="shrink-0 text-xs text-slate-400">{s.student_code}</span>
+          </button>
+        ))}
+      </PopoverContent>
+    </Popover>
+  );
+}
