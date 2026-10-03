@@ -16,8 +16,9 @@ import { WA_GREEN } from '@/components/whatsapp/waUi';
 
 /* ────────────────────────────────────────────────────────────────────────────
    Payment links on the student page (backend/src/functions/paymentLinks.ts).
-   Their CS asks for one — the amount and what it is for; a Super Admin makes
-   the link and pastes it in on the Payment Links page. It is emailed to the
+   Their CS asks for one — the platform (Tabby, Tamara, SmartInvoice,
+   BillXpro), the amount and what it is for; a Super Admin makes the link
+   and pastes it in on the Payment Links page. It is emailed to the
    student and shows here, for the CS to copy or send on their WhatsApp. An
    answer the CS who asked hadn't seen is marked New, and seen once shown.
 ──────────────────────────────────────────────────────────────────────────── */
@@ -41,6 +42,38 @@ export function useAnswersSeen(data) {
   const queryClient = useQueryClient();
   const sawNew = (data?.requests || []).some(r => r.new);
   useEffect(() => { if (sawNew) queryClient.invalidateQueries({ queryKey: ['nav-counts'] }); }, [sawNew, data, queryClient]);
+}
+/** Where a link is made — the CS picks one when asking; the Super Admin may make it on another (backend PLATFORMS). */
+export const PLATFORMS = [
+  { key: 'tabby', label: 'Tabby' },
+  { key: 'tamara', label: 'Tamara' },
+  { key: 'smartinvoice', label: 'SmartInvoice' },
+  { key: 'billxpro', label: 'BillXpro' },
+];
+export const platformLabel = (key) => PLATFORMS.find(p => p.key === key)?.label || '';
+/** The platform a request is on: where it was made once a link is in (and what was asked, when that differs). */
+export function PlatformChip({ request: r }) {
+  const on = r.made_on || r.platform;
+  if (!on) return null;
+  return (
+    <span className="inline-flex items-center gap-1 whitespace-nowrap rounded-md border border-slate-200 bg-white px-1.5 py-0.5 text-[11px] font-medium text-slate-600">
+      {platformLabel(on)}
+      {r.made_on && r.platform && r.made_on !== r.platform && <span className="font-normal text-slate-400">· asked {platformLabel(r.platform)}</span>}
+    </span>
+  );
+}
+/** Pick a platform: four buttons, one chosen (none at first when `value` is ''). */
+export function PlatformPicker({ value, onChange, disabled }) {
+  return (
+    <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+      {PLATFORMS.map(p => (
+        <button key={p.key} type="button" disabled={disabled} onClick={() => onChange(p.key)} aria-pressed={value === p.key}
+          className={`rounded-lg border px-2 py-2 text-sm font-medium transition-colors ${value === p.key ? 'border-brand-navy bg-brand-navy text-white' : 'border-slate-200 bg-white text-slate-700 hover:border-slate-300 hover:bg-slate-50'}`}>
+          {p.label}
+        </button>
+      ))}
+    </div>
+  );
 }
 export const money = (currency, amount) => `${currency} ${Number(amount).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 export const when = (iso) => (iso ? new Date(iso).toLocaleString('en-GB', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' }) : '');
@@ -82,7 +115,7 @@ export default function PaymentLinksCard({ student }) {
   const sendOnWhatsApp = useMutation({
     mutationFn: async (r) => (await base44.functions.invoke('sendWhatsApp', {
       chat: waNumber,
-      text: `Hi ${firstName(student.full_name)}, here is your payment link for ${money(r.currency, r.amount)} (${r.description}):\n${r.url}`,
+      text: `Hi ${firstName(student.full_name)}, here is your ${[platformLabel(r.made_on), 'payment link'].filter(Boolean).join(' ')} for ${money(r.currency, r.amount)} (${r.description}):\n${r.url}`,
     })).data,
     onSuccess: () => { toast.success('Sent on WhatsApp'); queryClient.invalidateQueries({ queryKey: ['student-whatsapp', student?.id] }); },
     onError: (e) => toast.error(e?.message || 'Not sent on WhatsApp'),
@@ -112,6 +145,7 @@ export default function PaymentLinksCard({ student }) {
                 <div className="flex flex-wrap items-center justify-between gap-2">
                   <div className="flex flex-wrap items-center gap-2">
                     <span className="font-semibold tabular-nums text-slate-900">{money(r.currency, r.amount)}</span>
+                    <PlatformChip request={r} />
                     <span className="text-sm text-slate-600">{r.description}</span>
                     <PaymentStatusBadge status={r.status} />
                     {r.new && <NewChip />}
@@ -167,15 +201,16 @@ export default function PaymentLinksCard({ student }) {
 }
 
 function AskDialog({ student, currency, onClose, onDone }) {
+  const [platform, setPlatform] = useState('');
   const [amount, setAmount] = useState('');
   const [description, setDescription] = useState('');
   const [note, setNote] = useState('');
   const ask = useMutation({
-    mutationFn: async () => (await base44.functions.invoke('requestPaymentLink', { studentId: student.id, amount, description, note })).data,
-    onSuccess: () => { toast.success('Asked — a Super Admin will add the link'); onDone(); onClose(); },
+    mutationFn: async () => (await base44.functions.invoke('requestPaymentLink', { studentId: student.id, platform, amount, description, note })).data,
+    onSuccess: () => { toast.success(`Asked — a Super Admin will add the ${platformLabel(platform)} link`); onDone(); onClose(); },
     onError: (e) => toast.error(e?.message || 'Could not send the request'),
   });
-  const ready = Number(amount) > 0 && description.trim();
+  const ready = platform && Number(amount) > 0 && description.trim();
 
   return (
     <Dialog open onOpenChange={(v) => { if (!v && !ask.isPending) onClose(); }}>
@@ -188,8 +223,12 @@ function AskDialog({ student, currency, onClose, onDone }) {
         </DialogHeader>
         <form className="space-y-3" onSubmit={(e) => { e.preventDefault(); if (ready && !ask.isPending) ask.mutate(); }}>
           <div className="space-y-1.5">
+            <Label>Platform</Label>
+            <PlatformPicker value={platform} onChange={setPlatform} disabled={ask.isPending} />
+          </div>
+          <div className="space-y-1.5">
             <Label htmlFor="pl-amount">Amount ({currency})</Label>
-            <Input id="pl-amount" type="number" inputMode="decimal" min="1" step="0.01" value={amount} onChange={(e) => setAmount(e.target.value)} placeholder="e.g. 1500" autoFocus />
+            <Input id="pl-amount" type="number" inputMode="decimal" min="1" step="0.01" value={amount} onChange={(e) => setAmount(e.target.value)} placeholder="e.g. 1500" />
           </div>
           <div className="space-y-1.5">
             <Label htmlFor="pl-for">For</Label>
@@ -197,7 +236,7 @@ function AskDialog({ student, currency, onClose, onDone }) {
           </div>
           <div className="space-y-1.5">
             <Label htmlFor="pl-note">Note for the Super Admin (optional)</Label>
-            <Textarea id="pl-note" rows={3} value={note} onChange={(e) => setNote(e.target.value)} maxLength={1000} placeholder="e.g. Pay in 4 with Tabby, first payment today" />
+            <Textarea id="pl-note" rows={3} value={note} onChange={(e) => setNote(e.target.value)} maxLength={1000} placeholder="e.g. Pay in 4, first payment today" />
           </div>
           <DialogFooter>
             <Button type="button" variant="outline" onClick={onClose} disabled={ask.isPending}>Cancel</Button>

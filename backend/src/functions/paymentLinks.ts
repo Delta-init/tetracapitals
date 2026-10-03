@@ -13,8 +13,9 @@ import { onboardingEmail } from "./studentOnboarding";
 /* ────────────────────────────────────────────────────────────────────────────
    Payment links, asked for by a CS and pasted in by a Super Admin — in place
    of Tabby's automatic links (the user, 2026-10-03). A student's CS (or a CS
-   they are Common with) asks: an amount, what it is for, a note. Every Super
-   Admin is told; one of them makes the link wherever they make it and pastes
+   they are Common with) asks: the platform (Tabby, Tamara, SmartInvoice or
+   BillXpro), an amount, what it is for, a note. Every Super Admin is told;
+   one of them makes the link there — or on another platform — and pastes
    it in on the Payment Links page. It is then emailed to the student (from
    the portal's mailbox as "Delta Institutions"; a reply goes to the CS) and
    shows on the student's page, for the CS to copy or send on their WhatsApp.
@@ -34,7 +35,13 @@ const MAX_AMOUNT = 100_000;
 const DUPLICATE_MS = 60_000;   // the same request again this soon (a double click) gives back the first
 const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const STATUS_WORD: Record<string, string> = { pending: "waiting", approved: "approved", rejected: "turned down", cancelled: "cancelled" };
+/** Where a link is made: the CS picks one when asking (`platform`); the Super Admin may make it on another (`made_on`). */
+const PLATFORMS: Record<string, string> = { tabby: "Tabby", tamara: "Tamara", smartinvoice: "SmartInvoice", billxpro: "BillXpro" };
 const str = (v: unknown, max = 500) => String(v ?? "").trim().slice(0, max);
+const platformOf = (v: unknown) => (PLATFORMS[str(v, 20).toLowerCase()] ? str(v, 20).toLowerCase() : "");
+/** "Tabby payment link" — or just "payment link" for a request from before the platform was asked. */
+const linkName = (platform?: string) => `${platform && PLATFORMS[platform] ? `${PLATFORMS[platform]} ` : ""}payment link`;
+const cap = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
 const who = (u: AuthUser) => u.full_name || u.email || "somebody";
 const money = (amount: number) => `${CURRENCY} ${Number(amount).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 const isSuperAdmin = (u: AuthUser) => u.app_role === "super_admin";
@@ -75,6 +82,8 @@ function view(r: any, user: AuthUser) {
     currency: r.currency,
     description: r.description,
     note: r.note ?? "",
+    platform: r.platform ?? "",
+    made_on: r.status === "approved" ? r.made_on ?? r.platform ?? "" : "",
     status: r.status,
     requested_by_id: r.requested_by_id,
     requested_by_name: r.requested_by_name,
@@ -107,10 +116,10 @@ async function markAnswersSeen(user: AuthUser, filter: Record<string, unknown> =
 /** The email the student gets: the link, what it is for, and that a reply reaches their CS. */
 function linkEmail(r: any, s: any) {
   const name = String(s?.full_name ?? r.student_name ?? "").trim().split(/\s+/)[0] || "Student";
-  const subject = `Your payment link — ${money(r.amount)}`;
+  const subject = `Your ${linkName(r.made_on)} — ${money(r.amount)}`;
   const text = [
     `Dear ${name},`,
-    `Here is your payment link for *${money(r.amount)}* (${r.description}):`,
+    `Here is your ${linkName(r.made_on)} for *${money(r.amount)}* (${r.description}):`,
     r.url,
     `Please open it to complete your payment. If you have any questions, just reply to this email — ${r.requested_by_name}, your Client Success contact, will help you.`,
     "Best regards,\nDelta Institutions",
@@ -159,8 +168,9 @@ export async function getPaymentLinks(req: Request, user: AuthUser): Promise<Res
 }
 
 /**
- * POST /api/functions/requestPaymentLink { studentId, amount, description, note? }
- * The student's CS (or a CS they are Common with). Every Super Admin is told.
+ * POST /api/functions/requestPaymentLink { studentId, platform, amount, description, note? }
+ * The student's CS (or a CS they are Common with), on the platform the link should be made on
+ * (tabby, tamara, smartinvoice, billxpro). Every Super Admin is told.
  */
 export async function requestPaymentLink(req: Request, user: AuthUser): Promise<Response> {
   const body: any = await req.json().catch(() => ({}));
@@ -168,6 +178,8 @@ export async function requestPaymentLink(req: Request, user: AuthUser): Promise<
   if (!student) return notFound();
   if (!mayRequest(user, student)) return forbidden("Only the student's CS (or a CS they are Common with) can ask for a payment link");
 
+  const platform = platformOf(body?.platform);
+  if (!platform) return error("Choose the platform — Tabby, Tamara, SmartInvoice or BillXpro", 400);
   const value = Number(String(body?.amount ?? "").replace(/,/g, ""));
   if (!Number.isFinite(value) || value <= 0) return error("Enter the amount", 400);
   if (value > MAX_AMOUNT) return error(`That is more than ${MAX_AMOUNT.toLocaleString("en-US")} — check the amount`, 400);
@@ -178,7 +190,7 @@ export async function requestPaymentLink(req: Request, user: AuthUser): Promise<
   const sid = String(student._id);
 
   const dup: any = await col(REQUESTS).findOne({
-    student_id: sid, requested_by_id: user.id, amount, description, status: "pending",
+    student_id: sid, requested_by_id: user.id, platform, amount, description, status: "pending",
     created_at: { $gt: new Date(Date.now() - DUPLICATE_MS).toISOString() },
   });
   if (dup) return json({ request: view(dup, user), duplicate: true });
@@ -192,6 +204,7 @@ export async function requestPaymentLink(req: Request, user: AuthUser): Promise<
     team_name: String(student.team_name ?? ""),
     amount,
     currency: CURRENCY,
+    platform,
     description,
     note,
     status: "pending",
@@ -203,14 +216,14 @@ export async function requestPaymentLink(req: Request, user: AuthUser): Promise<
   };
   await col(REQUESTS).insertOne(r);
   await recordHistory([{
-    student_id: sid, at: now, type: "payment_link", text: `Payment link asked for: ${money(amount)} — ${description}`,
+    student_id: sid, at: now, type: "payment_link", text: `${cap(linkName(platform))} asked for: ${money(amount)} — ${description}`,
     by_id: user.id, by_name: who(user), to: { request_id: String(r._id), status: "pending" },
   }]);
   const admins = await col("users").find({ app_role: "super_admin", status: { $ne: "inactive" } }, { projection: { _id: 1 } }).toArray();
   await notify(admins.map((a: any) => String(a._id)), {
     type: "payment_link_request",
     title: "Payment link asked for",
-    body: `${who(user)} asks for ${money(amount)} for ${r.student_name} — ${description}`,
+    body: `${who(user)} asks for a ${PLATFORMS[platform]} link: ${money(amount)} for ${r.student_name} — ${description}`,
     link: "/PaymentLinks",
     tag: `payment-link-${r._id}`,
   });
@@ -218,8 +231,9 @@ export async function requestPaymentLink(req: Request, user: AuthUser): Promise<
 }
 
 /**
- * POST /api/functions/approvePaymentLink { id, url, note?, email?: boolean }
- * Super Admin: the link they made, pasted in. Emailed to the student unless `email: false`; the CS who asked is told.
+ * POST /api/functions/approvePaymentLink { id, url, platform?, note?, email?: boolean }
+ * Super Admin: the link they made, pasted in — on the platform the CS asked for, or on `platform` when they made it
+ * elsewhere. Emailed to the student unless `email: false`; the CS who asked is told.
  */
 export async function approvePaymentLink(req: Request, user: AuthUser): Promise<Response> {
   if (!isSuperAdmin(user)) return forbidden("Only a Super Admin approves payment links");
@@ -229,9 +243,14 @@ export async function approvePaymentLink(req: Request, user: AuthUser): Promise<
   if (r.status !== "pending") return error(`This request is already ${STATUS_WORD[r.status] ?? r.status}`, 409);
   const url = cleanUrl(body?.url);
   if (!url) return error("Paste the payment link — a web address starting with https://", 400);
+  if (body?.platform && !platformOf(body.platform)) return error("Choose the platform — Tabby, Tamara, SmartInvoice or BillXpro", 400);
+  const madeOn = platformOf(body?.platform) || r.platform || "";
 
   const now = new Date().toISOString();
-  const set = { status: "approved", url, admin_note: str(body?.note, 1000), approved_by_id: user.id, approved_by_name: who(user), approved_at: now, updated_at: now };
+  const set = {
+    status: "approved", url, ...(madeOn ? { made_on: madeOn } : {}), admin_note: str(body?.note, 1000),
+    approved_by_id: user.id, approved_by_name: who(user), approved_at: now, updated_at: now,
+  };
   // Two Super Admins at once: only the first one counts.
   const res = await col(REQUESTS).updateOne({ _id: r._id, status: "pending" }, { $set: set });
   if (res.modifiedCount !== 1) return error("Someone else dealt with this request just now — reload", 409);
@@ -259,13 +278,14 @@ export async function approvePaymentLink(req: Request, user: AuthUser): Promise<
 
   await recordHistory([{
     student_id: r.student_id, at: now, type: "payment_link",
-    text: `Payment link sent: ${money(r.amount)} — ${r.description}${r.email ? ` (emailed to ${r.email.to})` : ""}`,
+    text: `${cap(linkName(madeOn))} sent: ${money(r.amount)} — ${r.description}`
+      + `${r.platform && madeOn !== r.platform ? ` (asked for ${PLATFORMS[r.platform]})` : ""}${r.email ? ` (emailed to ${r.email.to})` : ""}`,
     by_id: user.id, by_name: who(user), from: "pending", to: { request_id: String(r._id), status: "approved" },
   }]);
   await notify([r.requested_by_id], {
     type: "payment_link_ready",
     title: "Payment link ready",
-    body: `${money(r.amount)} for ${r.student_name}${r.email ? " — emailed to them." : "."} Copy it or send it on WhatsApp from their page.`,
+    body: `${money(r.amount)} for ${r.student_name}${madeOn ? ` on ${PLATFORMS[madeOn]}` : ""}${r.email ? " — emailed to them." : "."} Copy it or send it on WhatsApp from their page.`,
     link: `/StudentDetail?id=${r.student_id}`,
     tag: `payment-link-${r._id}`,
   });
@@ -288,7 +308,7 @@ export async function rejectPaymentLink(req: Request, user: AuthUser): Promise<R
   if (res.modifiedCount !== 1) return error("Someone else dealt with this request just now — reload", 409);
   Object.assign(r, set);
   await recordHistory([{
-    student_id: r.student_id, at: now, type: "payment_link", text: `Payment link turned down: ${money(r.amount)} — ${r.description} (${reason})`,
+    student_id: r.student_id, at: now, type: "payment_link", text: `${cap(linkName(r.platform))} turned down: ${money(r.amount)} — ${r.description} (${reason})`,
     by_id: user.id, by_name: who(user), from: "pending", to: { request_id: String(r._id), status: "rejected" },
   }]);
   await notify([r.requested_by_id], {
@@ -313,7 +333,7 @@ export async function cancelPaymentLinkRequest(req: Request, user: AuthUser): Pr
   if (res.modifiedCount !== 1) return error("A Super Admin dealt with it just now — reload", 409);
   Object.assign(r, { status: "cancelled", cancelled_at: now });
   await recordHistory([{
-    student_id: r.student_id, at: now, type: "payment_link", text: `Payment link request cancelled: ${money(r.amount)} — ${r.description}`,
+    student_id: r.student_id, at: now, type: "payment_link", text: `${cap(linkName(r.platform))} request cancelled: ${money(r.amount)} — ${r.description}`,
     by_id: user.id, by_name: who(user), from: "pending", to: { request_id: String(r._id), status: "cancelled" },
   }]);
   return json({ request: view(r, user) });

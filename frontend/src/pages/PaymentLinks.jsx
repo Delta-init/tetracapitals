@@ -15,7 +15,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { CheckCircle2, Clock, Copy, CreditCard, Loader2, Search, XCircle } from 'lucide-react';
-import { PaymentStatusBadge, NewChip, money, when, copyLink, useAnswersSeen } from '@/components/students/PaymentLinksCard';
+import { PaymentStatusBadge, NewChip, PlatformChip, PlatformPicker, platformLabel, money, when, copyLink, useAnswersSeen } from '@/components/students/PaymentLinksCard';
 
 // A Super Admin starts on what waits for them; a CS on everything they asked for, the latest first.
 const ADMIN_TABS = [
@@ -72,7 +72,8 @@ export default function PaymentLinks() {
   const needle = q.trim().toLowerCase();
   const rows = all
     .filter(r => (tab === 'all' || r.status === tab) &&
-      (!needle || [r.student_name, r.student_code, r.requested_by_name, r.team_name, r.description].some(v => String(v || '').toLowerCase().includes(needle))))
+      (!needle || [r.student_name, r.student_code, r.requested_by_name, r.team_name, r.description, platformLabel(r.platform), platformLabel(r.made_on)]
+        .some(v => String(v || '').toLowerCase().includes(needle))))
     // Waiting: the longest waiting first. The rest: the latest first.
     .sort((a, b) => (tab === 'pending' ? 1 : -1) * String(a.created_at).localeCompare(String(b.created_at)));
 
@@ -94,7 +95,7 @@ export default function PaymentLinks() {
               </td>
               <td className="whitespace-nowrap px-3 py-2.5 text-right font-semibold tabular-nums text-slate-900">{money(r.currency, r.amount)}</td>
               <td className="max-w-[260px] px-3 py-2.5 text-slate-700">
-                {r.description}
+                <div className="flex flex-wrap items-center gap-1.5"><PlatformChip request={r} />{r.description}</div>
                 {r.note && <div className="mt-0.5 text-xs text-slate-500">Note: {r.note}</div>}
               </td>
               <td className="whitespace-nowrap px-3 py-2.5">
@@ -220,7 +221,7 @@ function Asked({ request: r }) {
   return (
     <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm">
       <div className="flex flex-wrap items-baseline justify-between gap-2">
-        <span className="font-semibold tabular-nums text-slate-900">{money(r.currency, r.amount)}</span>
+        <span className="flex items-center gap-1.5 font-semibold tabular-nums text-slate-900">{money(r.currency, r.amount)} <PlatformChip request={r} /></span>
         <span className="text-xs text-slate-500">asked by {r.requested_by_name} · {when(r.created_at)}</span>
       </div>
       <div className="text-slate-700">{r.description}</div>
@@ -231,11 +232,14 @@ function Asked({ request: r }) {
 
 function ApproveDialog({ request: r, emailReady, onClose, onDone }) {
   const canEmail = emailReady && !!r.student_email;
+  const [madeOn, setMadeOn] = useState(r.platform || '');
   const [url, setUrl] = useState('');
   const [note, setNote] = useState('');
   const [email, setEmail] = useState(canEmail);
   const approve = useMutation({
-    mutationFn: async () => (await base44.functions.invoke('approvePaymentLink', { id: r.id, url: url.trim(), note, email: canEmail && email })).data,
+    mutationFn: async () => (await base44.functions.invoke('approvePaymentLink', {
+      id: r.id, url: url.trim(), ...(madeOn ? { platform: madeOn } : {}), note, email: canEmail && email,
+    })).data,
     onSuccess: ({ request }) => {
       if (request.emailed_to) toast.success(`Link added — emailed to ${request.emailed_to}; ${request.requested_by_name} can see it`);
       else if (request.email_error) toast.warning(`Link added, but not emailed (${request.email_error}) — ${request.requested_by_name} can send it`);
@@ -252,10 +256,19 @@ function ApproveDialog({ request: r, emailReady, onClose, onDone }) {
       <DialogContent className="max-w-lg">
         <DialogHeader>
           <DialogTitle className="text-brand-navy">Payment link for {r.student_name}</DialogTitle>
-          <DialogDescription>Make the link for this amount, then paste it here.</DialogDescription>
+          <DialogDescription>
+            {r.platform ? `Make the link on ${platformLabel(r.platform)} for this amount, then paste it here.` : 'Make the link for this amount, then paste it here.'}
+          </DialogDescription>
         </DialogHeader>
         <form className="space-y-3" onSubmit={(e) => { e.preventDefault(); if (ready && !approve.isPending) approve.mutate(); }}>
           <Asked request={r} />
+          <div className="space-y-1.5">
+            <Label>Made on</Label>
+            <PlatformPicker value={madeOn} onChange={setMadeOn} disabled={approve.isPending} />
+            {r.platform && madeOn && madeOn !== r.platform && (
+              <p className="text-xs text-amber-700">{r.requested_by_name} asked for {platformLabel(r.platform)} — they’ll see it was made on {platformLabel(madeOn)}.</p>
+            )}
+          </div>
           <div className="space-y-1.5">
             <Label htmlFor="pl-url">Payment link</Label>
             <Input id="pl-url" value={url} onChange={(e) => setUrl(e.target.value)} placeholder="https://…" autoFocus autoComplete="off" />
