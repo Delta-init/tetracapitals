@@ -29,19 +29,23 @@ const PAYMENT_METHODS = [
   'Other'
 ];
 
-/* ── Money in AED or USD, and what a course payment earns (the user, 2026-10-03) ──────────────────────────────
+/* ── Money in AED or USD, and what a course payment earns (the user, 2026-10-03; Delta_Fee_Structure.pdf) ──────
    An amount can be typed in AED or USD. It is kept in USD for commission and the reports (amount_usd), with what was
-   typed, its AED and the rate — a fixed 3.67 — beside it. A Bonus is a course payment: every full AED 2,000 paid for
-   a "with bonus" course is $500 bonus in the student's MT5, the rest waits on hold for the next payment, and the
-   balance is the course fee (the Products page) less everything paid. Shared with the co-management form
-   (ReferralRequestPopup) and the request lists. */
+   typed, its AED and the rate — a fixed 3.67 — beside it.
+   A Bonus is a course payment, for a course with a bonus set on the Products page (DWT, MSNR, DSLP Offer, DSLP Full):
+     full payment — the course's price at once, and its whole bonus in the student's MT5 at once;
+     partial      — instalments of AED 2,000 (as many as the course has): every full AED 2,000 paid is $500 bonus, the
+                    rest waits on hold for the next payment, and the balance is the instalments' total less all paid.
+                    Once instalments have started, the rest is paid that way too.
+   Shared with the co-management form (ReferralRequestPopup) and the request lists. */
 export const AED_PER_USD = 3.67;
-export const BONUS_BLOCK_AED = 2000;
-export const BONUS_PER_BLOCK_USD = 500;
+export const INSTALMENT_AED = 2000;
+export const BONUS_PER_INSTALMENT_USD = 500;
 const cents = (n) => Math.round((Number(n) || 0) * 100) / 100;
 const fmt = (n) => (Number(n) || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 export const aedText = (n) => `AED ${fmt(n)}`;
 export const usdText = (n) => `$${fmt(n)}`;
+const moneyText = (n, currency) => (currency === 'AED' ? aedText(n) : usdText(n));
 
 /** `amount` typed in `currency`, in both: { aed, usd }. */
 export function convert(amount, currency) {
@@ -49,42 +53,70 @@ export function convert(amount, currency) {
   return currency === 'AED' ? { aed: cents(n), usd: cents(n / AED_PER_USD) } : { aed: cents(n * AED_PER_USD), usd: cents(n) };
 }
 
-/** A course's fee in AED: its own (the Products page), else its USD price at 3.67; null when neither is set. */
-export function courseFeeAed(product) {
-  if (Number(product?.fee_aed) > 0) return Number(product.fee_aed);
-  if (Number(product?.amount_usd) > 0) return cents(Number(product.amount_usd) * AED_PER_USD);
-  return null;
+/** A course's terms (the Products page): its full price in AED or USD, its whole bonus, its AED 2,000 instalments. */
+export function coursePlan(product) {
+  const price = Number(product?.full_price) || 0;
+  const currency = product?.full_price_currency === 'AED' ? 'AED' : 'USD';
+  const instalments = Math.max(0, Math.floor(Number(product?.instalments) || 0));
+  return {
+    price,
+    currency,
+    priceMoney: convert(price, currency),
+    bonusUsd: product?.bonus_type === 'without' ? 0 : Number(product?.bonus_usd) || 0,
+    instalments,
+    planAed: instalments * INSTALMENT_AED,
+  };
 }
+
+/** The courses a Bonus can be for: the ones with a bonus set. */
+export const hasBonusPlan = (product) => Number(product?.bonus_usd) > 0;
+
+/** What a course takes now: full and/or partial — partial only with instalments, and only partial once they've started. */
+export const paymentKinds = (plan, beforeAed) =>
+  plan.instalments > 0 ? (beforeAed > 0 ? ['partial'] : ['full', 'partial']) : ['full'];
 
 /** What the student paid for `course` before: their earlier course payments that weren't turned down. */
 export const paidBefore = (transactions, course) => (transactions || [])
   .filter(t => t.type === 'BONUS' && !['REJECTED', 'CANCELLED'].includes(t.status) && t.course_payment?.product === course)
   .reduce((s, t) => s + (Number(t.course_payment.paid_today_aed) || 0), 0);
 
-/** Today's payment on a course: paid till date, the MT5 bonus it earns now, what waits on hold, the balance. */
-export function coursePayment({ feeAed, beforeAed, todayAed, withBonus }) {
-  const total = cents(beforeAed + todayAed);
-  // Bonus on no more than the course costs; a few fils of rounding never cost a block.
-  const counted = (n) => (feeAed ? Math.min(n, feeAed) : n);
-  const blocks = (n) => Math.floor((counted(n) + 0.005) / BONUS_BLOCK_AED);
+/**
+ * Today's payment on a course. Full: the whole bonus at once, nothing left to pay. Partial: $500 per full AED 2,000
+ * paid (never past the course's instalments), the rest on hold, the balance of the instalments' total.
+ */
+export function coursePayment({ plan, kind, beforeAed, todayAed }) {
+  const paid = { kind, paid_before_aed: cents(beforeAed), paid_today_aed: cents(todayAed), paid_total_aed: cents(beforeAed + todayAed) };
+  if (kind === 'full') {
+    // Short of the price by more than rounding: shown, so a partial payment isn't taken for a full one.
+    const short = plan.price ? cents(plan.priceMoney.aed - todayAed) : 0;
+    return { ...paid, bonus_usd: plan.bonusUsd, hold_aed: 0, balance_aed: 0, short_aed: short > 1 ? short : 0, over_aed: 0 };
+  }
+  const fee = plan.planAed;
+  const total = paid.paid_total_aed;
+  // A few fils of rounding never cost an instalment.
+  const counted = (n) => (fee ? Math.min(n, fee) : n);
+  const blocks = (n) => Math.floor((counted(n) + 0.005) / INSTALMENT_AED);
+  const withBonus = plan.bonusUsd > 0;
   return {
-    paid_before_aed: cents(beforeAed),
-    paid_today_aed: cents(todayAed),
-    paid_total_aed: total,
-    bonus_usd: withBonus ? (blocks(total) - blocks(beforeAed)) * BONUS_PER_BLOCK_USD : 0,
-    hold_aed: withBonus ? Math.max(0, cents(counted(total) - blocks(total) * BONUS_BLOCK_AED)) : 0,
-    balance_aed: feeAed ? cents(Math.max(0, feeAed - total)) : null,
-    over_aed: feeAed && total > feeAed ? cents(total - feeAed) : 0,
+    ...paid,
+    bonus_usd: withBonus ? (blocks(total) - blocks(beforeAed)) * BONUS_PER_INSTALMENT_USD : 0,
+    hold_aed: withBonus ? Math.max(0, cents(counted(total) - blocks(total) * INSTALMENT_AED)) : 0,
+    balance_aed: fee ? cents(Math.max(0, fee - total)) : null,
+    short_aed: 0,
+    over_aed: fee && total > fee ? cents(total - fee) : 0,
   };
 }
 
 /** The same, as one line — what the co-management path keeps of it (in the request's notes). */
-export function paymentNote({ amount, currency, product, feeAed, payment }) {
+export function paymentNote({ amount, currency, product, plan, payment }) {
   const money = convert(amount, currency);
   const parts = [`Paid ${currency === 'AED' ? aedText(money.aed) : usdText(money.usd)} (= ${currency === 'AED' ? usdText(money.usd) : aedText(money.aed)} at ${AED_PER_USD})`];
-  if (product && payment) {
-    parts.push(`${product.name}: fee ${feeAed ? aedText(feeAed) : 'not set'}, paid till date ${aedText(payment.paid_total_aed)}`);
-    if (product.bonus_type !== 'without') parts.push(`MT5 bonus ${usdText(payment.bonus_usd)}`, `on hold ${aedText(payment.hold_aed)}`);
+  if (product && plan && payment) {
+    parts.push(payment.kind === 'full'
+      ? `${product.name}: full payment (price ${moneyText(plan.price, plan.currency)})`
+      : `${product.name}: partial payment, paid till date ${aedText(payment.paid_total_aed)} of ${aedText(plan.planAed)}`);
+    if (plan.bonusUsd > 0) parts.push(`MT5 bonus ${usdText(payment.bonus_usd)}`);
+    if (payment.kind === 'partial' && plan.bonusUsd > 0) parts.push(`on hold ${aedText(payment.hold_aed)}`);
     if (payment.balance_aed != null) parts.push(`balance ${aedText(payment.balance_aed)}`);
   }
   return parts.join(' · ');
@@ -113,6 +145,24 @@ export function CurrencyAmount({ id = 'amount', label, amount, currency, onAmoun
   );
 }
 
+/** Full payment or instalments — asked before the amount. */
+export function PaymentKind({ value, kinds, onChange, started = false }) {
+  const label = { full: 'Full payment', partial: 'Partial payment (instalments)' };
+  return (
+    <div className="space-y-2">
+      <Label>Payment *</Label>
+      <div className="flex flex-wrap gap-2">
+        {kinds.map(k => (
+          <Button key={k} type="button" size="sm" variant={value === k ? 'default' : 'outline'} onClick={() => onChange(k)} aria-pressed={value === k}>
+            {label[k]}
+          </Button>
+        ))}
+      </div>
+      {started && <p className="text-xs text-muted-foreground">Instalments have started for this course — the rest is paid in instalments.</p>}
+    </div>
+  );
+}
+
 const Stat = ({ label, value, hint, tone }) => (
   <div>
     <p className="text-[11px] text-gray-500">{label}</p>
@@ -121,38 +171,44 @@ const Stat = ({ label, value, hint, tone }) => (
   </div>
 );
 
-/** A course payment, worked out: the fee, paid before and till date, the MT5 bonus now, on hold, the balance. */
-export function CoursePaymentPanel({ product, feeAed, payment, className = '' }) {
-  if (!product || !payment) return null;
-  const withBonus = product.bonus_type !== 'without';
+/** A course payment, worked out: full — the price and the whole bonus; partial — the instalments, paid, bonus, hold, balance. */
+export function CoursePaymentPanel({ product, plan, payment, className = '' }) {
+  if (!product || !plan || !payment) return null;
+  const withBonus = plan.bonusUsd > 0;
+  const full = payment.kind === 'full';
+  const other = (m, currency) => (currency === 'AED' ? usdText(m.usd) : aedText(m.aed));
   return (
     <div className={`rounded-lg border border-blue-100 bg-blue-50/40 p-3 ${className}`}>
-      <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-blue-800">{product.name} — with this payment</p>
+      <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-blue-800">{product.name} — {full ? 'full payment' : 'partial payment'}</p>
       <div className="grid grid-cols-2 gap-x-4 gap-y-2 text-sm sm:grid-cols-3">
-        <Stat label="Course fee" value={feeAed ? aedText(feeAed) : 'Not set'} hint={feeAed ? usdText(feeAed / AED_PER_USD) : 'an admin sets it on Products'} />
-        <Stat label="Paid before" value={aedText(payment.paid_before_aed)} />
-        <Stat label="Paid till date" value={aedText(payment.paid_total_aed)} />
+        {full
+          ? <Stat label="Course price" value={plan.price ? moneyText(plan.price, plan.currency) : 'Not set'} hint={plan.price ? other(plan.priceMoney, plan.currency) : 'an admin sets it on Products'} />
+          : <Stat label="Instalment plan" value={aedText(plan.planAed)} hint={`${plan.instalments} × ${aedText(INSTALMENT_AED)}`} />}
+        {!full && <Stat label="Paid before" value={aedText(payment.paid_before_aed)} />}
+        <Stat label={full ? 'Paid now' : 'Paid till date'} value={aedText(full ? payment.paid_today_aed : payment.paid_total_aed)} />
         <Stat
           label="Bonus to credit in MT5"
           value={withBonus ? usdText(payment.bonus_usd) : 'No bonus'}
           tone="green"
-          hint={withBonus ? `$${BONUS_PER_BLOCK_USD} per AED ${BONUS_BLOCK_AED.toLocaleString('en-US')} paid` : 'a without-bonus course'}
+          hint={!withBonus ? 'a without-bonus course' : full ? 'the whole bonus, at once' : `$${BONUS_PER_INSTALMENT_USD} per ${aedText(INSTALMENT_AED)} paid`}
         />
-        {withBonus && <Stat label="On hold" value={aedText(payment.hold_aed)} tone="amber" hint={payment.hold_aed > 0 ? 'joins the next payment' : ''} />}
+        {!full && withBonus && <Stat label="On hold" value={aedText(payment.hold_aed)} tone="amber" hint={payment.hold_aed > 0 ? 'joins the next payment' : ''} />}
         <Stat label="Balance pending" value={payment.balance_aed == null ? '—' : aedText(payment.balance_aed)} />
       </div>
-      {payment.over_aed > 0 && <p className="mt-2 text-xs font-medium text-rose-600">That's {aedText(payment.over_aed)} more than the course fee — check the amount.</p>}
+      {payment.short_aed > 0 && <p className="mt-2 text-xs font-medium text-rose-600">That's {aedText(payment.short_aed)} short of the full price — is this a partial payment?</p>}
+      {payment.over_aed > 0 && <p className="mt-2 text-xs font-medium text-rose-600">That's {aedText(payment.over_aed)} more than the instalments' total — check the amount.</p>}
     </div>
   );
 }
 
-/** Under a request's amount in the lists: its AED and, for a course payment, the MT5 bonus, what's on hold, the balance. */
+/** Under a request's amount in the lists: its AED and, for a course payment, full or partial, the MT5 bonus, hold, balance. */
 export function PaymentDetails({ tx }) {
   const cp = tx?.course_payment;
   if (!(Number(tx?.amount_aed) > 0) && !cp) return null;
   return (
     <div className="mt-0.5 space-y-0.5 whitespace-nowrap text-[11px] font-normal leading-tight text-gray-500">
       {Number(tx.amount_aed) > 0 && <div>{aedText(tx.amount_aed)}</div>}
+      {cp?.kind && <div>{cp.kind === 'full' ? 'Full payment' : 'Partial payment'}</div>}
       {cp && (cp.with_bonus ? <div className="font-medium text-emerald-700">MT5 bonus {usdText(cp.bonus_usd)}</div> : <div>No bonus</div>)}
       {cp && cp.hold_aed > 0 && <div className="text-amber-700">On hold {aedText(cp.hold_aed)}</div>}
       {cp && cp.balance_aed != null && <div>Balance {aedText(cp.balance_aed)}</div>}
@@ -166,6 +222,7 @@ export default function FundingRequestForm({ students, allStudents = [], current
     student_id: '',
     amount: '',       // as typed, in `currency`
     currency: 'USD',  // AED or USD — a Bonus (a course payment) starts in AED
+    payment_kind: '', // a Bonus: 'full' or 'partial' — asked once the course is picked
     payment_method: '',
     mt5_login: '',
     screenshot_url: '',
@@ -184,7 +241,8 @@ export default function FundingRequestForm({ students, allStudents = [], current
   });
   const tagAmount = (tagName) => bonusTags.find(t => t.name === tagName)?.amount_usd;
 
-  // A Bonus is a course payment: what was paid for the course before, and what today's payment makes of it.
+  // A Bonus is a course payment: the course's terms, what was paid for it before, full or partial, and what today's
+  // payment makes of it.
   const product = formData.type === 'BONUS' ? bonusTags.find(t => t.name === formData.tags[0]) || null : null;
   const { data: earlier = [], isFetching: loadingEarlier } = useQuery({
     queryKey: ['course-payments', formData.student_id, product?.name],
@@ -192,10 +250,15 @@ export default function FundingRequestForm({ students, allStudents = [], current
     enabled: !!(formData.student_id && product),
   });
   const money = convert(formData.amount, formData.currency);
-  const feeAed = courseFeeAed(product);
-  const payment = product
-    ? coursePayment({ feeAed, beforeAed: paidBefore(earlier, product.name), todayAed: money.aed, withBonus: product.bonus_type !== 'without' })
-    : null;
+  const plan = coursePlan(product);
+  const beforeAed = product ? paidBefore(earlier, product.name) : 0;
+  const kinds = paymentKinds(plan, beforeAed);
+  const kind = kinds.length === 1 ? kinds[0] : formData.payment_kind;
+  const payment = product && kind ? coursePayment({ plan, kind, beforeAed, todayAed: money.aed }) : null;
+  // Full: the course's price fills in. Partial: what was paid today, in AED.
+  const chooseKind = (k) => setFormData(f => (k === 'full'
+    ? { ...f, payment_kind: k, amount: plan.price ? String(plan.price) : f.amount, currency: plan.currency }
+    : { ...f, payment_kind: k, currency: 'AED', amount: f.payment_kind === 'full' ? '' : f.amount }));
 
   // Mentors (junior / senior / sub-junior / chief) for the "meeting conducted by"
   // picker — only from the submitter's own team (their Up Head chain). Admins
@@ -263,6 +326,10 @@ export default function FundingRequestForm({ students, allStudents = [], current
       toast.error('Please pick a product for the bonus');
       return;
     }
+    if (product && !kind) {
+      toast.error('Pick full or partial payment');
+      return;
+    }
 
     if (!(money.usd > 0)) {
       toast.error('Enter the amount');
@@ -297,12 +364,18 @@ export default function FundingRequestForm({ students, allStudents = [], current
       // What was typed, in both currencies — amount_usd is what commission and the reports use.
       amount: undefined,
       currency: undefined,
+      payment_kind: undefined,
       amount_currency: formData.currency,
       amount_original: Number(formData.amount) || 0,
       amount_aed: money.aed,
       amount_usd: money.usd,
       fx_rate_aed_per_usd: AED_PER_USD,
-      ...(payment ? { course_payment: { product: product.name, fee_aed: feeAed, with_bonus: product.bonus_type !== 'without', ...payment } } : {}),
+      ...(payment ? {
+        course_payment: {
+          product: product.name, price: plan.price, price_currency: plan.currency, bonus_full_usd: plan.bonusUsd,
+          instalments: plan.instalments, plan_aed: plan.planAed, with_bonus: plan.bonusUsd > 0, ...payment,
+        },
+      } : {}),
       status: 'PENDING',
       student_name: selectedStudent.full_name,
       student_code: selectedStudent.student_code,
@@ -392,6 +465,7 @@ export default function FundingRequestForm({ students, allStudents = [], current
             <div className="space-y-2 md:col-span-2">
               <Label>Product *</Label>
               <TagsPicker
+                only={hasBonusPlan}
                 value={formData.tags}
                 onChange={(picked) => {
                   // The picked product may BUNDLE lower products (e.g. buying the
@@ -404,7 +478,12 @@ export default function FundingRequestForm({ students, allStudents = [], current
                     ? picked0.includes.filter(n => n && n !== primary)
                     : [];
                   const allTags = primary ? [primary, ...included] : [];
-                  setFormData({ ...formData, tags: allTags });
+                  // Full payment only (no instalments): its price fills in. Otherwise full or partial is asked next.
+                  const terms = coursePlan(picked0);
+                  setFormData({
+                    ...formData, tags: allTags, payment_kind: '',
+                    ...(terms.instalments === 0 && terms.price ? { amount: String(terms.price), currency: terms.currency } : { amount: '' }),
+                  });
                 }}
               />
               {formData.tags.length > 1 && (
@@ -413,13 +492,19 @@ export default function FundingRequestForm({ students, allStudents = [], current
                 </p>
               )}
               <p className="text-xs text-muted-foreground">
-                Pick the course, then type what the student paid today — the MT5 bonus, what waits on hold and the balance work themselves out. Bundled products come along at no extra charge.
+                Pick the course, then full or partial payment — the MT5 bonus, what waits on hold and the balance work themselves out. Bundled products come along at no extra charge.
               </p>
             </div>
           )}
 
+          {product && (
+            <div className="md:col-span-2">
+              <PaymentKind value={kind} kinds={kinds} onChange={chooseKind} started={plan.instalments > 0 && beforeAed > 0} />
+            </div>
+          )}
+
           <CurrencyAmount
-            label={formData.type === 'BONUS' ? 'Payment received today *' : 'Amount *'}
+            label={formData.type !== 'BONUS' ? 'Amount *' : kind === 'full' ? 'Full payment received *' : 'Payment received today *'}
             amount={formData.amount}
             currency={formData.currency}
             onAmount={(v) => setFormData(f => ({ ...f, amount: v }))}
@@ -446,7 +531,7 @@ export default function FundingRequestForm({ students, allStudents = [], current
             </Select>
           </div>
 
-          <CoursePaymentPanel product={product} feeAed={feeAed} payment={payment} className="md:col-span-2" />
+          <CoursePaymentPanel product={product} plan={plan} payment={payment} className="md:col-span-2" />
 
           <div className="space-y-2">
             <Label>Meeting Conducted By (Mentor)</Label>

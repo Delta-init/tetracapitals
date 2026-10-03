@@ -12,7 +12,9 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import TagsPicker from "./TagsPicker";
 // The amount box and the course payment, as on the main form (FundingRequestForm, which opens this one — the two import
 // each other, so these are only used inside functions).
-import { CurrencyAmount, CoursePaymentPanel, convert, courseFeeAed, coursePayment, paidBefore, paymentNote } from "./FundingRequestForm";
+import {
+  CurrencyAmount, CoursePaymentPanel, PaymentKind, convert, coursePlan, coursePayment, hasBonusPlan, paidBefore, paymentKinds, paymentNote,
+} from "./FundingRequestForm";
 
 import { toast } from "sonner";
 
@@ -22,6 +24,7 @@ export default function ReferralRequestPopup({ student, currentUser, onClose, tr
   const isBonus = transactionType === 'BONUS';
   const [depositAmount, setDepositAmount] = useState('');   // as typed, in `currency`
   const [currency, setCurrency] = useState(isBonus ? 'AED' : 'USD');
+  const [paymentKind, setPaymentKind] = useState('');   // a Bonus: 'full' or 'partial'
   const [paymentMethod, setPaymentMethod] = useState('');
   const [mt5Login, setMt5Login] = useState('');
   const [screenshotUrl, setScreenshotUrl] = useState('');
@@ -44,10 +47,17 @@ export default function ReferralRequestPopup({ student, currentUser, onClose, tr
     enabled: !!product,
   });
   const money = convert(depositAmount, currency);
-  const feeAed = courseFeeAed(product);
-  const payment = product
-    ? coursePayment({ feeAed, beforeAed: paidBefore(earlier, product.name), todayAed: money.aed, withBonus: product.bonus_type !== 'without' })
-    : null;
+  const plan = coursePlan(product);
+  const beforeAed = product ? paidBefore(earlier, product.name) : 0;
+  const kinds = paymentKinds(plan, beforeAed);
+  const kind = kinds.length === 1 ? kinds[0] : paymentKind;
+  const payment = product && kind ? coursePayment({ plan, kind, beforeAed, todayAed: money.aed }) : null;
+  // Full: the course's price fills in. Partial: what was paid today, in AED.
+  const chooseKind = (k) => {
+    if (k === 'full') { if (plan.price) setDepositAmount(String(plan.price)); setCurrency(plan.currency); }
+    else { if (paymentKind === 'full') setDepositAmount(''); setCurrency('AED'); }
+    setPaymentKind(k);
+  };
 
   const handleFileUpload = async (e) => {
     const file = e.target.files?.[0];
@@ -66,6 +76,10 @@ export default function ReferralRequestPopup({ student, currentUser, onClose, tr
   const handleSubmit = async () => {
     if (isBonus && (!tags || tags.length === 0)) {
       toast.error('Please pick a product for the bonus');
+      return;
+    }
+    if (product && !kind) {
+      toast.error('Pick full or partial payment');
       return;
     }
     if (!(money.usd > 0)) {
@@ -93,7 +107,7 @@ export default function ReferralRequestPopup({ student, currentUser, onClose, tr
         payment_method: paymentMethod,
         mt5_login: mt5Login,
         screenshot_url: screenshotUrl,
-        notes: [notes.trim(), paymentNote({ amount: depositAmount, currency, product, feeAed, payment })].filter(Boolean).join('\n'),
+        notes: [notes.trim(), paymentNote({ amount: depositAmount, currency, product, plan, payment })].filter(Boolean).join('\n'),
         transaction_type: transactionType,
         tags: isBonus ? tags : [],
       });
@@ -137,6 +151,7 @@ export default function ReferralRequestPopup({ student, currentUser, onClose, tr
             <div className="space-y-2">
               <Label>Product *</Label>
               <TagsPicker
+                only={hasBonusPlan}
                 value={tags}
                 onChange={(picked) => {
                   // Pull in any bundled products — included, not added on top. The
@@ -147,6 +162,11 @@ export default function ReferralRequestPopup({ student, currentUser, onClose, tr
                     ? picked0.includes.filter(n => n && n !== primary)
                     : [];
                   setTags(primary ? [primary, ...included] : []);
+                  // Full payment only (no instalments): its price fills in. Otherwise full or partial is asked next.
+                  const terms = coursePlan(picked0);
+                  setPaymentKind('');
+                  if (terms.instalments === 0 && terms.price) { setDepositAmount(String(terms.price)); setCurrency(terms.currency); }
+                  else setDepositAmount('');
                 }}
               />
               {tags.length > 1 && (
@@ -155,20 +175,21 @@ export default function ReferralRequestPopup({ student, currentUser, onClose, tr
                 </p>
               )}
               <p className="text-xs text-muted-foreground">
-                Pick the course, then type what the student paid today — the MT5 bonus, what waits on hold and the balance work themselves out.
+                Pick the course, then full or partial payment — the MT5 bonus, what waits on hold and the balance work themselves out.
               </p>
             </div>
           )}
+          {product && <PaymentKind value={kind} kinds={kinds} onChange={chooseKind} started={plan.instalments > 0 && beforeAed > 0} />}
 
           <CurrencyAmount
             id="referral-amount"
-            label={isBonus ? 'Payment received today *' : 'Amount *'}
+            label={!isBonus ? 'Amount *' : kind === 'full' ? 'Full payment received *' : 'Payment received today *'}
             amount={depositAmount}
             currency={currency}
             onAmount={setDepositAmount}
             onCurrency={setCurrency}
           />
-          <CoursePaymentPanel product={product} feeAed={feeAed} payment={payment} />
+          <CoursePaymentPanel product={product} plan={plan} payment={payment} />
 
           <div className="space-y-2">
             <Label>Payment Method *</Label>

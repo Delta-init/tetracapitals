@@ -20,7 +20,11 @@ export default function TransactionTags() {
   const [currentUser, setCurrentUser] = useState(null);
   const [name, setName] = useState('');
   const [amount, setAmount] = useState('');
-  const [feeAed, setFeeAed] = useState('');   // a course's fee in AED: a course payment's balance and MT5 bonus
+  // A course's terms for a Bonus (a course payment): its full price, its whole bonus, its AED 2,000 instalments.
+  const [fullPrice, setFullPrice] = useState('');
+  const [fullCurrency, setFullCurrency] = useState('USD');
+  const [bonusUsd, setBonusUsd] = useState('');
+  const [instalments, setInstalments] = useState('');
   const [bonusType, setBonusType] = useState('with'); // 'with' = added to MT5, 'without' = not added
   const [color, setColor] = useState(PRESET_COLORS[0]);
   const queryClient = useQueryClient();
@@ -44,7 +48,10 @@ export default function TransactionTags() {
       toast.success('Product added');
       setName('');
       setAmount('');
-      setFeeAed('');
+      setFullPrice('');
+      setFullCurrency('USD');
+      setBonusUsd('');
+      setInstalments('');
       setBonusType('with');
       setColor(PRESET_COLORS[0]);
     },
@@ -79,7 +86,11 @@ export default function TransactionTags() {
     if (tags.some(t => t.name.toLowerCase() === trimmed.toLowerCase())) {
       toast.error('That product already exists'); return;
     }
-    createMutation.mutate({ name: trimmed, color, amount_usd: parseFloat(amount) || 0, fee_aed: parseFloat(feeAed) || 0, bonus_type: bonusType, active: true });
+    createMutation.mutate({
+      name: trimmed, color, amount_usd: parseFloat(amount) || 0, bonus_type: bonusType, active: true,
+      full_price: parseFloat(fullPrice) || 0, full_price_currency: fullCurrency, bonus_usd: parseFloat(bonusUsd) || 0,
+      instalments: Math.max(0, parseInt(instalments, 10) || 0),
+    });
   };
 
   if (!currentUser) {
@@ -95,11 +106,11 @@ export default function TransactionTags() {
   }
 
   return (
-    <div className="p-6 max-w-4xl mx-auto space-y-6">
+    <div className="p-6 max-w-6xl mx-auto space-y-6">
       <div>
         <PageTitle eyebrow="Funding" icon={TagIcon}>Products</PageTitle>
         <p className="mt-2 max-w-3xl text-sm text-slate-500 sm:text-base">
-          Manage the products staff select when logging a <strong>BONUS</strong> — each carries its amount, its course fee in AED (a course payment's balance, and its MT5 bonus of $500 per AED 2,000 paid) and With/Without-bonus type.
+          Manage the products staff select when logging a <strong>BONUS</strong>. A course with a bonus set is offered there: paid in full — its full price, and its whole bonus in MT5 at once; or in instalments of AED 2,000 (as many as set) — $500 bonus each, the rest on hold until the next.
         </p>
       </div>
 
@@ -124,15 +135,15 @@ export default function TransactionTags() {
               onChange={(e) => setAmount(e.target.value)}
               className="md:w-40"
             />
-            <Input
-              type="number"
-              step="0.01"
-              min="0"
-              placeholder="Course fee (AED)"
-              value={feeAed}
-              onChange={(e) => setFeeAed(e.target.value)}
-              className="md:w-40"
-            />
+            <div className="flex gap-1 md:w-48">
+              <Input type="number" step="0.01" min="0" placeholder="Full price" value={fullPrice} onChange={(e) => setFullPrice(e.target.value)} />
+              <select value={fullCurrency} onChange={(e) => setFullCurrency(e.target.value)} className="h-10 rounded-md border border-input bg-background px-1 text-sm" aria-label="Full price currency">
+                <option value="USD">USD</option>
+                <option value="AED">AED</option>
+              </select>
+            </div>
+            <Input type="number" step="0.01" min="0" placeholder="Bonus (USD)" value={bonusUsd} onChange={(e) => setBonusUsd(e.target.value)} className="md:w-32" />
+            <Input type="number" step="1" min="0" placeholder="Instalments" value={instalments} onChange={(e) => setInstalments(e.target.value)} className="md:w-28" title="How many AED 2,000 instalments — 0 for full payment only" />
             <select
               value={bonusType}
               onChange={(e) => setBonusType(e.target.value)}
@@ -176,7 +187,9 @@ export default function TransactionTags() {
                 <TableRow>
                   <TableHead>Name</TableHead>
                   <TableHead>Amount (USD)</TableHead>
-                  <TableHead>Course fee (AED)</TableHead>
+                  <TableHead>Full price</TableHead>
+                  <TableHead>Bonus (USD)</TableHead>
+                  <TableHead title="How many AED 2,000 instalments — 0 for full payment only">Instalments</TableHead>
                   <TableHead>Bonus type</TableHead>
                   <TableHead>Includes (bundled)</TableHead>
                   <TableHead>Color</TableHead>
@@ -210,18 +223,59 @@ export default function TransactionTags() {
                       />
                     </TableCell>
                     <TableCell>
+                      <div className="flex gap-1">
+                        <Input
+                          type="number"
+                          step="0.01"
+                          min="0"
+                          key={`${t.id}-price-${t.full_price ?? 0}`}
+                          defaultValue={t.full_price ?? 0}
+                          onBlur={(e) => {
+                            const v = parseFloat(e.target.value) || 0;
+                            if (v !== (t.full_price ?? 0)) updateMutation.mutate({ id: t.id, data: { full_price: v } });
+                          }}
+                          className="w-24 h-8"
+                          aria-label={`${t.name} full price`}
+                        />
+                        <select
+                          value={t.full_price_currency === 'AED' ? 'AED' : 'USD'}
+                          onChange={(e) => updateMutation.mutate({ id: t.id, data: { full_price_currency: e.target.value } })}
+                          className="h-8 rounded-md border border-input bg-background px-1 text-sm"
+                          aria-label={`${t.name} full price currency`}
+                        >
+                          <option value="USD">USD</option>
+                          <option value="AED">AED</option>
+                        </select>
+                      </div>
+                    </TableCell>
+                    <TableCell>
                       <Input
                         type="number"
                         step="0.01"
                         min="0"
-                        key={`${t.id}-fee-${t.fee_aed ?? 0}`}
-                        defaultValue={t.fee_aed ?? 0}
+                        key={`${t.id}-bonus-${t.bonus_usd ?? 0}`}
+                        defaultValue={t.bonus_usd ?? 0}
                         onBlur={(e) => {
                           const v = parseFloat(e.target.value) || 0;
-                          if (v !== (t.fee_aed ?? 0)) updateMutation.mutate({ id: t.id, data: { fee_aed: v } });
+                          if (v !== (t.bonus_usd ?? 0)) updateMutation.mutate({ id: t.id, data: { bonus_usd: v } });
                         }}
-                        className="w-28 h-8"
-                        aria-label={`${t.name} course fee in AED`}
+                        className="w-24 h-8"
+                        aria-label={`${t.name} bonus in USD`}
+                      />
+                    </TableCell>
+                    <TableCell>
+                      <Input
+                        type="number"
+                        step="1"
+                        min="0"
+                        key={`${t.id}-inst-${t.instalments ?? 0}`}
+                        defaultValue={t.instalments ?? 0}
+                        onBlur={(e) => {
+                          const v = Math.max(0, parseInt(e.target.value, 10) || 0);
+                          if (v !== (t.instalments ?? 0)) updateMutation.mutate({ id: t.id, data: { instalments: v } });
+                        }}
+                        className="w-16 h-8"
+                        aria-label={`${t.name} instalments of AED 2,000`}
                       />
                     </TableCell>
                     <TableCell>

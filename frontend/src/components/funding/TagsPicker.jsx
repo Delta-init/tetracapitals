@@ -12,8 +12,9 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
  *   value:     string[]            currently-selected tag names (length 0 or 1)
  *   onChange:  (next: string[]) => void
  *   disabled?: boolean
+ *   only?:     (tag) => boolean   only these — a Bonus lists the courses with a bonus set
  */
-export default function TagsPicker({ value = [], onChange, disabled }) {
+export default function TagsPicker({ value = [], onChange, disabled, only }) {
   const { data: tags = [] } = useQuery({
     queryKey: ['transaction-tags-catalog'],
     queryFn: async () => {
@@ -35,10 +36,11 @@ export default function TagsPicker({ value = [], onChange, disabled }) {
     }
   };
 
-  if (tags.length === 0) {
+  const shown = only ? tags.filter(only) : tags;
+  if (shown.length === 0) {
     return (
       <p className="text-sm text-muted-foreground">
-        No products defined yet. An admin can add them on the <strong>Products</strong> page.
+        {tags.length === 0 ? 'No products defined yet.' : 'No course has a bonus set yet.'} An admin can set them on the <strong>Products</strong> page.
       </p>
     );
   }
@@ -49,7 +51,7 @@ export default function TagsPicker({ value = [], onChange, disabled }) {
         <SelectValue placeholder="Select a product…" />
       </SelectTrigger>
       <SelectContent>
-        {tags.map((t) => (
+        {shown.map((t) => (
           <SelectItem key={t.id} value={t.name}>
             <span className="inline-flex items-center gap-2">
               {t.color && <span className="inline-block w-2.5 h-2.5 rounded-full" style={{ backgroundColor: t.color }} />}
