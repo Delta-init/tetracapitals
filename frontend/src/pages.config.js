@@ -98,6 +98,7 @@ import Tickets from './pages/Tickets';
 import Transactions from './pages/Transactions';
 import TransactionTags from './pages/TransactionTags';
 import WhatsApp from './pages/WhatsApp';
+import PaymentLinks from './pages/PaymentLinks';
 import __Layout from './Layout.jsx';
 
 
@@ -153,6 +154,7 @@ export const PAGES = {
     "Transactions": Transactions,
     "TransactionTags": TransactionTags,
     "WhatsApp": WhatsApp,
+    "PaymentLinks": PaymentLinks,
 }
 
 export const pagesConfig = {

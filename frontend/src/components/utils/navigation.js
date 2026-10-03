@@ -50,6 +50,7 @@ import {
   PhoneIncoming,
   MessageCircle,
   CalendarDays,
+  CreditCard,
 } from 'lucide-react';
 
 // "StudentLogHistoryPage" -> "Student Log History", "AIInsights" -> "AI Insights"
@@ -70,7 +71,8 @@ export const navLabel = (item) => item.label || humanize(item.name);
 // their role's page list — Role Management lists neither on its own. `notFor`
 // roles never get the page, whatever their page list says: it is not in their
 // sidebar or offered for them in Role Management, and opened by address it
-// says it is not available (Layout.jsx).
+// says it is not available (Layout.jsx). `only` pages are the same for every
+// role not listed.
 const FOLLOWUP_ROLES = ['super_admin', 'admin', 'broker_admin', 'academic_head', 'academic_admin', 'admin_supervisor', 'finance_admin', 'chief_mentor', 'senior_mentor', 'junior_mentor', 'subjunior_mentor', 'assistance'];
 export const NAV_ITEMS = [
   { name: 'Dashboard', page: 'Dashboard', icon: LayoutDashboard, roles: ['super_admin', 'admin', 'broker_admin', 'academic_head', 'admin_supervisor', 'junior_mentor', 'chief_mentor', 'senior_mentor', 'finance_admin'] },
@@ -104,6 +106,8 @@ export const NAV_ITEMS = [
   { name: 'MT5Accounts', hidden: true, page: 'MT5Accounts', icon: CandlestickChart, roles: ['super_admin', 'admin', 'broker_admin', 'academic_head', 'junior_mentor', 'chief_mentor', 'senior_mentor'] },
   { name: 'FundingActivities', page: 'MyFundingRequests', icon: Wallet, roles: ['chief_mentor', 'senior_mentor', 'junior_mentor', 'assistance'] },
   { name: 'FundingRequests', page: 'FundingRequests', icon: HandCoins, roles: ['super_admin', 'broker_admin', 'academic_head', 'finance_admin'] },
+  // CSs ask on the student's page; a Super Admin pastes the link in (backend/src/functions/paymentLinks.ts).
+  { name: 'PaymentLinks', label: 'Payment Links', page: 'PaymentLinks', icon: CreditCard, roles: ['super_admin'], only: ['super_admin'] },
   { name: 'MyTargets', page: 'MyTargets', icon: Target, roles: ['chief_mentor', 'senior_mentor', 'junior_mentor'] },
   { name: 'TargetsManagement', page: 'TargetsManagement', icon: Crosshair, roles: ['super_admin', 'broker_admin', 'academic_head'] },
   { name: 'MyCommissionHistory', page: 'MyCommissionHistory', icon: ReceiptText, roles: ['chief_mentor', 'senior_mentor', 'junior_mentor'] },
@@ -130,14 +134,14 @@ export const GROUP_OF = {
   Dashboard: 'Overview', TeamDashboard: 'Overview', Teams: 'Overview', ActivityTracker: 'Overview', AIInsights: 'Overview', Leaderboard: 'Overview', MentorPerformance: 'Overview', MentorTraining: 'Overview',
   Personnel: 'People & Access', RolesManagement: 'People & Access', Hierarchy: 'People & Access', AcademicCounselors: 'People & Access', MasterAdmin: 'People & Access',
   Students: 'Students', StudentFollowups: 'Students', OverdueFollowups: 'Students', StudentCalls: 'Students', WhatsApp: 'Students', MentorCalendar: 'Students', StudentLogs: 'Students', StudentLogHistoryPage: 'Students', MyStudentRequests: 'Students', StudentRequestApprovals: 'Students', RetentionManagement: 'Students', DrawAdminStudents: 'Students', MT5Accounts: 'Students', InactivityTransfers: 'Students', StudentTags: 'Students',
-  FundingActivities: 'Funding', FundingRequests: 'Funding', Transactions: 'Funding', TransactionTags: 'Funding',
+  FundingActivities: 'Funding', FundingRequests: 'Funding', PaymentLinks: 'Funding', Transactions: 'Funding', TransactionTags: 'Funding',
   CommissionPlans: 'Commission', BonusCommissionReports: 'Commission', DepositCommissionReports: 'Commission', CommissionReports: 'Commission', CommissionTools: 'Commission', Commissions: 'Commission', QuarterClosing: 'Commission', MonthlyClosing: 'Commission', DailyPayouts: 'Commission', MyCommissionHistory: 'Commission', MyTargets: 'Commission', TargetsManagement: 'Commission',
   Tickets: 'More', Reports: 'More', AuditLogs: 'More', GamificationSettings: 'More',
 };
 
-/** A page (by item name or page) this role never gets — see `notFor`. */
+/** A page (by item name or page) this role never gets — see `notFor` and `only`. */
 export const pageBlockedFor = (role, name) =>
-  !!role && NAV_ITEMS.some(i => (i.name === name || i.page === name) && i.notFor?.includes(role));
+  !!role && NAV_ITEMS.some(i => (i.name === name || i.page === name) && (i.notFor?.includes(role) || (i.only && !i.only.includes(role))));
 
 /** Page names a built-in role sees when it has no override. */
 export const defaultPagesFor = (role) =>

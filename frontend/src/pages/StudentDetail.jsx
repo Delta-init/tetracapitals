@@ -19,7 +19,7 @@ import StudentHistory, { useStudentHistory } from "../components/students/Studen
 import StudentFollowupsSection from "@/components/followups/StudentFollowupsSection";
 import StudentCallsSection from "@/components/calls/StudentCallsSection";
 import StudentWhatsAppCard from "@/components/students/StudentWhatsAppCard";
-import TabbyLinksCard from "@/components/students/TabbyLinksCard";
+import PaymentLinksCard from "@/components/students/PaymentLinksCard";
 import StudentClassesCard from "@/components/students/StudentClassesCard";
 import StudentLmsCoursesCard from "@/components/students/StudentLmsCoursesCard";
 import StudentLmsSupportCards from "@/components/students/StudentLmsSupportCards";
@@ -416,8 +416,8 @@ export default function StudentDetail() {
         {/* Calls with them through 3CX, with the recordings */}
         <StudentCallsSection student={displayStudent} />
 
-        {/* Tabby payment links sent to them */}
-        <TabbyLinksCard student={displayStudent} />
+        {/* Payment links: their CS asks, a Super Admin adds the link */}
+        <PaymentLinksCard student={displayStudent} />
 
         <StudentWhatsAppCard student={displayStudent} />
 

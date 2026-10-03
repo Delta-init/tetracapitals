@@ -28,7 +28,8 @@ export type HistoryType =
   | "made_common"
   | "tag_changed"
   | "details_changed"
-  | "onboarding_changed";
+  | "onboarding_changed"
+  | "payment_link";
 
 export interface HistoryEntry {
   student_id: string;

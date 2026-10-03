@@ -157,7 +157,7 @@ export default function Layout({ children, currentPageName }) {
   const allowedPages = currentUser?.app_role === 'super_admin' ? null : myRole?.page_permissions;
   const filteredNavigation = navigation.filter(item => {
     if (item.hidden) return false;
-    if (item.notFor?.includes(currentUser?.app_role)) return false;
+    if (pageBlockedFor(currentUser?.app_role, item.name)) return false;
     if (item.everyone) return true;
     if (item.name === 'RolesManagement' && ['super_admin', 'admin'].includes(currentUser?.app_role)) return true;
     if (Array.isArray(allowedPages)) return allowedPages.includes(item.sameAccessAs || item.name);
@@ -173,11 +173,13 @@ export default function Layout({ children, currentPageName }) {
     Students: navCounts?.new_students,
     StudentFollowups: navCounts?.followups_today,
     OverdueFollowups: navCounts?.followups_overdue,
+    PaymentLinks: navCounts?.payment_links_pending,
   })[name] || 0;
   const COUNT_STYLE = {
     Students: { cls: 'bg-brand-mint text-brand-navy', title: 'new students given to you — not opened yet' },
     StudentFollowups: { cls: 'bg-amber-400 text-brand-navy', title: 'follow-ups due today' },
     OverdueFollowups: { cls: 'bg-rose-500 text-white', title: 'overdue follow-ups' },
+    PaymentLinks: { cls: 'bg-amber-400 text-brand-navy', title: 'payment link requests waiting for you' },
   };
 
   const hasBadge = (name) =>

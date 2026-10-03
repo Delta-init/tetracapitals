@@ -6,13 +6,14 @@ import { CLOSED_STAGES, businessToday, visibleMentorIds, studentsOf } from "../s
 
 /**
  * POST /api/functions/getNavCounts
- * Returns: { new_students, followups_today, followups_overdue }
+ * Returns: { new_students, followups_today, followups_overdue, payment_links_pending }
  *
  * The numbers on the sidebar. New students: given to you and not opened yet
  * (students.new_for_id — see notifyStudentsGiven). Follow-ups: what the
  * Follow-ups page's "Due today" tab and the Overdue follow-ups page show you —
  * your own students; Chief Mentor and CS Manager also everyone under them;
- * admin roles everyone.
+ * admin roles everyone. Payment links: requests waiting for a Super Admin
+ * (paymentLinks.ts) — Super Admins only.
  */
 export async function getNavCounts(_req: Request, user: AuthUser): Promise<Response> {
   const today = businessToday();
@@ -22,12 +23,13 @@ export async function getNavCounts(_req: Request, user: AuthUser): Promise<Respo
     const ids = (await col("students").find(studentsOf(visible), { projection: { _id: 1 } }).toArray()).map((s) => String(s._id));
     open.student_id = { $in: ids };
   }
-  const [newStudents, dueToday, overdue] = await Promise.all([
+  const [newStudents, dueToday, overdue, linksWaiting] = await Promise.all([
     col("students").countDocuments({ new_for_id: user.id, primary_mentor_id: user.id }),
     col("student_followups").countDocuments({ ...open, next_followup_date: today }),
     col("student_followups").countDocuments({ ...open, next_followup_date: { $gt: "", $lt: today } }),
+    user.app_role === "super_admin" ? col("payment_link_requests").countDocuments({ status: "pending" }) : 0,
   ]);
-  return json({ today, new_students: newStudents, followups_today: dueToday, followups_overdue: overdue });
+  return json({ today, new_students: newStudents, followups_today: dueToday, followups_overdue: overdue, payment_links_pending: linksWaiting });
 }
 
 /**

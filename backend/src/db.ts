@@ -106,6 +106,8 @@ export async function ensureIndexes(): Promise<void> {
     d.collection("student_log_history").createIndex({ created_date: -1 }),
     d.collection("tabby_links").createIndex({ student_id: 1, created_at: -1 }),
     d.collection("tabby_links").createIndex({ reference_id: 1 }, { unique: true }),
+    d.collection("payment_link_requests").createIndex({ student_id: 1, created_at: -1 }),
+    d.collection("payment_link_requests").createIndex({ status: 1, created_at: -1 }),
     d.collection("retention_assignments").createIndex({ student_id: 1 }),
     d.collection("mentor_targets").createIndex({ mentor_id: 1, period: 1 }),
     d.collection("mentor_points").createIndex({ total_points: -1 }),

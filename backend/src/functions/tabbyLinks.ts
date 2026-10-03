@@ -21,8 +21,12 @@ import { tabbyConfigured, createSession, sendLink, cancelSession, getPayment, Ta
    ERROR (Tabby could not be asked) · then Tabby's own: CREATED (waiting) ·
    AUTHORIZED / CLOSED (paid) · REJECTED (declined at checkout) · EXPIRED
    (ran out, or cancelled here).
+
+   No new links since 2026-10-03, for anyone (the user's choice): a CS asks
+   for a payment link and a Super Admin pastes it in — paymentLinks.ts.
 ──────────────────────────────────────────────────────────────────────────── */
 
+const LINKS_OFF = true;
 const LINKS = "tabby_links";
 const MAX_AMOUNT = 100_000;
 const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -125,6 +129,7 @@ export async function getTabbyLinks(req: Request, user: AuthUser): Promise<Respo
  * → { link } — NOT_ELIGIBLE with Tabby's message when it won't take the student for this amount.
  */
 export async function createTabbyLink(req: Request, user: AuthUser): Promise<Response> {
+  if (LINKS_OFF) return forbidden("Tabby links are switched off — ask for a payment link on the student's page instead");
   if (!tabbyConfigured()) return error("Tabby isn't set up on the server yet (TABBY_SECRET_KEY, TABBY_MERCHANT_CODE)", 400);
   const body: any = await req.json().catch(() => ({}));
   const student = await studentFor(body?.studentId);

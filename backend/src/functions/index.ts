@@ -34,6 +34,7 @@ import { getStudentTags, setStudentTag } from "./studentTags";
 import { getPushConfig, savePushSubscription, deletePushSubscription, sendTestPush } from "./push";
 import { getNavCounts, markStudentSeen } from "./navCounts";
 import { getTabbyLinks, createTabbyLink, cancelTabbyLink } from "./tabbyLinks";
+import { getPaymentLinks, requestPaymentLink, approvePaymentLink, rejectPaymentLink, cancelPaymentLinkRequest } from "./paymentLinks";
 import { listStudents, getStudentListOptions, findStudentByEmail } from "./studentsList";
 import { listStudentLogs, listStudentLogHistory, listTransactions } from "./pagedLists";
 import {
@@ -94,6 +95,11 @@ const AUTHED: Record<string, AuthedHandler> = {
   getTabbyLinks,
   createTabbyLink,
   cancelTabbyLink,
+  getPaymentLinks,
+  requestPaymentLink,
+  approvePaymentLink,
+  rejectPaymentLink,
+  cancelPaymentLinkRequest,
   listStudents,
   getStudentListOptions,
   findStudentByEmail,
