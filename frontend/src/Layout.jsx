@@ -185,6 +185,12 @@ export default function Layout({ children, currentPageName }) {
   // server only counts each for them). Collapsed there is room for one: the first that isn't 0.
   const PILLS = {
     Students: [{ n: navCounts?.new_students, cls: 'bg-brand-mint text-brand-navy', title: 'new students given to you — not opened yet' }],
+    // Red once any has waited 6 hours or more.
+    NotOnboarded: [{
+      n: navCounts?.not_onboarded,
+      cls: navCounts?.not_onboarded_late ? 'bg-rose-500 text-white' : 'bg-amber-400 text-brand-navy',
+      title: `new students from finance not onboarded yet${navCounts?.not_onboarded_late ? ` — ${navCounts.not_onboarded_late} over 6 hours` : ''}`,
+    }],
     StudentFollowups: [{ n: navCounts?.followups_today, cls: 'bg-amber-400 text-brand-navy', title: 'follow-ups due today' }],
     OverdueFollowups: [{ n: navCounts?.followups_overdue, cls: 'bg-rose-500 text-white', title: 'overdue follow-ups' }],
     PaymentLinks: [

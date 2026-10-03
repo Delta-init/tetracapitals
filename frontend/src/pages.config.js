@@ -100,6 +100,7 @@ import TransactionTags from './pages/TransactionTags';
 import WhatsApp from './pages/WhatsApp';
 import PaymentLinks from './pages/PaymentLinks';
 import SupportTickets from './pages/SupportTickets';
+import NotOnboarded from './pages/NotOnboarded';
 import __Layout from './Layout.jsx';
 
 
@@ -149,6 +150,7 @@ export const PAGES = {
     "InactivityTransfers": InactivityTransfers,
     "StudentFollowups": StudentFollowups,
     "OverdueFollowups": OverdueFollowups,
+    "NotOnboarded": NotOnboarded,
     "StudentCalls": StudentCalls,
     "MentorCalendar": MentorCalendar,
     "Tickets": Tickets,

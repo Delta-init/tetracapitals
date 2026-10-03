@@ -27,6 +27,7 @@ import { getCalls, getCallRecording, syncCallsNow, testThreecx, getClickToCall, 
 import { setEnrolment, getLmsEnrolment, syncLmsEnrolmentNow } from "./studentEnrolment";
 import { updateStudentDetails } from "./studentDetails";
 import { getOnboardingDraft, setOnboarding } from "./studentOnboarding";
+import { getNotOnboarded } from "./notOnboarded";
 import { getStudentClasses } from "./lmsClasses";
 import { getStudentLmsSupport, getLmsSupportTickets, getLmsSupportTicketCount, answerLmsTicket, resolveLmsTicket } from "./lmsSupport";
 import { getStudentLmsCourses } from "./lmsCourses";
@@ -80,6 +81,7 @@ const AUTHED: Record<string, AuthedHandler> = {
   updateStudentDetails,
   getOnboardingDraft,
   setOnboarding,
+  getNotOnboarded,
   getLmsEnrolment,
   syncLmsEnrolmentNow,
   getStudentClasses,

@@ -3,10 +3,12 @@ import { json, error } from "../lib/response";
 import { toObjectId } from "../lib/id";
 import type { AuthUser } from "../auth/middleware";
 import { CLOSED_STAGES, businessToday, visibleMentorIds, studentsOf } from "../students/followups";
+import { notOnboardedFilter } from "../students/onboardingAlerts";
 
 /**
  * POST /api/functions/getNavCounts
- * Returns: { new_students, followups_today, followups_overdue, payment_links_pending, payment_links_ready, payment_links_turned_down }
+ * Returns: { new_students, followups_today, followups_overdue, payment_links_pending, payment_links_ready, payment_links_turned_down,
+ *            not_onboarded, not_onboarded_late }
  *
  * The numbers on the sidebar. New students: given to you and not opened yet
  * (students.new_for_id — see notifyStudentsGiven). Follow-ups: what the
@@ -14,7 +16,9 @@ import { CLOSED_STAGES, businessToday, visibleMentorIds, studentsOf } from "../s
  * your own students; Chief Mentor and CS Manager also everyone under them;
  * admin roles everyone. Payment links (paymentLinks.ts): for a Super Admin the
  * requests waiting for them; for a CS the links ready and the turn-downs, of
- * what they asked for, that they haven't seen yet.
+ * what they asked for, that they haven't seen yet. Not onboarded: new students
+ * from finance not onboarded yet, and how many of them waited 6 hours or more
+ * (students/onboardingAlerts.ts) — whose, as the follow-ups.
  */
 export async function getNavCounts(_req: Request, user: AuthUser): Promise<Response> {
   const today = businessToday();
@@ -25,18 +29,22 @@ export async function getNavCounts(_req: Request, user: AuthUser): Promise<Respo
     open.student_id = { $in: ids };
   }
   const cs = user.app_role === "cs";
+  const mine = (filter: Record<string, any>) => (visible ? { $and: [filter, studentsOf(visible)] } : filter);
   const unseen = (status: string) => col("payment_link_requests").countDocuments({ requested_by_id: user.id, status, cs_seen_at: { $exists: false } });
-  const [newStudents, dueToday, overdue, linksWaiting, linksReady, linksTurnedDown] = await Promise.all([
+  const [newStudents, dueToday, overdue, linksWaiting, linksReady, linksTurnedDown, notOnboarded, notOnboardedLate] = await Promise.all([
     col("students").countDocuments({ new_for_id: user.id, primary_mentor_id: user.id }),
     col("student_followups").countDocuments({ ...open, next_followup_date: today }),
     col("student_followups").countDocuments({ ...open, next_followup_date: { $gt: "", $lt: today } }),
     user.app_role === "super_admin" ? col("payment_link_requests").countDocuments({ status: "pending" }) : 0,
     cs ? unseen("approved") : 0,
     cs ? unseen("rejected") : 0,
+    col("students").countDocuments(mine(notOnboardedFilter())),
+    col("students").countDocuments(mine(notOnboardedFilter(Date.now()))),
   ]);
   return json({
     today, new_students: newStudents, followups_today: dueToday, followups_overdue: overdue,
     payment_links_pending: linksWaiting, payment_links_ready: linksReady, payment_links_turned_down: linksTurnedDown,
+    not_onboarded: notOnboarded, not_onboarded_late: notOnboardedLate,
   });
 }
 

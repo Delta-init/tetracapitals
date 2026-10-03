@@ -231,7 +231,7 @@ function countsOf(items: Item[]): string {
  * A CS's leaders: their team's leader (the Chief Mentor at its top, as the
  * Teams page has it) and every CS Manager above them on the Up Head chain.
  */
-function leadersOf(csId: string, teams: TeamIndex): string[] {
+export function leadersOf(csId: string, teams: TeamIndex): string[] {
   const out = new Set<string>();
   const team = teams.teamOf(csId);
   if (team) out.add(team.id);
