@@ -124,9 +124,9 @@ export const config = {
     apiUrl: (process.env.TABBY_API_URL || "https://api.tabby.ai").replace(/\/+$/, ""),
   },
   /**
-   * Abzer (BillXpro / SmartInvoice) payment links: a CS's SmartInvoice or
-   * BillXpro request gets its link from Abzer at once (functions/paymentLinks.ts,
-   * lib/abzer.ts) — the API the LMS's checkout uses (API v5.1).
+   * Abzer (BillXpro) payment links: a CS's BillXpro request gets its link from
+   * Abzer at once (functions/paymentLinks.ts, lib/abzer.ts) — the API the LMS's
+   * checkout uses (API v5.1). SmartInvoice requests wait for a Super Admin.
    *
    *   accessKey / secretKey  ABZER_ACCESS_KEY / ABZER_SECRET_KEY
    *   baseUrl                ABZER_BASE_URL       https://billxpro.com/as/api/v100
@@ -134,7 +134,7 @@ export const config = {
    *   currency               ABZER_CURRENCY       AED — what the account takes
    *   returnUrl              ABZER_RETURN_URL     where the student lands after paying
    *
-   * Either key unset: those requests wait for a Super Admin to paste a link, as Tabby and Tamara do.
+   * Either key unset: BillXpro requests wait for a Super Admin to paste a link too.
    */
   abzer: {
     accessKey: process.env.ABZER_ACCESS_KEY ?? "",

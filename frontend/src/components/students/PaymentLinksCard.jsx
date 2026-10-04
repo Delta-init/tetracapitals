@@ -18,9 +18,9 @@ import { WA_GREEN } from '@/components/whatsapp/waUi';
    Payment links on the student page (backend/src/functions/paymentLinks.ts).
    Their CS asks for one — the platform (Tabby, Tamara, SmartInvoice,
    BillXpro), the amount and what it is for; a Super Admin makes the link
-   and pastes it in on the Payment Links page. SmartInvoice and BillXpro,
-   when the server has Abzer (auto_platforms), need no Super Admin: the CS
-   makes the link, and the window shows it there and then. It is emailed to
+   and pastes it in on the Payment Links page. The platforms the server makes
+   at once (auto_platforms — BillXpro, when it has Abzer) need no Super Admin:
+   the CS makes the link, and the window shows it there and then. It is emailed to
    the student and shows here, for the CS to copy or send on their WhatsApp.
    An answer the CS who asked hadn't seen is marked New, and seen once shown.
 ──────────────────────────────────────────────────────────────────────────── */
@@ -214,8 +214,8 @@ export default function PaymentLinksCard({ student }) {
 }
 
 /**
- * SmartInvoice / BillXpro (autoPlatforms): "Make a payment link" — made at once, and the window then shows it, to copy
- * or send on WhatsApp. The others: "Ask for a payment link" — a Super Admin adds it.
+ * The platforms the server makes at once (autoPlatforms): "Make a payment link" — made there, and the window then shows
+ * it, to copy or send on WhatsApp. The others: "Ask for a payment link" — a Super Admin adds it.
  */
 function AskDialog({ student, currency, autoPlatforms = [], whatsApp, onClose, onDone }) {
   const [platform, setPlatform] = useState('');

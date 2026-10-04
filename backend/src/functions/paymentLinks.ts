@@ -24,11 +24,13 @@ import { onboardingEmail } from "./studentOnboarding";
    The CS also has the Payment Links page with what they asked for; their
    sidebar counts the answers (link ready, turned down) they haven't seen —
    cs_seen_at, set once they open that page or the student's page.
-   SmartInvoice and BillXpro — one Abzer account — need no Super Admin: Abzer
-   makes the link the moment the CS asks (lib/abzer.ts; the user, 2026-10-04),
-   approved as "SmartInvoice (automatic)" and emailed the same way. Abzer
-   saying no, or a student with no email, leaves it waiting for a Super Admin
-   to paste one, with Abzer's reason (auto_error).
+   BillXpro needs no Super Admin: Abzer makes the link the moment the CS asks
+   (lib/abzer.ts; the user, 2026-10-04), approved as "BillXpro (automatic)"
+   and emailed the same way. Abzer saying no, or a student with no email,
+   leaves it waiting for a Super Admin to paste one, with Abzer's reason
+   (auto_error). SmartInvoice is asked for, like Tabby and Tamara: the Abzer
+   account is BillXpro's, and every link it makes is a BillXpro link (the
+   user, 2026-10-04).
    Nothing here moves money.
 
    payment_link_requests.status: pending → approved (url) · rejected (reason)
@@ -44,8 +46,8 @@ const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const STATUS_WORD: Record<string, string> = { pending: "waiting", approved: "approved", rejected: "turned down", cancelled: "cancelled" };
 /** Where a link is made: the CS picks one when asking (`platform`); the Super Admin may make it on another (`made_on`). */
 const PLATFORMS: Record<string, string> = { tabby: "Tabby", tamara: "Tamara", smartinvoice: "SmartInvoice", billxpro: "BillXpro" };
-/** Made by Abzer the moment the CS asks — when Abzer is set up on this server. */
-const AUTO_PLATFORMS = new Set(["smartinvoice", "billxpro"]);
+/** Made by Abzer the moment the CS asks — when Abzer is set up on this server. Not SmartInvoice: Abzer's links are BillXpro's. */
+const AUTO_PLATFORMS = new Set(["billxpro"]);
 const autoPlatforms = () => (abzerConfigured() ? [...AUTO_PLATFORMS] : []);
 const str = (v: unknown, max = 500) => String(v ?? "").trim().slice(0, max);
 const platformOf = (v: unknown) => (PLATFORMS[str(v, 20).toLowerCase()] ? str(v, 20).toLowerCase() : "");
@@ -160,7 +162,7 @@ async function emailLink(r: any, student: any): Promise<void> {
 }
 
 /**
- * A SmartInvoice or BillXpro request: Abzer makes the link now — approved, emailed, in the history. → true; or false,
+ * A BillXpro request: Abzer makes the link now — approved, emailed, in the history. → true; or false,
  * with Abzer's reason kept (auto_error), and the request still waiting for a Super Admin.
  */
 async function autoLink(r: any, student: any): Promise<boolean> {
@@ -240,7 +242,7 @@ export async function getPaymentLinks(req: Request, user: AuthUser): Promise<Res
 /**
  * POST /api/functions/requestPaymentLink { studentId, platform, amount, description, note? }
  * The student's CS (or a CS they are Common with), on the platform the link should be made on
- * (tabby, tamara, smartinvoice, billxpro). SmartInvoice and BillXpro: made by Abzer at once (→ automatic: true);
+ * (tabby, tamara, smartinvoice, billxpro). BillXpro: made by Abzer at once (→ automatic: true);
  * otherwise — or when Abzer can't — every Super Admin is told.
  */
 export async function requestPaymentLink(req: Request, user: AuthUser): Promise<Response> {
@@ -260,7 +262,7 @@ export async function requestPaymentLink(req: Request, user: AuthUser): Promise<
   const note = str(body?.note, 1000);
   const sid = String(student._id);
 
-  // Approved too: a SmartInvoice / BillXpro link is approved the moment it is made — a double click mustn't make a second.
+  // Approved too: a BillXpro link is approved the moment it is made — a double click mustn't make a second.
   const dup: any = await col(REQUESTS).findOne({
     student_id: sid, requested_by_id: user.id, platform, amount, description, status: { $in: ["pending", "approved"] },
     created_at: { $gt: new Date(Date.now() - DUPLICATE_MS).toISOString() },
