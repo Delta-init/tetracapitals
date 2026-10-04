@@ -45,24 +45,33 @@ export function CallFlowProvider({ children }) {
   const refresh = useCallback(() => {
     queryClient.invalidateQueries({ queryKey: ['followups'] });
     queryClient.invalidateQueries({ queryKey: ['nav-counts'] });   // the sidebar's today / overdue
+    queryClient.invalidateQueries({ queryKey: ['students', 'not-onboarded'] });   // a call's Connected / Not connected there
   }, [queryClient]);
 
   const openLog = useCallback((followup) => setLogging(followup), []);
 
-  /** After a Call button dialled: find where to record the call. */
+  /** After a Call button dialled: find where to record the call. The call after onboarding (student.call_for, from
+   *  components/students/onboarding.jsx) is logged as an "Onboarding call" unless the CS picks another outcome. */
   const startCall = useCallback(async (student, followup = null) => {
     if (!student?.id) return;
+    const suggested = student.call_for === 'onboarding' ? 'Onboarding call' : '';
+    // From the Not onboarded page: the log asks whether the call connected, and a connected one opens the welcome.
+    const extra = {
+      ...(suggested ? { suggested_outcome: suggested } : {}),
+      ...(student.ask_connected ? { ask_connected: true, after_connected: student.onConnected } : {}),
+    };
+    const withOutcome = (f) => ({ ...f, ...extra });
     if (followup && followup.can_edit && isOpen(followup)) {
-      setLogging({ ...followup, phone: followup.phone || student.phone });
+      setLogging(withOutcome({ ...followup, phone: followup.phone || student.phone }));
       return;
     }
     try {
       const data = (await base44.functions.invoke('getFollowups', { studentId: student.id })).data;
       const open = (data?.followups || []).filter(f => f.can_edit && isOpen(f));
-      const withPhone = (f) => ({ ...f, phone: f.phone || student.phone });
+      const withPhone = (f) => withOutcome({ ...f, phone: f.phone || student.phone });
       if (open.length === 1) setLogging(withPhone(open[0]));
       else if (open.length > 1) setChoosing({ student, followups: open.map(withPhone), canCreate: !!data?.can_create });
-      else if (data?.can_create) setCreating({ student, afterCall: true });
+      else if (data?.can_create) setCreating({ student, afterCall: true, outcome: suggested });
       else toast.info(`Calling ${student.full_name || 'the student'} with 3CX`);
     } catch {
       // Dialling already happened; not being able to open the log is not worth an error.
@@ -127,6 +136,7 @@ export function CallFlowProvider({ children }) {
         onLog={(f) => setLogging({ ...f, phone: f.phone || creating?.student?.phone })}
         student={creating?.student ? { id: creating.student.id, full_name: creating.student.full_name } : null}
         title={creating?.afterCall ? `Log the call · ${creating.student.full_name}` : null}
+        defaultOutcome={creating?.outcome || ''}
         description={creating?.afterCall ? 'No open follow-up for this student yet — open one for this call, then record what they said.' : null}
         onSaved={(id, input) => {
           refresh();
@@ -137,6 +147,7 @@ export function CallFlowProvider({ children }) {
               id, student_id: s.id, student_name: s.full_name, phone: s.phone, target_outcome: input.targetOutcome,
               stage: 'New', client_said: input.clientSaid || '', notes: input.notes || '', objection_reason: '',
               converted_date: '', deal_value: null, can_edit: true,
+              ...(s.ask_connected ? { ask_connected: true, after_connected: s.onConnected } : {}),
             });
           }
         }}

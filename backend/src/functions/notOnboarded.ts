@@ -31,7 +31,7 @@ export async function getNotOnboarded(_req: Request, user: AuthUser): Promise<Re
       projection: {
         full_name: 1, student_code: 1, phone: 1, email: 1, lms_course: 1, primary_mentor_id: 1, primary_mentor_name: 1,
         common_cs: 1, team_name: 1, created_date: 1, onboarded: 1, onboarding_alert: 1, closed_by: 1, sales_crm: 1,
-        source: 1, finance_invoice_id: 1, lms_user_id: 1,
+        source: 1, finance_invoice_id: 1, lms_user_id: 1, onboarding_call: 1, onboarding_call_attempts: 1,
       },
     })
     .sort({ created_date: 1, _id: 1 })
@@ -54,6 +54,10 @@ export async function getNotOnboarded(_req: Request, user: AuthUser): Promise<Re
       created_date: s.created_date,
       onboarded: s.onboarded === true,
       from: fromOf(s),
+      // The onboarding call from this page: connected or not, when, and how many tries didn't (studentFollowups.ts).
+      call: s.onboarding_call
+        ? { connected: s.onboarding_call.connected === true, at: s.onboarding_call.at ?? null, attempts: Number(s.onboarding_call_attempts) || 0 }
+        : null,
       // Who closed them (students/closedBy.ts), and the sales CRM they came through — one of finance's from before
       // finance said which came through Delta's (students/salesCrm.ts); anyone else's only when it is known.
       closed_by: Array.isArray(s.closed_by) ? s.closed_by : [],

@@ -48,7 +48,7 @@ function useRefresh(student) {
 }
 
 /** The welcome, to change and send — or to mark them onboarded without it. */
-export function OnboardingDialog({ student, open, onOpenChange }) {
+export function OnboardingDialog({ student, open, onOpenChange, callAfterSend = true }) {
   const refresh = useRefresh(student);
   const callFlow = useCallFlow();
   const name = student?.full_name || 'Student';
@@ -91,7 +91,7 @@ export function OnboardingDialog({ student, open, onOpenChange }) {
     } finally {
       setBusy(false);
     }
-    startCall();
+    if (callAfterSend) startCall();   // not when the call came first (the Not onboarded page)
   };
   // Sent, then the call (the user, 2026-10-04): 3CX or phone, as the Call buttons ask — the call log after it takes
   // their MT5, and the sales close's bonus goes to be credited there. Its trouble is never "nothing was sent".
@@ -100,7 +100,7 @@ export function OnboardingDialog({ student, open, onOpenChange }) {
       const phone = student.phone || draft?.whatsapp?.to || '';
       const info = dialInfo(phone);
       if (!info.ok) toast.info(`No number to call ${name} on — ${info.reason || 'add their phone'}`);
-      else if (callFlow) callFlow.chooseCall({ id: student.id, full_name: student.full_name, phone }, null, info);
+      else if (callFlow) callFlow.chooseCall({ id: student.id, full_name: student.full_name, phone, call_for: 'onboarding' }, null, info);
     } catch { /* the call is theirs to start from the Call button */ }
   };
   const markOnly = async () => {
@@ -146,7 +146,7 @@ export function OnboardingDialog({ student, open, onOpenChange }) {
         ) : draft && (
           <div className="space-y-3">
             <SalesBonusNote bonuses={draft.sales_bonus} />
-            <p className="text-xs text-slate-500">Sending starts the call to {name} — log it after, with their MT5 ID.</p>
+            {callAfterSend && <p className="text-xs text-slate-500">Sending starts the call to {name} — log it after, with their MT5 ID.</p>}
             {channel(<Mail className="h-4 w-4 text-slate-500" />, 'Email', email.on, (on) => setEmail(v => ({ ...v, on })), draft.email.can_send, draft.email.why_not, (
               <>
                 <div>
@@ -218,10 +218,12 @@ function useUnmark(student) {
 
 /**
  * The Students table's Onboarded: a switch for whoever may change it (on → the welcome to send), Yes / No for
- * anyone else. It is a button, so clicking it never opens the student.
+ * anyone else. It is a button, so clicking it never opens the student. `callFirst` (the Not onboarded page, the user
+ * 2026-10-04): on → the call first; the log asks whether it connected, and only a connected call opens the welcome.
  */
-export function OnboardedSwitch({ student, currentUser }) {
+export function OnboardedSwitch({ student, currentUser, callFirst = false, onConnected = null }) {
   const unmark = useUnmark(student);
+  const callFlow = useCallFlow();
   const [asking, setAsking] = useState(false);
   const [busy, setBusy] = useState(false);
   const on = isOnboarded(student);
@@ -230,7 +232,22 @@ export function OnboardedSwitch({ student, currentUser }) {
     return <Badge variant="outline" className={on ? 'border-teal-200 bg-teal-50 text-teal-700' : 'border-slate-200 bg-slate-50 text-slate-500'} title={title}>{on ? 'Yes' : 'No'}</Badge>;
   }
   const flip = async (next) => {
-    if (next) { setAsking(true); return; }   // the welcome is sent first
+    if (next) {
+      if (callFirst) {
+        const info = dialInfo(student.phone);
+        if (info.ok && callFlow) {
+          callFlow.chooseCall({
+            id: student.id, full_name: student.full_name, phone: student.phone,
+            // The page opens the welcome (onConnected) — this row may be gone by then, filtered or refreshed away.
+            call_for: 'onboarding', ask_connected: true, onConnected: onConnected ? () => onConnected(student) : () => setAsking(true),
+          }, null, info);
+          return;
+        }
+        toast.info(`No number to call ${student.full_name || 'them'} on — onboard them without the call`);
+      }
+      setAsking(true);   // the welcome is sent first
+      return;
+    }
     setBusy(true);
     try { await unmark(); } catch (e) { toast.error(e?.message || 'Could not change it'); } finally { setBusy(false); }
   };
@@ -238,7 +255,7 @@ export function OnboardedSwitch({ student, currentUser }) {
     <span className="inline-flex items-center gap-2 whitespace-nowrap" title={title}>
       <Switch checked={on} disabled={busy} onCheckedChange={flip} aria-label={`${student.full_name || 'Student'} onboarded`} />
       <span className={`text-xs ${on ? 'font-medium text-teal-700' : 'text-slate-500'}`}>{on ? 'Onboarded' : 'Not onboarded'}</span>
-      {asking && <span onClick={stop}><OnboardingDialog student={student} open onOpenChange={setAsking} /></span>}
+      {asking && <span onClick={stop}><OnboardingDialog student={student} open onOpenChange={setAsking} callAfterSend={!callFirst} /></span>}
     </span>
   );
 }

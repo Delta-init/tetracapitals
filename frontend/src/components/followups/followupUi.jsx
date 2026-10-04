@@ -15,7 +15,7 @@ import { dialInfo } from './phone';
 import { HistoryEntry } from './FollowupNotes';
 
 // Same lists as the CSE Follow-up Tracker sheet (the server checks them too).
-export const OUTCOMES = ['DSLP', 'DQMP', 'DGMP', 'Additional Deposit / Top-up', 'Other'];
+export const OUTCOMES = ['DSLP', 'DQMP', 'DGMP', 'Additional Deposit / Top-up', 'Onboarding call', 'Other'];
 export const STAGES = ['New', 'Contacted', 'Qualified', 'Session with CM', 'Objection Stage', 'Converted', 'Lost'];
 export const LOST_REASONS = [
   'Not enough capital right now', 'Trust / legitimacy concern', 'Comparing with free content',
@@ -155,7 +155,9 @@ export function LogFollowupDialog({ followup, onClose, onSaved }) {
   // The student's MT5 — asked (and required) until they have one saved; saving it sends the sales close's bonus to
   // the admins to credit there (backend logFollowup).
   const mt5s = past?.mt5 || [];
-  const needsMt5 = !!past && mt5s.length === 0;
+  // After a call from the Not onboarded page: did it connect? Not connected — no MT5 asked, next follow-up today.
+  const askConnected = !!followup?.ask_connected;
+  const needsMt5 = !!past && mt5s.length === 0 && (!askConnected || form.connected === 'yes');
 
   useEffect(() => {
     if (!followup) return;
@@ -169,6 +171,9 @@ export function LogFollowupDialog({ followup, onClose, onSaved }) {
       dealValue: followup.deal_value ?? '',
       notes: '',
       mt5: '',
+      // What the call is about: the follow-up's own — or, for the call after onboarding, "Onboarding call" (CallFlow).
+      targetOutcome: followup.suggested_outcome || followup.target_outcome || '',
+      connected: '',
     });
   }, [followup]);
 
@@ -178,6 +183,7 @@ export function LogFollowupDialog({ followup, onClose, onSaved }) {
   const save = async () => {
     if (form.stage === 'Lost' && !form.objectionReason) { setError('Pick a lost reason.'); return; }
     if (form.stage === 'Converted' && (form.dealValue === '' || Number(form.dealValue) < 0)) { setError('Enter the deal value.'); return; }
+    if (askConnected && !form.connected) { setError('Did the call connect? Pick Connected or Not connected.'); return; }
     const mt5 = String(form.mt5 || '').replace(/\s+/g, '');
     if (needsMt5 && !MT5_LOGIN.test(mt5)) { setError("Enter the student's MT5 ID — its login number, digits only. It's needed until they have one saved."); return; }
     setBusy(true); setError(null);
@@ -194,10 +200,14 @@ export function LogFollowupDialog({ followup, onClose, onSaved }) {
         dealValue: form.stage === 'Converted' ? Number(form.dealValue) : undefined,
         notes: form.notes,
         ...(needsMt5 ? { mt5Login: mt5 } : {}),
+        ...(askConnected ? { connected: form.connected === 'yes' } : {}),
+        ...(form.targetOutcome && form.targetOutcome !== followup.target_outcome ? { targetOutcome: form.targetOutcome } : {}),
       })).data;
       toast.success(['Follow-up logged', res?.mt5_saved && 'MT5 saved', res?.bonus_credits && 'the sales-close bonus went to the admins to credit'].filter(Boolean).join(' · '));
       onSaved?.();
       onClose();
+      // A connected call from the Not onboarded page: on to their welcome.
+      if (askConnected && form.connected === 'yes') followup.after_connected?.();
     } catch (e) {
       setError(e?.message || 'Could not save');
     } finally {
@@ -233,18 +243,38 @@ export function LogFollowupDialog({ followup, onClose, onSaved }) {
           </div>
         )}
 
+        {askConnected && (
+          <div className="space-y-1.5">
+            <Label>Call connected? *</Label>
+            <div className="flex flex-wrap gap-2">
+              <Button type="button" size="sm" variant={form.connected === 'yes' ? 'default' : 'outline'} aria-pressed={form.connected === 'yes'}
+                onClick={() => setForm(f => ({ ...f, connected: 'yes' }))}>Connected</Button>
+              <Button type="button" size="sm" variant={form.connected === 'no' ? 'destructive' : 'outline'} aria-pressed={form.connected === 'no'}
+                onClick={() => setForm(f => ({ ...f, connected: 'no', nextFollowupDate: f.nextFollowupDate || today }))}>Not connected</Button>
+            </div>
+            <p className="text-[11px] text-slate-400">{form.connected === 'no' ? 'Next follow-up today — they stay Not connected on the Not onboarded page' : form.connected === 'yes' ? 'Their welcome opens after you save' : ''}</p>
+          </div>
+        )}
+
         <div className="grid gap-3 sm:grid-cols-2">
           <div className="space-y-1.5">
             <Label htmlFor="log-mt5">MT5 ID{needsMt5 ? ' *' : ''}</Label>
             {mt5s.length
               ? <p className="font-mono text-sm text-slate-800">{mt5s.join(' · ')}</p>
               : <Input id="log-mt5" inputMode="numeric" value={form.mt5 || ''} onChange={set('mt5')} placeholder="The student's MT5 login" />}
-            <p className="text-[11px] text-slate-400">{mt5s.length ? 'Saved on their page' : 'Needed until they have one — saved as their MT5 account'}</p>
+            <p className="text-[11px] text-slate-400">{mt5s.length ? 'Saved on their page' : askConnected && form.connected === 'no' ? "Not needed — the call didn't connect" : 'Needed until they have one — saved as their MT5 account'}</p>
           </div>
           <SalesBonusNote bonuses={past?.sales_bonus} />
         </div>
 
         <div className="grid gap-4 sm:grid-cols-2">
+          <div className="space-y-1.5 sm:col-span-2">
+            <Label>Target outcome</Label>
+            <Select value={form.targetOutcome || undefined} onValueChange={(v) => v && set('targetOutcome')(v)}>
+              <SelectTrigger><SelectValue placeholder="Pick a target outcome" /></SelectTrigger>
+              <SelectContent>{OUTCOMES.map(o => <SelectItem key={o} value={o}>{o}</SelectItem>)}</SelectContent>
+            </Select>
+          </div>
           <div className="space-y-1.5">
             <Label>Stage</Label>
             <Select value={form.stage} onValueChange={(v) => v && set('stage')(v)}>
@@ -310,7 +340,7 @@ export const isOpenFollowup = (f) => !!f && f.followup_status !== 'Closed' && f.
  * (the user, 2026-10-04): a student who already has one open is marked in the list, and picked shows that follow-up
  * with "Log the call" (onLog) instead of opening a second — the server refuses a second too.
  */
-export function NewFollowupDialog({ open, onClose, onSaved, onLog, student = null, students = [], followups = [], title = null, description = null }) {
+export function NewFollowupDialog({ open, onClose, onSaved, onLog, student = null, students = [], followups = [], title = null, description = null, defaultOutcome = '' }) {
   const [studentId, setStudentId] = useState('');
   const [outcome, setOutcome] = useState('');
   const [next, setNext] = useState('');
@@ -322,7 +352,7 @@ export function NewFollowupDialog({ open, onClose, onSaved, onLog, student = nul
 
   useEffect(() => {
     if (!open) return;
-    setStudentId(student?.id || ''); setOutcome(''); setNext(today); setClientSaid(''); setNotes(''); setError(null); setBusy(false);
+    setStudentId(student?.id || ''); setOutcome(defaultOutcome || ''); setNext(today); setClientSaid(''); setNotes(''); setError(null); setBusy(false);
   }, [open, student?.id]);
 
   // The picked student's follow-ups: one already open means log on it, not open another.

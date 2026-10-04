@@ -16,7 +16,8 @@ import { getDownlineIds } from "../lib/scope";
    next due date, in business time (UTC+5:30, as quarterRange.jsx).
 ──────────────────────────────────────────────────────────────────────────── */
 
-export const TARGET_OUTCOMES = ["DSLP", "DQMP", "DGMP", "Additional Deposit / Top-up", "Other"] as const;
+// "Onboarding call": the call after a student is onboarded (the user, 2026-10-04) — never automatic, as "Other".
+export const TARGET_OUTCOMES = ["DSLP", "DQMP", "DGMP", "Additional Deposit / Top-up", "Onboarding call", "Other"] as const;
 export const STAGES = ["New", "Contacted", "Qualified", "Session with CM", "Objection Stage", "Converted", "Lost"] as const;
 export const LOST_REASONS = [
   "Not enough capital right now", "Trust / legitimacy concern", "Comparing with free content",

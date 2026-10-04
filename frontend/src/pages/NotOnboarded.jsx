@@ -13,7 +13,7 @@ import { AlarmClock, BellRing, DoorOpen, Download, Search, Users } from 'lucide-
 import { getEffectiveUser } from '@/components/utils/ImpersonationContext';
 import { createPageUrl } from '@/utils';
 import { CallButton } from '@/components/followups/CallFlow';
-import { OnboardedSwitch } from '@/components/students/onboarding';
+import { OnboardedSwitch, OnboardingDialog } from '@/components/students/onboarding';
 import { ClosedByCell, closedByText } from '@/components/students/closedBy';
 import { SALES_CRMS } from '@/components/students/salesCrm';
 
@@ -24,6 +24,10 @@ const when = (iso) => (iso ? new Date(iso).toLocaleString('en-GB', { day: '2-dig
 const platformOf = (s) => SALES_CRMS[s.sales_crm]?.label || '';
 // Where a student came from (backend getNotOnboarded `from`).
 const FROM = { finance: 'Finance', lms: 'LMS sign-up', sheet: 'Sheet', added: 'Added' };
+// The onboarding call from this page (backend getNotOnboarded `call`): Not connected, with how many tries.
+const callText = (c) => (!c ? '' : c.connected ? 'Connected' : `Not connected${c.attempts > 1 ? ` ×${c.attempts}` : ''}`);
+const CALLS = { all: 'Any call', not_connected: 'Not connected', none: 'Not called yet' };
+const callMatch = (c, f) => f === 'all' || (f === 'not_connected' ? !!c && !c.connected : f === 'none' ? !c : true);
 
 /**
  * Not onboarded — new students from finance who haven't been onboarded yet, the longest waiting first. Onboarding
@@ -47,6 +51,8 @@ export default function NotOnboarded() {
   const [cs, setCs] = useState('all');
   const [wait, setWait] = useState('all');
   const [from, setFrom] = useState('all');
+  const [call, setCall] = useState('all');
+  const [welcome, setWelcome] = useState(null);   // a connected onboarding call: their welcome, to send
 
   const limit = data?.wait_hours ?? 6;
   const waiting = useMemo(
@@ -67,12 +73,13 @@ export default function NotOnboarded() {
     (cs === 'all' || (s.primary_mentor_id || 'none') === cs) &&
     (wait === 'all' || (wait === 'late' ? s.waited >= limit : s.waited < limit)) &&
     (from === 'all' || s.from === from) &&
+    callMatch(s.call, call) &&
     (!needle || [s.full_name, s.student_code, s.phone, s.email, s.course, s.primary_mentor_name, closedByText(s), platformOf(s), FROM[s.from]].some(v => String(v || '').toLowerCase().includes(needle)))
   );
 
   const exportCsv = () => {
-    const head = ['Student', 'Code', 'Phone', 'Email', 'Course', 'CS', 'Team', 'Closed By', 'Platform', 'From', 'Arrived', 'Hours Waiting', 'Leaders Told'];
-    const lines = [head, ...rows.map(s => [s.full_name, s.student_code, s.phone, s.email, s.course, s.primary_mentor_name, s.team_name, closedByText(s), platformOf(s), FROM[s.from] || '', when(s.created_date), Math.floor(s.waited), s.alert?.at ? when(s.alert.at) : ''])];
+    const head = ['Student', 'Code', 'Phone', 'Email', 'Course', 'CS', 'Team', 'Closed By', 'Platform', 'From', 'Call', 'Arrived', 'Hours Waiting', 'Leaders Told'];
+    const lines = [head, ...rows.map(s => [s.full_name, s.student_code, s.phone, s.email, s.course, s.primary_mentor_name, s.team_name, closedByText(s), platformOf(s), FROM[s.from] || '', callText(s.call), when(s.created_date), Math.floor(s.waited), s.alert?.at ? when(s.alert.at) : ''])];
     const csv = lines.map(r => r.map(v => `"${String(v ?? '').replace(/"/g, '""')}"`).join(',')).join('\n');
     const a = document.createElement('a');
     a.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv' }));
@@ -88,7 +95,7 @@ export default function NotOnboarded() {
         <thead>
           <tr className="border-b bg-slate-50/80">
             <th className="sticky left-0 z-10 bg-slate-50 px-3 py-3 text-left text-[11px] font-semibold uppercase tracking-wider text-slate-500 shadow-[1px_0_0_#e2e8f0]">Call · Onboard</th>
-            <TH>Student</TH><TH>Phone</TH><TH>CS</TH><TH>Closed By</TH><TH>From</TH><TH>Arrived</TH><TH>Waiting</TH><TH>Leaders Told</TH>
+            <TH>Student</TH><TH>Phone</TH><TH>CS</TH><TH>Closed By</TH><TH>From</TH><TH>Call</TH><TH>Arrived</TH><TH>Waiting</TH><TH>Leaders Told</TH>
           </tr>
         </thead>
         <tbody>
@@ -99,7 +106,8 @@ export default function NotOnboarded() {
               <td className="sticky left-0 z-10 bg-white px-3 py-2.5 shadow-[1px_0_0_#e2e8f0] group-hover:bg-amber-50">
                 <div className="flex items-center gap-2">
                   <CallButton variant="icon" student={{ id: s.id, full_name: s.full_name, phone: s.phone }} />
-                  <OnboardedSwitch student={s} currentUser={currentUser} />
+                  {/* The call first: the welcome opens only after a connected call is logged */}
+                  <OnboardedSwitch student={s} currentUser={currentUser} callFirst onConnected={setWelcome} />
                 </div>
               </td>
               <td className="px-3 py-2.5">
@@ -115,6 +123,14 @@ export default function NotOnboarded() {
               {/* Who closed them, and in which sales CRM */}
               <td className="px-3 py-2.5"><ClosedByCell student={s} /></td>
               <td className="whitespace-nowrap px-3 py-2.5 text-slate-600">{FROM[s.from] || '—'}</td>
+              <td className="whitespace-nowrap px-3 py-2.5">
+                {s.call
+                  ? <span title={s.call.at ? `Last call ${when(s.call.at)}` : undefined}
+                      className={`inline-block rounded-full px-2 py-0.5 text-[11px] font-semibold ${s.call.connected ? 'bg-emerald-50 text-emerald-700' : 'bg-rose-50 text-rose-700'}`}>
+                      {callText(s.call)}
+                    </span>
+                  : <span className="text-slate-300">—</span>}
+              </td>
               <td className="whitespace-nowrap px-3 py-2.5 text-slate-600">{when(s.created_date)}</td>
               <td className="whitespace-nowrap px-3 py-2.5">
                 <span className={`inline-block rounded-full px-2 py-0.5 text-[11px] font-semibold ${s.waited >= limit ? 'bg-rose-600 text-white' : 'bg-amber-50 text-amber-700'}`}>
@@ -141,7 +157,7 @@ export default function NotOnboarded() {
         <div>
           <PageTitle eyebrow="Students" icon={DoorOpen}>Not onboarded</PageTitle>
           <p className="mt-2 max-w-3xl text-sm text-slate-500 sm:text-base">
-            Students who haven't been onboarded yet — from finance, LMS sign-ups, added by hand or from the sheets — the longest waiting first. Onboard sends their welcome email / WhatsApp and takes them off this list.
+            Students who haven't been onboarded yet — from finance, LMS sign-ups, added by hand or from the sheets — the longest waiting first. Onboard starts with the call: log it — connected, their welcome email / WhatsApp follows and takes them off this list; not connected, they're tagged Not connected with a follow-up today.
             {` A new student from finance still waiting ${limit} hours after arriving: their Chief Mentor, CS Manager and the Super Admins get an email and a notification (overnight ones at 09:00 UAE).`}
           </p>
         </div>
@@ -183,6 +199,10 @@ export default function NotOnboarded() {
                   {Object.entries(FROM).map(([k, label]) => <SelectItem key={k} value={k}>{label}</SelectItem>)}
                 </SelectContent>
               </Select>
+              <Select value={call} onValueChange={(v) => v && setCall(v)}>
+                <SelectTrigger className="h-9 w-40" aria-label="Call"><SelectValue /></SelectTrigger>
+                <SelectContent>{Object.entries(CALLS).map(([k, label]) => <SelectItem key={k} value={k}>{label}</SelectItem>)}</SelectContent>
+              </Select>
               <Button variant="outline" size="sm" onClick={exportCsv} disabled={!rows.length}><Download className="h-4 w-4" /> CSV</Button>
             </div>
           </CardHeader>
@@ -194,7 +214,7 @@ export default function NotOnboarded() {
             ) : rows.length === 0 ? (
               <p className="py-12 text-center text-sm text-slate-400">{waiting.length ? 'Nobody waiting matches these filters.' : 'Nobody waiting — every student is onboarded.'}</p>
             ) : (
-              <Paged items={rows} resetKey={`${needle}|${cs}|${wait}|${from}`}>
+              <Paged items={rows} resetKey={`${needle}|${cs}|${wait}|${from}|${call}`}>
                 {(pageRows, bar) => (<>
                   {table(pageRows)}
                   <TablePagination {...bar} />
@@ -204,6 +224,7 @@ export default function NotOnboarded() {
           </CardContent>
         </Card>
       </div>
+      {welcome && <OnboardingDialog student={welcome} open onOpenChange={(o) => { if (!o) setWelcome(null); }} callAfterSend={false} />}
     </div>
   );
 }

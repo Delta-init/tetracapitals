@@ -395,6 +395,13 @@ export async function logFollowup(req: Request, user: AuthUser): Promise<Respons
   if (stage === "Lost" && !reason) return error("A lost follow-up needs a lost reason", 400);
   const mt5 = str(body?.mt5Login, 40).replace(/\s+/g, "");
   if (mt5 && !MT5.test(mt5)) return error("The MT5 ID is its login number — digits only", 400);
+  // The target outcome can change with a call — what it is about now (e.g. an Onboarding call becoming DSLP).
+  const target = str(body?.targetOutcome, 60);
+  if (target && !(TARGET_OUTCOMES as readonly string[]).includes(target)) return error("Pick a target outcome", 400);
+  const retarget = !!target && target !== f.target_outcome;
+  // A call from the Not onboarded page says whether it connected: not — they show as Not connected there (with how
+  // many tries), and no MT5 is taken from it.
+  const connected = body?.connected === true ? true : body?.connected === false ? false : null;
 
   const today = businessToday();
   const patch: Record<string, any> = {
@@ -404,6 +411,7 @@ export async function logFollowup(req: Request, user: AuthUser): Promise<Respons
     objection_reason: reason,
     next_followup_date: CLOSED_STAGES.has(stage) ? "" : next,
     updated_date: new Date().toISOString(),
+    ...(retarget ? { target_outcome: target } : {}),
   };
   // What was written this time — the follow-up keeps the latest, and the log keeps each one (historyOf).
   const said = str(body?.clientSaid);
@@ -427,16 +435,23 @@ export async function logFollowup(req: Request, user: AuthUser): Promise<Respons
 
   await col("student_followups").updateOne({ _id: oid }, { $set: patch });
   // The MT5 given on this call: kept as theirs, and the sales close's bonus sent to be credited in it.
-  const mt5Saved = mt5 ? await saveMt5(student, mt5, user) : false;
-  const bonusCredits = mt5 ? await raiseSalesBonusCredits(student, mt5, user) : 0;
+  if (connected !== null) {
+    await col("students").updateOne({ _id: student._id }, {
+      $set: { onboarding_call: { connected, at: patch.updated_date, by_id: user.id, by_name: who(user) } },
+      ...(connected ? {} : { $inc: { onboarding_call_attempts: 1 } }),
+    });
+  }
+  const takeMt5 = !!mt5 && connected !== false;
+  const mt5Saved = takeMt5 ? await saveMt5(student, mt5, user) : false;
+  const bonusCredits = takeMt5 ? await raiseSalesBonusCredits(student, mt5, user) : 0;
   const moved = f.stage !== stage;
   await recordEvents([{
     followup_id: String(oid), student_id: String(f.student_id), at: patch.updated_date, by_id: user.id, by_name: who(user),
     kind: "logged", stage_from: f.stage, stage_to: stage, next_followup_date: patch.next_followup_date,
     ...(said ? { client_said: said } : {}),
     ...(noteText ? { notes: noteText } : {}),
-    text: `${moved ? `${f.stage} → ${stage}` : stage}${reason ? ` (${reason})` : ""}${stage === "Converted" ? ` — $${Number(patch.deal_value).toLocaleString("en-US")}` : ""}${patch.next_followup_date ? ` · next ${patch.next_followup_date}` : ""}`
-      + `${mt5Saved ? ` · MT5 ${mt5} saved` : ""}${bonusCredits ? ` · sales-close bonus sent to be credited` : ""}`,
+    text: `${retarget ? `Target: ${f.target_outcome || "—"} → ${target} · ` : ""}${moved ? `${f.stage} → ${stage}` : stage}${reason ? ` (${reason})` : ""}${stage === "Converted" ? ` — $${Number(patch.deal_value).toLocaleString("en-US")}` : ""}${patch.next_followup_date ? ` · next ${patch.next_followup_date}` : ""}`
+      + `${connected === false ? " · not connected" : connected ? " · connected" : ""}${mt5Saved ? ` · MT5 ${mt5} saved` : ""}${bonusCredits ? ` · sales-close bonus sent to be credited` : ""}`,
   }]);
   return json({ ok: true, followup_status: followupStatus({ ...f, ...patch }), mt5_saved: mt5Saved, bonus_credits: bonusCredits });
 }
