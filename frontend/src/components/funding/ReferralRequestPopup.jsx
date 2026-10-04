@@ -23,7 +23,7 @@ const PAYMENT_METHODS = ['AED TRANSFER','UPI','CARD PAYMENT','USDT','INR TRANSFE
 export default function ReferralRequestPopup({ student, currentUser, onClose, transactionType = 'DEPOSIT', initialTags = [] }) {
   const isBonus = transactionType === 'BONUS';
   const [depositAmount, setDepositAmount] = useState('');   // as typed, in `currency`
-  const [currency, setCurrency] = useState(isBonus ? 'AED' : 'USD');
+  const [currency, setCurrency] = useState('USD');   // USD to start, whatever the type and payment, as the main form
   const [paymentKind, setPaymentKind] = useState('');   // a Bonus: 'full' or 'partial'
   const [paymentMethod, setPaymentMethod] = useState('');
   const [mt5Login, setMt5Login] = useState('');
@@ -52,12 +52,13 @@ export default function ReferralRequestPopup({ student, currentUser, onClose, tr
   const kinds = paymentKinds(plan, beforeAed);
   const kind = kinds.length === 1 ? kinds[0] : paymentKind;
   const payment = product && kind ? coursePayment({ plan, kind, beforeAed, todayAed: money.aed }) : null;
-  // Full: the course's price fills in. Partial: what was paid today, in AED.
+  // Full: the course's price fills in, in USD. Partial: what was paid today — in USD unless an amount was already typed.
   const chooseKind = (k) => {
-    if (k === 'full') { if (plan.price) setDepositAmount(String(plan.price)); setCurrency(plan.currency); }
-    else { if (paymentKind === 'full') setDepositAmount(''); setCurrency('AED'); }
+    if (k === 'full') { if (plan.price) { setDepositAmount(String(plan.priceMoney.usd)); setCurrency('USD'); } }
+    else if (paymentKind === 'full' || !depositAmount) { setDepositAmount(''); setCurrency('USD'); }
     setPaymentKind(k);
   };
+  const needsReceipt = transactionType !== 'WITHDRAWAL';   // money received: its receipt (a withdrawal has none yet)
 
   const handleFileUpload = async (e) => {
     const file = e.target.files?.[0];
@@ -67,7 +68,7 @@ export default function ReferralRequestPopup({ student, currentUser, onClose, tr
       const { file_url } = await base44.integrations.Core.UploadFile({ file });
       setScreenshotUrl(file_url);
     } catch (_) {
-      toast.error('Failed to upload screenshot');
+      toast.error('Failed to upload the receipt');
     } finally {
       setUploading(false);
     }
@@ -92,6 +93,14 @@ export default function ReferralRequestPopup({ student, currentUser, onClose, tr
     }
     if (!paymentMethod) {
       toast.error('Please select a payment method');
+      return;
+    }
+    if (!mt5Login.trim()) {
+      toast.error("Enter the student's MT5 login");
+      return;
+    }
+    if (needsReceipt && !screenshotUrl) {
+      toast.error('Upload the receipt');
       return;
     }
     setSubmitting(true);
@@ -165,8 +174,9 @@ export default function ReferralRequestPopup({ student, currentUser, onClose, tr
                   // Full payment only (no instalments): its price fills in. Otherwise full or partial is asked next.
                   const terms = coursePlan(picked0);
                   setPaymentKind('');
-                  if (terms.instalments === 0 && terms.price) { setDepositAmount(String(terms.price)); setCurrency(terms.currency); }
+                  if (terms.instalments === 0 && terms.price) setDepositAmount(String(terms.priceMoney.usd));
                   else setDepositAmount('');
+                  setCurrency('USD');
                 }}
               />
               {tags.length > 1 && (
@@ -206,7 +216,7 @@ export default function ReferralRequestPopup({ student, currentUser, onClose, tr
           </div>
 
           <div className="space-y-2">
-            <Label>MT5 Login (Optional)</Label>
+            <Label>MT5 Login *</Label>
             <Input
               value={mt5Login}
               onChange={(e) => setMt5Login(e.target.value)}
@@ -215,12 +225,13 @@ export default function ReferralRequestPopup({ student, currentUser, onClose, tr
           </div>
 
           <div className="space-y-2">
-            <Label>Screenshot (Optional)</Label>
+            <Label>{needsReceipt ? 'Receipt *' : 'Receipt (Optional)'}</Label>
             <div className="flex items-center gap-2">
-              <Input type="file" accept="image/*" onChange={handleFileUpload} disabled={uploading} />
+              <Input type="file" accept="image/*,application/pdf" onChange={handleFileUpload} disabled={uploading} />
               {uploading && <Loader2 className="h-4 w-4 animate-spin" />}
             </div>
-            {screenshotUrl && <p className="text-xs text-green-600">✓ Screenshot uploaded</p>}
+            {screenshotUrl ? <p className="text-xs text-green-600">✓ Receipt uploaded</p>
+              : needsReceipt && <p className="text-xs text-muted-foreground">A photo, screenshot or PDF of the payment receipt.</p>}
           </div>
 
           <div className="space-y-2">

@@ -30,8 +30,9 @@ const PAYMENT_METHODS = [
 ];
 
 /* ── Money in AED or USD, and what a course payment earns (the user, 2026-10-03; Delta_Fee_Structure.pdf) ──────
-   An amount can be typed in AED or USD. It is kept in USD for commission and the reports (amount_usd), with what was
-   typed, its AED and the rate — a fixed 3.67 — beside it.
+   An amount can be typed in AED or USD — USD to start, whatever the type or payment (the user, 2026-10-04). It is
+   kept in USD for commission and the reports (amount_usd), with what was typed, its AED and the rate — a fixed 3.67 —
+   beside it.
    A Bonus is a course payment, for a course with a bonus set on the Products page (DWT, MSNR, DSLP Offer, DSLP Full):
      full payment — the course's price at once, and its whole bonus in the student's MT5 at once;
      partial      — instalments of AED 2,000 (as many as the course has): every full AED 2,000 paid is $500 bonus, the
@@ -42,6 +43,9 @@ export const AED_PER_USD = 3.67;
 export const INSTALMENT_AED = 2000;
 export const BONUS_PER_INSTALMENT_USD = 500;
 const cents = (n) => Math.round((Number(n) || 0) * 100) / 100;
+/* An amount typed in USD can come out a little off in AED ($544.95 × 3.67 = AED 1,999.97) — never short of the price,
+   an instalment or the balance for that much. */
+const ROUNDING_AED = 1;
 const fmt = (n) => (Number(n) || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 export const aedText = (n) => `AED ${fmt(n)}`;
 export const usdText = (n) => `$${fmt(n)}`;
@@ -89,19 +93,19 @@ export function coursePayment({ plan, kind, beforeAed, todayAed }) {
   if (kind === 'full') {
     // Short of the price by more than rounding: shown, so a partial payment isn't taken for a full one.
     const short = plan.price ? cents(plan.priceMoney.aed - todayAed) : 0;
-    return { ...paid, bonus_usd: plan.bonusUsd, hold_aed: 0, balance_aed: 0, short_aed: short > 1 ? short : 0, over_aed: 0 };
+    return { ...paid, bonus_usd: plan.bonusUsd, hold_aed: 0, balance_aed: 0, short_aed: short > ROUNDING_AED ? short : 0, over_aed: 0 };
   }
   const fee = plan.planAed;
   const total = paid.paid_total_aed;
-  // A few fils of rounding never cost an instalment.
+  // Rounding — or a payment typed in USD — never costs an instalment.
   const counted = (n) => (fee ? Math.min(n, fee) : n);
-  const blocks = (n) => Math.floor((counted(n) + 0.005) / INSTALMENT_AED);
+  const blocks = (n) => Math.floor((counted(n) + ROUNDING_AED) / INSTALMENT_AED);
   const withBonus = plan.bonusUsd > 0;
   return {
     ...paid,
     bonus_usd: withBonus ? (blocks(total) - blocks(beforeAed)) * BONUS_PER_INSTALMENT_USD : 0,
     hold_aed: withBonus ? Math.max(0, cents(counted(total) - blocks(total) * INSTALMENT_AED)) : 0,
-    balance_aed: fee ? cents(Math.max(0, fee - total)) : null,
+    balance_aed: fee ? (fee - total <= ROUNDING_AED ? 0 : cents(fee - total)) : null,
     short_aed: 0,
     over_aed: fee && total > fee ? cents(total - fee) : 0,
   };
@@ -221,7 +225,7 @@ export default function FundingRequestForm({ students, allStudents = [], current
     type: 'DEPOSIT',
     student_id: '',
     amount: '',       // as typed, in `currency`
-    currency: 'USD',  // AED or USD — a Bonus (a course payment) starts in AED
+    currency: 'USD',  // AED or USD — USD to start, whatever the type and payment
     payment_kind: '', // a Bonus: 'full' or 'partial' — asked once the course is picked
     payment_method: '',
     mt5_login: '',
@@ -255,10 +259,11 @@ export default function FundingRequestForm({ students, allStudents = [], current
   const kinds = paymentKinds(plan, beforeAed);
   const kind = kinds.length === 1 ? kinds[0] : formData.payment_kind;
   const payment = product && kind ? coursePayment({ plan, kind, beforeAed, todayAed: money.aed }) : null;
-  // Full: the course's price fills in. Partial: what was paid today, in AED.
+  // Full: the course's price fills in, in USD. Partial: what was paid today — in USD unless an amount was already typed.
   const chooseKind = (k) => setFormData(f => (k === 'full'
-    ? { ...f, payment_kind: k, amount: plan.price ? String(plan.price) : f.amount, currency: plan.currency }
-    : { ...f, payment_kind: k, currency: 'AED', amount: f.payment_kind === 'full' ? '' : f.amount }));
+    ? { ...f, payment_kind: k, ...(plan.price ? { amount: String(plan.priceMoney.usd), currency: 'USD' } : {}) }
+    : { ...f, payment_kind: k, ...(f.payment_kind === 'full' || !f.amount ? { amount: '', currency: 'USD' } : {}) }));
+  const needsReceipt = formData.type !== 'WITHDRAWAL';   // money received: its receipt (a withdrawal has none yet)
 
   // Mentors (junior / senior / sub-junior / chief) for the "meeting conducted by"
   // picker — only from the submitter's own team (their Up Head chain). Admins
@@ -303,10 +308,10 @@ export default function FundingRequestForm({ students, allStudents = [], current
       setUploading(true);
       try {
         const { file_url } = await base44.integrations.Core.UploadFile({ file });
-        setFormData({ ...formData, screenshot_url: file_url });
-        toast.success('Screenshot uploaded');
+        setFormData(f => ({ ...f, screenshot_url: file_url }));
+        toast.success('Receipt uploaded');
       } catch (error) {
-        toast.error('Failed to upload screenshot');
+        toast.error('Failed to upload the receipt');
       } finally {
         setUploading(false);
       }
@@ -333,6 +338,18 @@ export default function FundingRequestForm({ students, allStudents = [], current
 
     if (!(money.usd > 0)) {
       toast.error('Enter the amount');
+      return;
+    }
+    if (!formData.payment_method) {
+      toast.error('Select the payment method');
+      return;
+    }
+    if (!formData.mt5_login.trim()) {
+      toast.error("Enter the student's MT5 login");
+      return;
+    }
+    if (needsReceipt && !formData.screenshot_url) {
+      toast.error('Upload the receipt');
       return;
     }
     if (product && loadingEarlier) {
@@ -428,7 +445,7 @@ export default function FundingRequestForm({ students, allStudents = [], current
             <Label htmlFor="type">Transaction Type *</Label>
             <Select
               value={formData.type}
-              onValueChange={(value) => setFormData({ ...formData, type: value, tags: [], ...(value === 'BONUS' ? { currency: 'AED' } : {}) })}
+              onValueChange={(value) => setFormData({ ...formData, type: value, tags: [] })}
               required
             >
               <SelectTrigger>
@@ -482,7 +499,7 @@ export default function FundingRequestForm({ students, allStudents = [], current
                   const terms = coursePlan(picked0);
                   setFormData({
                     ...formData, tags: allTags, payment_kind: '',
-                    ...(terms.instalments === 0 && terms.price ? { amount: String(terms.price), currency: terms.currency } : { amount: '' }),
+                    ...(terms.instalments === 0 && terms.price ? { amount: String(terms.priceMoney.usd) } : { amount: '' }), currency: 'USD',
                   });
                 }}
               />
@@ -550,29 +567,32 @@ export default function FundingRequestForm({ students, allStudents = [], current
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="mt5_login">MT5 Login (Optional)</Label>
+            <Label htmlFor="mt5_login">MT5 Login *</Label>
             <Input
               id="mt5_login"
               value={formData.mt5_login}
               onChange={(e) => setFormData({ ...formData, mt5_login: e.target.value })}
               placeholder="Enter MT5 login"
+              required
             />
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="screenshot">Screenshot (Optional)</Label>
+            <Label htmlFor="screenshot">{needsReceipt ? 'Receipt *' : 'Receipt (Optional)'}</Label>
             <div className="flex items-center gap-2">
               <Input
                 id="screenshot"
                 type="file"
-                accept="image/*"
+                accept="image/*,application/pdf"
                 onChange={handleFileUpload}
                 disabled={uploading}
               />
               {uploading && <Loader2 className="h-4 w-4 animate-spin" />}
             </div>
-            {formData.screenshot_url && (
-              <p className="text-xs text-green-600">✓ Screenshot uploaded</p>
+            {formData.screenshot_url ? (
+              <p className="text-xs text-green-600">✓ Receipt uploaded</p>
+            ) : needsReceipt && (
+              <p className="text-xs text-muted-foreground">A photo, screenshot or PDF of the payment receipt.</p>
             )}
           </div>
         </div>
