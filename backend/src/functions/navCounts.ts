@@ -5,11 +5,13 @@ import type { AuthUser } from "../auth/middleware";
 import { CLOSED_STAGES, businessToday, visibleMentorIds, studentsOf } from "../students/followups";
 import { notOnboardedFilter, newFromFinanceFilter } from "../students/onboardingAlerts";
 import { countCallNeeded } from "../students/classCompletions";
+import { decidableBonusFilter } from "./bonusApprovals";
+import { BONUS_APPROVERS } from "../finance/funding";
 
 /**
  * POST /api/functions/getNavCounts
  * Returns: { new_students, followups_today, followups_overdue, payment_links_pending, payment_links_ready, payment_links_turned_down,
- *            not_onboarded, not_onboarded_late, class_completions_open }
+ *            not_onboarded, not_onboarded_late, class_completions_open, bonus_approvals_pending }
  *
  * The numbers on the sidebar. New students: given to you and not opened yet
  * (students.new_for_id — see notifyStudentsGiven). Follow-ups: what the
@@ -21,7 +23,8 @@ import { countCallNeeded } from "../students/classCompletions";
  * onboarded yet, whatever they came from, and how many new ones from finance
  * waited 6 hours or more (students/onboardingAlerts.ts) — whose, as the follow-ups. Class completions:
  * classes students attended, told to their CS, with no call logged since the
- * class ended (students/classCompletions.ts) — whose, as the follow-ups.
+ * class ended (students/classCompletions.ts) — whose, as the follow-ups. MT5 bonuses: for a broker admin or a Super
+ * Admin, the bonuses waiting for their approval (functions/bonusApprovals.ts).
  */
 export async function getNavCounts(_req: Request, user: AuthUser): Promise<Response> {
   const today = businessToday();
@@ -35,7 +38,7 @@ export async function getNavCounts(_req: Request, user: AuthUser): Promise<Respo
   const cs = user.app_role === "cs";
   const mine = (filter: Record<string, any>) => (visible ? { $and: [filter, studentsOf(visible)] } : filter);
   const unseen = (status: string) => col("payment_link_requests").countDocuments({ requested_by_id: user.id, status, cs_seen_at: { $exists: false } });
-  const [newStudents, dueToday, overdue, linksWaiting, linksReady, linksTurnedDown, notOnboarded, notOnboardedLate, classesToCall] = await Promise.all([
+  const [newStudents, dueToday, overdue, linksWaiting, linksReady, linksTurnedDown, notOnboarded, notOnboardedLate, classesToCall, bonusesWaiting] = await Promise.all([
     col("students").countDocuments({ new_for_id: user.id, primary_mentor_id: user.id }),
     col("student_followups").countDocuments({ ...open, next_followup_date: today }),
     col("student_followups").countDocuments({ ...open, next_followup_date: { $gt: "", $lt: today } }),
@@ -45,11 +48,13 @@ export async function getNavCounts(_req: Request, user: AuthUser): Promise<Respo
     col("students").countDocuments(mine(notOnboardedFilter())),
     col("students").countDocuments(mine(newFromFinanceFilter(Date.now()))),
     countCallNeeded(ids),
+    BONUS_APPROVERS.includes(user.app_role) ? col("funding_transactions").countDocuments(decidableBonusFilter()) : 0,
   ]);
   return json({
     today, new_students: newStudents, followups_today: dueToday, followups_overdue: overdue,
     payment_links_pending: linksWaiting, payment_links_ready: linksReady, payment_links_turned_down: linksTurnedDown,
     not_onboarded: notOnboarded, not_onboarded_late: notOnboardedLate, class_completions_open: classesToCall,
+    bonus_approvals_pending: bonusesWaiting,
   });
 }
 

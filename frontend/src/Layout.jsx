@@ -206,6 +206,7 @@ export default function Layout({ children, currentPageName }) {
       { n: navCounts?.payment_links_turned_down, cls: 'bg-rose-500 text-white', title: 'payment link requests turned down — not seen yet' },
     ],
     ClassCompletions: [{ n: navCounts?.class_completions_open, cls: 'bg-violet-500 text-white', title: 'class completions waiting for a call' }],
+    BonusApprovals: [{ n: navCounts?.bonus_approvals_pending, cls: 'bg-amber-400 text-brand-navy', title: 'MT5 bonuses waiting for your approval' }],
     SupportTickets: [
       { n: ticketCount?.open, cls: 'bg-amber-400 text-brand-navy', title: 'support tickets waiting for an answer' },
       { n: ticketCount?.waiting, cls: 'bg-sky-400 text-brand-navy', title: 'support tickets waiting on the student' },

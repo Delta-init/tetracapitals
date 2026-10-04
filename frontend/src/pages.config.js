@@ -102,6 +102,7 @@ import PaymentLinks from './pages/PaymentLinks';
 import ClassCompletions from './pages/ClassCompletions';
 import SupportTickets from './pages/SupportTickets';
 import NotOnboarded from './pages/NotOnboarded';
+import BonusApprovals from './pages/BonusApprovals';
 import __Layout from './Layout.jsx';
 
 
@@ -152,6 +153,7 @@ export const PAGES = {
     "StudentFollowups": StudentFollowups,
     "OverdueFollowups": OverdueFollowups,
     "NotOnboarded": NotOnboarded,
+    "BonusApprovals": BonusApprovals,
     "StudentCalls": StudentCalls,
     "MentorCalendar": MentorCalendar,
     "Tickets": Tickets,

@@ -135,7 +135,8 @@ export default function ProcessFundingDialog({ transaction, open, onClose, onPro
       setTransactionIdError('Transaction ID is required');
       return;
     }
-    if (transaction.type === 'BONUS' && (!formData.tags || formData.tags.length === 0)) {
+    // A sales-close bonus credit has no product (see the box below), so only other bonuses need one.
+    if (transaction.type === 'BONUS' && !transaction.bonus_credit && (!formData.tags || formData.tags.length === 0)) {
       setTransactionIdError('Please pick a product for this bonus before approving');
       return;
     }
@@ -277,9 +278,22 @@ export default function ProcessFundingDialog({ transaction, open, onClose, onPro
             />
           </div>
 
+          {/* The bonus promised at a sales close: raised with no product, and it earns no commission
+              (backend creditCommission skips bonus credits) — nothing to pick, for anyone. */}
+          {transaction.type === 'BONUS' && transaction.bonus_credit && (
+            <div className="space-y-1 bg-violet-50 p-4 rounded-lg border-2 border-violet-200">
+              <p className="text-base font-semibold">Sales-close bonus — no product needed</p>
+              <p className="text-sm text-violet-900">
+                Promised at the sales close
+                {transaction.sales_close?.course ? ` (${transaction.sales_close.course}${transaction.sales_close.invoice_number ? `, invoice ${transaction.sales_close.invoice_number}` : ''})` : ''}.
+                {' '}No commission on it — credit it in MT5, then approve.
+              </p>
+            </div>
+          )}
+
           {/* Tag editor — visible only for BONUS transactions. Super admins can
               change the tag before approving; other roles see it read-only. */}
-          {transaction.type === 'BONUS' && (
+          {transaction.type === 'BONUS' && !transaction.bonus_credit && (
             <div className="space-y-2 bg-amber-50 p-4 rounded-lg border-2 border-amber-200">
               <Label className="text-base font-semibold">
                 Product
