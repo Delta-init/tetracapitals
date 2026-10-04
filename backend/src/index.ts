@@ -10,10 +10,13 @@ import { startCallSyncWorker } from "./students/calls";
 import { startWhatsApp } from "./whatsapp/service";
 import { startLmsEnrolmentWorker } from "./students/lmsEnrolment";
 import { startLmsActivityWorker } from "./students/lmsActivity";
+import { ensureSalesRole } from "./students/closedBy";
 
 async function main() {
   await connectDb();
   await ensureIndexes();
+  // The Sales role (the students they closed, to read) — made by code that knows its "closed" scope.
+  await ensureSalesRole();
   console.log(`[student-tracker] MongoDB connected: ${config.mongoDb}`);
 
   const server = Bun.serve({

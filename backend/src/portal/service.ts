@@ -56,7 +56,7 @@ async function listRoles(): Promise<PortalRole[]> {
       .map((r: any) => ({
         key: r.role_key as string,
         name: String(r.name ?? titleCase(r.role_key)),
-        description: `Custom role — sees ${r.data_scope ?? "own"} data`,
+        description: r.data_scope === "closed" ? "Custom role — reads the students they closed in a sales CRM" : `Custom role — sees ${r.data_scope ?? "own"} data`,
         permissions: Array.isArray(r.page_permissions) ? r.page_permissions.map(String) : [],
         isSystem: false,
       })),

@@ -46,6 +46,8 @@ export async function ensureIndexes(): Promise<void> {
     d.collection("users").createIndex({ app_role: 1 }),
     d.collection("students").createIndex({ primary_mentor_id: 1 }),
     d.collection("students").createIndex({ senior_mentor_id: 1 }),
+    // The Sales role's students: the ones they closed (students/closedBy.ts).
+    d.collection("students").createIndex({ "closed_by.email": 1 }),
     d.collection("students").createIndex({ student_code: 1 }, { unique: false, sparse: true }),
     // One student per finance invoice, even if the same delivery arrives twice at once.
     // Partial: only students that came from finance carry the field.

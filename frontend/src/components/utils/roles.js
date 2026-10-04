@@ -62,8 +62,10 @@ export const isSeniorTier = (role) => SENIOR_TIER_ROLES.includes(role);
 
 // ── Visibility (data scope) ────────────────────────────────────────────────
 // "own" = their own records, "downline" = their team (everyone under them via
-// Up Head), "all" = the whole system. Mirrors backend/src/lib/scope.ts.
-export const SCOPE_LABELS = { own: 'Own students', downline: 'Team students', all: 'Full system' };
+// Up Head), "all" = the whole system, "closed" = the students they closed in a
+// sales CRM, to read (the Sales role — custom roles only; see readsClosedOnly).
+// Mirrors backend/src/lib/scope.ts.
+export const SCOPE_LABELS = { own: 'Own students', downline: 'Team students', all: 'Full system', closed: 'Students they closed' };
 
 export const DEFAULT_SCOPES = {
   chief_mentor: 'downline',
@@ -83,6 +85,12 @@ export const getScope = (user) => {
   if (s === 'own' || s === 'downline' || s === 'all') return s;
   return DEFAULT_SCOPES[user.app_role] ?? null;
 };
+
+/**
+ * The Sales role: the students they closed in a sales CRM, to read — the server sends no others and takes no
+ * changes from them (backend/src/students/closedBy.ts). Kept out of getScope: the pages that follow it are not theirs.
+ */
+export const readsClosedOnly = (user) => !!user && isCustomRole(user.app_role) && user.data_scope === 'closed';
 
 /** Ids of `userId` and everyone below them in the Up Head tree. */
 export const downlineIds = (userId, users = []) => {

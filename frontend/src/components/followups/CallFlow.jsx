@@ -7,6 +7,8 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { Loader2, Phone, PhoneCall, PhoneOff, Plus, Smartphone } from 'lucide-react';
 import { LogFollowupDialog, NewFollowupDialog, StageBadge, StatusBadge, fmtDate } from './followupUi';
 import { dialInfo } from './phone';
+import { useAuth } from '@/lib/AuthContext';
+import { readsClosedOnly } from '@/components/utils/roles';
 
 /* ────────────────────────────────────────────────────────────────────────────
    Call, then log. A Call button asks how to call, every time:
@@ -344,13 +346,16 @@ function CallWindow({ call, onClose, onLog }) {
  * The green Call button. `student` needs { id, full_name, phone };
  * pass `followup` on a follow-up row so the call is logged against it.
  * variant: "button" (Call label) or "icon". It asks how to call: 3CX or phone.
+ * Not for the Sales role: they read the students they closed, and call them from their CRM.
  */
 export function CallButton({ student, followup = null, variant = 'button', className = '' }) {
   const flow = useCallFlow();
+  const { user } = useAuth();
   const info = dialInfo(student?.phone ?? followup?.phone);
   const size = variant === 'icon' ? 'h-8 w-8 justify-center' : 'h-8 gap-1.5 px-3';
   const who = student || { id: followup?.student_id, full_name: followup?.student_name, phone: followup?.phone };
 
+  if (readsClosedOnly(user)) return null;
   if (!info.ok) {
     return (
       <span

@@ -19,7 +19,7 @@ import StudentForm from "../components/students/StudentForm";
 import { EditDetailsButton } from '@/components/students/EditDetails';
 import StudentRequestForm from "../components/students/StudentRequestForm";
 import BulkImportStudentsDialog from "../components/students/BulkImportStudentsDialog";
-import { isMentorRole as isMentorTier, getScope } from "@/components/utils/roles";
+import { isMentorRole as isMentorTier, getScope, readsClosedOnly } from "@/components/utils/roles";
 
 import { Plus, Search, Eye, Users, UserCheck, Upload, Download, Filter, ArrowUp, Share2, Trash2, ArrowRightLeft, Sparkles, RefreshCw, Loader2 } from "lucide-react";
 import TransferStudentsDialog from "../components/students/TransferStudentsDialog";
@@ -130,7 +130,9 @@ export default function Students() {
 
   // The list is paged on the server (backend/src/functions/studentsList.ts): the tab, search and every filter go
   // there, one page comes back with how many match.
-  const isMentorUser = !!currentUser && isMentorTier(currentUser.app_role);
+  // The Sales role: one list, the students they closed — to read (the server sends only those).
+  const salesOnly = !!currentUser && readsClosedOnly(currentUser);
+  const isMentorUser = !!currentUser && isMentorTier(currentUser.app_role) && !salesOnly;
   const isAdminUser = !!currentUser && ['super_admin', 'broker_admin', 'academic_head'].includes(currentUser.app_role);
   const serverTab = !currentUser ? null : (isMentorUser || isAdminUser) ? activeTab : 'all';
   useEffect(() => {
@@ -424,8 +426,8 @@ export default function Students() {
 
   if (!currentUser) return <div className="flex items-center justify-center h-screen">Loading...</div>;
 
-  const canCreate = canSubmitStudentRequest(currentUser.app_role);
-  const isMentor = isMentorTier(currentUser.app_role);
+  const canCreate = canSubmitStudentRequest(currentUser.app_role) && !salesOnly;
+  const isMentor = isMentorUser;
   // Team tab: roles whose visibility is Team (Chief Mentor by default).
   const hasTeamView = getScope(currentUser) === 'downline';
   const isAssistance = currentUser.app_role === 'assistance';
@@ -1432,12 +1434,12 @@ export default function Students() {
           )}
           </Tabs>
         ) : (
-          /* Admin view - all students in one table */
+          /* One table — every student they may see; for the Sales role, the ones they closed */
           <div className="rounded-2xl border border-slate-200/70 bg-white overflow-hidden shadow-soft">
             <div className="p-4 bg-slate-50/70 border-b border-gray-200">
               <h3 className="text-lg font-semibold flex items-center gap-2 tracking-tight">
                 <Users className="h-5 w-5 text-blue-600" />
-                All Students ({total.toLocaleString()})
+                {salesOnly ? 'Students You Closed' : 'All Students'} ({total.toLocaleString()})
               </h3>
             </div>
             <Table>

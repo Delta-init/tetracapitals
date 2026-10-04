@@ -11,6 +11,7 @@ import { isAdminRole } from '@/components/utils/roles';
 import { isStudentOf } from '@/components/students/common';
 import { courseLabel } from '@/components/utils/studentProducts';
 import { LmsCourseList, LmsModules } from '@/components/students/LmsCourseList';
+import { ClosedByLine } from '@/components/students/closedBy';
 
 /* ────────────────────────────────────────────────────────────────────────────
    Enrolment: Enrolled (stored "closed" — the "Closed - <course>" tags say
@@ -221,15 +222,16 @@ export function EnrolmentControl({ student, currentUser }) {
           </Button>
         ))}
       </span>
-      {/* Their Delta LMS courses, under the enrolment */}
+      {/* Their Delta LMS courses, under the enrolment — and who closed them */}
       <LmsCourseList student={student} max={6} />
+      <ClosedByLine student={student} />
     </div>
   );
 }
 
 /**
  * The Students table's Enrolled: a switch for whoever may change it, Yes / No for anyone else, and under it the
- * student's Delta LMS courses. On or off, the switch opens the student's courses, view only — with "Mark as not
+ * student's Delta LMS courses and who closed them. On or off, the switch opens the student's courses, view only — with "Mark as not
  * enrolled" for one who is enrolled. The switch is a button, so clicking it never opens the student.
  */
 export function EnrolledSwitch({ student, currentUser }) {
@@ -241,6 +243,7 @@ export function EnrolledSwitch({ student, currentUser }) {
       <div>
         <Badge variant="outline" className={on ? ENROLMENT.closed.cls : 'border-slate-200 bg-slate-50 text-slate-500'} title={title}>{on ? 'Yes' : 'No'}</Badge>
         <LmsCourseList student={student} />
+        <ClosedByLine student={student} />
       </div>
     );
   }
@@ -253,6 +256,7 @@ export function EnrolledSwitch({ student, currentUser }) {
         {asking && <StudentCoursesDialog student={student} open onOpenChange={setAsking} />}
       </span>
       <LmsCourseList student={student} />
+      <ClosedByLine student={student} />
     </div>
   );
 }

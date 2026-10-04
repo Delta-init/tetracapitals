@@ -12,6 +12,8 @@ import { isAdminRole, isCustomRole } from "./roles";
  *   - "own"      → only records they own (are the mentor for / created).
  *   - "downline" → their own records plus everyone below them in the Up-Head
  *                  tree (their team). Shown as "Team" in the UI.
+ *   - "closed"   → the Sales role's: the students they closed in a sales CRM,
+ *                  to read (custom roles only — closedScope below).
  *
  * Two groups of entities are row-scoped:
  *   - COMMISSION_FIELDS: commission money. Scoped for every non-admin role, so
@@ -44,7 +46,12 @@ const COMMISSION_FIELDS: Record<string, string[]> = {
   PayoutTransaction: ["mentor_id"],
 };
 
-export type DataScope = "all" | "own" | "downline";
+/**
+ * "closed" is the Sales role's (custom roles only): the students they closed in a sales CRM (students.closed_by —
+ * see students/closedBy.ts) with those students' deposits and MT5 accounts, the lists every page needs, their own
+ * notifications and commission — and nothing else of anyone's, whatever the entity (closedScope below).
+ */
+export type DataScope = "all" | "own" | "downline" | "closed";
 
 /** Visibility for built-in mentor roles that have no Role Management setting. */
 export const DEFAULT_SCOPES: Record<string, DataScope> = {
@@ -53,7 +60,7 @@ export const DEFAULT_SCOPES: Record<string, DataScope> = {
   junior_mentor: "own",
 };
 
-const isScope = (v: unknown): v is DataScope => v === "all" || v === "own" || v === "downline";
+const isScope = (v: unknown): v is DataScope => v === "all" || v === "own" || v === "downline" || v === "closed";
 
 /**
  * The scope configured for a role (Role Management setting, else the built-in
@@ -65,7 +72,8 @@ export async function getConfiguredScope(user: AuthUser): Promise<DataScope | nu
   if (isAdminRole(user.app_role)) return "all";
   const role = await col("commission_roles").findOne({ role_key: user.app_role });
   const scope = (role as any)?.data_scope;
-  if (isScope(scope)) return scope;
+  // "closed" holds for custom roles only: a built-in mentor role's students are not scoped on the backend.
+  if (isScope(scope) && (scope !== "closed" || isCustomRole(user.app_role))) return scope;
   return DEFAULT_SCOPES[user.app_role] ?? null;
 }
 
@@ -112,14 +120,37 @@ export async function buildScopeFilter(
 ): Promise<Record<string, any> | null> {
   const commission = COMMISSION_FIELDS[entityName];
   const general = OWN_FIELDS[entityName];
-  if (!commission && !(general && isCustomRole(user.app_role))) return null;
+  const custom = isCustomRole(user.app_role);
+  if (!commission && !custom) return null;
   const scope = await getDataScope(user);
+  // The Sales role: every entity, not just the scoped ones. Their own commission records fall through to "own".
+  if (scope === "closed" && !commission) return closedScope(user, entityName);
+  if (!commission && !general) return null;
   if (scope === "all") return null;
   const ids = scope === "downline" ? await getDownlineIds(user.id) : [user.id];
   const fields = commission
     ? commission
     : [...general, ...(scope === "downline" ? DOWNLINE_EXTRA_FIELDS[entityName] || [] : [])];
   return { $or: fields.map((f) => ({ [f]: { $in: ids } })) };
+}
+
+/* The Sales role ("closed"): what each entity shows them — anything not named here shows nothing. */
+// Lists every page needs: the role's pages (the sidebar), the student tags and the products.
+const CLOSED_OPEN = new Set(["CommissionRole", "StudentTag", "TransactionTag"]);
+// A student's own records, by the field naming the student: their deposits and MT5 accounts.
+const CLOSED_BY_STUDENT: Record<string, string> = { FundingTransaction: "student_id", MT5Account: "student_id" };
+
+async function closedScope(user: AuthUser, entityName: string): Promise<Record<string, any> | null> {
+  const none = { $or: [{ _id: { $in: [] } }] };
+  if (CLOSED_OPEN.has(entityName)) return null;
+  if (entityName === "Notification") return { $or: [{ user_id: { $in: [user.id] } }] };
+  const me = String(user.email ?? "").trim().toLowerCase();
+  if (!me) return none;
+  if (entityName === "Student") return { $or: [{ "closed_by.email": { $in: [me] } }] };
+  const field = CLOSED_BY_STUDENT[entityName];
+  if (!field) return none;
+  const ids = (await col("students").find({ "closed_by.email": me }, { projection: { _id: 1 } }).toArray()).map((s) => String(s._id));
+  return { $or: [{ [field]: { $in: ids } }] };
 }
 
 /** The values at a field, through lists as Mongo does: "common_cs.id" → each entry's id. */

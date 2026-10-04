@@ -36,6 +36,8 @@ const str = (v: unknown, max = 200) => String(v ?? "").trim().slice(0, max);
 
 /** The tabs this person's Students page has — the same choice the page makes. */
 async function tabsFor(user: AuthUser): Promise<Tab[]> {
+  // The Sales role: one list — the students they closed (their scope) — however custom roles are otherwise treated.
+  if ((await getConfiguredScope(user)) === "closed") return ["all"];
   if (isMentorRole(user.app_role)) {
     const tabs: Tab[] = ["my"];
     if ((await getConfiguredScope(user)) === "downline") tabs.push("team");

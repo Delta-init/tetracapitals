@@ -8,6 +8,7 @@ import {
   TARGET_OUTCOMES, STAGES, LOST_REASONS, CLOSED_STAGES,
   businessToday, followupStatus, visibleMentorIds, canWorkOn, studentsOf, recordEvents, autoConvert,
 } from "../students/followups";
+import { theirStudents } from "../students/closedBy";
 
 const DATE = /^\d{4}-\d{2}-\d{2}$/;
 const str = (v: unknown, max = 2000) => String(v ?? "").trim().slice(0, max);
@@ -28,7 +29,8 @@ export async function getFollowups(req: Request, user: AuthUser): Promise<Respon
   const studentId = str(body?.studentId, 40);
 
   const studentFilter: Record<string, any> = {};
-  if (visible) Object.assign(studentFilter, studentsOf(visible));   // their own, and students Common with them
+  // Their own, and students Common with them — for the Sales role, the students they closed (to read: canWorkOn says no).
+  if (visible) Object.assign(studentFilter, await theirStudents(user, studentsOf(visible)));
   if (studentId) {
     const oid = toObjectId(studentId);
     if (!oid) return error("Bad studentId", 400);

@@ -4,6 +4,7 @@ import { ok, refuse, secretMatches, text, isEmail, answer, studentWithEmail, cre
 import { lmsEnrolledFields } from "../students/lmsEnrolment";
 import { languageOf } from "../students/language";
 import { salesCrmOf, salesCrmName } from "../students/salesCrm";
+import { closedByEntry, type ClosedBy } from "../students/closedBy";
 import { recordHistory } from "../students/history";
 import { leadersOf } from "../students/followupReminders";
 import { loadTeams } from "../students/teams";
@@ -43,6 +44,9 @@ import { toObjectId } from "../lib/id";
    And which sales CRM sold it (students/salesCrm.ts): on the course's fees,
    and on the student — the CRM they first came through, so a later course
    from another CRM is tagged on its own fees and leaves the student's alone.
+
+   And who closed it — the sales person in that CRM (students/closedBy.ts): on
+   the student's closed_by, once each; a later course can add another.
 
    A new student is told at once: their CS gets "New student" (intake.ts),
    their CS's leaders and the Super Admins a notice of their own (tellLeaders).
@@ -139,6 +143,12 @@ async function recordSalesCrm(student: { _id: unknown; sales_crm?: unknown }, sa
   await col("students").updateOne({ _id: student._id as never, sales_crm: { $in: [null, ""] } }, { $set: { sales_crm: salesCrm } });
 }
 
+/** Who closed this course, on the student's list — once each: the same invoice again, or another course of theirs, adds nobody twice. */
+async function recordClosedBy(student: { _id: unknown }, closer: ClosedBy | null): Promise<void> {
+  if (!closer) return;
+  await col("students").updateOne({ _id: student._id as never, "closed_by.email": { $ne: closer.email } }, { $push: { closed_by: closer } as never });
+}
+
 const TEST_EMAIL = /@deltatest\.dev$/i;
 
 /**
@@ -196,6 +206,7 @@ export async function handleFinanceStudents(req: Request): Promise<Response> {
   const course = text(body.course);
   const language = languageOf(body.language);
   const salesCrm = salesCrmOf(body.crm);
+  const closer = closedByEntry(body.closedBy);
 
   const fee = courseFee(body.feeSummary, invoiceId, invoiceNumber, course, language, salesCrm);
 
@@ -204,6 +215,7 @@ export async function handleFinanceStudents(req: Request): Promise<Response> {
   if (already) {
     // Not the language: this close's was set when it first came, and a later close may have set another since.
     await recordCourseFee(already, fee);
+    await recordClosedBy(already, closer);
     return ok(answer(already, false, "invoice", "This invoice's student is already here"));
   }
 
@@ -212,6 +224,7 @@ export async function handleFinanceStudents(req: Request): Promise<Response> {
     await recordCourseFee(existing, fee);
     await recordCloseLanguage(existing, language, invoiceNumber);
     await recordSalesCrm(existing, salesCrm);
+    await recordClosedBy(existing, closer);
     return ok(answer(existing, false, "email", `${email} is already a student here — left as they are${fee ? ", with this course's fees added" : ""}`));
   }
 
@@ -229,6 +242,7 @@ export async function handleFinanceStudents(req: Request): Promise<Response> {
       lms_user_id: text(body.lmsUserId, 64),
       ...(language ? { language } : {}),
       ...(salesCrm ? { sales_crm: salesCrm } : {}),
+      ...(closer ? { closed_by: [closer] } : {}),
       // Written with the student, so a new student never exists without the course they paid for.
       course_fees: fee ? [fee] : [],
       // With an LMS account: enrolled from the start (the hourly LMS check confirms it).

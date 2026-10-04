@@ -9,6 +9,8 @@ import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import { LifeBuoy, ClipboardCheck, ChevronDown, ChevronRight, Paperclip, CheckCircle2, Loader2, Send } from 'lucide-react';
 import { Paged, TablePagination } from '@/components/common/TablePagination';
+import { useAuth } from '@/lib/AuthContext';
+import { readsClosedOnly } from '@/components/utils/roles';
 
 /* ────────────────────────────────────────────────────────────────────────────
    The student's Help & Support tickets and class assignments in the Delta LMS,
@@ -55,10 +57,11 @@ export function TicketThread({ ticket }) {
 /**
  * Answer a ticket, or mark it resolved — on the LMS, as the help desk would: the answer comes from your own LMS
  * account when you have one (the student sees your name), else from the shared support account signed with
- * your name, and the ticket then waits on the student (who the LMS tells).
+ * your name, and the ticket then waits on the student (who the LMS tells). Not for the Sales role, who only reads.
  */
 export function TicketAnswer({ studentId, ticket }) {
   const qc = useQueryClient();
+  const { user } = useAuth();
   const [text, setText] = useState('');
   const done = () => {
     qc.invalidateQueries({ queryKey: ['student-lms-support', studentId] });
@@ -82,6 +85,7 @@ export function TicketAnswer({ studentId, ticket }) {
     onSuccess: () => { toast.success('Marked resolved'); done(); },
     onError: (e) => toast.error(e?.message || 'Could not mark it resolved'),
   });
+  if (readsClosedOnly(user)) return null;
   if (ticket.status === 'closed') {
     return <p className="mt-2 text-xs text-slate-400">Closed on the LMS — the student can open a new ticket if they still need help.</p>;
   }

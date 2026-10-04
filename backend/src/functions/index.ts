@@ -46,6 +46,7 @@ import {
 import { getMentorSchedule, getMentorClass, bookMentorMeeting, getMentorMeeting, updateMentorMeeting, cancelMentorMeeting } from "./mentorCalendar";
 import { getInactivityTransfer, setInactivityTransfer, runInactivityTransfer } from "./inactivityTransfer";
 import { financeFundingConfigured } from "../finance/funding";
+import { seesClosedOnly, salesMayCall, SALES_READ_ONLY } from "../students/closedBy";
 import type { AuthUser } from "../auth/middleware";
 
 type AuthedHandler = (req: Request, user: AuthUser) => Promise<Response>;
@@ -166,6 +167,8 @@ export async function invokeFunction(req: Request, name: string): Promise<Respon
   if (AUTHED[name]) {
     const user = await getAuthUser(req);
     if (!user) return unauthorized();
+    // The Sales role reads (students/closedBy.ts) — whatever a function would otherwise let anyone signed in do.
+    if (!salesMayCall(name) && (await seesClosedOnly(user))) return forbidden(SALES_READ_ONLY);
     return AUTHED[name](req, user);
   }
   if (AUTHED_NOBODY[name]) {

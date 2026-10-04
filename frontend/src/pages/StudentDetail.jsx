@@ -28,7 +28,8 @@ import { EnrolmentControl } from "@/components/students/enrolment";
 import { OnboardingControl } from "@/components/students/onboarding";
 import { isStudentOf } from "@/components/students/common";
 import { StudentTagsEditor } from "@/components/students/tags";
-import { isMentorRole as isMentorTier } from "@/components/utils/roles";
+import { isMentorRole as isMentorTier, readsClosedOnly } from "@/components/utils/roles";
+import { closedByMe, ClosedByList } from "@/components/students/closedBy";
 import { 
   canEditStudent, 
   applyStudentMasking,
@@ -158,10 +159,13 @@ export default function StudentDetail() {
     } catch (_) { return false; }
   })();
 
+  // The Sales role: the students they closed, to read — no WhatsApp from here (the server says the same).
+  const salesOnly = readsClosedOnly(currentUser);
   const hasAccess = isAdminRole ||
     isStudentOf(student, currentUser.id) ||
     currentUser.id === student.senior_mentor_id ||
-    isCoMentor;
+    isCoMentor ||
+    (salesOnly && closedByMe(student, currentUser));
 
   if (isMentorRole && !hasAccess) {
     return (
@@ -351,6 +355,12 @@ export default function StudentDetail() {
                   </p>
                 )}
               </div>
+
+              {/* The sales person who closed them in the sales CRM — one per course they sold */}
+              <div>
+                <label className="text-sm font-medium text-gray-500">Closed By</label>
+                <ClosedByList student={displayStudent} />
+              </div>
               
               <div>
                 <label className="text-sm font-medium text-gray-500">Senior Mentor</label>
@@ -419,7 +429,8 @@ export default function StudentDetail() {
         {/* Payment links: their CS asks, a Super Admin adds the link */}
         <PaymentLinksCard student={displayStudent} />
 
-        <StudentWhatsAppCard student={displayStudent} />
+        {/* Each CS's own chats — not the Sales role's to read */}
+        {!salesOnly && <StudentWhatsAppCard student={displayStudent} />}
 
         {/* Everything that happened to this student */}
         <StudentHistory studentId={studentId} enabled={!!currentUser} />

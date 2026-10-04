@@ -10,6 +10,7 @@ import { stampNewStudents, recordCreated, prepareStudentUpdate, recordHistory, t
 import { notifyStudentsGiven } from "../lib/notify";
 import type { TeamIndex } from "../students/teams";
 import { stampFundingForFinance, kickFinanceFunding, financeLock, withFinance, WITH_FINANCE_MESSAGE } from "../finance/funding";
+import { seesClosedOnly, SALES_READ_ONLY } from "../students/closedBy";
 
 // The built-in roles the registry policies are written in terms of. Roles
 // created at runtime via Role Management (e.g. "cs_manager") are NOT in this
@@ -181,6 +182,8 @@ export async function createEntity(req: Request, entityName: string): Promise<Re
   const ctx = await buildCtx(req, entityName);
   if (ctx instanceof Response) return ctx;
   if (!rolesAllow(ctx.cfg.create, ctx.user.app_role)) return forbidden();
+  // The Sales role reads (students/closedBy.ts); so for bulk create, update and delete below.
+  if (await seesClosedOnly(ctx.user)) return forbidden(SALES_READ_ONLY);
   const body: any = await req.json().catch(() => null);
   if (!body || typeof body !== "object") return error("Body must be a JSON object", 400);
 
@@ -215,6 +218,7 @@ export async function bulkCreateEntity(req: Request, entityName: string): Promis
   const ctx = await buildCtx(req, entityName);
   if (ctx instanceof Response) return ctx;
   if (!rolesAllow(ctx.cfg.create, ctx.user.app_role)) return forbidden();
+  if (await seesClosedOnly(ctx.user)) return forbidden(SALES_READ_ONLY);
   const body: any = await req.json().catch(() => null);
   const items: any[] = Array.isArray(body) ? body : Array.isArray(body?.items) ? body.items : [];
   if (!items.length) return error("Expected an array of items", 400);
@@ -263,7 +267,8 @@ export async function bulkCreateEntity(req: Request, entityName: string): Promis
 export async function updateEntity(req: Request, entityName: string, id: string): Promise<Response> {
   const ctx = await buildCtx(req, entityName);
   if (ctx instanceof Response) return ctx;
-  if (!rolesAllow(ctx.cfg.update, ctx.user.app_role)) {
+  // The Sales role changes only what is its own, as anyone may: its notifications, marked read.
+  if (!rolesAllow(ctx.cfg.update, ctx.user.app_role) || (await seesClosedOnly(ctx.user))) {
     // Allow self-updates on owner-fielded entities (e.g. user marking own notification as read)
     if (!ctx.cfg.ownerField) return forbidden();
     const oid = toObjectId(id);
@@ -308,6 +313,7 @@ export async function deleteEntity(req: Request, entityName: string, id: string)
   const ctx = await buildCtx(req, entityName);
   if (ctx instanceof Response) return ctx;
   if (!rolesAllow(ctx.cfg.delete, ctx.user.app_role)) return forbidden();
+  if (await seesClosedOnly(ctx.user)) return forbidden(SALES_READ_ONLY);
   const oid = toObjectId(id);
   if (!oid) return notFound();
   // Finance would be left deciding a request that no longer exists: it is

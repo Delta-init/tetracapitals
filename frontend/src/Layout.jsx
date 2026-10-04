@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Link, useLocation } from 'react-router-dom';
+import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { motion, AnimatePresence } from 'framer-motion';
 import { createPageUrl } from './utils';
@@ -11,6 +11,7 @@ import NotificationBell from './components/utils/NotificationBell';
 import { getEffectiveUser } from './components/utils/ImpersonationContext';
 import { EASE } from '@/components/motion';
 import { NAV_ITEMS, NAV_GROUPS, GROUP_OF, humanize, pageBlockedFor } from '@/components/utils/navigation';
+import { readsClosedOnly } from '@/components/utils/roles';
 import { CallFlowProvider } from '@/components/followups/CallFlow';
 import { forgetThisDevice } from '@/components/utils/usePushNotifications';
 
@@ -66,6 +67,12 @@ export default function Layout({ children, currentPageName }) {
     };
     fetchUser();
   }, []);
+
+  // The Sales role's home is the students they closed, not the Dashboard (nothing there is theirs).
+  const navigate = useNavigate();
+  useEffect(() => {
+    if (readsClosedOnly(currentUser) && currentPageName === 'Dashboard') navigate(createPageUrl('Students'), { replace: true });
+  }, [currentUser, currentPageName]);
 
   // Load the current user's role so the sidebar can respect its page permissions.
   useEffect(() => {

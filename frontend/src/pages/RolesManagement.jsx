@@ -35,6 +35,8 @@ const SCOPE_OPTIONS = [
   { value: 'downline', label: 'Team students', hint: 'Their students plus everyone on their team (via Up Head)' },
   { value: 'all', label: 'Full system', hint: 'Every student in the system' },
 ];
+// Made roles only — the Sales role's (backend/src/students/closedBy.ts).
+const CLOSED_OPTION = { value: 'closed', label: 'Students they closed', hint: 'Only the students they closed in a sales CRM, to read — they change nothing' };
 const DEFAULT_RULES = '';
 
 const sameSet = (a, b) => a.length === b.length && a.every(x => b.includes(x));
@@ -212,7 +214,7 @@ export default function RolesManagement() {
   const scopeLocked = builtinKey && isAdminRole(builtinKey);
   const scopeOptions = builtinKey && !DEFAULT_SCOPES[builtinKey] && !isAdminRole(builtinKey)
     ? [{ value: DEFAULT_RULES, label: 'Default rules', hint: 'Keep this role’s built-in rules' }, ...SCOPE_OPTIONS]
-    : SCOPE_OPTIONS;
+    : builtinKey ? SCOPE_OPTIONS : [...SCOPE_OPTIONS, CLOSED_OPTION];
   const pagesDiffer = builtinKey && !sameSet(form.page_permissions, defaultPagesFor(builtinKey));
   const scopeText = (s) => (s ? SCOPE_LABELS[s] : 'Default rules');
 

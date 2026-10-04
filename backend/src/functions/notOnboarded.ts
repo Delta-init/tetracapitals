@@ -2,6 +2,7 @@ import { col } from "../db";
 import { json } from "../lib/response";
 import type { AuthUser } from "../auth/middleware";
 import { visibleMentorIds, studentsOf } from "../students/followups";
+import { theirStudents } from "../students/closedBy";
 import { notOnboardedFilter, WAIT_HOURS } from "../students/onboardingAlerts";
 
 /**
@@ -11,11 +12,12 @@ import { notOnboardedFilter, WAIT_HOURS } from "../students/onboardingAlerts";
  *
  * The Not onboarded page: new students from finance who haven't been onboarded yet (students/onboardingAlerts.ts),
  * the longest waiting first — a CS their own (Common ones too), a Chief Mentor or CS Manager everyone under them,
- * admin roles everyone, as the follow-ups. `alert`: when their leaders and the Super Admins were told, 6 hours on.
+ * admin roles everyone, the Sales role the ones they closed, as the follow-ups. `alert`: when their leaders and the
+ * Super Admins were told, 6 hours on.
  */
 export async function getNotOnboarded(_req: Request, user: AuthUser): Promise<Response> {
   const visible = await visibleMentorIds(user);
-  const filter = visible ? { $and: [notOnboardedFilter(), studentsOf(visible)] } : notOnboardedFilter();
+  const filter = visible ? { $and: [notOnboardedFilter(), await theirStudents(user, studentsOf(visible))] } : notOnboardedFilter();
   const students = (await col("students")
     .find(filter, {
       projection: {
