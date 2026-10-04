@@ -18,9 +18,11 @@ import { WA_GREEN } from '@/components/whatsapp/waUi';
    Payment links on the student page (backend/src/functions/paymentLinks.ts).
    Their CS asks for one — the platform (Tabby, Tamara, SmartInvoice,
    BillXpro), the amount and what it is for; a Super Admin makes the link
-   and pastes it in on the Payment Links page. It is emailed to the
-   student and shows here, for the CS to copy or send on their WhatsApp. An
-   answer the CS who asked hadn't seen is marked New, and seen once shown.
+   and pastes it in on the Payment Links page. SmartInvoice and BillXpro,
+   when the server has Abzer (auto_platforms), need no Super Admin: the CS
+   makes the link, and the window shows it there and then. It is emailed to
+   the student and shows here, for the CS to copy or send on their WhatsApp.
+   An answer the CS who asked hadn't seen is marked New, and seen once shown.
 ──────────────────────────────────────────────────────────────────────────── */
 
 export const PAYMENT_STATUS = {
@@ -124,6 +126,7 @@ export default function PaymentLinksCard({ student }) {
   if (!data) return null;
   const requests = data.requests || [];
   if (!requests.length && !data.can_request) return null;   // nothing to show, and not someone who can ask
+  const autoPlatforms = data.auto_platforms || [];   // made at once — no Super Admin (backend paymentLinks.ts)
 
   return (
     <Card className="overflow-hidden border-gray-200">
@@ -131,13 +134,17 @@ export default function PaymentLinksCard({ student }) {
         <CardTitle className="flex items-center justify-between gap-2 text-lg font-semibold">
           <span className="flex items-center gap-2"><CreditCard className="h-5 w-5 text-emerald-600" />Payment links</span>
           {data.can_request && (
-            <Button size="sm" onClick={() => setAsking(true)}><Plus className="h-4 w-4" /> Ask for a link</Button>
+            <Button size="sm" onClick={() => setAsking(true)}><Plus className="h-4 w-4" /> {autoPlatforms.length ? 'New link' : 'Ask for a link'}</Button>
           )}
         </CardTitle>
       </CardHeader>
       <CardContent className="p-0">
         {requests.length === 0 ? (
-          <p className="px-4 py-6 text-center text-sm text-slate-400">No payment links for them yet. Ask for one — a Super Admin adds the link, and it is emailed to them.</p>
+          <p className="px-4 py-6 text-center text-sm text-slate-400">
+            {autoPlatforms.length
+              ? `No payment links for them yet. ${autoPlatforms.map(platformLabel).join(' and ')} links are made at once; for the others a Super Admin adds the link. Each is emailed to them.`
+              : 'No payment links for them yet. Ask for one — a Super Admin adds the link, and it is emailed to them.'}
+          </p>
         ) : (
           <ul className="divide-y divide-gray-100">
             {requests.map(r => (
@@ -198,68 +205,111 @@ export default function PaymentLinksCard({ student }) {
           </ul>
         )}
       </CardContent>
-      {asking && <AskDialog student={student} currency={data.currency} autoPlatforms={data.auto_platforms || []} onClose={() => setAsking(false)} onDone={refresh} />}
+      {asking && (
+        <AskDialog student={student} currency={data.currency} autoPlatforms={autoPlatforms} onClose={() => setAsking(false)} onDone={refresh}
+          whatsApp={wa?.can_send && waNumber ? { number: waNumber, send: (r) => sendOnWhatsApp.mutate(r), sending: sendOnWhatsApp.isPending } : null} />
+      )}
     </Card>
   );
 }
 
-function AskDialog({ student, currency, autoPlatforms = [], onClose, onDone }) {
+/**
+ * SmartInvoice / BillXpro (autoPlatforms): "Make a payment link" — made at once, and the window then shows it, to copy
+ * or send on WhatsApp. The others: "Ask for a payment link" — a Super Admin adds it.
+ */
+function AskDialog({ student, currency, autoPlatforms = [], whatsApp, onClose, onDone }) {
   const [platform, setPlatform] = useState('');
   const automatic = autoPlatforms.includes(platform);   // made by Abzer the moment it's asked (backend paymentLinks.ts)
   const [amount, setAmount] = useState('');
   const [description, setDescription] = useState('');
   const [note, setNote] = useState('');
+  const [made, setMade] = useState(null);   // the link, once made
   const ask = useMutation({
-    mutationFn: async () => (await base44.functions.invoke('requestPaymentLink', { studentId: student.id, platform, amount, description, note })).data,
+    mutationFn: async () => (await base44.functions.invoke('requestPaymentLink', {
+      studentId: student.id, platform, amount, description, note: automatic ? '' : note,   // no Super Admin to read a note
+    })).data,
     onSuccess: ({ request }) => {
+      onDone();
+      if (request?.status === 'approved' && request.url) { setMade(request); return; }
       const label = platformLabel(platform);
-      if (request?.status === 'approved') toast.success(`${label} link ready — ${request.emailed_to ? `emailed to ${request.emailed_to}` : 'copy it or send it on WhatsApp'}`);
-      else if (request?.auto_error) toast.warning(`${label} couldn’t make it (${request.auto_error}) — a Super Admin will add the link`);
+      if (request?.auto_error) toast.warning(`${label} couldn’t make it (${request.auto_error}) — a Super Admin will add the link`);
       else toast.success(`Asked — a Super Admin will add the ${label} link`);
-      onDone(); onClose();
+      onClose();
     },
     onError: (e) => toast.error(e?.message || 'Could not send the request'),
   });
   const ready = platform && Number(amount) > 0 && description.trim();
+  const choosing = !platform && autoPlatforms.length > 0;   // nothing picked yet, and some are made at once
+  const name = student.full_name;
+  const title = made ? `${platformLabel(made.made_on || platform)} link ready for ${name}`
+    : automatic ? `Make a payment link for ${name}`
+      : choosing ? `New payment link for ${name}`
+        : `Ask for a payment link for ${name}`;
 
   return (
     <Dialog open onOpenChange={(v) => { if (!v && !ask.isPending) onClose(); }}>
       <DialogContent className="max-w-md">
         <DialogHeader>
-          <DialogTitle className="text-brand-navy">Ask for a payment link for {student.full_name}</DialogTitle>
+          <DialogTitle className="text-brand-navy">{title}</DialogTitle>
           <DialogDescription>
-            {automatic
-              ? `${platformLabel(platform)} makes the link at once. It is emailed to the student and shows here, for you to copy or send on WhatsApp.`
-              : 'A Super Admin makes the link and adds it. It is then emailed to the student and shows here, for you to copy or send on WhatsApp.'}
+            {made ? `${money(made.currency, made.amount)} — ${made.description}`
+              : automatic ? `${platformLabel(platform)} makes the link at once. It is emailed to the student and shows here, for you to copy or send on WhatsApp.`
+                : choosing ? 'Pick where the link is made. It is emailed to the student and shows here, for you to copy or send on WhatsApp.'
+                  : 'A Super Admin makes the link and adds it. It is then emailed to the student and shows here, for you to copy or send on WhatsApp.'}
           </DialogDescription>
         </DialogHeader>
-        <form className="space-y-3" onSubmit={(e) => { e.preventDefault(); if (ready && !ask.isPending) ask.mutate(); }}>
-          <div className="space-y-1.5">
-            <Label>Platform</Label>
-            <PlatformPicker value={platform} onChange={setPlatform} disabled={ask.isPending} />
-            {autoPlatforms.length > 0 && (
-              <p className="text-xs text-muted-foreground">{autoPlatforms.map(platformLabel).join(' and ')}: the link is made at once. The others: a Super Admin adds it.</p>
+        {made ? (
+          <>
+            <div className="space-y-2">
+              <a href={made.url} target="_blank" rel="noopener noreferrer"
+                className="block break-all rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-blue-700 hover:underline">{made.url}</a>
+              {made.emailed_to
+                ? <p className="text-xs text-slate-500">Emailed to {made.emailed_to}.</p>
+                : <p className="text-xs text-amber-700">Not emailed{made.email_error ? ` — ${made.email_error}` : ''}. Copy the link or send it on WhatsApp.</p>}
+              <div className="flex flex-wrap gap-2">
+                <Button type="button" size="sm" variant="outline" onClick={() => copyLink(made.url)}><Copy className="h-3.5 w-3.5" /> Copy link</Button>
+                {whatsApp && (
+                  <Button type="button" size="sm" variant="outline" title={`To +${whatsApp.number}, from your WhatsApp`} disabled={whatsApp.sending} onClick={() => whatsApp.send(made)}>
+                    {whatsApp.sending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <MessageCircle className="h-3.5 w-3.5" style={{ color: WA_GREEN }} />} WhatsApp
+                  </Button>
+                )}
+              </div>
+            </div>
+            <DialogFooter>
+              <Button type="button" onClick={onClose}>Done</Button>
+            </DialogFooter>
+          </>
+        ) : (
+          <form className="space-y-3" onSubmit={(e) => { e.preventDefault(); if (ready && !ask.isPending) ask.mutate(); }}>
+            <div className="space-y-1.5">
+              <Label>Platform</Label>
+              <PlatformPicker value={platform} onChange={setPlatform} disabled={ask.isPending} />
+              {autoPlatforms.length > 0 && (
+                <p className="text-xs text-muted-foreground">{autoPlatforms.map(platformLabel).join(' and ')}: the link is made at once. The others: a Super Admin adds it.</p>
+              )}
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="pl-amount">Amount ({currency})</Label>
+              <Input id="pl-amount" type="number" inputMode="decimal" min="1" step="0.01" value={amount} onChange={(e) => setAmount(e.target.value)} placeholder="e.g. 1500" />
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="pl-for">For</Label>
+              <Input id="pl-for" value={description} onChange={(e) => setDescription(e.target.value)} maxLength={200} placeholder="e.g. DSLP course fee" />
+            </div>
+            {!automatic && (
+              <div className="space-y-1.5">
+                <Label htmlFor="pl-note">Note for the Super Admin (optional)</Label>
+                <Textarea id="pl-note" rows={3} value={note} onChange={(e) => setNote(e.target.value)} maxLength={1000} placeholder="e.g. Pay in 4, first payment today" />
+              </div>
             )}
-          </div>
-          <div className="space-y-1.5">
-            <Label htmlFor="pl-amount">Amount ({currency})</Label>
-            <Input id="pl-amount" type="number" inputMode="decimal" min="1" step="0.01" value={amount} onChange={(e) => setAmount(e.target.value)} placeholder="e.g. 1500" />
-          </div>
-          <div className="space-y-1.5">
-            <Label htmlFor="pl-for">For</Label>
-            <Input id="pl-for" value={description} onChange={(e) => setDescription(e.target.value)} maxLength={200} placeholder="e.g. DSLP course fee" />
-          </div>
-          <div className="space-y-1.5">
-            <Label htmlFor="pl-note">Note for the Super Admin (optional)</Label>
-            <Textarea id="pl-note" rows={3} value={note} onChange={(e) => setNote(e.target.value)} maxLength={1000} placeholder="e.g. Pay in 4, first payment today" />
-          </div>
-          <DialogFooter>
-            <Button type="button" variant="outline" onClick={onClose} disabled={ask.isPending}>Cancel</Button>
-            <Button type="submit" disabled={!ready || ask.isPending}>
-              {ask.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <CreditCard className="h-4 w-4" />} {automatic ? 'Make the link' : 'Send request'}
-            </Button>
-          </DialogFooter>
-        </form>
+            <DialogFooter>
+              <Button type="button" variant="outline" onClick={onClose} disabled={ask.isPending}>Cancel</Button>
+              <Button type="submit" disabled={!ready || ask.isPending}>
+                {ask.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <CreditCard className="h-4 w-4" />} {automatic ? (ask.isPending ? 'Making the link…' : 'Make the link') : 'Send request'}
+              </Button>
+            </DialogFooter>
+          </form>
+        )}
       </DialogContent>
     </Dialog>
   );
