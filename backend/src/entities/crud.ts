@@ -11,6 +11,7 @@ import { notifyStudentsGiven } from "../lib/notify";
 import type { TeamIndex } from "../students/teams";
 import { stampFundingForFinance, kickFinanceFunding, financeLock, withFinance, WITH_FINANCE_MESSAGE, bonusRefusal, bonusMissing, dropServerFields } from "../finance/funding";
 import { seesClosedOnly, SALES_READ_ONLY } from "../students/closedBy";
+import { keepRequestMt5 } from "../students/mt5";
 
 // The built-in roles the registry policies are written in terms of. Roles
 // created at runtime via Role Management (e.g. "cs_manager") are NOT in this
@@ -217,6 +218,10 @@ export async function createEntity(req: Request, entityName: string): Promise<Re
     void notifyStudentsGiven([created], ctx.user.id);
   }
   if (toFinance) kickFinanceFunding();
+  // The MT5 login it names, kept as the student's — the forms offer it next time (students/mt5.ts).
+  if (entityName === "FundingTransaction" && created) {
+    await keepRequestMt5(created, { email: ctx.user.email, name: ctx.user.full_name || ctx.user.email }, "funding request");
+  }
   return json(serialize(created));
 }
 

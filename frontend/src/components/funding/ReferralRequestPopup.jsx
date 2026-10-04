@@ -10,6 +10,7 @@ import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Users, Send, Loader2 } from "lucide-react";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import TagsPicker from "./TagsPicker";
+import { Mt5LoginField, MT5_LOGIN, mt5LoginOf } from "../students/mt5Accounts";
 // The amount box and the course payment, as on the main form (FundingRequestForm, which opens this one — the two import
 // each other, so these are only used inside functions).
 import {
@@ -95,8 +96,13 @@ export default function ReferralRequestPopup({ student, currentUser, onClose, tr
       toast.error('Please select a payment method');
       return;
     }
-    if (!mt5Login.trim()) {
+    const mt5 = mt5LoginOf(mt5Login);
+    if (!mt5) {
       toast.error("Enter the student's MT5 login");
+      return;
+    }
+    if (!MT5_LOGIN.test(mt5)) {
+      toast.error('The MT5 login is its number — digits only');
       return;
     }
     if (needsReceipt && !screenshotUrl) {
@@ -114,7 +120,7 @@ export default function ReferralRequestPopup({ student, currentUser, onClose, tr
         // In USD, as everything adds up; what was typed — and, for a course payment, the bonus — go in the notes.
         requested_deposit_amount: money.usd,
         payment_method: paymentMethod,
-        mt5_login: mt5Login,
+        mt5_login: mt5,
         screenshot_url: screenshotUrl,
         notes: [notes.trim(), paymentNote({ amount: depositAmount, currency, product, plan, payment })].filter(Boolean).join('\n'),
         transaction_type: transactionType,
@@ -215,14 +221,14 @@ export default function ReferralRequestPopup({ student, currentUser, onClose, tr
             </Select>
           </div>
 
-          <div className="space-y-2">
-            <Label>MT5 Login *</Label>
-            <Input
-              value={mt5Login}
-              onChange={(e) => setMt5Login(e.target.value)}
-              placeholder="Enter MT5 login"
-            />
-          </div>
+          {/* Their saved MT5 accounts to pick, the primary one filled in — or a new one, kept once this is approved */}
+          <Mt5LoginField
+            id="referral-mt5"
+            studentId={student.id}
+            value={mt5Login}
+            onChange={setMt5Login}
+            newNote="saved to their page once this is approved"
+          />
 
           <div className="space-y-2">
             <Label>{needsReceipt ? 'Receipt *' : 'Receipt (Optional)'}</Label>

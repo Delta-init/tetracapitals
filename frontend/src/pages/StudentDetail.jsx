@@ -13,6 +13,7 @@ import { createPageUrl } from "../utils";
 import StudentForm from "../components/students/StudentForm";
 import { EditDetailsButton } from "@/components/students/EditDetails";
 import MT5AccountSection from "../components/students/MT5AccountSection";
+import { Mt5Logins } from "../components/students/mt5Accounts";
 import CourseFeesCard from "../components/students/CourseFeesCard";
 import { SalesCrmBadge, salesCrmOfStudent } from "@/components/students/salesCrm";
 import StudentHistory, { useStudentHistory } from "../components/students/StudentHistory";
@@ -305,6 +306,12 @@ export default function StudentDetail() {
                 <p className="mt-1 text-base text-gray-900">
                   {displayStudent.country || '-'}
                 </p>
+              </div>
+
+              {/* Their MT5 accounts — from the call log, their funding requests, or added below */}
+              <div>
+                <label className="text-sm font-medium text-gray-500">MT5 Account</label>
+                <Mt5Logins studentId={student.id} />
               </div>
 
               {/* The language they study in, from their close in the sales CRM (or set here) */}

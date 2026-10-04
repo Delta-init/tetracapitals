@@ -3,6 +3,7 @@ import { json, error, forbidden, notFound } from "../lib/response";
 import { serialize, serializeMany, toObjectId } from "../lib/id";
 import type { AuthUser } from "../auth/middleware";
 import { stampFundingForFinance, kickFinanceFunding, bonusMissing } from "../finance/funding";
+import { keepRequestMt5 } from "../students/mt5";
 
 /**
  * Mentor asks to be added as a co-mentor for another mentor's student.
@@ -203,6 +204,8 @@ export async function processReferralResponse(req: Request, user: AuthUser): Pro
     const toFinance = stampFundingForFinance(funding);
     await col("funding_transactions").insertOne(funding as any);
     if (toFinance) kickFinanceFunding();
+    // Its MT5 login, kept as the student's, by the mentor who typed it (students/mt5.ts).
+    await keepRequestMt5(funding, { email: String((iUser as any)?.email ?? ""), name: String((referral as any).initiating_mentor_name ?? "") }, "co-management request");
 
     await col("mentor_referrals").updateOne(
       { _id: rid },

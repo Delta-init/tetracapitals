@@ -152,10 +152,10 @@ export function LogFollowupDialog({ followup, onClose, onSaved }) {
   });
   const earlierSaid = (past?.history?.client_said || []).filter(e => e.followup_id === followup?.id);
   const earlierNotes = (past?.history?.notes || []).filter(e => e.followup_id === followup?.id);
-  // The student's MT5 — asked (and required) until they have one saved; saving it sends the sales close's bonus to
-  // the admins to credit there (backend logFollowup).
+  // The student's MT5 — asked (and required) until they have one saved, and kept as theirs whenever it is given; after
+  // a call that connected, the sales close's bonus goes to the admins to credit there (backend logFollowup).
   const mt5s = past?.mt5 || [];
-  // After a call from the Not onboarded page: did it connect? Not connected — no MT5 asked, next follow-up today.
+  // After a call from the Not onboarded page: did it connect? Not connected — the MT5 not required, next follow-up today.
   const askConnected = !!followup?.ask_connected;
   const needsMt5 = !!past && mt5s.length === 0 && (!askConnected || form.connected === 'yes');
 
@@ -186,6 +186,9 @@ export function LogFollowupDialog({ followup, onClose, onSaved }) {
     if (askConnected && !form.connected) { setError('Did the call connect? Pick Connected or Not connected.'); return; }
     const mt5 = String(form.mt5 || '').replace(/\s+/g, '');
     if (needsMt5 && !MT5_LOGIN.test(mt5)) { setError("Enter the student's MT5 ID — its login number, digits only. It's needed until they have one saved."); return; }
+    // Given on a call that didn't connect: not needed, but kept all the same — so a login number too.
+    const sendMt5 = mt5s.length === 0 && !!mt5;
+    if (sendMt5 && !MT5_LOGIN.test(mt5)) { setError("The MT5 ID is its login number — digits only."); return; }
     setBusy(true); setError(null);
     try {
       const res = (await base44.functions.invoke('logFollowup', {
@@ -199,7 +202,7 @@ export function LogFollowupDialog({ followup, onClose, onSaved }) {
         convertedDate: form.convertedDate,
         dealValue: form.stage === 'Converted' ? Number(form.dealValue) : undefined,
         notes: form.notes,
-        ...(needsMt5 ? { mt5Login: mt5 } : {}),
+        ...(sendMt5 ? { mt5Login: mt5 } : {}),
         ...(askConnected ? { connected: form.connected === 'yes' } : {}),
         ...(form.targetOutcome && form.targetOutcome !== followup.target_outcome ? { targetOutcome: form.targetOutcome } : {}),
       })).data;
@@ -266,7 +269,7 @@ export function LogFollowupDialog({ followup, onClose, onSaved }) {
             {mt5s.length
               ? <p className="font-mono text-sm text-slate-800">{mt5s.join(' · ')}</p>
               : <Input id="log-mt5" inputMode="numeric" value={form.mt5 || ''} onChange={set('mt5')} placeholder="The student's MT5 login" />}
-            <p className="text-[11px] text-slate-400">{mt5s.length ? 'Saved on their page' : askConnected && form.connected === 'no' ? "Not needed — the call didn't connect" : 'Needed until they have one — saved as their MT5 account'}</p>
+            <p className="text-[11px] text-slate-400">{mt5s.length ? 'Saved on their page' : askConnected && form.connected === 'no' ? "Optional — the call didn't connect. Saved as their MT5 account if you enter it" : 'Needed until they have one — saved as their MT5 account'}</p>
           </div>
           <SalesBonusNote bonuses={past?.sales_bonus} />
         </div>

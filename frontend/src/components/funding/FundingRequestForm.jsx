@@ -14,6 +14,7 @@ import SearchableSelect from '../common/SearchableSelect';
 import TagsPicker from './TagsPicker';
 import { isMentorRole } from '../utils/roles';
 import { teamMembersOf } from '../utils/teams';
+import { Mt5LoginField, MT5_LOGIN, mt5LoginOf } from '../students/mt5Accounts';
 
 const NONE = '__none__';
 // "junior_mentor" -> "Junior Mentor"
@@ -300,7 +301,8 @@ export default function FundingRequestForm({ students, allStudents = [], current
         return;
       }
     }
-    setFormData(prev => ({ ...prev, student_id: studentId }));
+    // Another student: their own MT5, the primary one filled in once their accounts load (Mt5LoginField).
+    setFormData(prev => ({ ...prev, student_id: studentId, ...(prev.student_id !== studentId ? { mt5_login: '' } : {}) }));
   };
 
   const handleFileUpload = async (e) => {
@@ -345,8 +347,13 @@ export default function FundingRequestForm({ students, allStudents = [], current
       toast.error('Select the payment method');
       return;
     }
-    if (!formData.mt5_login.trim()) {
+    const mt5 = mt5LoginOf(formData.mt5_login);
+    if (!mt5) {
       toast.error("Enter the student's MT5 login");
+      return;
+    }
+    if (!MT5_LOGIN.test(mt5)) {
+      toast.error('The MT5 login is its number — digits only');
       return;
     }
     if (needsReceipt && !formData.screenshot_url) {
@@ -377,6 +384,7 @@ export default function FundingRequestForm({ students, allStudents = [], current
 
     const dataToSubmit = {
       ...formData,
+      mt5_login: mt5,
       meeting_mentor_id: meetingMentor?.id || null,
       meeting_mentor_name: meetingMentor?.full_name || null,
       // What was typed, in both currencies — amount_usd is what commission and the reports use.
@@ -567,16 +575,12 @@ export default function FundingRequestForm({ students, allStudents = [], current
             )}
           </div>
 
-          <div className="space-y-2">
-            <Label htmlFor="mt5_login">MT5 Login *</Label>
-            <Input
-              id="mt5_login"
-              value={formData.mt5_login}
-              onChange={(e) => setFormData({ ...formData, mt5_login: e.target.value })}
-              placeholder="Enter MT5 login"
-              required
-            />
-          </div>
+          {/* The student's saved MT5 accounts to pick, the primary one filled in — or a new one, kept as theirs */}
+          <Mt5LoginField
+            studentId={formData.student_id}
+            value={formData.mt5_login}
+            onChange={(v) => setFormData(f => ({ ...f, mt5_login: v }))}
+          />
 
           <div className="space-y-2">
             <Label htmlFor="screenshot">{needsReceipt ? 'Receipt *' : 'Receipt (Optional)'}</Label>

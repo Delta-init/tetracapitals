@@ -9,18 +9,19 @@ import {
   businessToday, followupStatus, visibleMentorIds, canWorkOn, studentsOf, recordEvents, autoConvert,
 } from "../students/followups";
 import { theirStudents } from "../students/closedBy";
+import { MT5_LOGIN, mt5LoginOf, mt5Of, mt5Owner, keepMt5 } from "../students/mt5";
 
 const DATE = /^\d{4}-\d{2}-\d{2}$/;
 const str = (v: unknown, max = 2000) => String(v ?? "").trim().slice(0, max);
 const who = (u: AuthUser) => u.full_name || u.email || "somebody";
 
 /* ── The student's MT5, and the bonus promised at the sales close (the user, 2026-10-04) ──────────────────────
-   The call log asks for the student's MT5 ID until they have one; it is kept as their MT5 account (mt5_accounts, the
-   list on the student page). With it, each bonus finance says was given at the sales close (course_fees) goes to the
-   admins as a Bonus request to credit in that MT5 — once per invoice, and a credit only: `bonus_credit` makes
-   creditCommission pay nobody commission on it, and the Summary leaves it out of Bonus In. */
+   The call log asks for the student's MT5 ID until they have one; it is kept as their MT5 account (students/mt5.ts —
+   the list on the student page), from a call that didn't connect too. After a call that connected, each bonus finance
+   says was given at the sales close (course_fees) goes to the admins as a Bonus request to credit in their MT5 — the
+   one given now, or the one they have — once per invoice, and a credit only: `bonus_credit` makes creditCommission
+   pay nobody commission on it, and the Summary leaves it out of Bonus In. */
 const AED_PER_USD = 3.67;
-const MT5 = /^\d{4,15}$/;
 
 /** The bonus promised at each sales close (finance's course fees) — given or not, and how much; [] when not known. */
 export function salesBonusOf(student: any) {
@@ -34,26 +35,6 @@ export function salesBonusOf(student: any) {
       amount: f.bonus_given === true ? Math.round(Number(f.bonus_minor) || 0) / 100 : 0,
       currency: String(f.bonus_currency || f.currency || "AED").toUpperCase(),
     }));
-}
-
-/** The student's MT5 logins, as their page lists them. */
-async function mt5Of(studentId: string): Promise<string[]> {
-  const rows = (await col("mt5_accounts").find({ student_id: studentId }, { projection: { mt5_login: 1 } }).sort({ created_date: 1 }).toArray()) as any[];
-  return rows.map((r) => String(r.mt5_login ?? "").trim()).filter(Boolean);
-}
-
-/** Kept as one of the student's MT5 accounts (their first is the primary one); false when they had it already. */
-async function saveMt5(student: any, login: string, user: AuthUser): Promise<boolean> {
-  const sid = String(student._id);
-  const have = await mt5Of(sid);
-  if (have.includes(login)) return false;
-  const now = new Date().toISOString();
-  await col("mt5_accounts").insertOne({
-    student_id: sid, student_name: student.full_name ?? "", student_code: student.student_code ?? "",
-    mt5_login: login, platform: "MT5", account_type: "LIVE", base_currency: "USD", is_primary: have.length === 0,
-    created_by: user.email ?? "", created_by_name: who(user), source: "call log", created_date: now, updated_date: now,
-  } as any);
-  return true;
 }
 
 /** Each sales-close bonus not raised yet goes to the admins to credit in `login` — a credit only; how many went. */
@@ -393,14 +374,17 @@ export async function logFollowup(req: Request, user: AuthUser): Promise<Respons
   const reason = str(body?.objectionReason, 80);
   if (reason && !(LOST_REASONS as readonly string[]).includes(reason)) return error("Pick a reason from the list", 400);
   if (stage === "Lost" && !reason) return error("A lost follow-up needs a lost reason", 400);
-  const mt5 = str(body?.mt5Login, 40).replace(/\s+/g, "");
-  if (mt5 && !MT5.test(mt5)) return error("The MT5 ID is its login number — digits only", 400);
+  const mt5 = mt5LoginOf(body?.mt5Login);
+  if (mt5 && !MT5_LOGIN.test(mt5)) return error("The MT5 ID is its login number — digits only", 400);
+  // A login is one student's: another student's is said before anything is written — not whose it is.
+  const mt5Holder = mt5 ? await mt5Owner(mt5) : null;
+  if (mt5Holder !== null && mt5Holder !== String(student._id)) return error("That MT5 ID is already saved for another student — check the number", 409);
   // The target outcome can change with a call — what it is about now (e.g. an Onboarding call becoming DSLP).
   const target = str(body?.targetOutcome, 60);
   if (target && !(TARGET_OUTCOMES as readonly string[]).includes(target)) return error("Pick a target outcome", 400);
   const retarget = !!target && target !== f.target_outcome;
   // A call from the Not onboarded page says whether it connected: not — they show as Not connected there (with how
-  // many tries), and no MT5 is taken from it.
+  // many tries), and the sales close's bonus waits for a call that did.
   const connected = body?.connected === true ? true : body?.connected === false ? false : null;
 
   const today = businessToday();
@@ -434,16 +418,18 @@ export async function logFollowup(req: Request, user: AuthUser): Promise<Respons
   }
 
   await col("student_followups").updateOne({ _id: oid }, { $set: patch });
-  // The MT5 given on this call: kept as theirs, and the sales close's bonus sent to be credited in it.
   if (connected !== null) {
     await col("students").updateOne({ _id: student._id }, {
       $set: { onboarding_call: { connected, at: patch.updated_date, by_id: user.id, by_name: who(user) } },
       ...(connected ? {} : { $inc: { onboarding_call_attempts: 1 } }),
     });
   }
-  const takeMt5 = !!mt5 && connected !== false;
-  const mt5Saved = takeMt5 ? await saveMt5(student, mt5, user) : false;
-  const bonusCredits = takeMt5 ? await raiseSalesBonusCredits(student, mt5, user) : 0;
+  // The MT5 given on this call: kept as theirs, connected or not. After a call that connected, the sales close's
+  // bonus goes to be credited — in the MT5 given now, or the one they have (once per invoice: an upsert).
+  const kept = mt5 ? await keepMt5(student, mt5, { email: user.email, name: who(user) }, "call log") : null;
+  const mt5Saved = kept === "saved";
+  const creditIn = connected === false || kept === "taken" ? "" : kept ? mt5 : ((await mt5Of(String(student._id)))[0] ?? "");
+  const bonusCredits = creditIn ? await raiseSalesBonusCredits(student, creditIn, user) : 0;
   const moved = f.stage !== stage;
   await recordEvents([{
     followup_id: String(oid), student_id: String(f.student_id), at: patch.updated_date, by_id: user.id, by_name: who(user),

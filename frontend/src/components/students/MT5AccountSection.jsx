@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { base44 } from "@/api/base44Client";
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -10,6 +10,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "
 import { Badge } from "@/components/ui/badge";
 import { Plus, CheckCircle } from "lucide-react";
 import { canCreateMT5Account } from "../utils/StudentAccessControl";
+import { useStudentMt5 } from "./mt5Accounts";
 import { toast } from "sonner";
 
 export default function MT5AccountSection({ student, currentUser }) {
@@ -24,13 +25,8 @@ export default function MT5AccountSection({ student, currentUser }) {
 
   const queryClient = useQueryClient();
 
-  const { data: mt5Accounts = [] } = useQuery({
-    queryKey: ['mt5accounts', student.id],
-    queryFn: async () => {
-      const accounts = await base44.entities.MT5Account.list();
-      return accounts.filter(acc => acc.student_id === student.id);
-    }
-  });
+  // Only this student's, the primary one first (mt5Accounts.jsx).
+  const { data: mt5Accounts = [] } = useStudentMt5(student.id);
 
   const createMutation = useMutation({
     mutationFn: (data) => base44.entities.MT5Account.create(data),
@@ -39,7 +35,11 @@ export default function MT5AccountSection({ student, currentUser }) {
       setShowAddDialog(false);
       toast.success('MT5 Account added successfully');
       resetForm();
-    }
+    },
+    // A login is one student's: the database keeps each once.
+    onError: (e) => toast.error(/E11000|duplicate key/i.test(String(e?.message))
+      ? 'That MT5 login is already saved — for this student or another'
+      : e?.message || 'Could not add the MT5 account'),
   });
 
   const resetForm = () => {
