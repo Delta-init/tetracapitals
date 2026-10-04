@@ -97,11 +97,20 @@ module.exports = {
   				to: {
   					height: '0'
   				}
+  			},
+  			'bell-ring': {
+  				'0%, 100%': { transform: 'rotate(0deg)' },
+  				'15%': { transform: 'rotate(14deg)' },
+  				'30%': { transform: 'rotate(-12deg)' },
+  				'45%': { transform: 'rotate(9deg)' },
+  				'60%': { transform: 'rotate(-6deg)' },
+  				'75%': { transform: 'rotate(3deg)' }
   			}
   		},
   		animation: {
   			'accordion-down': 'accordion-down 0.2s ease-out',
-  			'accordion-up': 'accordion-up 0.2s ease-out'
+  			'accordion-up': 'accordion-up 0.2s ease-out',
+  			'bell-ring': 'bell-ring 0.9s ease-in-out 2'
   		},
   		backgroundImage: {
   			'brand-gradient': 'linear-gradient(90deg, #1ED2DE 0%, #7CF0B5 100%)',

@@ -3,13 +3,17 @@ import { base44 } from '@/api/base44Client';
 import { Bell, BellRing, Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { usePushNotifications } from '@/components/utils/usePushNotifications';
-import { alertsSupported, alertsPermission, alertsOn, setAlertsOn, setPushActive, markSeen, showAlert } from '@/components/utils/browserAlerts';
+import {
+  alertsSupported, alertsPermission, alertsOn, setAlertsOn, setPushActive, markSeen, showAlert, ringBell, markRung, soundOn, setSoundOn,
+} from '@/components/utils/browserAlerts';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Button } from '@/components/ui/button';
 import { formatDistanceToNow } from 'date-fns';
 import { useNavigate } from 'react-router-dom';
 
 const WA_POLL_MS = 15000;
+const BELL_POLL_MS = 15000;
+const SHAKE_MS = 2000;
 
 export default function NotificationBell({ currentUser, onWhatsAppUnread }) {
   const [notifications, setNotifications] = useState([]);
@@ -19,6 +23,17 @@ export default function NotificationBell({ currentUser, onWhatsAppUnread }) {
   const [perm, setPerm] = useState(alertsPermission());
   const [alerts, setAlerts] = useState(alertsOn());
   const primed = useRef(false);
+  const [sound, setSound] = useState(soundOn());
+  const [ringing, setRinging] = useState(false);
+  const shakeTimer = useRef(null);
+  // A new notice or WhatsApp message: the bell rings (once for a burst), and shakes a moment.
+  const ring = (key) => {
+    if (!ringBell(key)) return;
+    setRinging(true);
+    clearTimeout(shakeTimer.current);
+    shakeTimer.current = setTimeout(() => setRinging(false), SHAKE_MS);
+  };
+  useEffect(() => () => clearTimeout(shakeTimer.current), []);
 
   // With push on, the service worker shows the notices; this tab does not pop them up again.
   useEffect(() => { setPushActive(device.on); }, [device.on]);
@@ -41,8 +56,9 @@ export default function NotificationBell({ currentUser, onWhatsAppUnread }) {
       setNotifications(all);
       // A browser notification for each new one — the ones already there when the portal opened are just marked shown.
       for (const n of [...all].reverse()) {
-        if (!primed.current) markSeen(`bell:${n.id}`);
-        else showAlert({ key: `bell:${n.id}`, title: n.title, body: n.message, tag: n.type, url: n.link || '/', onClick: () => handleClick(n) });
+        if (!primed.current) { markSeen(`bell:${n.id}`); markRung(`bell:${n.id}`); continue; }
+        showAlert({ key: `bell:${n.id}`, title: n.title, body: n.message, tag: n.type, url: n.link || '/', onClick: () => handleClick(n) });
+        ring(`bell:${n.id}`);
       }
       primed.current = true;
     } catch (_) {}
@@ -51,7 +67,7 @@ export default function NotificationBell({ currentUser, onWhatsAppUnread }) {
   useEffect(() => {
     primed.current = false;
     fetchNotifications();
-    const interval = setInterval(fetchNotifications, 30000);
+    const interval = setInterval(fetchNotifications, BELL_POLL_MS);
     return () => clearInterval(interval);
   }, [currentUser?.id]);
 
@@ -67,6 +83,7 @@ export default function NotificationBell({ currentUser, onWhatsAppUnread }) {
         for (const m of [...(d.messages || [])].reverse()) {
           const url = `/WhatsApp?chat=${encodeURIComponent(m.chat)}`;
           showAlert({ key: `wa:${m.id}`, title: `WhatsApp · ${m.name}`, body: m.body, tag: `wa-${m.chat}`, url, onClick: () => navigate(url) });
+          ring(`wa:${m.id}`);
         }
         since = d.now;
       } catch (_) { /* WhatsApp is optional */ }
@@ -117,7 +134,7 @@ export default function NotificationBell({ currentUser, onWhatsAppUnread }) {
     <Popover open={open} onOpenChange={setOpen}>
       <PopoverTrigger asChild>
         <Button variant="ghost" size="icon" className="relative">
-          <Bell className="h-5 w-5 text-gray-600" />
+          <Bell className={`h-5 w-5 ${ringing ? 'animate-bell-ring text-amber-500' : 'text-gray-600'}`} />
           {count > 0 && (
             <span className="absolute -top-1 -right-1 h-5 w-5 bg-red-500 text-white rounded-full text-xs flex items-center justify-center font-bold">
               {count > 9 ? '9+' : count}
@@ -150,6 +167,16 @@ export default function NotificationBell({ currentUser, onWhatsAppUnread }) {
               )}
             </button>
           ))}
+        </div>
+        {/* The bell's ring, on this device */}
+        <div className="flex items-center justify-between gap-2 border-t border-gray-100 px-4 py-2 text-xs text-gray-600">
+          <span>{sound ? 'The bell rings for new notices' : 'The bell is silent'}</span>
+          <button
+            className="text-blue-600 hover:underline"
+            onClick={() => { const next = !sound; setSoundOn(next); setSound(next); if (next) ringBell(''); }}
+          >
+            {sound ? 'Sound off' : 'Sound on'}
+          </button>
         </div>
         {/* Notifications on this phone or computer */}
         <div className="border-t border-gray-100 bg-gray-50 px-4 py-3 text-xs text-gray-600">
