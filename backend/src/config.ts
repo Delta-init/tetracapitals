@@ -123,6 +123,27 @@ export const config = {
     currency: process.env.TABBY_CURRENCY || "AED",
     apiUrl: (process.env.TABBY_API_URL || "https://api.tabby.ai").replace(/\/+$/, ""),
   },
+  /**
+   * Abzer (BillXpro / SmartInvoice) payment links: a CS's SmartInvoice or
+   * BillXpro request gets its link from Abzer at once (functions/paymentLinks.ts,
+   * lib/abzer.ts) — the API the LMS's checkout uses (API v5.1).
+   *
+   *   accessKey / secretKey  ABZER_ACCESS_KEY / ABZER_SECRET_KEY
+   *   baseUrl                ABZER_BASE_URL       https://billxpro.com/as/api/v100
+   *   templateCode           ABZER_TEMPLATE_CODE  the payment-link template (paymentlink-mail-template)
+   *   currency               ABZER_CURRENCY       AED — what the account takes
+   *   returnUrl              ABZER_RETURN_URL     where the student lands after paying
+   *
+   * Either key unset: those requests wait for a Super Admin to paste a link, as Tabby and Tamara do.
+   */
+  abzer: {
+    accessKey: process.env.ABZER_ACCESS_KEY ?? "",
+    secretKey: process.env.ABZER_SECRET_KEY ?? "",
+    baseUrl: (process.env.ABZER_BASE_URL || "https://billxpro.com/as/api/v100").replace(/\/+$/, ""),
+    templateCode: process.env.ABZER_TEMPLATE_CODE || "paymentlink-mail-template",
+    currency: process.env.ABZER_CURRENCY || "AED",
+    returnUrl: process.env.ABZER_RETURN_URL || "https://www.deltainstitutions.com",
+  },
   anthropicApiKey: process.env.ANTHROPIC_API_KEY ?? "",
   /**
    * The Root portal, which opens this app for people signed in there and

@@ -190,24 +190,34 @@ export default function PaymentLinksCard({ student }) {
                   <p className="text-xs text-amber-700">Not emailed — {r.email_error}. Copy the link or send it on WhatsApp.</p>
                 )}
                 {r.status === 'rejected' && r.reject_reason && <p className="text-xs text-rose-700">{r.reject_reason}</p>}
+                {r.status === 'pending' && r.auto_error && (
+                  <p className="text-xs text-amber-700">{platformLabel(r.platform)} couldn’t make it ({r.auto_error}) — a Super Admin will add the link.</p>
+                )}
               </li>
             ))}
           </ul>
         )}
       </CardContent>
-      {asking && <AskDialog student={student} currency={data.currency} onClose={() => setAsking(false)} onDone={refresh} />}
+      {asking && <AskDialog student={student} currency={data.currency} autoPlatforms={data.auto_platforms || []} onClose={() => setAsking(false)} onDone={refresh} />}
     </Card>
   );
 }
 
-function AskDialog({ student, currency, onClose, onDone }) {
+function AskDialog({ student, currency, autoPlatforms = [], onClose, onDone }) {
   const [platform, setPlatform] = useState('');
+  const automatic = autoPlatforms.includes(platform);   // made by Abzer the moment it's asked (backend paymentLinks.ts)
   const [amount, setAmount] = useState('');
   const [description, setDescription] = useState('');
   const [note, setNote] = useState('');
   const ask = useMutation({
     mutationFn: async () => (await base44.functions.invoke('requestPaymentLink', { studentId: student.id, platform, amount, description, note })).data,
-    onSuccess: () => { toast.success(`Asked — a Super Admin will add the ${platformLabel(platform)} link`); onDone(); onClose(); },
+    onSuccess: ({ request }) => {
+      const label = platformLabel(platform);
+      if (request?.status === 'approved') toast.success(`${label} link ready — ${request.emailed_to ? `emailed to ${request.emailed_to}` : 'copy it or send it on WhatsApp'}`);
+      else if (request?.auto_error) toast.warning(`${label} couldn’t make it (${request.auto_error}) — a Super Admin will add the link`);
+      else toast.success(`Asked — a Super Admin will add the ${label} link`);
+      onDone(); onClose();
+    },
     onError: (e) => toast.error(e?.message || 'Could not send the request'),
   });
   const ready = platform && Number(amount) > 0 && description.trim();
@@ -218,13 +228,18 @@ function AskDialog({ student, currency, onClose, onDone }) {
         <DialogHeader>
           <DialogTitle className="text-brand-navy">Ask for a payment link for {student.full_name}</DialogTitle>
           <DialogDescription>
-            A Super Admin makes the link and adds it. It is then emailed to the student and shows here, for you to copy or send on WhatsApp.
+            {automatic
+              ? `${platformLabel(platform)} makes the link at once. It is emailed to the student and shows here, for you to copy or send on WhatsApp.`
+              : 'A Super Admin makes the link and adds it. It is then emailed to the student and shows here, for you to copy or send on WhatsApp.'}
           </DialogDescription>
         </DialogHeader>
         <form className="space-y-3" onSubmit={(e) => { e.preventDefault(); if (ready && !ask.isPending) ask.mutate(); }}>
           <div className="space-y-1.5">
             <Label>Platform</Label>
             <PlatformPicker value={platform} onChange={setPlatform} disabled={ask.isPending} />
+            {autoPlatforms.length > 0 && (
+              <p className="text-xs text-muted-foreground">{autoPlatforms.map(platformLabel).join(' and ')}: the link is made at once. The others: a Super Admin adds it.</p>
+            )}
           </div>
           <div className="space-y-1.5">
             <Label htmlFor="pl-amount">Amount ({currency})</Label>
@@ -241,7 +256,7 @@ function AskDialog({ student, currency, onClose, onDone }) {
           <DialogFooter>
             <Button type="button" variant="outline" onClick={onClose} disabled={ask.isPending}>Cancel</Button>
             <Button type="submit" disabled={!ready || ask.isPending}>
-              {ask.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <CreditCard className="h-4 w-4" />} Send request
+              {ask.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <CreditCard className="h-4 w-4" />} {automatic ? 'Make the link' : 'Send request'}
             </Button>
           </DialogFooter>
         </form>

@@ -8,6 +8,8 @@ import { commonIds } from "../students/followups";
 import { recordHistory } from "../students/history";
 import { notify } from "../lib/notify";
 import { sendMail, mailConfigured } from "../lib/mailer";
+import { abzerConfigured, createAbzerLink, AbzerError } from "../lib/abzer";
+import { intlNumbers } from "../whatsapp/service";
 import { onboardingEmail } from "./studentOnboarding";
 
 /* ────────────────────────────────────────────────────────────────────────────
@@ -22,6 +24,11 @@ import { onboardingEmail } from "./studentOnboarding";
    The CS also has the Payment Links page with what they asked for; their
    sidebar counts the answers (link ready, turned down) they haven't seen —
    cs_seen_at, set once they open that page or the student's page.
+   SmartInvoice and BillXpro — one Abzer account — need no Super Admin: Abzer
+   makes the link the moment the CS asks (lib/abzer.ts; the user, 2026-10-04),
+   approved as "SmartInvoice (automatic)" and emailed the same way. Abzer
+   saying no, or a student with no email, leaves it waiting for a Super Admin
+   to paste one, with Abzer's reason (auto_error).
    Nothing here moves money.
 
    payment_link_requests.status: pending → approved (url) · rejected (reason)
@@ -37,6 +44,9 @@ const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const STATUS_WORD: Record<string, string> = { pending: "waiting", approved: "approved", rejected: "turned down", cancelled: "cancelled" };
 /** Where a link is made: the CS picks one when asking (`platform`); the Super Admin may make it on another (`made_on`). */
 const PLATFORMS: Record<string, string> = { tabby: "Tabby", tamara: "Tamara", smartinvoice: "SmartInvoice", billxpro: "BillXpro" };
+/** Made by Abzer the moment the CS asks — when Abzer is set up on this server. */
+const AUTO_PLATFORMS = new Set(["smartinvoice", "billxpro"]);
+const autoPlatforms = () => (abzerConfigured() ? [...AUTO_PLATFORMS] : []);
 const str = (v: unknown, max = 500) => String(v ?? "").trim().slice(0, max);
 const platformOf = (v: unknown) => (PLATFORMS[str(v, 20).toLowerCase()] ? str(v, 20).toLowerCase() : "");
 /** "Tabby payment link" — or just "payment link" for a request from before the platform was asked. */
@@ -93,6 +103,8 @@ function view(r: any, user: AuthUser) {
     admin_note: r.admin_note ?? "",
     approved_by_name: r.approved_by_name ?? "",
     approved_at: r.approved_at ?? null,
+    automatic: !!r.abzer_request_id,
+    auto_error: r.auto_error ?? "",
     emailed_to: r.email?.to ?? "",
     emailed_at: r.email?.at ?? null,
     email_error: r.email_error ?? "",
@@ -127,9 +139,67 @@ function linkEmail(r: any, s: any) {
   return { subject, text };
 }
 
+/** The link, emailed to the student (unless their record has no email, or the server no mail) — kept on the request. */
+async function emailLink(r: any, student: any): Promise<void> {
+  const to = emailOf(student);
+  let emailError = "";
+  if (!to) emailError = "There is no email on the student's record";
+  else if (!mailConfigured()) emailError = "Email is not set up on this server";
+  else {
+    const m = linkEmail(r, student);
+    const { asHtml, asText, logo } = onboardingEmail;   // Delta's email, as the welcome
+    const sent = await sendMail({
+      to, subject: m.subject, text: asText(m.text), html: asHtml(m.text, m.subject),
+      fromName: "Delta Institutions", replyTo: r.requested_by_email || undefined, ...(logo ? { attachments: [logo] } : {}),
+    });
+    if (sent.ok) r.email = { to, subject: m.subject, at: new Date().toISOString(), message_id: sent.messageId };
+    else emailError = sent.error;
+  }
+  if (emailError) r.email_error = emailError;
+  await col(REQUESTS).updateOne({ _id: r._id }, { $set: r.email ? { email: r.email } : { email_error: emailError } });
+}
+
+/**
+ * A SmartInvoice or BillXpro request: Abzer makes the link now — approved, emailed, in the history. → true; or false,
+ * with Abzer's reason kept (auto_error), and the request still waiting for a Super Admin.
+ */
+async function autoLink(r: any, student: any): Promise<boolean> {
+  const by = `${PLATFORMS[r.platform]} (automatic)`;
+  const to = emailOf(student);
+  let failure = "";
+  if (!to) failure = "There is no email on the student's record — Abzer needs one";
+  else {
+    try {
+      const phone = intlNumbers(student.phone)[0];
+      // The request's own id as the reference: Abzer echoes it to the account's webhook (the LMS's), which looks it
+      // up as an order id, finds none and lets it be.
+      const link = await createAbzerLink({ amount: r.amount, reference: String(r._id), name: r.student_name, email: to, phone: phone ? `+${phone}` : "" });
+      const now = new Date().toISOString();
+      const set = { status: "approved", url: link.url, made_on: r.platform, abzer_request_id: link.id, approved_by_id: null, approved_by_name: by, approved_at: now, updated_at: now };
+      const res = await col(REQUESTS).updateOne({ _id: r._id, status: "pending" }, { $set: set });
+      if (res.modifiedCount !== 1) return false;
+      Object.assign(r, set);
+      await emailLink(r, student);
+      await recordHistory([{
+        student_id: r.student_id, at: now, type: "payment_link",
+        text: `${cap(linkName(r.platform))} made by ${PLATFORMS[r.platform]}: ${money(r.amount)} — ${r.description}${r.email ? ` (emailed to ${r.email.to})` : ""}`,
+        by_id: null, by_name: by, from: "pending", to: { request_id: String(r._id), status: "approved" },
+      }]);
+      return true;
+    } catch (err) {
+      failure = err instanceof AbzerError ? err.message : "Abzer could not be asked";
+      if (!(err instanceof AbzerError)) console.error("[abzer] link not made", err);
+    }
+  }
+  r.auto_error = failure;
+  await col(REQUESTS).updateOne({ _id: r._id }, { $set: { auto_error: failure } });
+  return false;
+}
+
 /**
  * POST /api/functions/getPaymentLinks { studentId, markSeen? }
- *   → { can_request, can_approve, currency, requests } — a student's requests, for whoever may see the student.
+ *   → { can_request, can_approve, currency, auto_platforms, requests } — a student's requests, for whoever may see the
+ *     student; auto_platforms: the ones Abzer makes at once.
  * POST /api/functions/getPaymentLinks { markSeen? }
  *   → { can_approve, requests, email_ready? } — the Payment Links page: every request for a Super Admin (a waiting
  *     one carries the student's email, where the link will go); for a CS, the ones they asked for.
@@ -146,7 +216,7 @@ export async function getPaymentLinks(req: Request, user: AuthUser): Promise<Res
     const list = await col(REQUESTS).find({ student_id: String(student._id) }).sort({ created_at: -1 }).limit(50).toArray();
     const requests = list.map((r) => view(r, user));
     if (markSeen && requests.some((r) => r.new)) await markAnswersSeen(user, { student_id: String(student._id) });
-    return json({ can_request: mayRequest(user, student), can_approve: isSuperAdmin(user), currency: CURRENCY, requests });
+    return json({ can_request: mayRequest(user, student), can_approve: isSuperAdmin(user), currency: CURRENCY, auto_platforms: autoPlatforms(), requests });
   }
 
   if (user.app_role === "cs") {
@@ -170,7 +240,8 @@ export async function getPaymentLinks(req: Request, user: AuthUser): Promise<Res
 /**
  * POST /api/functions/requestPaymentLink { studentId, platform, amount, description, note? }
  * The student's CS (or a CS they are Common with), on the platform the link should be made on
- * (tabby, tamara, smartinvoice, billxpro). Every Super Admin is told.
+ * (tabby, tamara, smartinvoice, billxpro). SmartInvoice and BillXpro: made by Abzer at once (→ automatic: true);
+ * otherwise — or when Abzer can't — every Super Admin is told.
  */
 export async function requestPaymentLink(req: Request, user: AuthUser): Promise<Response> {
   const body: any = await req.json().catch(() => ({}));
@@ -189,8 +260,9 @@ export async function requestPaymentLink(req: Request, user: AuthUser): Promise<
   const note = str(body?.note, 1000);
   const sid = String(student._id);
 
+  // Approved too: a SmartInvoice / BillXpro link is approved the moment it is made — a double click mustn't make a second.
   const dup: any = await col(REQUESTS).findOne({
-    student_id: sid, requested_by_id: user.id, platform, amount, description, status: "pending",
+    student_id: sid, requested_by_id: user.id, platform, amount, description, status: { $in: ["pending", "approved"] },
     created_at: { $gt: new Date(Date.now() - DUPLICATE_MS).toISOString() },
   });
   if (dup) return json({ request: view(dup, user), duplicate: true });
@@ -219,11 +291,15 @@ export async function requestPaymentLink(req: Request, user: AuthUser): Promise<
     student_id: sid, at: now, type: "payment_link", text: `${cap(linkName(platform))} asked for: ${money(amount)} — ${description}`,
     by_id: user.id, by_name: who(user), to: { request_id: String(r._id), status: "pending" },
   }]);
+  if (AUTO_PLATFORMS.has(platform) && abzerConfigured() && (await autoLink(r, student))) {
+    return json({ request: view(r, user), automatic: true });
+  }
   const admins = await col("users").find({ app_role: "super_admin", status: { $ne: "inactive" } }, { projection: { _id: 1 } }).toArray();
   await notify(admins.map((a: any) => String(a._id)), {
     type: "payment_link_request",
     title: "Payment link asked for",
-    body: `${who(user)} asks for a ${PLATFORMS[platform]} link: ${money(amount)} for ${r.student_name} — ${description}`,
+    body: `${who(user)} asks for a ${PLATFORMS[platform]} link: ${money(amount)} for ${r.student_name} — ${description}`
+      + `${r.auto_error ? `. ${PLATFORMS[platform]} couldn't make it (${r.auto_error}) — paste one.` : ""}`,
     link: "/PaymentLinks",
     tag: `payment-link-${r._id}`,
   });
@@ -257,24 +333,7 @@ export async function approvePaymentLink(req: Request, user: AuthUser): Promise<
   Object.assign(r, set);
 
   const student: any = await studentFor(r.student_id);
-  if (body?.email !== false) {
-    const to = emailOf(student);
-    let emailError = "";
-    if (!to) emailError = "There is no email on the student's record";
-    else if (!mailConfigured()) emailError = "Email is not set up on this server";
-    else {
-      const m = linkEmail(r, student);
-      const { asHtml, asText, logo } = onboardingEmail;   // Delta's email, as the welcome
-      const sent = await sendMail({
-        to, subject: m.subject, text: asText(m.text), html: asHtml(m.text, m.subject),
-        fromName: "Delta Institutions", replyTo: r.requested_by_email || undefined, ...(logo ? { attachments: [logo] } : {}),
-      });
-      if (sent.ok) r.email = { to, subject: m.subject, at: new Date().toISOString(), message_id: sent.messageId };
-      else emailError = sent.error;
-    }
-    if (emailError) r.email_error = emailError;
-    await col(REQUESTS).updateOne({ _id: r._id }, { $set: r.email ? { email: r.email } : { email_error: emailError } });
-  }
+  if (body?.email !== false) await emailLink(r, student);
 
   await recordHistory([{
     student_id: r.student_id, at: now, type: "payment_link",

@@ -131,6 +131,8 @@ export default function PaymentLinks() {
                   </>
                 ) : r.status === 'rejected' ? (
                   <span className="text-xs text-rose-700">{r.reject_reason}</span>
+                ) : r.status === 'pending' && r.auto_error ? (
+                  <span className="text-xs text-amber-700">{platformLabel(r.platform)} couldn’t make it: {r.auto_error}</span>
                 ) : <span className="text-slate-300">—</span>}
               </td>
               <td className="whitespace-nowrap px-3 py-2.5 text-right">
@@ -262,6 +264,7 @@ function ApproveDialog({ request: r, emailReady, onClose, onDone }) {
         </DialogHeader>
         <form className="space-y-3" onSubmit={(e) => { e.preventDefault(); if (ready && !approve.isPending) approve.mutate(); }}>
           <Asked request={r} />
+          {r.auto_error && <p className="text-xs text-amber-700">{platformLabel(r.platform)} couldn’t make it at once: {r.auto_error}</p>}
           <div className="space-y-1.5">
             <Label>Made on</Label>
             <PlatformPicker value={madeOn} onChange={setMadeOn} disabled={approve.isPending} />
