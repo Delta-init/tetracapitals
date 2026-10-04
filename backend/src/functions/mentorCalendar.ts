@@ -1,6 +1,7 @@
 import { json, error } from "../lib/response";
 import type { AuthUser } from "../auth/middleware";
 import { callLms, LmsError } from "../lib/lms";
+import { mentorHours } from "../students/mentorHours";
 
 /* ────────────────────────────────────────────────────────────────────────────
    The Mentor Calendar — the Sales CRM's, ported: the academy's mentors, when
@@ -33,7 +34,11 @@ async function lms(run: () => Promise<unknown>): Promise<Response> {
   }
 }
 
-/** POST /api/functions/getMentorSchedule { from?, to? } → { timezone, from, to, mentors } */
+/**
+ * POST /api/functions/getMentorSchedule { from?, to? } → { timezone, from, to, hrms, mentors }
+ * Each mentor with `work` — their HRMS working hours and leave in Dubai time (students/mentorHours.ts), or null when
+ * the HRMS does not know their email; `hrms` says whether it was asked and answered.
+ */
 export async function getMentorSchedule(req: Request, _user: AuthUser): Promise<Response> {
   const body: any = await req.json().catch(() => ({}));
   const from = body?.from ? new Date(body.from) : new Date();
@@ -44,11 +49,14 @@ export async function getMentorSchedule(req: Request, _user: AuthUser): Promise<
   if (to.getTime() - from.getTime() > MAX_WINDOW_DAYS * 864e5) return error(`At most ${MAX_WINDOW_DAYS} days at a time`, 400);
   return lms(async () => {
     const data: any = await callLms("/mentors", { query: { from: from.toISOString(), to: to.toISOString() }, verb: "list its mentors" });
+    const mentors = (data?.mentors ?? []).map((m: any) => ({ ...m, slots: m.slots ?? [], classes: m.classes ?? [], meetings: m.meetings ?? [] }));
+    const hours = await mentorHours(mentors.map((m: any) => m.email), from, to);
     return {
       timezone: data?.timezone || "",
       from: data?.from || from.toISOString(),
       to: data?.to || to.toISOString(),
-      mentors: (data?.mentors ?? []).map((m: any) => ({ ...m, slots: m.slots ?? [], classes: m.classes ?? [], meetings: m.meetings ?? [] })),
+      hrms: { configured: hours.configured, available: hours.available, ...(hours.message ? { message: hours.message } : {}) },
+      mentors: mentors.map((m: any) => ({ ...m, work: hours.byEmail.get(String(m.email ?? "").trim().toLowerCase()) ?? null })),
     };
   });
 }

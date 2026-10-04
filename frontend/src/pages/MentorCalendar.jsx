@@ -12,7 +12,7 @@ import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Popover, PopoverAnchor, PopoverContent } from '@/components/ui/popover';
-import { ArrowLeft, CalendarDays, ChevronLeft, ChevronRight, Loader2, Plus, Search, UserRound, Users2, X } from 'lucide-react';
+import { ArrowLeft, CalendarDays, ChevronLeft, ChevronRight, Clock, Loader2, Plus, Search, UserRound, Users2, X } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { createPageUrl } from '@/utils';
 import { TablePagination, usePagination } from '@/components/common/TablePagination';
@@ -35,6 +35,58 @@ import { TablePagination, usePagination } from '@/components/common/TablePaginat
 ──────────────────────────────────────────────────────────────────────────── */
 
 const KIND_LABEL = { staff: 'Staff', student: 'Student', client: 'Client' };
+
+/* ── Working hours and leave from the HRMS (backend/src/students/mentorHours.ts), in Dubai time ── */
+const DAY_NAMES = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+/** [0,1,2,3,4,5] → "Sun–Fri"; days with gaps → "Sun, Tue, Thu". */
+const daysText = (days = []) => {
+  const set = new Set(days);
+  if (set.size === 7) return 'Every day';
+  if (!set.size) return 'No work days';
+  const start = [...set].find(d => !set.has((d + 6) % 7)) ?? days[0];
+  let run = 0;
+  while (run < 7 && set.has((start + run) % 7)) run++;
+  if (run === set.size) return run === 1 ? DAY_NAMES[start] : `${DAY_NAMES[start]}–${DAY_NAMES[(start + run - 1) % 7]}`;
+  return [...set].sort((a, b) => a - b).map(d => DAY_NAMES[d]).join(', ');
+};
+const leaveName = (t) => String(t || 'leave').replace(/_/g, ' ').replace(/^\w/, c => c.toUpperCase());
+
+/** Under a mentor's name: their HRMS shift and days, in Dubai time. */
+function WorkLine({ work, hrms }) {
+  if (!hrms?.available) return null;
+  if (!work) return <p className="mt-1 text-[11px] text-slate-400">No HRMS schedule</p>;
+  const s = work.schedule;
+  const title = [
+    `${s.name || 'Work schedule'}${s.assigned ? '' : ' — none assigned, so the HRMS default'}`,
+    s.timeZone && s.timeZone !== 'Asia/Dubai' ? `set in ${s.timeZone}, shown in Dubai time` : '',
+    s.mode === 'duration' && s.requiredHours ? `${s.requiredHours} hours within ${s.from}–${s.to}` : '',
+    s.halfDays?.length ? `half days: ${daysText(s.halfDays)}` : '',
+  ].filter(Boolean).join(' · ');
+  return (
+    <p className="mt-1 text-[11px] leading-snug text-teal-800" title={title}>
+      <Clock className="mr-1 inline h-3 w-3 align-[-2px]" />
+      {s.from}–{s.to} · {daysText(s.workDays)}{s.assigned ? '' : <span className="text-slate-400"> (HRMS default)</span>}
+    </p>
+  );
+}
+
+/** A day's working hours: on leave, off, or the shift (half day noted). */
+function WorkChip({ day }) {
+  if (day.leave) {
+    return (
+      <div className="rounded border border-rose-200 bg-rose-50 px-1.5 py-0.5 text-[11px] font-medium text-rose-700">
+        On leave · {leaveName(day.leave.type)}{day.leave.half ? ' · half day' : ''}
+      </div>
+    );
+  }
+  if (!day.shifts?.length) return <div className="rounded border border-slate-200 bg-slate-50 px-1.5 py-0.5 text-[11px] text-slate-500">Off</div>;
+  return (
+    <div className="rounded border border-dashed border-teal-300 bg-white px-1.5 py-0.5 text-[11px] text-teal-800" title="Working hours, from the HRMS">
+      <Clock className="mr-1 inline h-3 w-3 align-[-2px]" />
+      <span className="tabular">{day.shifts.map(p => `${p.from}–${p.to}`).join(', ')}</span>{day.half ? ' · half day' : ''}
+    </div>
+  );
+}
 const SLOT_MINUTES = 30;
 const fn = async (name, body) => (await base44.functions.invoke(name, body)).data;
 const errorText = (e, fallback) => e?.message || fallback;
@@ -258,14 +310,16 @@ export default function MentorCalendar() {
     onError: (e) => toast.error(errorText(e, 'Could not book that')),
   });
 
-  /* One mentor's day: the pattern they set, the classes in it, the meetings booked into it. */
+  /* One mentor's day: their HRMS hours or leave, the pattern they set, the classes in it, the meetings booked into it. */
   const dayCell = (m, day) => {
+    const work = m.work?.days?.[columnKey(day)];
     const slots = m.slots.filter(s => s.dayOfWeek === day.getDay());
     const classes = m.classes.filter(c => sameDay(c.startsAt, day));
     const meetings = m.meetings.filter(v => sameDay(v.startsAt, day));
-    if (!slots.length && !classes.length && !meetings.length) return null;
+    if (!work && !slots.length && !classes.length && !meetings.length) return null;
     return (
       <div className="space-y-1">
+        {work && <WorkChip day={work} />}
         {slots.map((s, i) => (
           <div key={`${s.startTime}-${i}`} className="rounded border border-emerald-200 bg-emerald-50 px-1.5 py-0.5 text-[11px] text-emerald-700">
             {s.startTime}–{s.endTime}
@@ -305,7 +359,9 @@ export default function MentorCalendar() {
     );
   };
 
+  const hrms = schedule.data?.hrms;
   const legend = [
+    ...(hrms?.available ? [['border-dashed border-teal-300 bg-white', 'Working hours (HRMS)'], ['border-rose-200 bg-rose-50', 'Leave (HRMS)']] : []),
     ['border-emerald-200 bg-emerald-50', 'Free hours'],
     ['border-blue-200 bg-blue-50', 'Class'],
     ['border-violet-200 bg-violet-50', 'Meeting'],
@@ -357,6 +413,7 @@ export default function MentorCalendar() {
             <span key={label} className="inline-flex items-center gap-1.5"><span className={cn('h-3 w-5 rounded border', cls)} /> {label}</span>
           ))}
           {schedule.isFetching && !schedule.isPending && <span className="inline-flex items-center gap-1"><Loader2 className="h-3 w-3 animate-spin" /> Refreshing…</span>}
+          {hrms?.configured && !hrms.available && <span className="text-amber-700">Working hours from the HRMS are not showing: {hrms.message || 'it did not answer'}</span>}
         </div>
 
         {schedule.isPending && (
@@ -410,6 +467,7 @@ export default function MentorCalendar() {
                     <div className="min-w-0">
                       <p className="truncate text-sm font-medium text-slate-900">{m.name || m.email}</p>
                       <p className="truncate text-xs text-slate-400">{m.email}</p>
+                      <WorkLine work={m.work} hrms={hrms} />
                     </div>
                     {m.shared && <Badge variant="outline" className="shrink-0 text-[10px]">Shared</Badge>}
                   </div>
@@ -445,6 +503,7 @@ export default function MentorCalendar() {
                       <td className="px-3 py-2.5">
                         <p className="truncate font-medium text-slate-900">{m.name || m.email}</p>
                         <p className="truncate text-xs text-slate-400">{m.email}</p>
+                        <WorkLine work={m.work} hrms={hrms} />
                         {m.shared && <Badge variant="outline" className="mt-1 text-[10px]">Shared</Badge>}
                       </td>
                       {days.map(day => (

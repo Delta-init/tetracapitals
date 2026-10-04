@@ -55,6 +55,23 @@ export const config = {
     remoteOrgId: process.env.LMS_REMOTE_ORG_ID ?? "",
   },
   /**
+   * The HRMS's signed directory, for the mentors' working hours and leave on the Mentor Calendar — the same client
+   * the Root portal uses (its HRMS_* values):
+   *
+   *   apiUrl             HRMS_API_URL (a trailing /api/v1 is fine)
+   *   clientId           HRMS_CLIENT_ID — the HRMS's INTEGRATION_CLIENT_ID
+   *   integrationSecret  HRMS_INTEGRATION_SECRET — its INTEGRATION_SECRET
+   *   orgId              HRMS_ORG_ID — optional: mentors are found by email in any organization without it
+   *
+   * Any of the first three unset: the calendar shows no working hours.
+   */
+  hrms: {
+    apiUrl: (process.env.HRMS_API_URL ?? "").replace(/\/+$/, "").replace(/\/api\/v1$/, ""),
+    clientId: process.env.HRMS_CLIENT_ID ?? "",
+    integrationSecret: process.env.HRMS_INTEGRATION_SECRET ?? "",
+    orgId: process.env.HRMS_ORG_ID ?? "",
+  },
+  /**
    * WhatsApp, as in the Carlton CRM: each CS links their own WhatsApp by
    * scanning a QR (Baileys — the WhatsApp Web protocol; no Meta account).
    *
