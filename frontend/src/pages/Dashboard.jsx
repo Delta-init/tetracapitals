@@ -259,7 +259,7 @@ export default function Dashboard() {
                 value={`$${monthCommission?.grossCommissionUsd?.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) || '0.00'}`}
                 icon={Award}
                 color="cyan"
-                trend={`${monthCommission?.commissionRate ?? 4}% of monthly revenue`}
+                trend={``}
                 trendUp={monthCommission?.grossCommissionUsd > 0}
                 delay={0.24}
               />
@@ -270,6 +270,7 @@ export default function Dashboard() {
                 color="amber"
                 trend="Awaiting approval"
                 delay={0.31}
+             
               />
             </>
           ) : (
