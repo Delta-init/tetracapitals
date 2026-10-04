@@ -12,7 +12,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { AlarmClock, BellRing, DoorOpen, Download, Search, Users } from 'lucide-react';
 import { getEffectiveUser } from '@/components/utils/ImpersonationContext';
 import { createPageUrl } from '@/utils';
-import { CallButton } from '@/components/followups/CallFlow';
+import { CallButton, ONBOARDING_CONNECTED } from '@/components/followups/CallFlow';
 import { OnboardedSwitch, OnboardingDialog } from '@/components/students/onboarding';
 import { ClosedByCell, closedByText } from '@/components/students/closedBy';
 import { SALES_CRMS } from '@/components/students/salesCrm';
@@ -61,6 +61,13 @@ export default function NotOnboarded() {
   );
   // One fewer here is one fewer in the sidebar.
   useEffect(() => { if (data) queryClient.invalidateQueries({ queryKey: ['nav-counts'] }); }, [waiting.length]);
+  // A connected onboarding call was logged (followupUi.jsx): their welcome opens — from here, so it doesn't matter
+  // whether their row is still on screen, or the page came back from a phone call.
+  useEffect(() => {
+    const open = (e) => setWelcome((data?.rows || []).find(r => r.id === e.detail?.id) || e.detail);
+    window.addEventListener(ONBOARDING_CONNECTED, open);
+    return () => window.removeEventListener(ONBOARDING_CONNECTED, open);
+  }, [data]);
 
   const people = useMemo(
     () => [...new Map(waiting.map(s => [s.primary_mentor_id, s.primary_mentor_name || 'No CS'])).entries()].sort((a, b) => a[1].localeCompare(b[1])),
@@ -105,9 +112,10 @@ export default function NotOnboarded() {
               onClick={(e) => { if (!e.target.closest('button, a')) navigate(`${createPageUrl('StudentDetail')}?id=${s.id}`); }}>
               <td className="sticky left-0 z-10 bg-white px-3 py-2.5 shadow-[1px_0_0_#e2e8f0] group-hover:bg-amber-50">
                 <div className="flex items-center gap-2">
-                  <CallButton variant="icon" student={{ id: s.id, full_name: s.full_name, phone: s.phone }} />
+                  {/* The phone icon is the same onboarding call as the switch: the log asks whether it connected */}
+                  <CallButton variant="icon" student={{ id: s.id, full_name: s.full_name, phone: s.phone, call_for: 'onboarding', ask_connected: true }} />
                   {/* The call first: the welcome opens only after a connected call is logged */}
-                  <OnboardedSwitch student={s} currentUser={currentUser} callFirst onConnected={setWelcome} />
+                  <OnboardedSwitch student={s} currentUser={currentUser} callFirst />
                 </div>
               </td>
               <td className="px-3 py-2.5">

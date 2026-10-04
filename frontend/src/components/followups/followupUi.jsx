@@ -207,7 +207,11 @@ export function LogFollowupDialog({ followup, onClose, onSaved }) {
       onSaved?.();
       onClose();
       // A connected call from the Not onboarded page: on to their welcome.
-      if (askConnected && form.connected === 'yes') followup.after_connected?.();
+      if (askConnected && form.connected === 'yes') {
+        window.dispatchEvent(new CustomEvent('portal:onboarding-call-connected', {
+          detail: { id: followup.student_id, full_name: followup.student_name, phone: followup.phone },
+        }));
+      }
     } catch (e) {
       setError(e?.message || 'Could not save');
     } finally {
@@ -340,7 +344,7 @@ export const isOpenFollowup = (f) => !!f && f.followup_status !== 'Closed' && f.
  * (the user, 2026-10-04): a student who already has one open is marked in the list, and picked shows that follow-up
  * with "Log the call" (onLog) instead of opening a second — the server refuses a second too.
  */
-export function NewFollowupDialog({ open, onClose, onSaved, onLog, student = null, students = [], followups = [], title = null, description = null, defaultOutcome = '' }) {
+export function NewFollowupDialog({ open, onClose, onCancel, onSaved, onLog, student = null, students = [], followups = [], title = null, description = null, defaultOutcome = '' }) {
   const [studentId, setStudentId] = useState('');
   const [outcome, setOutcome] = useState('');
   const [next, setNext] = useState('');
@@ -387,7 +391,7 @@ export function NewFollowupDialog({ open, onClose, onSaved, onLog, student = nul
   };
 
   return (
-    <Dialog open={open} onOpenChange={(o) => { if (!o && !busy) onClose(); }}>
+    <Dialog open={open} onOpenChange={(o) => { if (!o && !busy) { onCancel?.(); onClose(); } }}>
       <DialogContent className="max-w-lg">
         <DialogHeader>
           <DialogTitle className="text-brand-navy">{title || `New follow-up${student ? ` · ${student.full_name}` : ''}`}</DialogTitle>
@@ -439,7 +443,7 @@ export function NewFollowupDialog({ open, onClose, onSaved, onLog, student = nul
           </div>
         )}
         <DialogFooter className="gap-2 sm:gap-0">
-          <Button variant="outline" onClick={onClose} disabled={busy}>Cancel</Button>
+          <Button variant="outline" onClick={() => { onCancel?.(); onClose(); }} disabled={busy}>Cancel</Button>
           {existing ? (
             onLog && existing.can_edit !== false && (
               <Button onClick={() => { onClose(); onLog(existing); }}>Log the call</Button>

@@ -221,7 +221,7 @@ function useUnmark(student) {
  * anyone else. It is a button, so clicking it never opens the student. `callFirst` (the Not onboarded page, the user
  * 2026-10-04): on → the call first; the log asks whether it connected, and only a connected call opens the welcome.
  */
-export function OnboardedSwitch({ student, currentUser, callFirst = false, onConnected = null }) {
+export function OnboardedSwitch({ student, currentUser, callFirst = false }) {
   const unmark = useUnmark(student);
   const callFlow = useCallFlow();
   const [asking, setAsking] = useState(false);
@@ -238,8 +238,8 @@ export function OnboardedSwitch({ student, currentUser, callFirst = false, onCon
         if (info.ok && callFlow) {
           callFlow.chooseCall({
             id: student.id, full_name: student.full_name, phone: student.phone,
-            // The page opens the welcome (onConnected) — this row may be gone by then, filtered or refreshed away.
-            call_for: 'onboarding', ask_connected: true, onConnected: onConnected ? () => onConnected(student) : () => setAsking(true),
+            // A connected call opens the welcome from the page (ONBOARDING_CONNECTED) — this row may be gone by then.
+            call_for: 'onboarding', ask_connected: true,
           }, null, info);
           return;
         }

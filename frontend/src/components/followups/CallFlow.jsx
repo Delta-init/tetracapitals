@@ -10,6 +10,29 @@ import { dialInfo } from './phone';
 import { useAuth } from '@/lib/AuthContext';
 import { readsClosedOnly } from '@/components/utils/roles';
 
+/* A phone call's log, kept until it is saved or put aside: following a tel: link can reload the page (some browsers,
+   some phones), which would lose the window — on the way back it opens again. */
+const PENDING = 'portal.pendingCallLog';
+const PENDING_FOR_MS = 30 * 60_000;
+const keepPending = (who, followup) => {
+  try {
+    sessionStorage.setItem(PENDING, JSON.stringify({
+      at: Date.now(),
+      who: { id: who?.id, full_name: who?.full_name, phone: who?.phone, call_for: who?.call_for, ask_connected: who?.ask_connected },
+      followup: followup ? { ...followup } : null,
+    }));
+  } catch { /* not kept: the window still opens now */ }
+};
+const takePending = () => {
+  try {
+    const p = JSON.parse(sessionStorage.getItem(PENDING) || 'null');
+    return p && Date.now() - p.at < PENDING_FOR_MS && p.who?.id ? p : null;
+  } catch { return null; }
+};
+const dropPending = () => { try { sessionStorage.removeItem(PENDING); } catch { /* nothing kept */ } };
+/** A connected onboarding call was logged (the Not onboarded page opens their welcome). */
+export const ONBOARDING_CONNECTED = 'portal:onboarding-call-connected';
+
 /* ────────────────────────────────────────────────────────────────────────────
    Call, then log. A Call button asks how to call, every time:
      - 3CX call (when the caller's 3CX extension is known and 3CX connected):
@@ -58,7 +81,7 @@ export function CallFlowProvider({ children }) {
     // From the Not onboarded page: the log asks whether the call connected, and a connected one opens the welcome.
     const extra = {
       ...(suggested ? { suggested_outcome: suggested } : {}),
-      ...(student.ask_connected ? { ask_connected: true, after_connected: student.onConnected } : {}),
+      ...(student.ask_connected ? { ask_connected: true } : {}),
     };
     const withOutcome = (f) => ({ ...f, ...extra });
     if (followup && followup.can_edit && isOpen(followup)) {
@@ -78,6 +101,12 @@ export function CallFlowProvider({ children }) {
     }
   }, []);
 
+  // Back from a phone call that reloaded the page: its log, again.
+  useEffect(() => {
+    const p = takePending();
+    if (p) startCall(p.who, p.followup);
+  }, [startCall]);
+
   /** A Call button was pressed: ask how to call. */
   const chooseCall = useCallback((who, followup, info) => setCallChoice({ who, followup, info }), []);
 
@@ -91,7 +120,7 @@ export function CallFlowProvider({ children }) {
         choice={callChoice}
         clickToCall={clickToCall}
         onClose={() => setCallChoice(null)}
-        onPhone={() => { const c = callChoice; setCallChoice(null); if (c) startCall(c.who, c.followup); }}
+        onPhone={() => { const c = callChoice; setCallChoice(null); if (c) { keepPending(c.who, c.followup); startCall(c.who, c.followup); } }}
         onStarted={(call) => { const c = callChoice; setCallChoice(null); if (c) setLiveCall({ ...call, who: c.who, followup: c.followup }); }}
       />
       <CallWindow
@@ -100,7 +129,7 @@ export function CallFlowProvider({ children }) {
         onLog={() => { const c = liveCall; setLiveCall(null); if (c) startCall(c.who, c.followup); }}
       />
 
-      <LogFollowupDialog followup={logging} onClose={() => setLogging(null)} onSaved={refresh} />
+      <LogFollowupDialog followup={logging} onClose={() => { setLogging(null); dropPending(); }} onSaved={refresh} />
 
       <Dialog open={!!choosing} onOpenChange={(o) => { if (!o) setChoosing(null); }}>
         <DialogContent className="max-w-md">
@@ -125,7 +154,7 @@ export function CallFlowProvider({ children }) {
             ))}
           </div>
           <DialogFooter className="gap-2 sm:gap-0">
-            <Button variant="outline" onClick={() => setChoosing(null)}>Skip</Button>
+            <Button variant="outline" onClick={() => { setChoosing(null); dropPending(); }}>Skip</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
@@ -133,6 +162,7 @@ export function CallFlowProvider({ children }) {
       <NewFollowupDialog
         open={!!creating}
         onClose={() => setCreating(null)}
+        onCancel={dropPending}
         onLog={(f) => setLogging({ ...f, phone: f.phone || creating?.student?.phone })}
         student={creating?.student ? { id: creating.student.id, full_name: creating.student.full_name } : null}
         title={creating?.afterCall ? `Log the call · ${creating.student.full_name}` : null}
@@ -147,7 +177,7 @@ export function CallFlowProvider({ children }) {
               id, student_id: s.id, student_name: s.full_name, phone: s.phone, target_outcome: input.targetOutcome,
               stage: 'New', client_said: input.clientSaid || '', notes: input.notes || '', objection_reason: '',
               converted_date: '', deal_value: null, can_edit: true,
-              ...(s.ask_connected ? { ask_connected: true, after_connected: s.onConnected } : {}),
+              ...(s.ask_connected ? { ask_connected: true } : {}),
             });
           }
         }}
