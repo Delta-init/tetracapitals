@@ -96,7 +96,7 @@ const student = (n: number, closed_by: any[] | undefined, extra: Record<string, 
   created_date: `2026-09-2${5 + n}T08:00:00.000Z`, finance_invoice_id: new ObjectId().toString(), ...(closed_by ? { closed_by } : {}), ...extra,
 });
 const s1 = student(1, [closer(aisha)]);
-const s2 = student(2, [closer(bilal, "draw")]);
+const s2 = student(2, [closer(bilal, "draw")], { sales_crm: "draw" });
 const s3 = student(3, [closer(bilal, "remote"), closer(aisha)], { onboarded: true });
 const s4 = student(4, undefined);
 await db.collection("students").insertMany([s1, s2, s3, s4] as any[]);
@@ -221,6 +221,9 @@ r = await A.fn("getPaymentLinks", { studentId: sid(s1) });
 check("student 1's payment links: to read, not to ask for", r.status === 200 && r.body?.can_request === false && r.body?.can_approve === false, JSON.stringify(r.body));
 r = await A.fn("getNotOnboarded", {});
 check("not onboarded: student 1 (3 is onboarded; 2 is not theirs)", r.status === 200 && same(ids(r.body?.rows), [sid(s1)]), JSON.stringify(ids(r.body?.rows)));
+const row1 = (r.body?.rows ?? [])[0];
+check("…saying who closed them, and the CRM they came through (Delta's, for one from before finance said)",
+  row1?.closed_by?.[0]?.email === aisha.email && row1?.sales_crm === "delta", JSON.stringify({ closed_by: row1?.closed_by, sales_crm: row1?.sales_crm }));
 check("WhatsApp chats stay each CS's own", (await A.fn("getStudentWhatsApp", { studentId: sid(s1) })).status === 403);
 
 step("Everyone else, as before");
@@ -231,6 +234,9 @@ check("the CS's entity list is not scoped (a built-in role)", Array.isArray(r.bo
 check("the CS changes their student as before", (await C.fn("setEnrolment", { studentId: sid(s4), status: "old" })).status === 200);
 r = await X.fn("listStudents", { tab: "all" });
 check("the admin: all four", r.status === 200 && r.body?.total === 4);
+r = await X.fn("getNotOnboarded", {});
+const row2 = (r.body?.rows ?? []).find((x: any) => x.id === sid(s2));
+check("the admin's Not onboarded: Draw's student says Draw, closed by Bilal", row2?.sales_crm === "draw" && row2?.closed_by?.[0]?.name === bilal.full_name, JSON.stringify(row2));
 r = await SM.get("/api/entities/Student");
 check("Senior Mentor (closed set by hand): unscoped, as before", Array.isArray(r.body) && r.body.length === 4);
 

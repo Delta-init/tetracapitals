@@ -14,16 +14,21 @@ import { getEffectiveUser } from '@/components/utils/ImpersonationContext';
 import { createPageUrl } from '@/utils';
 import { CallButton } from '@/components/followups/CallFlow';
 import { OnboardedSwitch } from '@/components/students/onboarding';
+import { ClosedByCell, closedByText } from '@/components/students/closedBy';
+import { SALES_CRMS } from '@/components/students/salesCrm';
 
 const hoursSince = (from, now) => Math.max(0, (Date.parse(now) - Date.parse(from)) / 3_600_000);
 const waitText = (h) => (h < 1 ? `${Math.max(1, Math.floor(h * 60))} min` : h < 48 ? `${Math.floor(h)} h` : `${Math.floor(h / 24)} days`);
 const when = (iso) => (iso ? new Date(iso).toLocaleString('en-GB', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' }) : '');
+/** The sales CRM they came through: Sales CRM, Draw or Remote CRM. */
+const platformOf = (s) => SALES_CRMS[s.sales_crm]?.label || '';
 
 /**
  * Not onboarded — new students from finance who haven't been onboarded yet, the longest waiting first. Onboarding
  * them (the welcome email / WhatsApp) takes them off. A CS sees their own; a Chief Mentor or CS Manager their
  * people's; admin roles everyone. Still waiting 6 hours after arriving, the CS's leaders and the Super Admins are
- * emailed and notified once (backend/src/students/onboardingAlerts.ts).
+ * emailed and notified once (backend/src/students/onboardingAlerts.ts). Each says who closed them and in which
+ * sales CRM — Sales CRM, Draw or Remote CRM (components/students/closedBy.jsx).
  */
 export default function NotOnboarded() {
   const navigate = useNavigate();
@@ -58,12 +63,12 @@ export default function NotOnboarded() {
   const rows = waiting.filter(s =>
     (cs === 'all' || (s.primary_mentor_id || 'none') === cs) &&
     (wait === 'all' || (wait === 'late' ? s.waited >= limit : s.waited < limit)) &&
-    (!needle || [s.full_name, s.student_code, s.phone, s.email, s.course, s.primary_mentor_name].some(v => String(v || '').toLowerCase().includes(needle)))
+    (!needle || [s.full_name, s.student_code, s.phone, s.email, s.course, s.primary_mentor_name, closedByText(s), platformOf(s)].some(v => String(v || '').toLowerCase().includes(needle)))
   );
 
   const exportCsv = () => {
-    const head = ['Student', 'Code', 'Phone', 'Email', 'Course', 'CS', 'Team', 'Arrived', 'Hours Waiting', 'Leaders Told'];
-    const lines = [head, ...rows.map(s => [s.full_name, s.student_code, s.phone, s.email, s.course, s.primary_mentor_name, s.team_name, when(s.created_date), Math.floor(s.waited), s.alert?.at ? when(s.alert.at) : ''])];
+    const head = ['Student', 'Code', 'Phone', 'Email', 'Course', 'CS', 'Team', 'Closed By', 'Platform', 'Arrived', 'Hours Waiting', 'Leaders Told'];
+    const lines = [head, ...rows.map(s => [s.full_name, s.student_code, s.phone, s.email, s.course, s.primary_mentor_name, s.team_name, closedByText(s), platformOf(s), when(s.created_date), Math.floor(s.waited), s.alert?.at ? when(s.alert.at) : ''])];
     const csv = lines.map(r => r.map(v => `"${String(v ?? '').replace(/"/g, '""')}"`).join(',')).join('\n');
     const a = document.createElement('a');
     a.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv' }));
@@ -79,7 +84,7 @@ export default function NotOnboarded() {
         <thead>
           <tr className="border-b bg-slate-50/80">
             <th className="sticky left-0 z-10 bg-slate-50 px-3 py-3 text-left text-[11px] font-semibold uppercase tracking-wider text-slate-500 shadow-[1px_0_0_#e2e8f0]">Call · Onboard</th>
-            <TH>Student</TH><TH>Phone</TH><TH>CS</TH><TH>Arrived</TH><TH>Waiting</TH><TH>Leaders Told</TH>
+            <TH>Student</TH><TH>Phone</TH><TH>CS</TH><TH>Closed By</TH><TH>Arrived</TH><TH>Waiting</TH><TH>Leaders Told</TH>
           </tr>
         </thead>
         <tbody>
@@ -103,6 +108,8 @@ export default function NotOnboarded() {
                 <div className="text-slate-700">{s.primary_mentor_name || <span className="text-slate-400">No CS</span>}</div>
                 {s.team_name && <div className="text-xs text-slate-400">{s.team_name}</div>}
               </td>
+              {/* Who closed them, and in which sales CRM */}
+              <td className="px-3 py-2.5"><ClosedByCell student={s} /></td>
               <td className="whitespace-nowrap px-3 py-2.5 text-slate-600">{when(s.created_date)}</td>
               <td className="whitespace-nowrap px-3 py-2.5">
                 <span className={`inline-block rounded-full px-2 py-0.5 text-[11px] font-semibold ${s.waited >= limit ? 'bg-rose-600 text-white' : 'bg-amber-50 text-amber-700'}`}>
@@ -145,7 +152,7 @@ export default function NotOnboarded() {
             <div className="flex flex-wrap items-center gap-2">
               <div className="relative">
                 <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
-                <Input value={q} onChange={e => setQ(e.target.value)} placeholder="Student, phone, course…" className="h-9 w-64 pl-9" />
+                <Input value={q} onChange={e => setQ(e.target.value)} placeholder="Student, phone, course, closed by…" className="h-9 w-64 pl-9" />
               </div>
               {byCs && (
                 <Select value={cs} onValueChange={(v) => v && setCs(v)}>
