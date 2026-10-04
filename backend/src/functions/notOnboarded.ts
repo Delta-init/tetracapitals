@@ -9,14 +9,20 @@ import { notOnboardedFilter, WAIT_HOURS } from "../students/onboardingAlerts";
 /**
  * POST /api/functions/getNotOnboarded
  * → { now, wait_hours, rows: [{ id, full_name, student_code, phone, email, course, primary_mentor_id, primary_mentor_name,
- *      common_cs, team_name, created_date, onboarded, closed_by: [{ email, name, crm }], sales_crm,
+ *      common_cs, team_name, created_date, onboarded, from, closed_by: [{ email, name, crm }], sales_crm,
  *      alert: { at, told: [{ id, name }], reason? } | null }] }
  *
- * The Not onboarded page: new students from finance who haven't been onboarded yet (students/onboardingAlerts.ts),
+ * The Not onboarded page: students who haven't been onboarded yet, whatever they came from (`from`: finance, lms,
+ * sheet, added — students/onboardingAlerts.ts),
  * the longest waiting first — a CS their own (Common ones too), a Chief Mentor or CS Manager everyone under them,
  * admin roles everyone, the Sales role the ones they closed, as the follow-ups. `alert`: when their leaders and the
  * Super Admins were told, 6 hours on.
  */
+const SHEETS = new Set(["cs_sheet", "cs_tracker", "students_sheet", "data_sheet"]);
+/** Where a student came from: finance (a sales close), an LMS sign-up, a sheet import, or added in the portal. */
+const fromOf = (s: any): "finance" | "lms" | "sheet" | "added" =>
+  s.finance_invoice_id ? "finance" : s.source === "delta_lms" || s.lms_user_id ? "lms" : SHEETS.has(String(s.source ?? "")) ? "sheet" : "added";
+
 export async function getNotOnboarded(_req: Request, user: AuthUser): Promise<Response> {
   const visible = await visibleMentorIds(user);
   const filter = visible ? { $and: [notOnboardedFilter(), await theirStudents(user, studentsOf(visible))] } : notOnboardedFilter();
@@ -25,6 +31,7 @@ export async function getNotOnboarded(_req: Request, user: AuthUser): Promise<Re
       projection: {
         full_name: 1, student_code: 1, phone: 1, email: 1, lms_course: 1, primary_mentor_id: 1, primary_mentor_name: 1,
         common_cs: 1, team_name: 1, created_date: 1, onboarded: 1, onboarding_alert: 1, closed_by: 1, sales_crm: 1,
+        source: 1, finance_invoice_id: 1, lms_user_id: 1,
       },
     })
     .sort({ created_date: 1, _id: 1 })
@@ -46,10 +53,11 @@ export async function getNotOnboarded(_req: Request, user: AuthUser): Promise<Re
       team_name: String(s.team_name ?? ""),
       created_date: s.created_date,
       onboarded: s.onboarded === true,
-      // Who closed them (students/closedBy.ts), and the sales CRM they came through — every one here is finance's, so
-      // one from before finance said which came through Delta's (students/salesCrm.ts).
+      from: fromOf(s),
+      // Who closed them (students/closedBy.ts), and the sales CRM they came through — one of finance's from before
+      // finance said which came through Delta's (students/salesCrm.ts); anyone else's only when it is known.
       closed_by: Array.isArray(s.closed_by) ? s.closed_by : [],
-      sales_crm: salesCrmOf(s.sales_crm) || "delta",
+      sales_crm: salesCrmOf(s.sales_crm) || (s.finance_invoice_id ? "delta" : ""),
       alert: s.onboarding_alert?.status === "done"
         ? { at: s.onboarding_alert.at, told: s.onboarding_alert.told ?? [], ...(s.onboarding_alert.reason ? { reason: s.onboarding_alert.reason } : {}) }
         : null,

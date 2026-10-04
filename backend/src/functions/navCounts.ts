@@ -3,7 +3,7 @@ import { json, error } from "../lib/response";
 import { toObjectId } from "../lib/id";
 import type { AuthUser } from "../auth/middleware";
 import { CLOSED_STAGES, businessToday, visibleMentorIds, studentsOf } from "../students/followups";
-import { notOnboardedFilter } from "../students/onboardingAlerts";
+import { notOnboardedFilter, newFromFinanceFilter } from "../students/onboardingAlerts";
 import { countCallNeeded } from "../students/classCompletions";
 
 /**
@@ -17,9 +17,9 @@ import { countCallNeeded } from "../students/classCompletions";
  * your own students; Chief Mentor and CS Manager also everyone under them;
  * admin roles everyone. Payment links (paymentLinks.ts): for a Super Admin the
  * requests waiting for them; for a CS the links ready and the turn-downs, of
- * what they asked for, that they haven't seen yet. Not onboarded: new students
- * from finance not onboarded yet, and how many of them waited 6 hours or more
- * (students/onboardingAlerts.ts) — whose, as the follow-ups. Class completions:
+ * what they asked for, that they haven't seen yet. Not onboarded: students not
+ * onboarded yet, whatever they came from, and how many new ones from finance
+ * waited 6 hours or more (students/onboardingAlerts.ts) — whose, as the follow-ups. Class completions:
  * classes students attended, told to their CS, with no call logged since the
  * class ended (students/classCompletions.ts) — whose, as the follow-ups.
  */
@@ -43,7 +43,7 @@ export async function getNavCounts(_req: Request, user: AuthUser): Promise<Respo
     cs ? unseen("approved") : 0,
     cs ? unseen("rejected") : 0,
     col("students").countDocuments(mine(notOnboardedFilter())),
-    col("students").countDocuments(mine(notOnboardedFilter(Date.now()))),
+    col("students").countDocuments(mine(newFromFinanceFilter(Date.now()))),
     countCallNeeded(ids),
   ]);
   return json({

@@ -9,11 +9,13 @@ import { loadTeams } from "./teams";
 /* ────────────────────────────────────────────────────────────────────────────
    New students from finance, waiting to be onboarded (the user, 2026-10-03).
 
-   Every new student finance sends (finance/students.ts — they carry
-   `finance_invoice_id`) is on the Not onboarded page, and counted in the
-   sidebar, until they are onboarded (functions/studentOnboarding.ts). From
-   25 September 2026 (00:00 UAE) on: everyone added before was marked
-   onboarded (scripts/onboard-old-students.ts). Inactive students are left out.
+   Every student not onboarded yet is on the Not onboarded page, and counted
+   in the sidebar, until they are (functions/studentOnboarding.ts) — whatever
+   they came from: finance, an LMS sign-up, added by hand, a sheet (the user,
+   2026-10-04). From 25 September 2026 (00:00 UAE) on: everyone added before
+   was marked onboarded (scripts/onboard-old-students.ts). Inactive students
+   are left out. The alerts below are for new students from finance only
+   (finance/students.ts — they carry `finance_invoice_id`).
 
    Still not onboarded 6 hours after arriving: their CS's leaders — their
    team's Chief Mentor and any CS Manager above them, as the overdue
@@ -52,13 +54,18 @@ const TEST_EMAIL = /@deltatest\.dev$/i;
 export const NOT_ONBOARDED_SINCE = new Date("2026-09-25T00:00:00+04:00").toISOString();
 
 /**
- * New students from finance not onboarded yet — what the Not onboarded page lists and the sidebar counts.
+ * Students not onboarded yet, whatever they came from — what the Not onboarded page lists and the sidebar counts.
  * `lateAt` (ms): only the ones that had waited 6 hours or more by then.
  */
 export function notOnboardedFilter(lateAt?: number): Record<string, any> {
   const created: Record<string, unknown> = { $type: "string", $gte: NOT_ONBOARDED_SINCE };
   if (lateAt !== undefined) created.$lte = new Date(lateAt - WAIT_MS).toISOString();
-  return { finance_invoice_id: { $exists: true, $nin: [null, ""] }, onboarded: { $ne: true }, status: { $ne: "INACTIVE" }, created_date: created };
+  return { onboarded: { $ne: true }, status: { $ne: "INACTIVE" }, created_date: created };
+}
+
+/** Of those, the new ones from finance — what the alerts are about, and what turns the sidebar's number red. */
+export function newFromFinanceFilter(lateAt?: number): Record<string, any> {
+  return { ...notOnboardedFilter(lateAt), finance_invoice_id: { $exists: true, $nin: [null, ""] } };
 }
 
 const iso = (ms: number) => new Date(ms).toISOString();
@@ -233,7 +240,7 @@ export interface AlertRun { students: number; sent: number; failed: number; skip
 export async function runOnboardingAlerts(now = Date.now()): Promise<AlertRun> {
   const run: AlertRun = { students: 0, sent: 0, failed: 0, skipped: 0 };
   const since = await alertsSince(now);
-  const filter = notOnboardedFilter(now);
+  const filter = newFromFinanceFilter(now);
   if (since > filter.created_date.$gte) filter.created_date.$gte = since;
   const due = (await col("students")
     .find({ ...filter, ...claimable(now) }, {

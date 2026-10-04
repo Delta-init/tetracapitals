@@ -22,6 +22,8 @@ const waitText = (h) => (h < 1 ? `${Math.max(1, Math.floor(h * 60))} min` : h < 
 const when = (iso) => (iso ? new Date(iso).toLocaleString('en-GB', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' }) : '');
 /** The sales CRM they came through: Sales CRM, Draw or Remote CRM. */
 const platformOf = (s) => SALES_CRMS[s.sales_crm]?.label || '';
+// Where a student came from (backend getNotOnboarded `from`).
+const FROM = { finance: 'Finance', lms: 'LMS sign-up', sheet: 'Sheet', added: 'Added' };
 
 /**
  * Not onboarded — new students from finance who haven't been onboarded yet, the longest waiting first. Onboarding
@@ -44,6 +46,7 @@ export default function NotOnboarded() {
   const [q, setQ] = useState('');
   const [cs, setCs] = useState('all');
   const [wait, setWait] = useState('all');
+  const [from, setFrom] = useState('all');
 
   const limit = data?.wait_hours ?? 6;
   const waiting = useMemo(
@@ -63,12 +66,13 @@ export default function NotOnboarded() {
   const rows = waiting.filter(s =>
     (cs === 'all' || (s.primary_mentor_id || 'none') === cs) &&
     (wait === 'all' || (wait === 'late' ? s.waited >= limit : s.waited < limit)) &&
-    (!needle || [s.full_name, s.student_code, s.phone, s.email, s.course, s.primary_mentor_name, closedByText(s), platformOf(s)].some(v => String(v || '').toLowerCase().includes(needle)))
+    (from === 'all' || s.from === from) &&
+    (!needle || [s.full_name, s.student_code, s.phone, s.email, s.course, s.primary_mentor_name, closedByText(s), platformOf(s), FROM[s.from]].some(v => String(v || '').toLowerCase().includes(needle)))
   );
 
   const exportCsv = () => {
-    const head = ['Student', 'Code', 'Phone', 'Email', 'Course', 'CS', 'Team', 'Closed By', 'Platform', 'Arrived', 'Hours Waiting', 'Leaders Told'];
-    const lines = [head, ...rows.map(s => [s.full_name, s.student_code, s.phone, s.email, s.course, s.primary_mentor_name, s.team_name, closedByText(s), platformOf(s), when(s.created_date), Math.floor(s.waited), s.alert?.at ? when(s.alert.at) : ''])];
+    const head = ['Student', 'Code', 'Phone', 'Email', 'Course', 'CS', 'Team', 'Closed By', 'Platform', 'From', 'Arrived', 'Hours Waiting', 'Leaders Told'];
+    const lines = [head, ...rows.map(s => [s.full_name, s.student_code, s.phone, s.email, s.course, s.primary_mentor_name, s.team_name, closedByText(s), platformOf(s), FROM[s.from] || '', when(s.created_date), Math.floor(s.waited), s.alert?.at ? when(s.alert.at) : ''])];
     const csv = lines.map(r => r.map(v => `"${String(v ?? '').replace(/"/g, '""')}"`).join(',')).join('\n');
     const a = document.createElement('a');
     a.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv' }));
@@ -84,7 +88,7 @@ export default function NotOnboarded() {
         <thead>
           <tr className="border-b bg-slate-50/80">
             <th className="sticky left-0 z-10 bg-slate-50 px-3 py-3 text-left text-[11px] font-semibold uppercase tracking-wider text-slate-500 shadow-[1px_0_0_#e2e8f0]">Call · Onboard</th>
-            <TH>Student</TH><TH>Phone</TH><TH>CS</TH><TH>Closed By</TH><TH>Arrived</TH><TH>Waiting</TH><TH>Leaders Told</TH>
+            <TH>Student</TH><TH>Phone</TH><TH>CS</TH><TH>Closed By</TH><TH>From</TH><TH>Arrived</TH><TH>Waiting</TH><TH>Leaders Told</TH>
           </tr>
         </thead>
         <tbody>
@@ -110,6 +114,7 @@ export default function NotOnboarded() {
               </td>
               {/* Who closed them, and in which sales CRM */}
               <td className="px-3 py-2.5"><ClosedByCell student={s} /></td>
+              <td className="whitespace-nowrap px-3 py-2.5 text-slate-600">{FROM[s.from] || '—'}</td>
               <td className="whitespace-nowrap px-3 py-2.5 text-slate-600">{when(s.created_date)}</td>
               <td className="whitespace-nowrap px-3 py-2.5">
                 <span className={`inline-block rounded-full px-2 py-0.5 text-[11px] font-semibold ${s.waited >= limit ? 'bg-rose-600 text-white' : 'bg-amber-50 text-amber-700'}`}>
@@ -136,8 +141,8 @@ export default function NotOnboarded() {
         <div>
           <PageTitle eyebrow="Students" icon={DoorOpen}>Not onboarded</PageTitle>
           <p className="mt-2 max-w-3xl text-sm text-slate-500 sm:text-base">
-            New students from finance who haven't been onboarded yet — the longest waiting first. Onboard sends their welcome email / WhatsApp and takes them off this list.
-            {` Still waiting ${limit} hours after arriving, their Chief Mentor, CS Manager and the Super Admins get an email and a notification (overnight ones at 09:00 UAE).`}
+            Students who haven't been onboarded yet — from finance, LMS sign-ups, added by hand or from the sheets — the longest waiting first. Onboard sends their welcome email / WhatsApp and takes them off this list.
+            {` A new student from finance still waiting ${limit} hours after arriving: their Chief Mentor, CS Manager and the Super Admins get an email and a notification (overnight ones at 09:00 UAE).`}
           </p>
         </div>
 
@@ -171,6 +176,13 @@ export default function NotOnboarded() {
                   <SelectItem value="fresh">Under {limit} hours</SelectItem>
                 </SelectContent>
               </Select>
+              <Select value={from} onValueChange={(v) => v && setFrom(v)}>
+                <SelectTrigger className="h-9 w-40" aria-label="From"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">From anywhere</SelectItem>
+                  {Object.entries(FROM).map(([k, label]) => <SelectItem key={k} value={k}>{label}</SelectItem>)}
+                </SelectContent>
+              </Select>
               <Button variant="outline" size="sm" onClick={exportCsv} disabled={!rows.length}><Download className="h-4 w-4" /> CSV</Button>
             </div>
           </CardHeader>
@@ -180,9 +192,9 @@ export default function NotOnboarded() {
             ) : error ? (
               <p className="py-12 text-center text-sm text-rose-600">{error.message || 'Could not load the students'}</p>
             ) : rows.length === 0 ? (
-              <p className="py-12 text-center text-sm text-slate-400">{waiting.length ? 'Nobody waiting matches these filters.' : 'Nobody waiting — every new student from finance is onboarded.'}</p>
+              <p className="py-12 text-center text-sm text-slate-400">{waiting.length ? 'Nobody waiting matches these filters.' : 'Nobody waiting — every student is onboarded.'}</p>
             ) : (
-              <Paged items={rows} resetKey={`${needle}|${cs}|${wait}`}>
+              <Paged items={rows} resetKey={`${needle}|${cs}|${wait}|${from}`}>
                 {(pageRows, bar) => (<>
                   {table(pageRows)}
                   <TablePagination {...bar} />
