@@ -83,6 +83,7 @@ export const copyLink = async (url) => {
   try { await navigator.clipboard.writeText(url); toast.success('Link copied'); } catch { toast.error('Could not copy — select the link and copy it'); }
 };
 const firstName = (n) => String(n || '').trim().split(/\s+/)[0] || 'there';
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;   // the server's own check (backend paymentLinks.ts)
 
 export default function PaymentLinksCard({ student }) {
   const queryClient = useQueryClient();
@@ -103,9 +104,11 @@ export default function PaymentLinksCard({ student }) {
     refetchInterval: 10_000,
   });
   const [asking, setAsking] = useState(false);
+  const [retrying, setRetrying] = useState(null);   // a BillXpro request Abzer couldn't make, being made again
   const refresh = () => {
     queryClient.invalidateQueries({ queryKey: key });
     queryClient.invalidateQueries({ queryKey: ['student-history', student?.id] });
+    queryClient.invalidateQueries({ queryKey: ['student', student?.id] });   // an email typed in is on their record now
   };
 
   const cancel = useMutation({
@@ -127,6 +130,9 @@ export default function PaymentLinksCard({ student }) {
   const requests = data.requests || [];
   if (!requests.length && !data.can_request) return null;   // nothing to show, and not someone who can ask
   const autoPlatforms = data.auto_platforms || [];   // made at once — no Super Admin (backend paymentLinks.ts)
+  // No email on their record: asking asks for it (a server from before says nothing — then nor does this).
+  const askEmail = 'student_email' in data && !data.student_email;
+  const whatsApp = wa?.can_send && waNumber ? { number: waNumber, send: (r) => sendOnWhatsApp.mutate(r), sending: sendOnWhatsApp.isPending } : null;
 
   return (
     <Card className="overflow-hidden border-gray-200">
@@ -174,6 +180,9 @@ export default function PaymentLinksCard({ student }) {
                         <Link to={createPageUrl('PaymentLinks')}>Add the link</Link>
                       </Button>
                     )}
+                    {r.can_retry && (
+                      <Button size="sm" variant="outline" className="h-8" onClick={() => setRetrying(r)}><CreditCard className="h-3.5 w-3.5" /> Make the link</Button>
+                    )}
                     {r.status === 'pending' && r.mine && (
                       <Button size="sm" variant="ghost" className="h-8 text-slate-500" disabled={cancel.isPending} onClick={() => cancel.mutate(r.id)}>
                         {cancel.isPending && cancel.variables === r.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <XCircle className="h-3.5 w-3.5" />} Cancel
@@ -198,7 +207,9 @@ export default function PaymentLinksCard({ student }) {
                 )}
                 {r.status === 'rejected' && r.reject_reason && <p className="text-xs text-rose-700">{r.reject_reason}</p>}
                 {r.status === 'pending' && r.auto_error && (
-                  <p className="text-xs text-amber-700">{platformLabel(r.platform)} couldn’t make it ({r.auto_error}) — a Super Admin will add the link.</p>
+                  <p className="text-xs text-amber-700">
+                    {platformLabel(r.platform)} couldn’t make it ({r.auto_error}) — {r.can_retry ? 'make the link again, or a Super Admin will add it.' : 'a Super Admin will add the link.'}
+                  </p>
                 )}
               </li>
             ))}
@@ -206,8 +217,11 @@ export default function PaymentLinksCard({ student }) {
         )}
       </CardContent>
       {asking && (
-        <AskDialog student={student} currency={data.currency} autoPlatforms={autoPlatforms} onClose={() => setAsking(false)} onDone={refresh}
-          whatsApp={wa?.can_send && waNumber ? { number: waNumber, send: (r) => sendOnWhatsApp.mutate(r), sending: sendOnWhatsApp.isPending } : null} />
+        <AskDialog student={student} currency={data.currency} autoPlatforms={autoPlatforms} askEmail={askEmail} whatsApp={whatsApp}
+          onClose={() => setAsking(false)} onDone={refresh} />
+      )}
+      {retrying && (
+        <RetryDialog request={retrying} student={student} askEmail={askEmail} whatsApp={whatsApp} onClose={() => setRetrying(null)} onDone={refresh} />
       )}
     </Card>
   );
@@ -217,16 +231,18 @@ export default function PaymentLinksCard({ student }) {
  * The platforms the server makes at once (autoPlatforms): "Make a payment link" — made there, and the window then shows
  * it, to copy or send on WhatsApp. The others: "Ask for a payment link" — a Super Admin adds it.
  */
-function AskDialog({ student, currency, autoPlatforms = [], whatsApp, onClose, onDone }) {
+function AskDialog({ student, currency, autoPlatforms = [], askEmail, whatsApp, onClose, onDone }) {
   const [platform, setPlatform] = useState('');
   const automatic = autoPlatforms.includes(platform);   // made by Abzer the moment it's asked (backend paymentLinks.ts)
   const [amount, setAmount] = useState('');
   const [description, setDescription] = useState('');
   const [note, setNote] = useState('');
+  const [email, setEmail] = useState('');   // theirs, when their record has none (askEmail) — saved on it
   const [made, setMade] = useState(null);   // the link, once made
   const ask = useMutation({
     mutationFn: async () => (await base44.functions.invoke('requestPaymentLink', {
       studentId: student.id, platform, amount, description, note: automatic ? '' : note,   // no Super Admin to read a note
+      ...(askEmail && email.trim() ? { email: email.trim() } : {}),
     })).data,
     onSuccess: ({ request }) => {
       onDone();
@@ -238,7 +254,9 @@ function AskDialog({ student, currency, autoPlatforms = [], whatsApp, onClose, o
     },
     onError: (e) => toast.error(e?.message || 'Could not send the request'),
   });
-  const ready = platform && Number(amount) > 0 && description.trim();
+  // The email: needed where the link is made at once, optional otherwise — and, when typed, one that looks right.
+  const emailReady = !askEmail || (email.trim() ? EMAIL_RE.test(email.trim()) : !automatic);
+  const ready = platform && Number(amount) > 0 && description.trim() && emailReady;
   const choosing = !platform && autoPlatforms.length > 0;   // nothing picked yet, and some are made at once
   const name = student.full_name;
   const title = made ? `${platformLabel(made.made_on || platform)} link ready for ${name}`
@@ -260,21 +278,7 @@ function AskDialog({ student, currency, autoPlatforms = [], whatsApp, onClose, o
         </DialogHeader>
         {made ? (
           <>
-            <div className="space-y-2">
-              <a href={made.url} target="_blank" rel="noopener noreferrer"
-                className="block break-all rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-blue-700 hover:underline">{made.url}</a>
-              {made.emailed_to
-                ? <p className="text-xs text-slate-500">Emailed to {made.emailed_to}.</p>
-                : <p className="text-xs text-amber-700">Not emailed{made.email_error ? ` — ${made.email_error}` : ''}. Copy the link or send it on WhatsApp.</p>}
-              <div className="flex flex-wrap gap-2">
-                <Button type="button" size="sm" variant="outline" onClick={() => copyLink(made.url)}><Copy className="h-3.5 w-3.5" /> Copy link</Button>
-                {whatsApp && (
-                  <Button type="button" size="sm" variant="outline" title={`To +${whatsApp.number}, from your WhatsApp`} disabled={whatsApp.sending} onClick={() => whatsApp.send(made)}>
-                    {whatsApp.sending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <MessageCircle className="h-3.5 w-3.5" style={{ color: WA_GREEN }} />} WhatsApp
-                  </Button>
-                )}
-              </div>
-            </div>
+            <LinkReady made={made} whatsApp={whatsApp} />
             <DialogFooter>
               <Button type="button" onClick={onClose}>Done</Button>
             </DialogFooter>
@@ -296,6 +300,9 @@ function AskDialog({ student, currency, autoPlatforms = [], whatsApp, onClose, o
               <Label htmlFor="pl-for">For</Label>
               <Input id="pl-for" value={description} onChange={(e) => setDescription(e.target.value)} maxLength={200} placeholder="e.g. DSLP course fee" />
             </div>
+            {askEmail && platform && (
+              <EmailField value={email} onChange={setEmail} required={automatic} platform={platformLabel(platform)} disabled={ask.isPending} />
+            )}
             {!automatic && (
               <div className="space-y-1.5">
                 <Label htmlFor="pl-note">Note for the Super Admin (optional)</Label>
@@ -312,5 +319,95 @@ function AskDialog({ student, currency, autoPlatforms = [], whatsApp, onClose, o
         )}
       </DialogContent>
     </Dialog>
+  );
+}
+
+/**
+ * A BillXpro link Abzer couldn't make, made again by the CS who asked (retryPaymentLink) — with the student's email
+ * when their record has none, the usual why; the window then shows it, as a new one.
+ */
+function RetryDialog({ request: r, student, askEmail, whatsApp, onClose, onDone }) {
+  const label = platformLabel(r.platform);
+  const [email, setEmail] = useState('');
+  const [made, setMade] = useState(null);
+  const retry = useMutation({
+    mutationFn: async () => (await base44.functions.invoke('retryPaymentLink', { id: r.id, ...(askEmail ? { email: email.trim() } : {}) })).data,
+    onSuccess: ({ request }) => {
+      onDone();
+      if (request?.status === 'approved' && request.url) { setMade(request); return; }
+      toast.warning(`${label} couldn’t make it${request?.auto_error ? ` (${request.auto_error})` : ''} — a Super Admin will add the link`);
+      onClose();
+    },
+    onError: (e) => { toast.error(e?.message || 'Could not make the link'); onDone(); },
+  });
+  const ready = !askEmail || EMAIL_RE.test(email.trim());
+
+  return (
+    <Dialog open onOpenChange={(v) => { if (!v && !retry.isPending) onClose(); }}>
+      <DialogContent className="max-w-md">
+        <DialogHeader>
+          <DialogTitle className="text-brand-navy">{made ? `${label} link ready for ${student.full_name}` : `Make the ${label} link for ${student.full_name}`}</DialogTitle>
+          <DialogDescription>{money(r.currency, r.amount)} — {r.description}</DialogDescription>
+        </DialogHeader>
+        {made ? (
+          <>
+            <LinkReady made={made} whatsApp={whatsApp} />
+            <DialogFooter>
+              <Button type="button" onClick={onClose}>Done</Button>
+            </DialogFooter>
+          </>
+        ) : (
+          <form className="space-y-3" onSubmit={(e) => { e.preventDefault(); if (ready && !retry.isPending) retry.mutate(); }}>
+            {askEmail
+              ? <EmailField value={email} onChange={setEmail} required platform={label} disabled={retry.isPending} />
+              : r.auto_error && <p className="text-sm text-slate-600">Last time: {r.auto_error}.</p>}
+            <DialogFooter>
+              <Button type="button" variant="outline" onClick={onClose} disabled={retry.isPending}>Cancel</Button>
+              <Button type="submit" disabled={!ready || retry.isPending}>
+                {retry.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <CreditCard className="h-4 w-4" />} {retry.isPending ? 'Making the link…' : 'Make the link'}
+              </Button>
+            </DialogFooter>
+          </form>
+        )}
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+/** Their email, where the record has none: needed for a link made at once, else so the link is emailed. Saved there. */
+function EmailField({ value, onChange, required, platform, disabled }) {
+  const typed = value.trim();
+  return (
+    <div className="space-y-1.5">
+      <Label htmlFor="pl-email">Student’s email{required ? '' : ' (optional)'}</Label>
+      <Input id="pl-email" type="email" inputMode="email" autoComplete="off" value={value} onChange={(e) => onChange(e.target.value)}
+        maxLength={200} placeholder="name@example.com" disabled={disabled} />
+      {typed && !EMAIL_RE.test(typed)
+        ? <p className="text-xs text-rose-600">That email doesn’t look right.</p>
+        : <p className="text-xs text-muted-foreground">
+          There is none on their record{required ? ` — ${platform} needs one` : ' — with one, the link is emailed to them'}. It is saved there.
+        </p>}
+    </div>
+  );
+}
+
+/** A link just made: open it, see where it was emailed, copy it or send it on WhatsApp. */
+function LinkReady({ made, whatsApp }) {
+  return (
+    <div className="space-y-2">
+      <a href={made.url} target="_blank" rel="noopener noreferrer"
+        className="block break-all rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-blue-700 hover:underline">{made.url}</a>
+      {made.emailed_to
+        ? <p className="text-xs text-slate-500">Emailed to {made.emailed_to}.</p>
+        : <p className="text-xs text-amber-700">Not emailed{made.email_error ? ` — ${made.email_error}` : ''}. Copy the link or send it on WhatsApp.</p>}
+      <div className="flex flex-wrap gap-2">
+        <Button type="button" size="sm" variant="outline" onClick={() => copyLink(made.url)}><Copy className="h-3.5 w-3.5" /> Copy link</Button>
+        {whatsApp && (
+          <Button type="button" size="sm" variant="outline" title={`To +${whatsApp.number}, from your WhatsApp`} disabled={whatsApp.sending} onClick={() => whatsApp.send(made)}>
+            {whatsApp.sending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <MessageCircle className="h-3.5 w-3.5" style={{ color: WA_GREEN }} />} WhatsApp
+          </Button>
+        )}
+      </div>
+    </div>
   );
 }

@@ -31,6 +31,11 @@ import { onboardingEmail } from "./studentOnboarding";
    (auto_error). SmartInvoice is asked for, like Tabby and Tamara: the Abzer
    account is BillXpro's, and every link it makes is a BillXpro link (the
    user, 2026-10-04).
+   A student with no email on their record: the CS types it when asking —
+   needed for BillXpro, optional otherwise (a pasted link is emailed to it) —
+   and it is saved on the record, in their history; and the CS who asked can
+   make a BillXpro link Abzer couldn't make again, with the email if that was
+   why (retryPaymentLink; the user, 2026-10-04).
    Nothing here moves money.
 
    payment_link_requests.status: pending → approved (url) · rejected (reason)
@@ -62,6 +67,32 @@ const mayRequest = (u: AuthUser, s: any) =>
   u.app_role === "cs" && (String(s?.primary_mentor_id ?? "") === u.id || commonIds(s).includes(u.id));
 /** The first email address on the student's record (some hold two). */
 const emailOf = (s: any) => (String(s?.email ?? "").match(/[^\s,;<>]+@[^\s,;<>]+\.[^\s,;<>]+/g) ?? []).find((e) => EMAIL.test(e)) ?? "";
+const escapeRegex = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+
+/**
+ * The student's email, typed by their CS where the record has none — saved on it, and in their history. Never one
+ * another student has (student emails are unique: entities/registry.ts), and only while the record still holds what
+ * it did, so two people can't overwrite each other. → what is wrong with it, or "" once saved.
+ */
+async function addEmail(student: any, given: string, user: AuthUser, platform: string): Promise<string> {
+  if (!EMAIL.test(given)) return "That email doesn't look right — check it";
+  const clash: any = await col("students").findOne(
+    { _id: { $ne: student._id }, email: { $regex: `(^|[\\s,;<>])${escapeRegex(given)}($|[\\s,;<>])`, $options: "i" } },
+    { projection: { student_code: 1 } },
+  );
+  if (clash) return `Another student${clash.student_code ? ` (${clash.student_code})` : ""} already has that email — check it`;
+  const was = String(student.email ?? "").trim();
+  const now = new Date().toISOString();
+  const res = await col("students").updateOne({ _id: student._id, email: student.email ?? null }, { $set: { email: given, updated_date: now } });
+  if (res.modifiedCount !== 1) return "Their email was just changed — open the student again";
+  student.email = given;
+  await recordHistory([{
+    student_id: String(student._id), at: now, type: "details_changed",
+    text: `Details changed — Email: ${was || "none"} → ${given} (for a ${linkName(platform)})`,
+    by_id: user.id, by_name: who(user), from: { email: was }, to: { email: given },
+  }]);
+  return "";
+}
 
 async function studentFor(id: unknown): Promise<any> {
   const oid = toObjectId(str(id, 40));
@@ -107,6 +138,8 @@ function view(r: any, user: AuthUser) {
     approved_at: r.approved_at ?? null,
     automatic: !!r.abzer_request_id,
     auto_error: r.auto_error ?? "",
+    // A BillXpro link Abzer couldn't make: the CS who asked can make it again (retryPaymentLink).
+    can_retry: r.status === "pending" && !!r.auto_error && AUTO_PLATFORMS.has(r.platform) && r.requested_by_id === user.id && abzerConfigured(),
     emailed_to: r.email?.to ?? "",
     emailed_at: r.email?.at ?? null,
     email_error: r.email_error ?? "",
@@ -178,9 +211,10 @@ async function autoLink(r: any, student: any): Promise<boolean> {
       const link = await createAbzerLink({ amount: r.amount, reference: String(r._id), name: r.student_name, email: to, phone: phone ? `+${phone}` : "" });
       const now = new Date().toISOString();
       const set = { status: "approved", url: link.url, made_on: r.platform, abzer_request_id: link.id, approved_by_id: null, approved_by_name: by, approved_at: now, updated_at: now };
-      const res = await col(REQUESTS).updateOne({ _id: r._id, status: "pending" }, { $set: set });
+      const res = await col(REQUESTS).updateOne({ _id: r._id, status: "pending" }, { $set: set, $unset: { auto_error: "" } });
       if (res.modifiedCount !== 1) return false;
       Object.assign(r, set);
+      delete r.auto_error;   // made at last (retryPaymentLink): no reason left to show
       await emailLink(r, student);
       await recordHistory([{
         student_id: r.student_id, at: now, type: "payment_link",
@@ -200,8 +234,9 @@ async function autoLink(r: any, student: any): Promise<boolean> {
 
 /**
  * POST /api/functions/getPaymentLinks { studentId, markSeen? }
- *   → { can_request, can_approve, currency, auto_platforms, requests } — a student's requests, for whoever may see the
- *     student; auto_platforms: the ones Abzer makes at once.
+ *   → { can_request, can_approve, currency, auto_platforms, student_email, requests } — a student's requests, for
+ *     whoever may see the student; auto_platforms: the ones Abzer makes at once; student_email: the one on their
+ *     record ("" — none: asking also asks for it).
  * POST /api/functions/getPaymentLinks { markSeen? }
  *   → { can_approve, requests, email_ready? } — the Payment Links page: every request for a Super Admin (a waiting
  *     one carries the student's email, where the link will go); for a CS, the ones they asked for.
@@ -218,7 +253,10 @@ export async function getPaymentLinks(req: Request, user: AuthUser): Promise<Res
     const list = await col(REQUESTS).find({ student_id: String(student._id) }).sort({ created_at: -1 }).limit(50).toArray();
     const requests = list.map((r) => view(r, user));
     if (markSeen && requests.some((r) => r.new)) await markAnswersSeen(user, { student_id: String(student._id) });
-    return json({ can_request: mayRequest(user, student), can_approve: isSuperAdmin(user), currency: CURRENCY, auto_platforms: autoPlatforms(), requests });
+    return json({
+      can_request: mayRequest(user, student), can_approve: isSuperAdmin(user), currency: CURRENCY, auto_platforms: autoPlatforms(),
+      student_email: emailOf(student), requests,
+    });
   }
 
   if (user.app_role === "cs") {
@@ -240,10 +278,11 @@ export async function getPaymentLinks(req: Request, user: AuthUser): Promise<Res
 }
 
 /**
- * POST /api/functions/requestPaymentLink { studentId, platform, amount, description, note? }
+ * POST /api/functions/requestPaymentLink { studentId, platform, amount, description, note?, email? }
  * The student's CS (or a CS they are Common with), on the platform the link should be made on
  * (tabby, tamara, smartinvoice, billxpro). BillXpro: made by Abzer at once (→ automatic: true);
- * otherwise — or when Abzer can't — every Super Admin is told.
+ * otherwise — or when Abzer can't — every Super Admin is told. `email`: the student's, when their record has none —
+ * saved on it first (addEmail); ignored when it has one.
  */
 export async function requestPaymentLink(req: Request, user: AuthUser): Promise<Response> {
   const body: any = await req.json().catch(() => ({}));
@@ -261,6 +300,11 @@ export async function requestPaymentLink(req: Request, user: AuthUser): Promise<
   if (!description) return error("Say what it is for", 400);
   const note = str(body?.note, 1000);
   const sid = String(student._id);
+  const given = str(body?.email, 200);
+  if (given && !emailOf(student)) {
+    const problem = await addEmail(student, given, user, platform);
+    if (problem) return error(problem, 400);
+  }
 
   // Approved too: a BillXpro link is approved the moment it is made — a double click mustn't make a second.
   const dup: any = await col(REQUESTS).findOne({
@@ -397,5 +441,30 @@ export async function cancelPaymentLinkRequest(req: Request, user: AuthUser): Pr
     student_id: r.student_id, at: now, type: "payment_link", text: `${cap(linkName(r.platform))} request cancelled: ${money(r.amount)} — ${r.description}`,
     by_id: user.id, by_name: who(user), from: "pending", to: { request_id: String(r._id), status: "cancelled" },
   }]);
+  return json({ request: view(r, user) });
+}
+
+/**
+ * POST /api/functions/retryPaymentLink { id, email? }
+ * The CS who asked: a BillXpro link Abzer couldn't make, made again — with the student's email when their record
+ * has none (saved on it first). → { request, automatic: true } once made; else the request, still waiting for a
+ * Super Admin, with Abzer's reason now.
+ */
+export async function retryPaymentLink(req: Request, user: AuthUser): Promise<Response> {
+  const body: any = await req.json().catch(() => ({}));
+  const r = await requestFor(body?.id);
+  if (!r) return notFound();
+  if (r.requested_by_id !== user.id) return forbidden("Only who asked for it can make it again");
+  if (r.status !== "pending") return error(`This request is already ${STATUS_WORD[r.status] ?? r.status}`, 409);
+  if (!AUTO_PLATFORMS.has(r.platform) || !abzerConfigured()) return error(`A Super Admin adds this ${linkName(r.platform)}`, 400);
+  const student = await studentFor(r.student_id);
+  if (!student) return notFound("The student is no longer here");
+  if (!emailOf(student)) {
+    const given = str(body?.email, 200);
+    if (!given) return error(`Enter the student's email — ${PLATFORMS[r.platform]} needs one`, 400);
+    const problem = await addEmail(student, given, user, r.platform);
+    if (problem) return error(problem, 400);
+  }
+  if (await autoLink(r, student)) return json({ request: view(r, user), automatic: true });
   return json({ request: view(r, user) });
 }
