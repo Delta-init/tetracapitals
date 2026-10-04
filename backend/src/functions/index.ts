@@ -28,6 +28,7 @@ import { setEnrolment, getLmsEnrolment, syncLmsEnrolmentNow } from "./studentEnr
 import { updateStudentDetails } from "./studentDetails";
 import { getOnboardingDraft, setOnboarding } from "./studentOnboarding";
 import { getNotOnboarded } from "./notOnboarded";
+import { resubmitSalesBonus } from "./salesBonus";
 import { getStudentClasses } from "./lmsClasses";
 import { getStudentLmsSupport, getLmsSupportTickets, getLmsSupportTicketCount, answerLmsTicket, resolveLmsTicket } from "./lmsSupport";
 import { getClassCompletions } from "./classCompletions";
@@ -84,6 +85,7 @@ const AUTHED: Record<string, AuthedHandler> = {
   getOnboardingDraft,
   setOnboarding,
   getNotOnboarded,
+  resubmitSalesBonus,
   getLmsEnrolment,
   syncLmsEnrolmentNow,
   getStudentClasses,

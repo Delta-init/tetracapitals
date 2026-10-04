@@ -6,6 +6,7 @@ import { startFinanceFundingWorker } from "./finance/funding";
 import { startInactivityWorker } from "./students/inactivity";
 import { startReminderWorker } from "./students/followupReminders";
 import { startOnboardingAlertWorker } from "./students/onboardingAlerts";
+import { startBonusVerifyAlertWorker } from "./students/bonusVerifyAlerts";
 import { startCallSyncWorker } from "./students/calls";
 import { startWhatsApp } from "./whatsapp/service";
 import { startLmsEnrolmentWorker } from "./students/lmsEnrolment";
@@ -40,6 +41,7 @@ async function main() {
   startReminderWorker();
   // New students from finance not onboarded 6 hours on: their leaders and the Super Admins told (ONBOARDING_ALERTS=off to keep a server out of it).
   startOnboardingAlertWorker();
+  startBonusVerifyAlertWorker();
   // Calls with students (and their recordings) from 3CX, every minute — once THREECX_* is set.
   startCallSyncWorker();
   // Each CS's linked WhatsApp, back after a restart (WHATSAPP=off to keep a server out of it).

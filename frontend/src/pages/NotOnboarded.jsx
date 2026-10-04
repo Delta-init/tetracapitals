@@ -9,13 +9,14 @@ import { Card, CardContent, CardHeader } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { AlarmClock, BellRing, DoorOpen, Download, Search, Users } from 'lucide-react';
+import { AlarmClock, BellRing, CheckCircle2, DoorOpen, Download, Hourglass, Search, Users, XCircle } from 'lucide-react';
 import { getEffectiveUser } from '@/components/utils/ImpersonationContext';
 import { createPageUrl } from '@/utils';
 import { CallButton, ONBOARDING_CONNECTED } from '@/components/followups/CallFlow';
 import { OnboardedSwitch, OnboardingDialog } from '@/components/students/onboarding';
 import { ClosedByCell, closedByText } from '@/components/students/closedBy';
 import { SALES_CRMS } from '@/components/students/salesCrm';
+import { VerificationCell, VerificationTable, ResubmitBonusDialog } from '@/components/students/bonusVerification';
 
 const hoursSince = (from, now) => Math.max(0, (Date.parse(now) - Date.parse(from)) / 3_600_000);
 const waitText = (h) => (h < 1 ? `${Math.max(1, Math.floor(h * 60))} min` : h < 48 ? `${Math.floor(h)} h` : `${Math.floor(h / 24)} days`);
@@ -35,7 +36,19 @@ const callMatch = (c, f) => f === 'all' || (f === 'not_connected' ? !!c && !c.co
  * people's; admin roles everyone. Still waiting 6 hours after arriving, the CS's leaders and the Super Admins are
  * emailed and notified once (backend/src/students/onboardingAlerts.ts). Each says who closed them and in which
  * sales CRM — Sales CRM, Draw or Remote CRM (components/students/closedBy.jsx).
+ *
+ * Onboarding verification (the user, 2026-10-04): a student promised an MT5 bonus at the sales close is onboarded
+ * only once a broker admin approves it. Welcomed but waiting on it, they're under Verification pending; rejected,
+ * under Rejected, where their CS submits it again; approved this month, under Approved
+ * (components/students/bonusVerification.jsx).
  */
+const TABS = [
+  { key: 'waiting', label: 'Not onboarded', icon: DoorOpen, tone: 'amber' },
+  { key: 'pending', label: 'Verification pending', icon: Hourglass, tone: 'amber' },
+  { key: 'rejected', label: 'Rejected', icon: XCircle, tone: 'rose' },
+  { key: 'approved', label: 'Approved this month', icon: CheckCircle2, tone: 'emerald' },
+];
+const TAB_ON = { amber: 'border-amber-300 bg-amber-50 text-amber-800', rose: 'border-rose-300 bg-rose-50 text-rose-700', emerald: 'border-emerald-300 bg-emerald-50 text-emerald-700' };
 export default function NotOnboarded() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
@@ -53,6 +66,8 @@ export default function NotOnboarded() {
   const [from, setFrom] = useState('all');
   const [call, setCall] = useState('all');
   const [welcome, setWelcome] = useState(null);   // a connected onboarding call: their welcome, to send
+  const [tab, setTab] = useState('waiting');
+  const [resubmit, setResubmit] = useState(null); // { student, bonus } — a rejected bonus to submit again
 
   const limit = data?.wait_hours ?? 6;
   const waiting = useMemo(
@@ -84,6 +99,18 @@ export default function NotOnboarded() {
     (!needle || [s.full_name, s.student_code, s.phone, s.email, s.course, s.primary_mentor_name, closedByText(s), platformOf(s), FROM[s.from]].some(v => String(v || '').toLowerCase().includes(needle)))
   );
 
+  // The verification tabs: the same search and CS filter.
+  const vMatch = (s) =>
+    (cs === 'all' || (s.primary_mentor_id || 'none') === cs) &&
+    (!needle || [s.full_name, s.student_code, s.phone, s.email, s.course, s.primary_mentor_name, closedByText(s), platformOf(s)].some(v => String(v || '').toLowerCase().includes(needle)));
+  const lists = {
+    pending: (data?.verifying || []).filter(s => s.verification === 'pending'),
+    rejected: (data?.verifying || []).filter(s => s.verification === 'rejected'),
+    approved: data?.approved || [],
+  };
+  const counts = { waiting: waiting.length, pending: lists.pending.length, rejected: lists.rejected.length, approved: lists.approved.length };
+  const vRows = tab === 'waiting' ? [] : lists[tab].filter(vMatch);
+
   const exportCsv = () => {
     const head = ['Student', 'Code', 'Phone', 'Email', 'Course', 'CS', 'Team', 'Closed By', 'Platform', 'From', 'Call', 'Arrived', 'Hours Waiting', 'Leaders Told'];
     const lines = [head, ...rows.map(s => [s.full_name, s.student_code, s.phone, s.email, s.course, s.primary_mentor_name, s.team_name, closedByText(s), platformOf(s), FROM[s.from] || '', callText(s.call), when(s.created_date), Math.floor(s.waited), s.alert?.at ? when(s.alert.at) : ''])];
@@ -102,7 +129,7 @@ export default function NotOnboarded() {
         <thead>
           <tr className="border-b bg-slate-50/80">
             <th className="sticky left-0 z-10 bg-slate-50 px-3 py-3 text-left text-[11px] font-semibold uppercase tracking-wider text-slate-500 shadow-[1px_0_0_#e2e8f0]">Call · Onboard</th>
-            <TH>Student</TH><TH>Phone</TH><TH>CS</TH><TH>Closed By</TH><TH>From</TH><TH>Call</TH><TH>Arrived</TH><TH>Waiting</TH><TH>Leaders Told</TH>
+            <TH>Student</TH><TH>Phone</TH><TH>CS</TH><TH>Closed By</TH><TH>From</TH><TH>Call</TH><TH>Verification</TH><TH>Arrived</TH><TH>Waiting</TH><TH>Leaders Told</TH>
           </tr>
         </thead>
         <tbody>
@@ -139,6 +166,8 @@ export default function NotOnboarded() {
                     </span>
                   : <span className="text-slate-300">—</span>}
               </td>
+              {/* The MT5 bonus promised at the close: they are onboarded only once it's approved */}
+              <td className="px-3 py-2.5"><VerificationCell row={s} /></td>
               <td className="whitespace-nowrap px-3 py-2.5 text-slate-600">{when(s.created_date)}</td>
               <td className="whitespace-nowrap px-3 py-2.5">
                 <span className={`inline-block rounded-full px-2 py-0.5 text-[11px] font-semibold ${s.waited >= limit ? 'bg-rose-600 text-white' : 'bg-amber-50 text-amber-700'}`}>
@@ -167,13 +196,27 @@ export default function NotOnboarded() {
           <p className="mt-2 max-w-3xl text-sm text-slate-500 sm:text-base">
             Students who haven't been onboarded yet — from finance, LMS sign-ups, added by hand or from the sheets — the longest waiting first. Onboard starts with the call: log it — connected, their welcome email / WhatsApp follows and takes them off this list; not connected, they're tagged Not connected with a follow-up today.
             {` A new student from finance still waiting ${limit} hours after arriving: their Chief Mentor, CS Manager and the Super Admins get an email and a notification (overnight ones at 09:00 UAE).`}
+            {' A student promised an MT5 bonus at the sales close is onboarded only once a broker admin approves it — until then they are under Verification pending; a rejected bonus is submitted again from Rejected.'}
           </p>
         </div>
 
-        <div className="grid grid-cols-2 gap-4 md:grid-cols-3">
+        <div className="grid grid-cols-2 gap-4 md:grid-cols-3 xl:grid-cols-5">
           <StatsCard title="Waiting" value={waiting.length} icon={DoorOpen} color="amber" delay={0.02} />
           <StatsCard title={`Over ${limit} hours`} value={late} icon={AlarmClock} color="red" delay={0.05} />
           {byCs && <StatsCard title="CSs with students waiting" value={people.filter(([id]) => id).length} icon={Users} color="blue" delay={0.08} />}
+          <StatsCard title="Verification pending" value={counts.pending} icon={Hourglass} color="amber" delay={0.11} />
+          <StatsCard title="Bonus rejected" value={counts.rejected} icon={XCircle} color="red" delay={0.14} />
+        </div>
+
+        {/* Not onboarded, and the three steps of onboarding verification */}
+        <div className="flex flex-wrap gap-2">
+          {TABS.map(({ key, label, icon: Icon, tone }) => (
+            <button key={key} type="button" onClick={() => setTab(key)}
+              className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-sm font-medium transition-colors ${tab === key ? TAB_ON[tone] : 'border-slate-200 bg-white text-slate-600 hover:bg-slate-50'}`}>
+              <Icon className="h-4 w-4" />{label}
+              <span className="rounded-full bg-white/70 px-1.5 text-xs font-semibold">{counts[key]}</span>
+            </button>
+          ))}
         </div>
 
         <Card className="overflow-hidden">
@@ -192,6 +235,7 @@ export default function NotOnboarded() {
                   </SelectContent>
                 </Select>
               )}
+              {tab === 'waiting' && (<>
               <Select value={wait} onValueChange={(v) => v && setWait(v)}>
                 <SelectTrigger className="h-9 w-44"><SelectValue /></SelectTrigger>
                 <SelectContent>
@@ -212,11 +256,28 @@ export default function NotOnboarded() {
                 <SelectContent>{Object.entries(CALLS).map(([k, label]) => <SelectItem key={k} value={k}>{label}</SelectItem>)}</SelectContent>
               </Select>
               <Button variant="outline" size="sm" onClick={exportCsv} disabled={!rows.length}><Download className="h-4 w-4" /> CSV</Button>
+              </>)}
             </div>
           </CardHeader>
           <CardContent className="p-0">
             {isLoading || !currentUser ? (
               <p className="py-12 text-center text-sm text-slate-400">Loading students…</p>
+            ) : tab !== 'waiting' && !error ? (
+              vRows.length === 0 ? (
+                <p className="py-12 text-center text-sm text-slate-400">
+                  {lists[tab].length ? 'Nobody here matches these filters.'
+                    : tab === 'pending' ? 'No bonus waiting for a broker admin.'
+                    : tab === 'rejected' ? 'No rejected bonus.'
+                    : 'No bonus approved this month yet.'}
+                </p>
+              ) : (
+                <Paged items={vRows} resetKey={`${tab}|${needle}|${cs}`}>
+                  {(pageRows, bar) => (<>
+                    <VerificationTable list={pageRows} kind={tab} onResubmit={setResubmit} />
+                    <TablePagination {...bar} />
+                  </>)}
+                </Paged>
+              )
             ) : error ? (
               <p className="py-12 text-center text-sm text-rose-600">{error.message || 'Could not load the students'}</p>
             ) : rows.length === 0 ? (
@@ -233,6 +294,7 @@ export default function NotOnboarded() {
         </Card>
       </div>
       {welcome && <OnboardingDialog student={welcome} open onOpenChange={(o) => { if (!o) setWelcome(null); }} callAfterSend={false} />}
+      {resubmit && <ResubmitBonusDialog target={resubmit} onOpenChange={(o) => { if (!o) setResubmit(null); }} />}
     </div>
   );
 }
