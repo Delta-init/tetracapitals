@@ -26,6 +26,19 @@ export const isWithAccounts = (t, linkOn = true) =>
 /** A deposit finance would not take — handed back, and approved here as before. */
 export const isHandedBack = (t) => t?.status === 'PENDING' && t?.finance_approval?.state === 'refused';
 
+/**
+ * A bonus Delta Finance approved, waiting for a broker admin or a Super Admin to credit it in MT5 and approve —
+ * the second of a bonus's two approvals (backend/src/finance/funding.ts, awaitingBroker).
+ */
+export const isAwaitingBroker = (t) =>
+  t?.type === 'BONUS' && t?.status === 'PENDING' && t?.finance_approval?.state === 'decided' && t?.finance_approval?.decision === 'approved';
+
+/** Who approves or rejects a bonus here: a broker admin or a Super Admin (the server refuses anyone else). */
+export const canDecideBonus = (role) => ['broker_admin', 'super_admin'].includes(role);
+
+/** Whether this person may approve or reject this request. */
+export const canDecideFunding = (t, role) => (t?.type === 'BONUS' ? canDecideBonus(role) : canProcessFundingTransaction(role));
+
 export const canViewAllFundingTransactions = (role) => {
   return ['super_admin', 'admin', 'broker_admin', 'academic_head', 'academic_admin', 'finance_admin'].includes(role);
 };

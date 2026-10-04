@@ -225,6 +225,17 @@ export default function ProcessFundingDialog({ transaction, open, onClose, onPro
           <DialogTitle>Process Funding Request</DialogTitle>
         </DialogHeader>
 
+        {/* A bonus Delta Finance approved: its payment is confirmed — credit the bonus in MT5, then approve. */}
+        {transaction.type === 'BONUS' && transaction.status === 'PENDING' && transaction.finance_approval?.state === 'decided' && transaction.finance_approval?.decision === 'approved' && (
+          <div className="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-900">
+            Delta Finance approved the payment{transaction.finance_approval.decided_by_name ? ` (${transaction.finance_approval.decided_by_name})` : ''}
+            {transaction.transaction_id ? ` — transaction ID ${transaction.transaction_id}` : ''}.
+            {transaction.course_payment?.bonus_usd ? ` Credit the $${transaction.course_payment.bonus_usd} MT5 bonus` : ' Credit the bonus'}
+            {transaction.mt5_login ? ` in ${transaction.mt5_login}` : ''}, then approve.
+            {transaction.finance_approval.note && <span className="block text-xs text-emerald-800">Accounts: {transaction.finance_approval.note}</span>}
+          </div>
+        )}
+
         <div className="space-y-4">
           <div className="bg-gray-50 rounded-lg p-4 space-y-2">
             <div className="grid grid-cols-2 gap-2 text-sm">

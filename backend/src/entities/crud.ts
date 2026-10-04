@@ -9,7 +9,7 @@ import { buildScopeFilter, applyScope, docMatchesScope } from "../lib/scope";
 import { stampNewStudents, recordCreated, prepareStudentUpdate, recordHistory, type HistoryEntry } from "../students/history";
 import { notifyStudentsGiven } from "../lib/notify";
 import type { TeamIndex } from "../students/teams";
-import { stampFundingForFinance, kickFinanceFunding, financeLock, withFinance, WITH_FINANCE_MESSAGE } from "../finance/funding";
+import { stampFundingForFinance, kickFinanceFunding, financeLock, withFinance, WITH_FINANCE_MESSAGE, bonusRefusal, bonusMissing, dropServerFields } from "../finance/funding";
 import { seesClosedOnly, SALES_READ_ONLY } from "../students/closedBy";
 
 // The built-in roles the registry policies are written in terms of. Roles
@@ -188,6 +188,12 @@ export async function createEntity(req: Request, entityName: string): Promise<Re
   if (!body || typeof body !== "object") return error("Body must be a JSON object", 400);
 
   const data = withTimestamps(stripIncomingId(body), true);
+  // A bonus names the MT5 login and carries the receipt; a sales-close credit is the server's to make.
+  if (entityName === "FundingTransaction") {
+    dropServerFields(data);
+    const missing = bonusMissing(data);
+    if (missing) return error(missing, 400);
+  }
   // Attribution
   if (!data.created_by) data.created_by = ctx.user.id;
   if (!data.created_by_name) data.created_by_name = ctx.user.full_name;
@@ -223,6 +229,11 @@ export async function bulkCreateEntity(req: Request, entityName: string): Promis
   const items: any[] = Array.isArray(body) ? body : Array.isArray(body?.items) ? body.items : [];
   if (!items.length) return error("Expected an array of items", 400);
   let toInsert = items.map((it) => withTimestamps(stripIncomingId(it), true));
+  if (entityName === "FundingTransaction") {
+    toInsert.forEach((it) => dropServerFields(it));
+    const missing = toInsert.map((it) => bonusMissing(it)).find(Boolean);
+    if (missing) return error(missing, 400);
+  }
 
   // Enforce uniqueFields: drop rows that duplicate an existing record OR an
   // earlier row in this same batch (case-insensitive; blanks exempt).
@@ -297,8 +308,12 @@ export async function updateEntity(req: Request, entityName: string, id: string)
   if (entityName === "FundingTransaction") {
     const existing = await col(ctx.cfg.collection).findOne({ _id: oid });
     if (!existing) return notFound();
+    dropServerFields(data);
     const locked = financeLock(existing, data);
     if (locked) return error(locked, 409);
+    // A bonus: decided by a broker admin or a Super Admin, after finance (finance/funding.ts).
+    const refused = bonusRefusal(existing, data, ctx.user.app_role);
+    if (refused) return error(refused.message, refused.status);
   }
   await col(ctx.cfg.collection).updateOne({ _id: oid }, { $set: data });
   const doc = await col(ctx.cfg.collection).findOne({ _id: oid });

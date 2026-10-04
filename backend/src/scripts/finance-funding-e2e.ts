@@ -3,7 +3,12 @@
  * process and a stand-in finance served here.
  *
  *   - a new DEPOSIT goes to finance at once, signed the way finance checks;
- *     withdrawals, bonuses and requests from before the link do not;
+ *     withdrawals and requests from before the link do not;
+ *   - a new BONUS (a course payment) goes too, with its course payment, and
+ *     needs its MT5 login and receipt; finance's approval is the first of two —
+ *     it waits, PENDING, for a broker admin or a Super Admin, who are told and
+ *     are the only ones who may approve it; a sales-close credit skips finance
+ *     and a caller cannot claim to be one;
  *   - while finance has it, nobody here approves, rejects, deletes or changes
  *     what is being approved — not even the master editor;
  *   - finance's decision comes back on its own secret: approved at the amount
@@ -114,11 +119,13 @@ const person = (full_name: string, app_role: string, extra: Record<string, unkno
   password_hash: hash, created_date: now, updated_date: now, ...extra,
 });
 const admin = person("Super Admin", "super_admin");
+const broker = person("Broker Bo", "broker_admin");
+const plainAdmin = person("Plain Admin", "admin");
 const chief = person("Chief Cara", "chief_mentor", { commission_plan_id: String(plan._id) });
 const mentor = person("Mentor Meera", "junior_mentor", {
   commission_plan_id: String(plan._id), up_head_id: String(chief._id), up_head_name: chief.full_name,
 });
-await db.collection("users").insertMany([admin, chief, mentor]);
+await db.collection("users").insertMany([admin, chief, mentor, broker, plainAdmin]);
 const student = {
   _id: new ObjectId(), full_name: "Student Sam", email: "sam@e2e-funding.test", student_code: "STU-0100",
   student_level: "LEVEL_1", status: "ACTIVE", primary_mentor_id: String(mentor._id), primary_mentor_name: mentor.full_name,
@@ -182,12 +189,10 @@ check("the proof, the MT5 login and the student's MT5 accounts, and who raised i
   JSON.stringify(sent?.body).slice(0, 400));
 check("finance's own id for it is kept", (await txOf(d1))?.finance_approval?.request_id === "fin-1");
 
-step("Withdrawals, bonuses, and whatever a caller claims, stay here");
-const w = await raise({ type: "WITHDRAWAL" });
-const b = await raise({ type: "BONUS", tags: ["Course"], amount_usd: 300, finance_approval: { state: "decided", decision: "approved" } });
+step("Withdrawals, and whatever a caller claims, stay here");
+const w = await raise({ type: "WITHDRAWAL", finance_approval: { state: "decided", decision: "approved" } });
 await Bun.sleep(800);
-check("a withdrawal is not sent", w.status === 200 && !w.body?.finance_approval, show(w));
-check("a bonus is not sent, and the finance_approval it arrived with is dropped", b.status === 200 && !b.body?.finance_approval, show(b));
+check("a withdrawal is not sent, and the finance_approval it arrived with is dropped", w.status === 200 && !w.body?.finance_approval, show(w));
 check("finance received only the deposit", received.length === 1, String(received.length));
 
 step("While finance has it, nobody here decides it");
@@ -330,6 +335,88 @@ check("finance deciding it after all: refused", r.status === 409 && r.body?.erro
 r = await patch(d6, { status: "APPROVED", transaction_id: "TXN-1006", approved_by_name: "Super Admin" });
 check("it is approved here instead", r.status === 200 && r.body?.status === "APPROVED", show(r));
 mode = "up";
+
+step("A bonus: Delta Finance first, then a broker admin");
+const brokerToken = await login(broker);
+const plainToken = await login(plainAdmin);
+const patchAs = (token: string, id: string, data: Record<string, unknown>) => call("PATCH", `/api/entities/FundingTransaction/${id}`, data, as(token));
+const coursePayment = {
+  product: "DWT", kind: "partial", with_bonus: true, bonus_usd: 500, hold_aed: 0, balance_aed: 1250,
+  paid_today_aed: 2000, paid_before_aed: 0, paid_total_aed: 2000, price: 3250, price_currency: "AED", instalments: 2,
+};
+const bonus = (over: Record<string, unknown> = {}) => raise({ type: "BONUS", tags: ["Course"], amount_usd: 544.96, amount_original: 2000, amount_currency: "AED", course_payment: coursePayment, ...over });
+r = await bonus({ mt5_login: "" });
+check("a bonus without the student's MT5 login: refused", r.status === 400 && /MT5/.test(JSON.stringify(r.body)), show(r));
+r = await bonus({ screenshot_url: "" });
+check("nor without the payment receipt", r.status === 400 && /receipt/.test(JSON.stringify(r.body)), show(r));
+const before = received.length;
+const b1r = await bonus({ bonus_credit: "sales_close", sales_close: { invoice_id: "x" } });
+const b1 = String(b1r.body?.id ?? "");
+check("raised, marked for finance — the sales-close credit it claimed to be dropped", b1r.status === 200 && b1r.body?.finance_approval?.state === "queued" && !b1r.body?.bonus_credit && !b1r.body?.sales_close, show(b1r));
+check("sent to finance at once", await until(async () => (await stateOf(b1)) === "sent", 3000), String(await stateOf(b1)));
+const sentBonus = received[before]?.body;
+check("as a bonus, with the amount as typed (AED) and its course payment",
+  sentBonus?.type === "BONUS" && sentBonus.amountMinor === 54496 && sentBonus.amountOriginal === 2000 && sentBonus.amountCurrency === "AED"
+    && sentBonus.coursePayment?.product === "DWT" && sentBonus.coursePayment.kind === "partial" && sentBonus.coursePayment.withBonus === true
+    && sentBonus.coursePayment.bonusUsd === 500 && sentBonus.coursePayment.balanceAed === 1250 && sentBonus.coursePayment.paidTodayAed === 2000
+    && sentBonus.coursePayment.priceCurrency === "AED", JSON.stringify(sentBonus).slice(0, 500));
+check("…and its MT5 login and receipt", sentBonus?.mt5Login === "5550001" && sentBonus.screenshotUrl === "http://127.0.0.1/uploads/proof.png");
+r = await patchAs(brokerToken, b1, { status: "APPROVED", transaction_id: "TXN-B1" });
+check("while finance has it, not even a broker admin approves it", r.status === 409 && /Delta Finance/.test(JSON.stringify(r.body)), show(r));
+r = await approve(b1, { transactionId: "TXN-B1", amountMinor: 54496 });
+let tb = await txOf(b1);
+check("finance approves: accepted, and it stays PENDING here", r.status === 200 && r.body?.data?.status === "PENDING" && tb.status === "PENDING", show(r));
+check("…with finance's approval, transaction ID and note recorded", tb.finance_approval?.state === "decided" && tb.finance_approval?.decision === "approved"
+  && tb.transaction_id === "TXN-B1" && tb.finance_approval?.note === "Matched to the bank statement", JSON.stringify(tb.finance_approval));
+check("…not yet approved by anyone here, and nobody's commission credited", !tb.approved_by_name && (await credits(b1)).length === 0, `${tb.approved_by_name}`);
+check("…one audit line for finance's part", (await logsFor(b1, "accounts_approve_bonus")) === 1);
+const told = await db.collection("notifications").find({ type: "bonus_to_approve" }).toArray();
+const toldIds = told.map((n: any) => n.user_id).sort();
+check("the broker admins and Super Admins are told it is theirs now — nobody else",
+  JSON.stringify(toldIds) === JSON.stringify([String(admin._id), String(broker._id)].sort()) && /500/.test(String(told[0]?.message)), JSON.stringify(told.map((n: any) => [n.user_id, n.title, n.message])));
+r = await approve(b1, { transactionId: "TXN-B1", amountMinor: 54496 });
+check("finance's approval again: the same, nothing more", r.status === 200 && r.body?.data?.already === true && (await txOf(b1)).status === "PENDING" && (await credits(b1)).length === 0, show(r));
+r = await patchAs(plainToken, b1, { status: "APPROVED", approved_by_name: "Plain Admin" });
+check("an admin who is not a broker admin cannot approve a bonus", r.status === 403 && /broker admin/.test(JSON.stringify(r.body)), show(r));
+r = await patchAs(plainToken, b1, { status: "REJECTED" });
+check("nor reject it", r.status === 403, show(r));
+r = await patchAs(mentorToken, b1, { status: "APPROVED" });
+check("nor a mentor", r.status === 403, show(r));
+r = await patchAs(brokerToken, b1, { status: "APPROVED", approved_by_name: "Broker Bo", transaction_id: "TXN-B1" });
+check("the broker admin approves it: approved", r.status === 200 && r.body?.status === "APPROVED", show(r));
+r = await approve(b1, { transactionId: "TXN-B1", amountMinor: 54496 });
+check("finance's approval arriving after that changes nothing", r.status === 200 && (await txOf(b1)).approved_by_name === "Broker Bo", show(r));
+
+const b2 = String((await bonus({ amount_usd: 300 })).body?.id ?? "");
+await until(async () => (await stateOf(b2)) === "sent", 3000);
+r = await reject(b2);
+tb = await txOf(b2);
+check("a bonus finance rejects is rejected here, with the reason", r.status === 200 && tb.status === "REJECTED" && tb.rejection_reason === "No such payment on the statement", show(r));
+
+const credit = await txs.insertOne({
+  type: "BONUS", status: "PENDING", bonus_credit: "sales_close", student_id: String(student._id), student_name: student.full_name,
+  amount_usd: 500, mt5_login: "5550001", created_date: now, requested_at: now,
+});
+const creditId = String(credit.insertedId);
+r = await patchAs(plainToken, creditId, { status: "APPROVED" });
+check("a sales-close credit never goes to finance — and still only a broker admin or Super Admin approves it", r.status === 403, show(r));
+r = await patchAs(adminToken, creditId, { status: "APPROVED", approved_by_name: "Super Admin", transaction_id: "CREDIT-1" });
+check("the Super Admin approves it straight away", r.status === 200 && r.body?.status === "APPROVED", show(r));
+
+mode = "refuse";
+const b3 = String((await bonus({ amount_usd: 200 })).body?.id ?? "");
+check("a bonus finance will not take is handed back", await until(async () => (await stateOf(b3)) === "refused", 3000), String(await stateOf(b3)));
+mode = "up";
+r = await patchAs(plainToken, b3, { status: "APPROVED" });
+check("…and still only a broker admin or Super Admin decides it", r.status === 403, show(r));
+r = await patchAs(brokerToken, b3, { status: "APPROVED", approved_by_name: "Broker Bo", transaction_id: "TXN-B3" });
+check("…who can, straight away", r.status === 200 && r.body?.status === "APPROVED", show(r));
+
+r = await call("POST", "/api/functions/createReferralRequest", {
+  student_id: String(other._id), receiving_mentor_id: String(chief._id), receiving_mentor_name: chief.full_name, transaction_type: "BONUS",
+  tags: ["Course"], requested_deposit_amount: 100, mt5_login: "", screenshot_url: "http://127.0.0.1/uploads/proof.png",
+}, as(mentorToken));
+check("a co-management bonus without the MT5 login: refused too", r.status === 400 && /MT5/.test(JSON.stringify(r.body)), show(r));
 
 step("The browser's own calls answer as before");
 r = await fn("creditCommission", { transaction_id: d6 });

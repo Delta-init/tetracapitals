@@ -24,7 +24,8 @@ import {
   canProcessFundingTransaction,
   canCreateFundingTransaction,
   filterFundingTransactionsByRole,
-  isWithAccounts
+  isWithAccounts,
+  canDecideFunding
 } from "../components/utils/FundingAccessControl";
 import { useFinanceLink, WithAccountsBadge, FinanceApprovalNote } from "../components/funding/FinanceApproval";
 import { toast } from "sonner";
@@ -938,7 +939,7 @@ export default function FundingRequests() {
                             {canProcess && withAccounts(transaction) && (
                               <span className="self-center text-xs text-sky-700 whitespace-nowrap">Waiting for accounts</span>
                             )}
-                            {canProcess && transaction.status === 'PENDING' && !withAccounts(transaction) && (
+                            {canDecideFunding(transaction, currentUser.app_role) && transaction.status === 'PENDING' && !withAccounts(transaction) && (
                               <Button
                                 size="sm"
                                 variant="ghost"

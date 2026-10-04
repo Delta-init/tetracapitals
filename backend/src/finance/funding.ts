@@ -7,13 +7,20 @@ import { ok, refuse, secretMatches, text } from "../students/intake";
 import { recordHistory } from "../students/history";
 import { creditCommissionFor } from "../functions/creditCommission";
 import { recomputeCoMentorContribution } from "../functions/referrals";
+import { notify } from "../lib/notify";
 
 /* ────────────────────────────────────────────────────────────────────────────
-   Deposit requests are approved in Delta finance.
+   Deposit and bonus requests are approved in Delta finance.
 
    Every new DEPOSIT request is sent to finance's approvals the moment it is
    raised — signed, through the same door the sales CRM and Media ERP use —
-   and the accountants approve or reject it there. Finance sends the decision
+   and the accountants approve or reject it there. So is every new BONUS (a
+   course payment), but for a bonus finance's approval is the first of two
+   (the user, 2026-10-04): it confirms the money, and the bonus then waits for
+   a broker admin or a Super Admin here to credit it and approve
+   (awaitingBroker, bonusRefusal below). A sales-close bonus credit
+   (`bonus_credit`) skips finance — finance approved it with the enrolment —
+   and waits for them straight away. Finance sends the decision
    back to POST /api/v1/integrations/finance/funding-decisions
    (x-finance-secret, as for new students), and only then does it change here:
    approved with everything Tetra Commission's own approval does — commission
@@ -21,12 +28,12 @@ import { recomputeCoMentorContribution } from "../functions/referrals";
    Level 2, co-mentor contributions, the audit log — or rejected with the
    accountant's reason.
 
-   New deposits only. A request raised before the link was configured carries
-   no `finance_approval` and is approved here, as before; so are withdrawals
-   and bonuses. While finance has a deposit, nobody here can approve, reject,
-   delete or change what is being approved (crud.ts and the master editor
-   refuse). One finance will not take at all — malformed — is handed back and
-   approved here.
+   New requests only. A request raised before the link was configured carries
+   no `finance_approval` and is approved here, as before; so are withdrawals.
+   While finance has a request, nobody here can approve, reject, delete or
+   change what is being approved (crud.ts and the master editor refuse). One
+   finance will not take at all — malformed — is handed back and approved here
+   (a bonus by a broker admin or a Super Admin).
 
    `finance_approval` on the funding transaction, the server's alone:
      state  queued   waiting to be sent (retried until finance takes it)
@@ -44,16 +51,18 @@ export function financeFundingConfigured(): boolean {
   return Boolean(config.financeApiUrl && config.financeClientId && config.financeIntegrationSecret && config.financeOrgId);
 }
 
+/** The requests finance approves: deposits, and bonuses — but not a sales-close bonus credit (see above). */
+export const goesToFinance = (doc: any): boolean => doc?.type === "DEPOSIT" || (doc?.type === "BONUS" && !doc?.bonus_credit);
+
 /**
- * Mark a new funding request for finance, if it is one that goes there: a
- * DEPOSIT, raised PENDING, while the link is configured. Whatever the caller
- * sent as `finance_approval` is dropped either way. Mutates `doc`; true when
+ * Mark a new funding request for finance, if it is one that goes there (goesToFinance), raised PENDING, while the
+ * link is configured. Whatever the caller sent as `finance_approval` is dropped either way. Mutates `doc`; true when
  * it was marked, so the caller can send it straight after the insert.
  */
 export function stampFundingForFinance(doc: Record<string, any>): boolean {
   delete doc.finance_approval;
   if (!financeFundingConfigured()) return false;
-  if (doc.type !== "DEPOSIT" || doc.status !== "PENDING") return false;
+  if (!goesToFinance(doc) || doc.status !== "PENDING") return false;
   const now = new Date().toISOString();
   doc.finance_approval = { state: "queued", queued_at: now, attempts: 0, next_attempt_at: now };
   return true;
@@ -70,7 +79,44 @@ export function withFinance(tx: any): boolean {
   return state === "sent" || (state === "queued" && financeFundingConfigured());
 }
 
-export const WITH_FINANCE_MESSAGE = "This deposit is with Delta Finance for approval — it is approved or rejected there";
+export const WITH_FINANCE_MESSAGE = "This request is with Delta Finance for approval — it is approved or rejected there";
+
+/* ── A bonus's second approval ─────────────────────────────────────────────── */
+
+/** Who approves a bonus here: a broker admin or a Super Admin (the user, 2026-10-04). */
+export const BONUS_APPROVERS = ["broker_admin", "super_admin"];
+export const BONUS_APPROVERS_MESSAGE = "A bonus is approved or rejected by a broker admin or a Super Admin";
+
+/** A bonus finance approved, waiting for a broker admin or a Super Admin. */
+export const awaitingBroker = (tx: any): boolean =>
+  tx?.type === "BONUS" && tx?.status === "PENDING" && tx?.finance_approval?.state === "decided" && tx?.finance_approval?.decision === "approved";
+
+/**
+ * For a change to a bonus's status (approve or reject) here: the refusal, or null to go ahead. Only a broker admin
+ * or a Super Admin decides a bonus. One finance still has is refused before this, as every request finance has is
+ * (financeLock) — so a bonus is decided here once finance approved it, or straight away when it never went there.
+ */
+export function bonusRefusal(existing: any, data: Record<string, any>, role: string): { status: 403; message: string } | null {
+  if (existing?.type !== "BONUS" || !("status" in data) || String(data.status) === String(existing.status)) return null;
+  return BONUS_APPROVERS.includes(role) ? null : { status: 403, message: BONUS_APPROVERS_MESSAGE };
+}
+
+/**
+ * What only the server sets on a funding request, dropped from whatever a caller sends (crud.ts): a sales-close bonus
+ * credit is made by the call log (students/followups), never raised — a caller claiming one would skip finance.
+ */
+export function dropServerFields(doc: Record<string, any>): void {
+  delete doc.bonus_credit;
+  delete doc.sales_close;
+}
+
+/** A new bonus (not a sales-close credit) names the student's MT5 login and carries the payment receipt (the user, 2026-10-04). */
+export function bonusMissing(doc: any): string | null {
+  if (doc?.type !== "BONUS" || doc?.bonus_credit) return null;
+  if (!String(doc.mt5_login ?? "").trim()) return "A bonus needs the student's MT5 login";
+  if (!String(doc.screenshot_url ?? "").trim()) return "A bonus needs the payment receipt";
+  return null;
+}
 
 /** What finance is deciding: nothing here may change these while it has the request. */
 const LOCKED = ["status", "amount_usd", "type", "student_id"] as const;
@@ -130,6 +176,24 @@ async function postToFinance(path: string, payload: unknown): Promise<any> {
   throw new Error(message);
 }
 
+/** A bonus's course payment, as the accountants see it (FundingRequestForm's course_payment). */
+function coursePaymentOf(cp: any) {
+  if (!cp || typeof cp !== "object") return undefined;
+  const num = (v: unknown) => (v === null || v === undefined || v === "" || !Number.isFinite(Number(v)) ? null : Number(v));
+  return {
+    product: String(cp.product ?? "").trim().slice(0, 160),
+    kind: cp.kind === "full" || cp.kind === "partial" ? cp.kind : "",
+    withBonus: cp.with_bonus === true,
+    bonusUsd: num(cp.bonus_usd),
+    holdAed: num(cp.hold_aed),
+    balanceAed: num(cp.balance_aed),
+    paidTodayAed: num(cp.paid_today_aed),
+    paidBeforeAed: num(cp.paid_before_aed ?? cp.before_aed),
+    price: num(cp.price),
+    priceCurrency: /^[A-Za-z]{3}$/.test(String(cp.price_currency ?? "")) ? String(cp.price_currency).toUpperCase() : "",
+  };
+}
+
 /** What the accountants see: the request, the student, and the proof. */
 async function depositPayload(tx: any) {
   const sid = tx.student_id ? toObjectId(String(tx.student_id)) : null;
@@ -141,8 +205,14 @@ async function depositPayload(tx: any) {
     : [];
   return {
     externalId: String(tx._id),
+    // A bonus is a course payment: the money in, and what it earns in MT5 (coursePayment).
+    type: tx.type === "BONUS" ? "BONUS" : "DEPOSIT",
     amountMinor: Math.round(Number(tx.amount_usd || 0) * 100),
     currency: "USD",
+    ...(Number(tx.amount_original) > 0 && /^[A-Z]{3}$/.test(String(tx.amount_currency ?? ""))
+      ? { amountOriginal: Number(tx.amount_original), amountCurrency: String(tx.amount_currency) }
+      : {}),
+    ...(tx.type === "BONUS" && coursePaymentOf(tx.course_payment) ? { coursePayment: coursePaymentOf(tx.course_payment) } : {}),
     student: {
       id: String(tx.student_id ?? ""),
       code: String(tx.student_code || student?.student_code || ""),
@@ -185,7 +255,7 @@ async function sendOne(tx: any): Promise<void> {
         "finance_approval.last_error": null,
       },
     });
-    console.log(`[finance funding] deposit ${tx._id} (${tx.student_name ?? "?"}, ${tx.amount_usd} USD) is with Delta Finance`);
+    console.log(`[finance funding] ${String(tx.type).toLowerCase()} ${tx._id} (${tx.student_name ?? "?"}, ${tx.amount_usd} USD) is with Delta Finance`);
   } catch (err) {
     const message = (err as Error).message || "Delta Finance could not be reached";
     if (err instanceof FinancePermanentError) {
@@ -427,18 +497,20 @@ const logRejection = (tx: any, byName: string, byEmail: string) =>
  */
 async function settledAnswer(tx: any, decision: string, byName: string, byEmail: string): Promise<Response | null> {
   const fa = tx.finance_approval;
-  if (!fa || tx.type !== "DEPOSIT") {
+  if (!fa || (tx.type !== "DEPOSIT" && tx.type !== "BONUS")) {
     return refuse(409, "NOT_WITH_FINANCE", "This funding request was not sent to Delta Finance — it is decided in Tetra Commission");
   }
-  if (tx.status === "PENDING") {
+  // A bonus finance approved is still PENDING here — waiting for a broker admin — and decided as far as finance goes.
+  if (tx.status === "PENDING" && !awaitingBroker(tx)) {
     if (fa.state === "refused") {
-      return refuse(409, "NOT_WITH_FINANCE", "Delta Finance handed this deposit back — it is decided in Tetra Commission");
+      return refuse(409, "NOT_WITH_FINANCE", "Delta Finance handed this request back — it is decided in Tetra Commission");
     }
     return null;
   }
   if (fa.state === "decided" && fa.decision === decision) {
     let effects = {};
-    if (decision === "approved" && !fa.effects_at) {
+    // A bonus's approval here is the broker admin's: finance's own does nothing more (handleFundingDecision).
+    if (decision === "approved" && tx.type === "DEPOSIT" && !fa.effects_at) {
       // Still being finished by the request that recorded it: finance sends it again shortly.
       if (!(await claimEffects(tx._id))) return refuse(503, "IN_PROGRESS", "This decision is still being recorded — send it again shortly");
       effects = await applyApproval(tx._id, byName, byEmail);
@@ -500,11 +572,11 @@ export async function handleFundingDecision(req: Request): Promise<Response> {
   if (!tx) return refuse(410, "GONE", "This funding request is no longer in Tetra Commission");
   const settled = await settledAnswer(tx, decision, byName, byEmail);
   if (settled) return settled;
+  // A bonus finance approves stays PENDING: the second approval is a broker admin's here (awaitingBroker).
+  const firstOfTwo = tx.type === "BONUS" && decision === "approved";
 
   const set: Record<string, unknown> = {
-    approved_by_id: null,
-    approved_by_name: `${byName} (Delta Finance)`,
-    approved_at: at,
+    ...(firstOfTwo ? {} : { approved_by_id: null, approved_by_name: `${byName} (Delta Finance)`, approved_at: at }),
     updated_date: now,
     "finance_approval.state": "decided",
     "finance_approval.decision": decision,
@@ -526,9 +598,11 @@ export async function handleFundingDecision(req: Request): Promise<Response> {
       return refuse(409, "DUPLICATE_TRANSACTION_ID",
         `Transaction ID ${transactionId} is already used by another funding request${dup.student_name ? ` (${dup.student_name})` : ""}`);
     }
-    set.status = "APPROVED";
-    // Claimed in the same write that approves it: finishing it is this request's job.
-    set["finance_approval.effects_claimed_at"] = now;
+    if (!firstOfTwo) {
+      set.status = "APPROVED";
+      // Claimed in the same write that approves it: finishing it is this request's job.
+      set["finance_approval.effects_claimed_at"] = now;
+    }
     set.amount_usd = amountMinor / 100;
     set.transaction_id = transactionId;
     if (amountMinor !== Math.round(Number(tx.amount_usd || 0) * 100)) set.requested_amount_usd = tx.amount_usd;
@@ -556,9 +630,34 @@ export async function handleFundingDecision(req: Request): Promise<Response> {
   }
 
   let effects = {};
-  if (decision === "approved") effects = await applyApproval(oid, byName, byEmail);
+  if (firstOfTwo) await bonusToBroker(tx, byName, byEmail);
+  else if (decision === "approved") effects = await applyApproval(oid, byName, byEmail);
   else await logRejection({ ...tx, rejection_reason: reason }, byName, byEmail);
   const fresh = await txs.findOne({ _id: oid });
-  console.log(`[finance funding] deposit ${oid} ${decision} in Delta Finance by ${byName}`);
+  console.log(`[finance funding] ${String(tx.type).toLowerCase()} ${oid} ${decision} in Delta Finance by ${byName}${firstOfTwo ? " — now with the broker admins" : ""}`);
   return ok(outcome(fresh ?? tx, false, effects));
+}
+
+/**
+ * Finance approved a bonus's payment: one audit line, and the broker admins and Super Admins told it is theirs to
+ * credit and approve now (the bell and a push). Never throws.
+ */
+async function bonusToBroker(tx: any, byName: string, byEmail: string): Promise<void> {
+  try {
+    await logOnce(tx, "accounts_approve_bonus",
+      `Bonus for ${tx.student_name ?? "a student"} approved in Delta Finance by ${byName} — waiting for a broker admin`,
+      byName, byEmail, { finance_approval: "approved", amount_usd: tx.amount_usd });
+    const approvers = (await col("users")
+      .find({ app_role: { $in: BONUS_APPROVERS }, status: { $ne: "inactive" } }, { projection: { _id: 1 } })
+      .toArray()).map((u: any) => String(u._id));
+    await notify(approvers, {
+      type: "bonus_to_approve",
+      title: `Bonus to approve: ${tx.student_name || tx.student_code || "a student"}`,
+      body: `Delta Finance approved the payment${tx.course_payment?.bonus_usd ? ` — credit the $${tx.course_payment.bonus_usd} MT5 bonus` : ""}${tx.mt5_login ? ` in ${tx.mt5_login}` : ""} and approve it.`,
+      link: "/FundingRequests",
+      tag: `bonus-${String(tx._id)}`,
+    });
+  } catch (err) {
+    console.error("[finance funding] could not tell the broker admins", err instanceof Error ? err.message : err);
+  }
 }

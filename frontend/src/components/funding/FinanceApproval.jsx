@@ -16,12 +16,13 @@ export function useFinanceLink() {
   return data?.depositsToFinance ?? true;
 }
 
-/** "With accounts", in place of Pending, for a deposit Delta Finance is deciding. */
+/** "With accounts", in place of Pending, for a deposit or bonus Delta Finance is deciding. */
 export function WithAccountsBadge({ transaction }) {
   const fa = transaction?.finance_approval || {};
+  const then = transaction?.type === 'BONUS' ? ' — then a broker admin credits the bonus and approves it here' : '';
   const title = fa.state === 'queued'
     ? (fa.last_error ? `Not reached Delta Finance yet (${fa.last_error}) — retrying on its own` : 'On its way to Delta Finance')
-    : 'With Delta Finance — the accountants approve or reject it there';
+    : `With Delta Finance — the accountants approve or reject it there${then}`;
   return (
     <Badge variant="outline" className="bg-sky-100 text-sky-800 border-sky-200 whitespace-nowrap" title={title}>
       With accounts
@@ -36,7 +37,16 @@ export function FinanceApprovalNote({ transaction }) {
   if (transaction.status === 'PENDING' && fa.state === 'refused') {
     return (
       <span className="block text-[11px] text-amber-700 mt-1" title={fa.reason || ''}>
-        Accounts could not take it — approve here
+        Accounts could not take it — {transaction.type === 'BONUS' ? 'a broker admin approves it here' : 'approve here'}
+      </span>
+    );
+  }
+  // A bonus: finance approved the payment; a broker admin or a Super Admin credits it and approves.
+  if (transaction.type === 'BONUS' && transaction.status === 'PENDING' && fa.state === 'decided' && fa.decision === 'approved') {
+    return (
+      <span className="block text-[11px] font-medium text-emerald-700 mt-1"
+        title={`Approved in Delta Finance${fa.decided_by_name ? ` by ${fa.decided_by_name}` : ''}${fa.note ? ` — ${fa.note}` : ''}`}>
+        Accounts approved — for a broker admin
       </span>
     );
   }

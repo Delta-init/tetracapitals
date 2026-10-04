@@ -2,7 +2,7 @@ import { col } from "../db";
 import { json, error, forbidden, notFound } from "../lib/response";
 import { serialize, serializeMany, toObjectId } from "../lib/id";
 import type { AuthUser } from "../auth/middleware";
-import { stampFundingForFinance, kickFinanceFunding } from "../finance/funding";
+import { stampFundingForFinance, kickFinanceFunding, bonusMissing } from "../finance/funding";
 
 /**
  * Mentor asks to be added as a co-mentor for another mentor's student.
@@ -25,6 +25,9 @@ export async function createReferralRequest(req: Request, user: AuthUser): Promi
   if (txType === "BONUS" && txTags.length === 0) {
     return error("BONUS referrals must include at least one tag", 400);
   }
+  // A bonus names the MT5 login and carries the receipt, raised here as anywhere (finance/funding.ts).
+  const missing = bonusMissing({ type: txType, mt5_login, screenshot_url });
+  if (missing) return error(missing, 400);
 
   const sid = toObjectId(student_id);
   const student = sid ? await col("students").findOne({ _id: sid }) : null;
