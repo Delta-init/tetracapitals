@@ -22,9 +22,13 @@ import { LastCallLine } from '@/components/calls/callUi';
 import { isStudentOf } from '@/components/students/common';
 import { TagChip, useStudentTagCatalog } from '@/components/students/tags';
 
+// The follow-ups' business day (backend students/followups.ts BUSINESS_OFFSET_MS).
+const businessDate = (iso) => (iso ? new Date(Date.parse(iso) + 330 * 60_000).toISOString().slice(0, 10) : '');
 const TABS = {
   overdue: { label: 'Overdue', test: (f) => f.followup_status === 'OVERDUE' },
   today: { label: 'Due today', test: (f) => f.followup_status === 'DUE TODAY' },
+  // A call logged today, or a follow-up opened today with what the student said (the user, 2026-10-04).
+  done: { label: 'Done today', test: (f, today) => !!today && (f.last_contact_date === today || (!!f.client_said && businessDate(f.created_date) === today)) },
   upcoming: { label: 'Upcoming', test: (f) => f.followup_status === 'On Track' || f.followup_status === '-' },
   closed: { label: 'Closed', test: (f) => f.followup_status === 'Closed' },
   all: { label: 'All', test: () => true },
@@ -66,6 +70,7 @@ export default function StudentFollowups() {
   const [stage, setStage] = useState('all');
   const [outcome, setOutcome] = useState('all');
   const [team, setTeam] = useState('all');
+  const [cs, setCs] = useState('all');
   const [tag, setTag] = useState('all');
   const { data: tagCatalog = [] } = useStudentTagCatalog();
   const [q, setQ] = useState('');
@@ -73,17 +78,24 @@ export default function StudentFollowups() {
   const [creating, setCreating] = useState(false);
 
   const teams = useMemo(() => [...new Set(followups.map(f => f.team_name).filter(Boolean))].sort(), [followups]);
+  // Whose students — more than one for a leader or an admin: the CS filter.
+  const people = useMemo(
+    () => [...new Map(followups.map(f => [f.mentor_id, f.mentor_name || 'No CS'])).entries()].sort((a, b) => a[1].localeCompare(b[1])),
+    [followups],
+  );
   const needle = q.trim().toLowerCase();
   const base = followups.filter(f =>
     (stage === 'all' || f.stage === stage) &&
     (outcome === 'all' || f.target_outcome === outcome) &&
     (team === 'all' || f.team_name === team) &&
+    (cs === 'all' || (f.mentor_id || 'none') === cs) &&
     (tag === 'all' || (f.tag_names || []).includes(tag)) &&
     (!needle || [f.student_name, f.student_code, f.phone, f.mentor_name, f.client_said].some(v => String(v || '').toLowerCase().includes(needle)))
   );
-  const counts = Object.fromEntries(Object.entries(TABS).map(([k, t]) => [k, base.filter(t.test).length]));
-  const rows = base.filter(TABS[tab].test);
-  const { pageItems, bar } = usePagination(rows, { resetKey: `${tab}|${stage}|${outcome}|${team}|${tag}|${needle}` });
+  const today = data?.today;
+  const counts = Object.fromEntries(Object.entries(TABS).map(([k, t]) => [k, base.filter(f => t.test(f, today)).length]));
+  const rows = base.filter(f => TABS[tab].test(f, today));
+  const { pageItems, bar } = usePagination(rows, { resetKey: `${tab}|${stage}|${outcome}|${team}|${cs}|${tag}|${needle}` });
   const refresh = () => queryClient.invalidateQueries({ queryKey: ['followups'] });
   const showMentor = new Set(followups.map(f => f.mentor_id)).size > 1;
 
@@ -152,6 +164,12 @@ export default function StudentFollowups() {
                   <SelectContent><SelectItem value="all">All teams</SelectItem>{teams.map(t => <SelectItem key={t} value={t}>{t}</SelectItem>)}</SelectContent>
                 </Select>
               )}
+              {people.length > 1 && (
+                <Select value={cs} onValueChange={(v) => v && setCs(v)}>
+                  <SelectTrigger className="h-9 w-48"><SelectValue /></SelectTrigger>
+                  <SelectContent><SelectItem value="all">Every CS</SelectItem>{people.map(([id, name]) => <SelectItem key={id || 'none'} value={id || 'none'}>{name}</SelectItem>)}</SelectContent>
+                </Select>
+              )}
               <div className="relative">
                 <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
                 <Input value={q} onChange={e => setQ(e.target.value)} placeholder="Student, phone, what they said…" className="h-9 w-64 pl-9" />
@@ -177,7 +195,9 @@ export default function StudentFollowups() {
                     <tr><td colSpan={16} className="py-12 text-center text-rose-600">{error.message || 'Could not load follow-ups'}</td></tr>
                   ) : rows.length === 0 ? (
                     <tr><td colSpan={16} className="py-12 text-center text-slate-400">
-                      {followups.length ? `Nothing ${TABS[tab].label.toLowerCase()}.` : 'No follow-ups yet — open one with New follow-up.'}
+                      {!followups.length ? 'No follow-ups yet — open one with New follow-up.'
+                        : tab === 'done' ? 'No follow-up done today yet — log a call and it shows here.'
+                        : `Nothing ${TABS[tab].label.toLowerCase()}.`}
                     </td></tr>
                   ) : pageItems.map(f => (
                     <tr key={f.id}
@@ -224,7 +244,8 @@ export default function StudentFollowups() {
         <ReminderLog currentUser={currentUser} />
       </div>
 
-      <NewFollowupDialog open={creating} onClose={() => setCreating(false)} onSaved={refresh} students={myStudents} />
+      <NewFollowupDialog open={creating} onClose={() => setCreating(false)} onSaved={refresh} students={myStudents} followups={followups}
+        onLog={(f) => callFlow?.openLog(f)} />
     </div>
   );
 }

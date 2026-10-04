@@ -4,7 +4,7 @@ import { toast } from 'sonner';
 import { base44 } from '@/api/base44Client';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
-import { Loader2, Phone, PhoneCall, PhoneOff, Plus, Smartphone } from 'lucide-react';
+import { Loader2, Phone, PhoneCall, PhoneOff, Smartphone } from 'lucide-react';
 import { LogFollowupDialog, NewFollowupDialog, StageBadge, StatusBadge, fmtDate } from './followupUi';
 import { dialInfo } from './phone';
 import { useAuth } from '@/lib/AuthContext';
@@ -20,8 +20,9 @@ import { readsClosedOnly } from '@/components/utils/roles';
      - Phone call: a tel: link for the phone app.
    Then it opens the right place to record the call:
      - a follow-up row → its Log dialog;
-     - a student → their one open follow-up's Log dialog; a picker when they
-       have several; "New follow-up" (then Log) when they have none.
+     - a student → their open follow-up's Log dialog (a picker for the few
+       with several from before one follow-up per student); "New follow-up"
+       (then Log) when they have none.
    Only for people who may log for that student (their mentor, Super Admin /
    Admin) — anyone else just dials. One set of dialogs for the whole app,
    mounted by Layout.
@@ -116,11 +117,6 @@ export function CallFlowProvider({ children }) {
           </div>
           <DialogFooter className="gap-2 sm:gap-0">
             <Button variant="outline" onClick={() => setChoosing(null)}>Skip</Button>
-            {choosing?.canCreate && (
-              <Button variant="outline" onClick={() => { const s = choosing.student; setChoosing(null); setCreating({ student: s, afterCall: true }); }}>
-                <Plus className="h-4 w-4" /> New follow-up instead
-              </Button>
-            )}
           </DialogFooter>
         </DialogContent>
       </Dialog>
@@ -128,6 +124,7 @@ export function CallFlowProvider({ children }) {
       <NewFollowupDialog
         open={!!creating}
         onClose={() => setCreating(null)}
+        onLog={(f) => setLogging({ ...f, phone: f.phone || creating?.student?.phone })}
         student={creating?.student ? { id: creating.student.id, full_name: creating.student.full_name } : null}
         title={creating?.afterCall ? `Log the call · ${creating.student.full_name}` : null}
         description={creating?.afterCall ? 'No open follow-up for this student yet — open one for this call, then record what they said.' : null}

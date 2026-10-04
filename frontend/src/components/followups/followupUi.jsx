@@ -260,8 +260,15 @@ export function LogFollowupDialog({ followup, onClose, onSaved }) {
   );
 }
 
-/** Open a follow-up: pick a student (fixed when opened from a student's page) and a target outcome. */
-export function NewFollowupDialog({ open, onClose, onSaved, student = null, students = [], title = null, description = null }) {
+/** Open, not Converted or Lost — a student has one at a time (backend createFollowup). */
+export const isOpenFollowup = (f) => !!f && f.followup_status !== 'Closed' && f.stage !== 'Converted' && f.stage !== 'Lost';
+
+/**
+ * Open a follow-up: pick a student (fixed when opened from a student's page) and a target outcome. One per student
+ * (the user, 2026-10-04): a student who already has one open is marked in the list, and picked shows that follow-up
+ * with "Log the call" (onLog) instead of opening a second — the server refuses a second too.
+ */
+export function NewFollowupDialog({ open, onClose, onSaved, onLog, student = null, students = [], followups = [], title = null, description = null }) {
   const [studentId, setStudentId] = useState('');
   const [outcome, setOutcome] = useState('');
   const [next, setNext] = useState('');
@@ -276,10 +283,23 @@ export function NewFollowupDialog({ open, onClose, onSaved, student = null, stud
     setStudentId(student?.id || ''); setOutcome(''); setNext(today); setClientSaid(''); setNotes(''); setError(null); setBusy(false);
   }, [open, student?.id]);
 
-  const options = useMemo(() => students.map(s => ({ value: s.id, label: `${s.full_name}${s.student_code ? ` · ${s.student_code}` : ''}` })), [students]);
+  // The picked student's follow-ups: one already open means log on it, not open another.
+  const { data: theirs, isFetching: checking } = useQuery({
+    queryKey: ['followups', 'student', studentId],
+    queryFn: async () => (await base44.functions.invoke('getFollowups', { studentId })).data,
+    enabled: !!open && !!studentId,
+  });
+  const existing = (theirs?.followups || []).find(isOpenFollowup) || null;
+
+  const withOne = useMemo(() => new Set(followups.filter(isOpenFollowup).map(f => f.student_id)), [followups]);
+  const options = useMemo(() => students.map(s => ({
+    value: s.id,
+    label: `${s.full_name}${s.student_code ? ` · ${s.student_code}` : ''}${withOne.has(s.id) ? ' — has a follow-up' : ''}`,
+  })), [students, withOne]);
 
   const save = async () => {
     if (!studentId) { setError('Pick a student.'); return; }
+    if (existing) return;
     if (!outcome) { setError('Pick a target outcome.'); return; }
     setBusy(true); setError(null);
     try {
@@ -299,36 +319,48 @@ export function NewFollowupDialog({ open, onClose, onSaved, student = null, stud
       <DialogContent className="max-w-lg">
         <DialogHeader>
           <DialogTitle className="text-brand-navy">{title || `New follow-up${student ? ` · ${student.full_name}` : ''}`}</DialogTitle>
-          <DialogDescription>{description || 'One per target outcome — a student can have several open at once.'}</DialogDescription>
+          <DialogDescription>{description || 'One follow-up per student — while it is open, each call is logged on it.'}</DialogDescription>
         </DialogHeader>
-        <div className="grid gap-4 sm:grid-cols-2">
-          {!student && (
-            <div className="space-y-1.5 sm:col-span-2">
-              <Label>Student</Label>
-              <SearchableSelect value={studentId || undefined} onValueChange={(v) => v && v !== '__none__' && setStudentId(v)} options={options}
-                placeholder={options.length ? 'Search your students…' : 'No students'} searchPlaceholder="Name or code…" />
+        {!student && (
+          <div className="space-y-1.5">
+            <Label>Student</Label>
+            <SearchableSelect value={studentId || undefined} onValueChange={(v) => v && v !== '__none__' && setStudentId(v)} options={options}
+              placeholder={options.length ? 'Search your students…' : 'No students'} searchPlaceholder="Name or code…" />
+          </div>
+        )}
+        {existing ? (
+          <div className="space-y-3 rounded-xl border border-amber-200 bg-amber-50 px-3 py-3 text-sm text-amber-900">
+            <p className="font-medium">{existing.student_name || student?.full_name || 'This student'} already has a follow-up</p>
+            <div className="flex flex-wrap items-center gap-2 text-amber-900/90">
+              <span className="font-medium">{existing.target_outcome}</span>
+              <StageBadge stage={existing.stage} />
+              {existing.next_followup_date && <span className="text-xs">Next follow-up {fmtDate(existing.next_followup_date)}</span>}
             </div>
-          )}
-          <div className="space-y-1.5">
-            <Label>Target outcome</Label>
-            <Select value={outcome || undefined} onValueChange={(v) => v && setOutcome(v)}>
-              <SelectTrigger><SelectValue placeholder="Pick one" /></SelectTrigger>
-              <SelectContent>{OUTCOMES.map(o => <SelectItem key={o} value={o}>{o}</SelectItem>)}</SelectContent>
-            </Select>
+            <p className="text-xs text-amber-800">One follow-up per student: log this call on it instead of opening another.</p>
           </div>
-          <div className="space-y-1.5">
-            <Label>Next follow-up</Label>
-            <Input type="date" value={next} min={today} onChange={e => setNext(e.target.value)} />
+        ) : (
+          <div className="grid gap-4 sm:grid-cols-2">
+            <div className="space-y-1.5">
+              <Label>Target outcome</Label>
+              <Select value={outcome || undefined} onValueChange={(v) => v && setOutcome(v)}>
+                <SelectTrigger><SelectValue placeholder="Pick one" /></SelectTrigger>
+                <SelectContent>{OUTCOMES.map(o => <SelectItem key={o} value={o}>{o}</SelectItem>)}</SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-1.5">
+              <Label>Next follow-up</Label>
+              <Input type="date" value={next} min={today} onChange={e => setNext(e.target.value)} />
+            </div>
+            <div className="space-y-1.5 sm:col-span-2">
+              <Label>What client said</Label>
+              <Textarea rows={2} value={clientSaid} onChange={e => setClientSaid(e.target.value)} />
+            </div>
+            <div className="space-y-1.5 sm:col-span-2">
+              <Label>Notes</Label>
+              <Textarea rows={2} value={notes} onChange={e => setNotes(e.target.value)} />
+            </div>
           </div>
-          <div className="space-y-1.5 sm:col-span-2">
-            <Label>What client said</Label>
-            <Textarea rows={2} value={clientSaid} onChange={e => setClientSaid(e.target.value)} />
-          </div>
-          <div className="space-y-1.5 sm:col-span-2">
-            <Label>Notes</Label>
-            <Textarea rows={2} value={notes} onChange={e => setNotes(e.target.value)} />
-          </div>
-        </div>
+        )}
         {error && (
           <div className="flex items-start gap-2 rounded-xl border border-rose-200 bg-rose-50 px-3 py-2.5 text-sm text-rose-700">
             <AlertTriangle className="mt-0.5 h-4 w-4 flex-shrink-0" /> {error}
@@ -336,7 +368,13 @@ export function NewFollowupDialog({ open, onClose, onSaved, student = null, stud
         )}
         <DialogFooter className="gap-2 sm:gap-0">
           <Button variant="outline" onClick={onClose} disabled={busy}>Cancel</Button>
-          <Button onClick={save} disabled={busy}>{busy && <Loader2 className="h-4 w-4 animate-spin" />} Open follow-up</Button>
+          {existing ? (
+            onLog && existing.can_edit !== false && (
+              <Button onClick={() => { onClose(); onLog(existing); }}>Log the call</Button>
+            )
+          ) : (
+            <Button onClick={save} disabled={busy || (!!studentId && checking)}>{busy && <Loader2 className="h-4 w-4 animate-spin" />} Open follow-up</Button>
+          )}
         </DialogFooter>
       </DialogContent>
     </Dialog>

@@ -148,7 +148,9 @@ export async function getFollowups(req: Request, user: AuthUser): Promise<Respon
 /**
  * POST /api/functions/createFollowup
  * Body: { studentId, targetOutcome, nextFollowupDate?, clientSaid?, notes? }
- * For the student's own mentor (or Super Admin / Admin). Starts at stage New.
+ * For the student's own mentor (or Super Admin / Admin). Starts at stage New. One follow-up per student (the user,
+ * 2026-10-04): while one is open — not Converted or Lost — another is refused (409, with its followup_id) and each
+ * call is logged on it.
  */
 export async function createFollowup(req: Request, user: AuthUser): Promise<Response> {
   const body: any = await req.json().catch(() => null);
@@ -162,6 +164,13 @@ export async function createFollowup(req: Request, user: AuthUser): Promise<Resp
   const student: any = await col("students").findOne({ _id: oid });
   if (!student) return notFound();
   if (!canWorkOn(user, student)) return forbidden();
+  const open: any = await col("student_followups").findOne(
+    { student_id: String(student._id), stage: { $nin: [...CLOSED_STAGES] } },
+    { sort: { created_date: -1 } },
+  );
+  if (open) {
+    return error(`${String(student.full_name ?? "").trim() || "This student"} already has a follow-up (${open.target_outcome} · ${open.stage}) — log the call on it instead`, 409, { followup_id: String(open._id) });
+  }
 
   const now = new Date().toISOString();
   const doc = {

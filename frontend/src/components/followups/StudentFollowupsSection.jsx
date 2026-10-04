@@ -5,7 +5,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { TablePagination, usePagination } from '@/components/common/TablePagination';
 import { PhoneCall, Plus } from 'lucide-react';
-import { StatusBadge, StageBadge, ReminderBadge, NewFollowupDialog, fmtDate, money, reminderKind } from './followupUi';
+import { StatusBadge, StageBadge, ReminderBadge, NewFollowupDialog, fmtDate, money, reminderKind, isOpenFollowup } from './followupUi';
 import { CallButton, useCallFlow } from './CallFlow';
 import FollowupNotes from './FollowupNotes';
 
@@ -52,7 +52,8 @@ export default function StudentFollowupsSection({ student }) {
           </div>
           <div className="flex items-center gap-2">
             <CallButton student={student} />
-            {data?.can_create && <Button size="sm" variant="outline" onClick={() => setCreating(true)}><Plus className="h-4 w-4" /> New follow-up</Button>}
+            {/* One follow-up per student: a new one only while none is open — otherwise its Log. */}
+            {data?.can_create && !(data?.followups || []).some(isOpenFollowup) && <Button size="sm" variant="outline" onClick={() => setCreating(true)}><Plus className="h-4 w-4" /> New follow-up</Button>}
           </div>
         </div>
       </CardHeader>
@@ -120,7 +121,8 @@ export default function StudentFollowupsSection({ student }) {
           </div>
         )}
       </CardContent>
-      <NewFollowupDialog open={creating} onClose={() => setCreating(false)} onSaved={refresh} student={student ? { id: student.id, full_name: student.full_name } : null} />
+      <NewFollowupDialog open={creating} onClose={() => setCreating(false)} onSaved={refresh} student={student ? { id: student.id, full_name: student.full_name } : null}
+        onLog={(f) => callFlow?.openLog({ ...f, phone: student?.phone })} />
     </Card>
   );
 }
