@@ -13,6 +13,9 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { CheckCircle2, Loader2, Mail, MessageCircle, RotateCcw, Send } from 'lucide-react';
 import { isAdminRole } from '@/components/utils/roles';
 import { isStudentOf } from '@/components/students/common';
+import { useCallFlow } from '@/components/followups/CallFlow';
+import { dialInfo } from '@/components/followups/phone';
+import { SalesBonusNote } from '@/components/followups/followupUi';
 
 /* ────────────────────────────────────────────────────────────────────────────
    Onboarded or not. Switching it on opens the welcome — an email and a
@@ -47,6 +50,7 @@ function useRefresh(student) {
 /** The welcome, to change and send — or to mark them onboarded without it. */
 export function OnboardingDialog({ student, open, onOpenChange }) {
   const refresh = useRefresh(student);
+  const callFlow = useCallFlow();
   const name = student?.full_name || 'Student';
   const { data: draft, isLoading, error } = useQuery({
     queryKey: ['onboarding-draft', student.id],
@@ -83,9 +87,21 @@ export function OnboardingDialog({ student, open, onOpenChange }) {
       onOpenChange(false);
     } catch (e) {
       toast.error(e?.message || 'Nothing was sent');
+      return;
     } finally {
       setBusy(false);
     }
+    startCall();
+  };
+  // Sent, then the call (the user, 2026-10-04): 3CX or phone, as the Call buttons ask — the call log after it takes
+  // their MT5, and the sales close's bonus goes to be credited there. Its trouble is never "nothing was sent".
+  const startCall = () => {
+    try {
+      const phone = student.phone || draft?.whatsapp?.to || '';
+      const info = dialInfo(phone);
+      if (!info.ok) toast.info(`No number to call ${name} on — ${info.reason || 'add their phone'}`);
+      else if (callFlow) callFlow.chooseCall({ id: student.id, full_name: student.full_name, phone }, null, info);
+    } catch { /* the call is theirs to start from the Call button */ }
   };
   const markOnly = async () => {
     setBusy('mark');
@@ -129,6 +145,8 @@ export function OnboardingDialog({ student, open, onOpenChange }) {
           <p className="py-6 text-center text-sm text-red-600">{error.message || 'Could not open their onboarding'}</p>
         ) : draft && (
           <div className="space-y-3">
+            <SalesBonusNote bonuses={draft.sales_bonus} />
+            <p className="text-xs text-slate-500">Sending starts the call to {name} — log it after, with their MT5 ID.</p>
             {channel(<Mail className="h-4 w-4 text-slate-500" />, 'Email', email.on, (on) => setEmail(v => ({ ...v, on })), draft.email.can_send, draft.email.why_not, (
               <>
                 <div>

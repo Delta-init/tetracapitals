@@ -39,6 +39,10 @@ export async function creditCommissionFor(txId: string): Promise<Record<string, 
     return { ok: true, skipped: true, reason: "Not an approved bonus/deposit/withdrawal" };
   }
 
+  // A sales-close bonus credit (raised with the student's MT5 from a call log, studentFollowups.ts): credited in MT5,
+  // earning nobody commission (the user, 2026-10-04).
+  if (tx.bonus_credit) return { ok: true, skipped: true, reason: "A bonus credit only — no commission" };
+
   // Idempotency: never double-credit the same transaction.
   const already = await col("commission_credits").countDocuments({ transaction_id: txId });
   if (already > 0) return { ok: true, skipped: true, reason: "Already credited", count: already };

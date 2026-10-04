@@ -14,6 +14,82 @@ const DATE = /^\d{4}-\d{2}-\d{2}$/;
 const str = (v: unknown, max = 2000) => String(v ?? "").trim().slice(0, max);
 const who = (u: AuthUser) => u.full_name || u.email || "somebody";
 
+/* ── The student's MT5, and the bonus promised at the sales close (the user, 2026-10-04) ──────────────────────
+   The call log asks for the student's MT5 ID until they have one; it is kept as their MT5 account (mt5_accounts, the
+   list on the student page). With it, each bonus finance says was given at the sales close (course_fees) goes to the
+   admins as a Bonus request to credit in that MT5 — once per invoice, and a credit only: `bonus_credit` makes
+   creditCommission pay nobody commission on it, and the Summary leaves it out of Bonus In. */
+const AED_PER_USD = 3.67;
+const MT5 = /^\d{4,15}$/;
+
+/** The bonus promised at each sales close (finance's course fees) — given or not, and how much; [] when not known. */
+export function salesBonusOf(student: any) {
+  return (Array.isArray(student?.course_fees) ? student.course_fees : [])
+    .filter((f: any) => f && (f.bonus_given === true || f.bonus_given === false))
+    .map((f: any) => ({
+      invoice_id: String(f.invoice_id ?? ""),
+      invoice_number: String(f.invoice_number ?? ""),
+      course: String(f.course ?? ""),
+      given: f.bonus_given === true,
+      amount: f.bonus_given === true ? Math.round(Number(f.bonus_minor) || 0) / 100 : 0,
+      currency: String(f.bonus_currency || f.currency || "AED").toUpperCase(),
+    }));
+}
+
+/** The student's MT5 logins, as their page lists them. */
+async function mt5Of(studentId: string): Promise<string[]> {
+  const rows = (await col("mt5_accounts").find({ student_id: studentId }, { projection: { mt5_login: 1 } }).sort({ created_date: 1 }).toArray()) as any[];
+  return rows.map((r) => String(r.mt5_login ?? "").trim()).filter(Boolean);
+}
+
+/** Kept as one of the student's MT5 accounts (their first is the primary one); false when they had it already. */
+async function saveMt5(student: any, login: string, user: AuthUser): Promise<boolean> {
+  const sid = String(student._id);
+  const have = await mt5Of(sid);
+  if (have.includes(login)) return false;
+  const now = new Date().toISOString();
+  await col("mt5_accounts").insertOne({
+    student_id: sid, student_name: student.full_name ?? "", student_code: student.student_code ?? "",
+    mt5_login: login, platform: "MT5", account_type: "LIVE", base_currency: "USD", is_primary: have.length === 0,
+    created_by: user.email ?? "", created_by_name: who(user), source: "call log", created_date: now, updated_date: now,
+  } as any);
+  return true;
+}
+
+/** Each sales-close bonus not raised yet goes to the admins to credit in `login` — a credit only; how many went. */
+async function raiseSalesBonusCredits(student: any, login: string, user: AuthUser): Promise<number> {
+  let raised = 0;
+  for (const b of salesBonusOf(student)) {
+    if (!b.given || !(b.amount > 0)) continue;
+    const usd = b.currency === "USD" ? b.amount : Math.round((b.amount / AED_PER_USD) * 100) / 100;
+    const aed = b.currency === "USD" ? Math.round(b.amount * AED_PER_USD * 100) / 100 : b.amount;
+    const money = b.currency === "USD" ? `$${b.amount.toLocaleString("en-US")}` : `${b.currency} ${b.amount.toLocaleString("en-US")}`;
+    const now = new Date().toISOString();
+    // Once per invoice: an upsert, so a second log (or two at once) finds it there.
+    const res = await col("funding_transactions").updateOne(
+      { student_id: String(student._id), bonus_credit: "sales_close", "sales_close.invoice_id": b.invoice_id },
+      {
+        $setOnInsert: {
+          type: "BONUS", status: "PENDING", bonus_credit: "sales_close",
+          sales_close: { invoice_id: b.invoice_id, invoice_number: b.invoice_number, course: b.course },
+          amount_currency: b.currency, amount_original: b.amount, amount_aed: aed, amount_usd: usd, fx_rate_aed_per_usd: AED_PER_USD,
+          mt5_login: login, tags: [], payment_method: "", screenshot_url: "",
+          student_id: String(student._id), student_name: student.full_name ?? "", student_code: student.student_code ?? "",
+          primary_mentor_id: student.primary_mentor_id ?? "", primary_mentor_name: student.primary_mentor_name ?? "",
+          senior_mentor_id: student.senior_mentor_id ?? null, senior_mentor_name: student.senior_mentor_name ?? null,
+          initiating_mentor_id: user.id, initiating_mentor_name: who(user), upline_commission_percentage: 0,
+          requested_by_id: user.id, requested_by_name: who(user), requested_at: now,
+          notes: `Sales-close bonus credit — ${b.course || "the course"}${b.invoice_number ? `, invoice ${b.invoice_number}` : ""}: ${money} promised at the close. Credit it in MT5 ${login}. No commission on it.`,
+          created_date: now, updated_date: now,
+        },
+      },
+      { upsert: true },
+    );
+    if (res.upsertedCount) raised++;
+  }
+  return raised;
+}
+
 /**
  * POST /api/functions/getFollowups
  * Body: { studentId? }
@@ -122,6 +198,9 @@ export async function getFollowups(req: Request, user: AuthUser): Promise<Respon
     out.events = await col("student_followup_events").find({ student_id: studentId }).sort({ at: -1 }).limit(500).toArray();
     out.history = historyOf(rows, out.events);
     out.can_create = students[0] ? canWorkOn(user, students[0]) : false;
+    // For the call log: the MT5 it asks for until there is one, and what the sales close promised.
+    out.mt5 = await mt5Of(studentId);
+    out.sales_bonus = salesBonusOf(await col("students").findOne({ _id: toObjectId(studentId) as any }, { projection: { course_fees: 1 } }));
     // Reminder emails that listed this student's follow-ups, newest first.
     const ids = rows.map((r) => r.id);
     out.reminders = ids.length
@@ -314,6 +393,8 @@ export async function logFollowup(req: Request, user: AuthUser): Promise<Respons
   const reason = str(body?.objectionReason, 80);
   if (reason && !(LOST_REASONS as readonly string[]).includes(reason)) return error("Pick a reason from the list", 400);
   if (stage === "Lost" && !reason) return error("A lost follow-up needs a lost reason", 400);
+  const mt5 = str(body?.mt5Login, 40).replace(/\s+/g, "");
+  if (mt5 && !MT5.test(mt5)) return error("The MT5 ID is its login number — digits only", 400);
 
   const today = businessToday();
   const patch: Record<string, any> = {
@@ -345,15 +426,19 @@ export async function logFollowup(req: Request, user: AuthUser): Promise<Respons
   }
 
   await col("student_followups").updateOne({ _id: oid }, { $set: patch });
+  // The MT5 given on this call: kept as theirs, and the sales close's bonus sent to be credited in it.
+  const mt5Saved = mt5 ? await saveMt5(student, mt5, user) : false;
+  const bonusCredits = mt5 ? await raiseSalesBonusCredits(student, mt5, user) : 0;
   const moved = f.stage !== stage;
   await recordEvents([{
     followup_id: String(oid), student_id: String(f.student_id), at: patch.updated_date, by_id: user.id, by_name: who(user),
     kind: "logged", stage_from: f.stage, stage_to: stage, next_followup_date: patch.next_followup_date,
     ...(said ? { client_said: said } : {}),
     ...(noteText ? { notes: noteText } : {}),
-    text: `${moved ? `${f.stage} → ${stage}` : stage}${reason ? ` (${reason})` : ""}${stage === "Converted" ? ` — $${Number(patch.deal_value).toLocaleString("en-US")}` : ""}${patch.next_followup_date ? ` · next ${patch.next_followup_date}` : ""}`,
+    text: `${moved ? `${f.stage} → ${stage}` : stage}${reason ? ` (${reason})` : ""}${stage === "Converted" ? ` — $${Number(patch.deal_value).toLocaleString("en-US")}` : ""}${patch.next_followup_date ? ` · next ${patch.next_followup_date}` : ""}`
+      + `${mt5Saved ? ` · MT5 ${mt5} saved` : ""}${bonusCredits ? ` · sales-close bonus sent to be credited` : ""}`,
   }]);
-  return json({ ok: true, followup_status: followupStatus({ ...f, ...patch }) });
+  return json({ ok: true, followup_status: followupStatus({ ...f, ...patch }), mt5_saved: mt5Saved, bonus_credits: bonusCredits });
 }
 
 /** POST /api/functions/getFollowupTeams — team names for the page's filter (any signed-in staff). */

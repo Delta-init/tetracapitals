@@ -3,6 +3,7 @@ import { json, error, forbidden, notFound } from "../lib/response";
 import { toObjectId } from "../lib/id";
 import type { AuthUser } from "../auth/middleware";
 import { visibleMentorIds, isStudentOf } from "../students/followups";
+import { salesBonusOf } from "./studentFollowups";
 import { recordHistory } from "../students/history";
 import { existsSync } from "node:fs";
 import { join } from "node:path";
@@ -205,6 +206,8 @@ export async function getOnboardingDraft(req: Request, user: AuthUser): Promise<
       can_send: mailConfigured(), why_not: mailConfigured() ? "" : "Email is not set up on this server",
     },
     whatsapp: { to: numbers[0] ?? "", numbers, text: w.text, can_send: !whatsAppWhyNot, why_not: whatsAppWhyNot },
+    // What the sales close promised (finance's course fees) — the call after sending gets the MT5 to credit it in.
+    sales_bonus: salesBonusOf(s),
   });
 }
 

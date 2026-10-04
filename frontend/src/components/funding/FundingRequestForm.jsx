@@ -208,10 +208,11 @@ export function CoursePaymentPanel({ product, plan, payment, className = '' }) {
 /** Under a request's amount in the lists: its AED and, for a course payment, full or partial, the MT5 bonus, hold, balance. */
 export function PaymentDetails({ tx }) {
   const cp = tx?.course_payment;
-  if (!(Number(tx?.amount_aed) > 0) && !cp) return null;
+  if (!(Number(tx?.amount_aed) > 0) && !cp && !tx?.bonus_credit) return null;
   return (
     <div className="mt-0.5 space-y-0.5 whitespace-nowrap text-[11px] font-normal leading-tight text-gray-500">
       {Number(tx.amount_aed) > 0 && <div>{aedText(tx.amount_aed)}</div>}
+      {tx.bonus_credit && <div className="font-medium text-amber-700">Sales-close bonus credit · no commission</div>}
       {cp?.kind && <div>{cp.kind === 'full' ? 'Full payment' : 'Partial payment'}</div>}
       {cp && (cp.with_bonus ? <div className="font-medium text-emerald-700">MT5 bonus {usdText(cp.bonus_usd)}</div> : <div>No bonus</div>)}
       {cp && cp.hold_aed > 0 && <div className="text-amber-700">On hold {aedText(cp.hold_aed)}</div>}

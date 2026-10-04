@@ -10,7 +10,7 @@ import { Badge } from '@/components/ui/badge';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import SearchableSelect from '@/components/common/SearchableSelect';
-import { AlertTriangle, Clock, Eye, Loader2, MailCheck, MailMinus, MailX, Phone } from 'lucide-react';
+import { AlertTriangle, Clock, Eye, Gift, Loader2, MailCheck, MailMinus, MailX, Phone } from 'lucide-react';
 import { dialInfo } from './phone';
 import { HistoryEntry } from './FollowupNotes';
 
@@ -116,6 +116,29 @@ export function CallLink({ phone, className = '' }) {
 }
 
 /** Log one call / contact: new stage, what the client said, next due date, reason, conversion. */
+/** What the sales close promised (finance's course fees): each course's bonus — or that none was given, or not known. */
+export function SalesBonusNote({ bonuses, className = '' }) {
+  const list = Array.isArray(bonuses) ? bonuses : [];
+  const money = (b) => `${b.currency === 'USD' ? '$' : `${b.currency} `}${Number(b.amount || 0).toLocaleString('en-US', { maximumFractionDigits: 2 })}`;
+  return (
+    <div className={`flex items-start gap-2 rounded-xl border border-amber-200 bg-amber-50/60 px-3 py-2 text-sm ${className}`}>
+      <Gift className="mt-0.5 h-4 w-4 flex-shrink-0 text-amber-600" />
+      <div className="min-w-0">
+        <p className="font-medium text-amber-900">Bonus at the sales close</p>
+        {list.length === 0
+          ? <p className="text-xs text-amber-800/80">Not known — finance didn't say for this student.</p>
+          : list.map((b, i) => (
+            <p key={i} className="text-xs text-amber-900">
+              {b.given ? <strong>{money(b)}</strong> : 'No bonus'}{b.course ? ` · ${b.course}` : ''}{b.invoice_number ? ` · invoice ${b.invoice_number}` : ''}
+            </p>
+          ))}
+      </div>
+    </div>
+  );
+}
+
+const MT5_LOGIN = /^\d{4,15}$/;
+
 export function LogFollowupDialog({ followup, onClose, onSaved }) {
   const [form, setForm] = useState({});
   const [busy, setBusy] = useState(false);
@@ -129,6 +152,10 @@ export function LogFollowupDialog({ followup, onClose, onSaved }) {
   });
   const earlierSaid = (past?.history?.client_said || []).filter(e => e.followup_id === followup?.id);
   const earlierNotes = (past?.history?.notes || []).filter(e => e.followup_id === followup?.id);
+  // The student's MT5 — asked (and required) until they have one saved; saving it sends the sales close's bonus to
+  // the admins to credit there (backend logFollowup).
+  const mt5s = past?.mt5 || [];
+  const needsMt5 = !!past && mt5s.length === 0;
 
   useEffect(() => {
     if (!followup) return;
@@ -141,6 +168,7 @@ export function LogFollowupDialog({ followup, onClose, onSaved }) {
       convertedDate: followup.converted_date || today,
       dealValue: followup.deal_value ?? '',
       notes: '',
+      mt5: '',
     });
   }, [followup]);
 
@@ -150,9 +178,11 @@ export function LogFollowupDialog({ followup, onClose, onSaved }) {
   const save = async () => {
     if (form.stage === 'Lost' && !form.objectionReason) { setError('Pick a lost reason.'); return; }
     if (form.stage === 'Converted' && (form.dealValue === '' || Number(form.dealValue) < 0)) { setError('Enter the deal value.'); return; }
+    const mt5 = String(form.mt5 || '').replace(/\s+/g, '');
+    if (needsMt5 && !MT5_LOGIN.test(mt5)) { setError("Enter the student's MT5 ID — its login number, digits only. It's needed until they have one saved."); return; }
     setBusy(true); setError(null);
     try {
-      await base44.functions.invoke('logFollowup', {
+      const res = (await base44.functions.invoke('logFollowup', {
         id: followup.id,
         stage: form.stage,
         // Only what was written now: the earlier entries are kept as they are.
@@ -163,8 +193,9 @@ export function LogFollowupDialog({ followup, onClose, onSaved }) {
         convertedDate: form.convertedDate,
         dealValue: form.stage === 'Converted' ? Number(form.dealValue) : undefined,
         notes: form.notes,
-      });
-      toast.success('Follow-up logged');
+        ...(needsMt5 ? { mt5Login: mt5 } : {}),
+      })).data;
+      toast.success(['Follow-up logged', res?.mt5_saved && 'MT5 saved', res?.bonus_credits && 'the sales-close bonus went to the admins to credit'].filter(Boolean).join(' · '));
       onSaved?.();
       onClose();
     } catch (e) {
@@ -201,6 +232,17 @@ export function LogFollowupDialog({ followup, onClose, onSaved }) {
             )}
           </div>
         )}
+
+        <div className="grid gap-3 sm:grid-cols-2">
+          <div className="space-y-1.5">
+            <Label htmlFor="log-mt5">MT5 ID{needsMt5 ? ' *' : ''}</Label>
+            {mt5s.length
+              ? <p className="font-mono text-sm text-slate-800">{mt5s.join(' · ')}</p>
+              : <Input id="log-mt5" inputMode="numeric" value={form.mt5 || ''} onChange={set('mt5')} placeholder="The student's MT5 login" />}
+            <p className="text-[11px] text-slate-400">{mt5s.length ? 'Saved on their page' : 'Needed until they have one — saved as their MT5 account'}</p>
+          </div>
+          <SalesBonusNote bonuses={past?.sales_bonus} />
+        </div>
 
         <div className="grid gap-4 sm:grid-cols-2">
           <div className="space-y-1.5">
@@ -253,7 +295,7 @@ export function LogFollowupDialog({ followup, onClose, onSaved }) {
         )}
         <DialogFooter className="gap-2 sm:gap-0">
           <Button variant="outline" onClick={onClose} disabled={busy}>Cancel</Button>
-          <Button onClick={save} disabled={busy}>{busy && <Loader2 className="h-4 w-4 animate-spin" />} Save follow-up</Button>
+          <Button onClick={save} disabled={busy || !past}>{busy && <Loader2 className="h-4 w-4 animate-spin" />} Save follow-up</Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>

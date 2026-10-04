@@ -217,9 +217,10 @@ export default function MyFundingRequests() {
   const bonusWith = myQuarterCredits.filter(c => c.method === 'bonus_with' && !c.is_pool).reduce((s, c) => s + (c.commission_usd || 0), 0);
   const bonusWithout = myQuarterCredits.filter(c => c.method === 'bonus_without' && !c.is_pool).reduce((s, c) => s + (c.commission_usd || 0), 0);
   const bonusTotal = bonusWith + bonusWithout;
-  // Bonus In: the approved Bonus requests this person raised in the quarter, dated as the deposit figures are.
+  // Bonus In: the approved Bonus requests this person raised in the quarter, dated as the deposit figures are — not a
+  // sales-close bonus credit, which only credits the student's MT5.
   const bonusIn = myTransactions
-    .filter(t => t.type === 'BONUS' && t.status === 'APPROVED')
+    .filter(t => t.type === 'BONUS' && t.status === 'APPROVED' && !t.bonus_credit)
     .filter(t => { const d = new Date(t.requested_at || t.created_date); return d >= selectedQuarterRange.start && d <= selectedQuarterRange.end; })
     .reduce((s, t) => s + (t.amount_usd || 0), 0);
 
