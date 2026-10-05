@@ -8,7 +8,10 @@ const ALLOWED = new Set(["super_admin", "admin"]);
 
 /**
  * POST /api/functions/resetUserPassword
- * Body: { userId, newPassword }
+ * Body: { userId, newPassword, activate? }
+ *
+ * activate: switch a switched-off account back on as well — a new password
+ * alone never gets somebody in while the account is off (2026-10-05).
  *
  * Admin-only. Lets a super_admin / admin set a new password for any user.
  * Used by the Personnel page action so an admin can unblock a user who has
@@ -36,9 +39,14 @@ export async function resetUserPassword(req: Request, caller: AuthUser): Promise
 
   const password_hash = await bcrypt.hash(newPassword, 10);
   const now = new Date().toISOString();
+  const wasOff = (target as any).status === "inactive";
+  const switchOn = wasOff && body.activate === true;
   await col("users").updateOne(
     { _id: oid },
-    { $set: { password_hash, updated_date: now, password_reset_by_id: caller.id, password_reset_by_name: caller.full_name, password_reset_at: now } },
+    { $set: {
+      password_hash, updated_date: now, password_reset_by_id: caller.id, password_reset_by_name: caller.full_name, password_reset_at: now,
+      ...(switchOn ? { status: "active", status_changed_by_id: caller.id, status_changed_by_name: caller.full_name, status_changed_at: now } : {}),
+    } },
   );
 
   await col("logs").insertOne({
@@ -50,11 +58,13 @@ export async function resetUserPassword(req: Request, caller: AuthUser): Promise
     details: JSON.stringify({
       target_user: (target as any).full_name,
       target_email: (target as any).email,
+      ...(switchOn ? { switched_on: true } : {}),
       // Never log the new password value itself.
     }),
     success: true,
     created_date: now,
   } as any);
 
-  return json({ ok: true, user_id: userId, user_email: (target as any).email });
+  // status: what they are now — "inactive" means this password won't get them in until somebody switches them on.
+  return json({ ok: true, user_id: userId, user_email: (target as any).email, status: wasOff && !switchOn ? "inactive" : "active", switched_on: switchOn });
 }

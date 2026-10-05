@@ -47,7 +47,8 @@ export async function getAuthUser(req: Request): Promise<AuthUser | null> {
     const targetOid = toObjectId(impersonateId);
     if (targetOid) {
       const targetDoc = await col("users").findOne({ _id: targetOid });
-      if (targetDoc) {
+      // Anybody but a Super Admin — the Personnel page never offers one, and the server doesn't take one either.
+      if (targetDoc && (targetDoc as any).app_role !== "super_admin") {
         const { password_hash: _pw, ...targetSafe } = targetDoc as any;
         const target = serialize(targetSafe) as AuthUser;
         // Stamp the real admin so audit logs and request-scoped logic can read it.

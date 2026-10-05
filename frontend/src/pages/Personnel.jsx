@@ -20,9 +20,11 @@ import {
   TableRow,
 } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
-import { Search, Edit, Users, Shield, LogIn, Plus, KeyRound } from 'lucide-react';
+import { Search, Edit, Users, Shield, LogIn, Plus, KeyRound, Power } from 'lucide-react';
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Label } from '@/components/ui/label';
+import { Switch } from '@/components/ui/switch';
+import { Checkbox } from '@/components/ui/checkbox';
 import { toast } from 'sonner';
 import PersonnelForm from '../components/personnel/PersonnelForm';
 import { canViewPersonnel, canEditPersonnel, filterPersonnelByRole } from '../components/utils/PersonnelAccessControl';
@@ -88,15 +90,24 @@ export default function Personnel() {
   const [resetPasswordUser, setResetPasswordUser] = useState(null);
   const [resetPasswordValue, setResetPasswordValue] = useState('');
   const [resetPasswordShow, setResetPasswordShow] = useState(false);
+  // A switched-off account: a new password alone never gets them in, so the reset switches it on too unless unticked.
+  const [resetActivate, setResetActivate] = useState(true);
 
   const resetPasswordMutation = useMutation({
-    mutationFn: async ({ userId, newPassword, userName }) => {
-      const r = await base44.functions.invoke('resetUserPassword', { userId, newPassword });
+    mutationFn: async ({ userId, newPassword, userName, activate }) => {
+      const r = await base44.functions.invoke('resetUserPassword', { userId, newPassword, activate });
       await logAction('reset_user_password', 'User', userId, `Reset password for ${userName}`, null, { user_id: userId });
       return r.data;
     },
-    onSuccess: (_, vars) => {
-      toast.success(`Password reset for ${vars.userName}. Share the new password with them securely.`);
+    onSuccess: (data, vars) => {
+      if (data?.switched_on) {
+        toast.success(`Password reset and ${vars.userName} switched on. Share the new password with them securely.`);
+        queryClient.invalidateQueries({ queryKey: ['all-users'] });
+      } else if (data?.status === 'inactive') {
+        toast.warning(`Password reset for ${vars.userName} — still switched off, so they can't sign in until switched on.`);
+      } else {
+        toast.success(`Password reset for ${vars.userName}. Share the new password with them securely.`);
+      }
       setResetPasswordUser(null);
       setResetPasswordValue('');
       setResetPasswordShow(false);
@@ -105,6 +116,26 @@ export default function Personnel() {
       toast.error(e?.response?.data?.error || e?.message || 'Failed to reset password');
     },
   });
+
+  /*
+   * On / Off — the same switch the Root portal has (backend setUserStatus). Off: they can't sign in, and a session
+   * they have open stops at once. Super Admin and Admin, as password resets; nobody switches themselves off, and only
+   * a Super Admin switches a Super Admin off. Switching off is asked first; switching on is not.
+   */
+  const canSwitch = ['super_admin', 'admin'].includes(currentUser?.app_role);
+  const [switchOffUser, setSwitchOffUser] = useState(null);
+  const statusMutation = useMutation({
+    mutationFn: async ({ user, status }) => (await base44.functions.invoke('setUserStatus', { userId: user.id, status })).data,
+    onSuccess: (_, { user, status }) => {
+      queryClient.invalidateQueries({ queryKey: ['all-users'] });
+      toast.success(`${user.full_name} switched ${status === 'active' ? 'on' : 'off'}`);
+      setSwitchOffUser(null);
+    },
+    onError: (e) => toast.error(e?.response?.data?.error || e?.message || 'Could not switch it'),
+  });
+  const isOff = (u) => u?.status === 'inactive';
+  /** Whether the switch would be refused for this row: yourself on, or a Super Admin on when you are not one. */
+  const switchLocked = (u) => !isOff(u) && (u.id === currentUser?.id || (u.app_role === 'super_admin' && currentUser?.app_role !== 'super_admin'));
 
   const generateRandomPassword = () => {
     const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789';
@@ -124,6 +155,7 @@ export default function Personnel() {
       userId: resetPasswordUser.id,
       newPassword: resetPasswordValue,
       userName: resetPasswordUser.full_name,
+      activate: isOff(resetPasswordUser) && resetActivate,
     });
   };
 
@@ -334,6 +366,7 @@ export default function Personnel() {
                 <TableHead>Name</TableHead>
                 <TableHead>Email</TableHead>
                 <TableHead>Role</TableHead>
+                <TableHead>Status</TableHead>
                 <TableHead>Up Head</TableHead>
                 <TableHead>Plan</TableHead>
                 <TableHead>Joined</TableHead>
@@ -343,7 +376,7 @@ export default function Personnel() {
             <TableBody>
               {filteredUsers.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={7} className="text-center py-8 text-gray-500">
+                  <TableCell colSpan={8} className="text-center py-8 text-gray-500">
                     No users found
                   </TableCell>
                 </TableRow>
@@ -359,6 +392,24 @@ export default function Personnel() {
                       <Badge className={getRoleBadgeColor(user.app_role)}>
                         {user.app_role?.replace(/_/g, ' ')}
                       </Badge>
+                    </TableCell>
+                    <TableCell>
+                      {canSwitch ? (
+                        <div className="flex items-center gap-2">
+                          <Switch
+                            checked={!isOff(user)}
+                            disabled={statusMutation.isPending || switchLocked(user)}
+                            onCheckedChange={(on) => (on ? statusMutation.mutate({ user, status: 'active' }) : setSwitchOffUser(user))}
+                            aria-label={`${user.full_name}: ${isOff(user) ? 'off' : 'on'}`}
+                            title={switchLocked(user) ? (user.id === currentUser.id ? "You can't switch yourself off" : 'Only a Super Admin can switch a Super Admin off') : undefined}
+                          />
+                          <span className={`text-xs ${isOff(user) ? 'font-medium text-red-600' : 'text-gray-500'}`}>{isOff(user) ? 'Off' : 'On'}</span>
+                        </div>
+                      ) : isOff(user) ? (
+                        <Badge className="bg-red-100 text-red-700">Off</Badge>
+                      ) : (
+                        <span className="text-xs text-gray-500">On</span>
+                      )}
                     </TableCell>
                     <TableCell>
                       {user.up_head_name || '-'}
@@ -381,7 +432,9 @@ export default function Personnel() {
                             <Edit className="h-4 w-4" />
                           </Button>
                         )}
-                        {['super_admin', 'academic_head', 'broker_admin'].includes(currentUser.app_role) && !isImpersonating() && user.app_role !== 'super_admin' && user.app_role !== 'broker_admin' && (
+                        {/* View as: who the server lets do it (auth/middleware.ts — Super Admin and Admin), as anybody but
+                            a Super Admin or themselves — broker admins included (the user, 2026-10-05). */}
+                        {['super_admin', 'admin'].includes(currentUser.app_role) && !isImpersonating() && user.app_role !== 'super_admin' && user.id !== currentUser.id && (
                           <Button
                             variant="ghost"
                             size="sm"
@@ -396,7 +449,7 @@ export default function Personnel() {
                           <Button
                             variant="ghost"
                             size="sm"
-                            onClick={() => { setResetPasswordUser(user); setResetPasswordValue(''); setResetPasswordShow(false); }}
+                            onClick={() => { setResetPasswordUser(user); setResetPasswordValue(''); setResetPasswordShow(false); setResetActivate(true); }}
                             title={`Reset ${user.full_name}'s password`}
                             className="text-blue-600 hover:text-blue-700 hover:bg-blue-50"
                           >
@@ -439,6 +492,17 @@ export default function Personnel() {
                 <p><span className="text-gray-500">Email:</span> {resetPasswordUser.email}</p>
                 <p><span className="text-gray-500">Role:</span> {resetPasswordUser.app_role?.replace(/_/g, ' ')}</p>
               </div>
+              {isOff(resetPasswordUser) && (
+                <div className="space-y-2 rounded border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">
+                  <p>This account is switched off — they can't sign in, whatever the password, until it's on.</p>
+                  {canSwitch && (
+                    <label className="flex items-center gap-2 font-medium">
+                      <Checkbox checked={resetActivate} onCheckedChange={(v) => setResetActivate(v === true)} />
+                      Switch it on too
+                    </label>
+                  )}
+                </div>
+              )}
               <div>
                 <Label htmlFor="resetpw">New Password *</Label>
                 <div className="flex gap-2 mt-1">
@@ -460,7 +524,10 @@ export default function Personnel() {
                   </Button>
                 </div>
                 <p className="text-xs text-gray-500 mt-2">
-                  The user can sign in immediately with this password. Share it with them through a secure channel — the system never emails it.
+                  {isOff(resetPasswordUser) && !resetActivate
+                    ? "They can't sign in with it until the account is switched on."
+                    : 'The user can sign in immediately with this password.'}{' '}
+                  Share it with them through a secure channel — the system never emails it.
                 </p>
               </div>
             </div>
@@ -475,6 +542,32 @@ export default function Personnel() {
               disabled={resetPasswordMutation.isPending}
             >
               {resetPasswordMutation.isPending ? 'Resetting…' : 'Reset password'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={!!switchOffUser} onOpenChange={(o) => !o && !statusMutation.isPending && setSwitchOffUser(null)}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Power className="h-5 w-5 text-red-600" />
+              Switch off {switchOffUser?.full_name}?
+            </DialogTitle>
+          </DialogHeader>
+          <p className="text-sm text-gray-600">
+            They're signed out at once and can't sign in until someone switches them back on — here or in the Root portal.
+          </p>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setSwitchOffUser(null)} disabled={statusMutation.isPending}>
+              Cancel
+            </Button>
+            <Button
+              className="bg-red-600 hover:bg-red-700"
+              onClick={() => statusMutation.mutate({ user: switchOffUser, status: 'inactive' })}
+              disabled={statusMutation.isPending}
+            >
+              {statusMutation.isPending ? 'Switching off…' : 'Switch off'}
             </Button>
           </DialogFooter>
         </DialogContent>
