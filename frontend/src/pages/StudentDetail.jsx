@@ -1,14 +1,17 @@
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { PageTitle } from '@/components/common/PageHeader';
-import { Paged, TablePagination } from '@/components/common/TablePagination';
 import { base44 } from "@/api/base44Client";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { ArrowLeft, CalendarPlus, Edit, TrendingUp, TrendingDown } from "lucide-react";
-import { Link } from "react-router-dom";
+import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
+import {
+  ArrowLeft, CalendarPlus, Edit, IdCard, ListChecks, Phone, MessageCircle, Wallet, GraduationCap,
+  Presentation, LifeBuoy, Link2, CandlestickChart, History as HistoryIcon,
+} from "lucide-react";
+import { Link, useSearchParams } from "react-router-dom";
 import { createPageUrl } from "../utils";
 import StudentForm from "../components/students/StudentForm";
 import { EditDetailsButton } from "@/components/students/EditDetails";
@@ -24,6 +27,7 @@ import PaymentLinksCard from "@/components/students/PaymentLinksCard";
 import StudentClassesCard from "@/components/students/StudentClassesCard";
 import StudentLmsCoursesCard from "@/components/students/StudentLmsCoursesCard";
 import StudentLmsSupportCards from "@/components/students/StudentLmsSupportCards";
+import StudentFundingCard from "@/components/students/StudentFundingCard";
 import { CallButton } from "@/components/followups/CallFlow";
 import { EnrolmentControl } from "@/components/students/enrolment";
 import { OnboardingControl } from "@/components/students/onboarding";
@@ -31,20 +35,45 @@ import { isStudentOf } from "@/components/students/common";
 import { StudentTagsEditor } from "@/components/students/tags";
 import { isMentorRole as isMentorTier, readsClosedOnly } from "@/components/utils/roles";
 import { closedByMe, ClosedByList } from "@/components/students/closedBy";
-import { 
-  canEditStudent, 
-  applyStudentMasking,
-  filterStudentsByRole 
-} from "../components/utils/StudentAccessControl";
+import { canEditStudent, applyStudentMasking } from "../components/utils/StudentAccessControl";
 import { getEffectiveUser } from "../components/utils/ImpersonationContext";
 import { toast } from "sonner";
 import { format } from "date-fns";
+
+// The student page's tabs, in this order (the user, 2026-10-05) — Details opens first. Only the open tab is
+// mounted, so only its cards load. `empty`: what a tab says when its card has nothing to show.
+const TABS = [
+  { key: 'details', label: 'Details', icon: IdCard },
+  { key: 'followups', label: 'Follow-ups', icon: ListChecks },
+  { key: 'calls', label: 'Calls', icon: Phone },
+  { key: 'whatsapp', label: 'WhatsApp', icon: MessageCircle, empty: 'No WhatsApp chats with this student yet.' },
+  { key: 'funding', label: 'Funding', icon: Wallet },
+  { key: 'courses', label: 'Courses & fees', icon: GraduationCap, empty: 'No course fees or LMS courses for this student yet.' },
+  { key: 'classes', label: 'Classes', icon: Presentation, empty: 'No LMS classes to show for this student.' },
+  { key: 'support', label: 'Support & assignments', icon: LifeBuoy, empty: 'No support tickets or assignments to show.' },
+  { key: 'payment-links', label: 'Payment links', icon: Link2, empty: 'No payment links for this student.' },
+  { key: 'mt5', label: 'MT5 accounts', icon: CandlestickChart },
+  { key: 'history', label: 'History', icon: HistoryIcon },
+];
+const TOP_BAR = 64;   // the app's top bar (Layout.jsx, h-16): the tab bar sticks just under it
+// A card that has nothing to show renders nothing; its tab then says so (data-empty) rather than stand blank —
+// a moment late, so it doesn't flash while the card is still loading.
+const EMPTY_NOTE = 'empty:py-12 empty:text-center empty:text-sm empty:text-slate-500 empty:before:content-[attr(data-empty)] empty:before:[animation:page-rise_0.4s_0.8s_both]';
 
 export default function StudentDetail() {
   const [currentUser, setCurrentUser] = useState(null);
   const [showEditDialog, setShowEditDialog] = useState(false);
   const urlParams = new URLSearchParams(window.location.search);
   const studentId = urlParams.get('id');
+
+  // The Sales role: the students they closed, to read — no WhatsApp from here (the server says the same).
+  const salesOnly = readsClosedOnly(currentUser);
+  const shownTabs = TABS.filter(t => !(salesOnly && t.key === 'whatsapp'));
+  // The open tab, kept in the address (…&tab=funding): a refresh, or Back from another page, opens it again.
+  const [params, setParams] = useSearchParams();
+  const tab = shownTabs.some(t => t.key === params.get('tab')) ? params.get('tab') : 'details';
+  const rootRef = useRef(null);
+  const listRef = useRef(null);
 
   const queryClient = useQueryClient();
 
@@ -80,17 +109,15 @@ export default function StudentDetail() {
     enabled: !!currentUser
   });
 
-  const { data: transactions = [] } = useQuery({
+  // Every funding request of theirs — deposits, withdrawals, bonuses — once the Funding tab is open.
+  const { data: transactions = [], isLoading: loadingFunding } = useQuery({
     queryKey: ['funding-transactions', studentId],
-    queryFn: async () => {
-      const allTransactions = await base44.entities.FundingTransaction.list('-requested_at');
-      return allTransactions.filter(t => t.student_id === studentId);
-    },
-    enabled: !!studentId && !!currentUser
+    queryFn: () => base44.entities.FundingTransaction.filter({ student_id: studentId }, '-requested_at'),
+    enabled: !!studentId && !!currentUser && tab === 'funding'
   });
 
-  // Team, who received them first, where they came from — and the history card below.
-  const { data: history } = useStudentHistory(studentId, !!currentUser);
+  // Team, who received them first, where they came from — for the Details tab (the History tab loads its own).
+  const { data: history } = useStudentHistory(studentId, !!currentUser && tab === 'details');
 
   // Opened by the person it was given to: no longer new for them (the sidebar's count goes down).
   useEffect(() => {
@@ -102,6 +129,30 @@ export default function StudentDetail() {
       })
       .catch(() => { /* still new — counted until it is marked */ });
   }, [student?.id, student?.new_for_id, currentUser?.id]);
+
+  // On a phone the tab bar scrolls sideways: the open tab is kept in sight — there at once when the page opens,
+  // gliding over when another is tapped.
+  const placedRef = useRef(false);
+  useEffect(() => {
+    const list = listRef.current;
+    const on = list?.querySelector('[data-state="active"]');
+    if (!on) return;
+    list.scrollTo({ left: on.offsetLeft - (list.clientWidth - on.offsetWidth) / 2, behavior: placedRef.current ? 'smooth' : 'auto' });
+    placedRef.current = true;
+  }, [tab, student?.id]);
+
+  const changeTab = (key) => {
+    setParams(p => {
+      const next = new URLSearchParams(p);
+      if (key === 'details') next.delete('tab'); else next.set('tab', key);
+      return next;
+    }, { replace: true });
+    // Far down a long tab: the next one starts at its top, just under the tab bar.
+    const root = rootRef.current;
+    if (!root) return;
+    const top = root.getBoundingClientRect().top + window.scrollY - TOP_BAR;
+    if (window.scrollY > top) window.scrollTo({ top });
+  };
 
   const updateMutation = useMutation({
     mutationFn: ({ id, data }) => base44.entities.Student.update(id, data),
@@ -160,8 +211,6 @@ export default function StudentDetail() {
     } catch (_) { return false; }
   })();
 
-  // The Sales role: the students they closed, to read — no WhatsApp from here (the server says the same).
-  const salesOnly = readsClosedOnly(currentUser);
   const hasAccess = isAdminRole ||
     isStudentOf(student, currentUser.id) ||
     currentUser.id === student.senior_mentor_id ||
@@ -199,40 +248,33 @@ export default function StudentDetail() {
   })();
 
   const getStatusColor = (status) => {
-    return status === 'ACTIVE' 
+    return status === 'ACTIVE'
       ? 'bg-emerald-100 text-emerald-800 border-emerald-200'
       : 'bg-gray-100 text-gray-800 border-gray-200';
   };
 
-  const getTransactionStatusColor = (status) => {
-    switch (status) {
-      case 'PENDING': return 'bg-amber-100 text-amber-800 border-amber-200';
-      case 'APPROVED': return 'bg-emerald-100 text-emerald-800 border-emerald-200';
-      case 'REJECTED': return 'bg-red-100 text-red-800 border-red-200';
-      default: return 'bg-gray-100 text-gray-800 border-gray-200';
-    }
+  // A tab's panel: spaced under the tab bar, and saying so when its card has nothing to show.
+  const panel = (key) => {
+    const empty = TABS.find(t => t.key === key)?.empty;
+    return { value: key, className: `mt-4 space-y-6 ${empty ? EMPTY_NOTE : ''}`, ...(empty ? { 'data-empty': empty } : {}) };
   };
-
-  const deposits = transactions.filter(t => t.type === 'DEPOSIT');
-  const withdrawals = transactions.filter(t => t.type === 'WITHDRAWAL');
-  const totalDeposits = deposits.filter(t => t.status === 'APPROVED').reduce((sum, t) => sum + (t.amount_usd || 0), 0);
-  const totalWithdrawals = withdrawals.filter(t => t.status === 'APPROVED').reduce((sum, t) => sum + (t.amount_usd || 0), 0);
-  const netDeposit = totalDeposits - totalWithdrawals;
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100 p-6">
       <div className="max-w-5xl mx-auto space-y-6">
-        {/* Header */}
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-4">
-            <Link to={createPageUrl('Students')}>
+        {/* Header — stays above every tab */}
+        <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+          <div className="flex min-w-0 items-start gap-3 sm:gap-4">
+            <Link to={createPageUrl('Students')} className="shrink-0">
               <Button variant="ghost" size="icon">
                 <ArrowLeft className="h-5 w-5" />
               </Button>
             </Link>
-            <div>
+            <div className="min-w-0">
               <PageTitle eyebrow="Students">Student Details</PageTitle>
               <p className="mt-2 flex max-w-3xl flex-wrap items-center gap-2 text-sm text-slate-500 sm:text-base">
+                {/* Who this is, whichever tab is open */}
+                <span className="font-semibold text-slate-800">{displayStudent.full_name}</span>
                 <span className="font-mono font-semibold text-blue-600">
                   {displayStudent.student_code}
                 </span>
@@ -246,7 +288,7 @@ export default function StudentDetail() {
               <div className="mt-2"><StudentTagsEditor student={student} currentUser={currentUser} /></div>
             </div>
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2 lg:shrink-0 lg:justify-end">
             {/* Call with 3CX, then log it against the student's follow-up */}
             <CallButton student={displayStudent} className="h-9 px-4 text-sm" />
             {/* Time with a mentor, in the LMS's diary — the Mentor Calendar, filled in for this student */}
@@ -268,356 +310,225 @@ export default function StudentDetail() {
           </div>
         </div>
 
-        {/* Student Information Card */}
-        <Card className="border-gray-200">
-          <CardHeader className="border-b border-gray-100 bg-slate-50/70">
-            <div className="flex items-center justify-between">
-              <CardTitle className="text-xl font-semibold tracking-tight">Student Information</CardTitle>
-              <Badge variant="outline" className={getStatusColor(displayStudent.status)}>
-                {displayStudent.status}
-              </Badge>
-            </div>
-          </CardHeader>
-          <CardContent className="p-6">
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              <div>
-                <label className="text-sm font-medium text-gray-500">Full Name</label>
-                <p className="mt-1 text-base font-semibold text-gray-900">
-                  {displayStudent.full_name}
-                </p>
-              </div>
-              
-              <div>
-                <label className="text-sm font-medium text-gray-500">Email</label>
-                <p className="mt-1 text-base text-gray-900">
-                  {displayStudent.email}
-                </p>
-              </div>
-              
-              <div>
-                <label className="text-sm font-medium text-gray-500">Phone</label>
-                <p className="mt-1 text-base font-mono text-gray-900">
-                  {displayStudent.phone}
-                </p>
-              </div>
-              
-              <div>
-                <label className="text-sm font-medium text-gray-500">Country</label>
-                <p className="mt-1 text-base text-gray-900">
-                  {displayStudent.country || '-'}
-                </p>
-              </div>
+        <Tabs ref={rootRef} value={tab} onValueChange={changeTab}>
+          {/* One tab per part of the student — it sticks under the top bar. On a phone or tablet it scrolls sideways;
+              on a computer, where all eleven don't fit in a row either, they wrap so none is out of sight. */}
+          <div className="sticky top-16 z-20 bg-background/95 py-2 backdrop-blur supports-[backdrop-filter]:bg-background/80">
+            <TabsList
+              ref={listRef}
+              className="relative flex h-auto w-full justify-start gap-y-1 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden lg:flex-wrap lg:overflow-visible"
+            >
+              {shownTabs.map(({ key, label, icon: Icon }) => (
+                <TabsTrigger key={key} value={key} className="shrink-0 gap-1.5">
+                  <Icon className="h-4 w-4" />
+                  {label}
+                </TabsTrigger>
+              ))}
+            </TabsList>
+          </div>
 
-              {/* Their MT5 accounts — from the call log, their funding requests, or added below */}
-              <div>
-                <label className="text-sm font-medium text-gray-500">MT5 Account</label>
-                <Mt5Logins studentId={student.id} />
-              </div>
-
-              {/* The language they study in, from their close in the sales CRM (or set here) */}
-              <div>
-                <label className="text-sm font-medium text-gray-500">Language</label>
-                <p className="mt-1 text-base text-gray-900">
-                  {displayStudent.language || '-'}
-                </p>
-              </div>
-
-              <div>
-                <label className="text-sm font-medium text-gray-500">CS</label>
-                <p className="mt-1 text-base font-semibold text-gray-900">
-                  {displayStudent.primary_mentor_name || '-'}
-                </p>
-              </div>
-
-              <div>
-                <label className="text-sm font-medium text-gray-500">Team</label>
-                <p className="mt-1 text-base font-semibold text-gray-900">
-                  {history?.team?.name || displayStudent.team_name || '-'}
-                </p>
-              </div>
-
-              <div>
-                <label className="text-sm font-medium text-gray-500">First Received By</label>
-                <p className="mt-1 text-base font-semibold text-gray-900">
-                  {history?.firstReceivedBy?.name
-                    ? `${history.firstReceivedBy.name}${history.firstReceivedBy.role ? ` (${history.firstReceivedBy.role})` : ''}`
-                    : '-'}
-                </p>
-                {history?.firstReceivedBy?.name && (
-                  <p className="text-xs text-gray-500">
-                    {history.firstReceivedBy.at ? format(new Date(history.firstReceivedBy.at), 'MMMM d, yyyy') : ''}
-                    {history.firstReceivedBy.fromRecords ? ' · from earlier records' : ''}
-                  </p>
-                )}
-              </div>
-
-              <div>
-                <label className="text-sm font-medium text-gray-500">Came From</label>
-                <p className="mt-1 text-base text-gray-900">
-                  {history?.cameFrom?.label || '-'}
-                </p>
-                {(history?.cameFrom?.invoice || history?.cameFrom?.course || history?.cameFrom?.academy) && (
-                  <p className="text-xs text-gray-500">
-                    {[history.cameFrom.course, history.cameFrom.academy, history.cameFrom.invoice && `invoice ${history.cameFrom.invoice}`].filter(Boolean).join(' · ')}
-                  </p>
-                )}
-              </div>
-
-              {/* The sales person who closed them in the sales CRM — one per course they sold */}
-              <div>
-                <label className="text-sm font-medium text-gray-500">Closed By</label>
-                <ClosedByList student={displayStudent} />
-              </div>
-              
-              <div>
-                <label className="text-sm font-medium text-gray-500">Senior Mentor</label>
-                <p className="mt-1 text-base font-semibold text-gray-900">
-                  {displayStudent.senior_mentor_name || '-'}
-                </p>
-              </div>
-              
-              <div>
-                <label className="text-sm font-medium text-gray-500">Student Level</label>
-                <p className="mt-1">
-                  <Badge variant="outline" className={displayStudent.student_level === 'LEVEL_2' ? 'bg-purple-100 text-purple-800 border-purple-200' : 'bg-blue-100 text-blue-800 border-blue-200'}>
-                    {displayStudent.student_level === 'LEVEL_2' ? 'Level 2' : 'Level 1'}
+          <TabsContent {...panel('details')}>
+            {/* Student Information Card */}
+            <Card className="border-gray-200">
+              <CardHeader className="border-b border-gray-100 bg-slate-50/70">
+                <div className="flex items-center justify-between">
+                  <CardTitle className="text-xl font-semibold tracking-tight">Student Information</CardTitle>
+                  <Badge variant="outline" className={getStatusColor(displayStudent.status)}>
+                    {displayStudent.status}
                   </Badge>
-                </p>
-              </div>
-              
-              <div>
-                <label className="text-sm font-medium text-gray-500">Created Date</label>
-                <p className="mt-1 text-base text-gray-900">
-                  {displayStudent.created_date 
-                    ? format(new Date(displayStudent.created_date), 'MMMM d, yyyy')
-                    : '-'}
-                </p>
-              </div>
-
-              <div>
-                <label className="text-sm font-medium text-gray-500">Co-Mentor(s)</label>
-                <p className="mt-1 text-base font-semibold text-gray-900">
-                  {parsedCoMentors.length > 0
-                    ? parsedCoMentors.map(cm => cm.mentor_name).join(', ')
-                    : '-'}
-                </p>
-              </div>
-              
-              {displayStudent.notes && (
-                <div className="md:col-span-2">
-                  <label className="text-sm font-medium text-gray-500">Notes</label>
-                  <p className="mt-1 text-base text-gray-700 whitespace-pre-wrap">
-                    {displayStudent.notes}
-                  </p>
                 </div>
-              )}
-            </div>
-          </CardContent>
-        </Card>
+              </CardHeader>
+              <CardContent className="p-6">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                  <div>
+                    <label className="text-sm font-medium text-gray-500">Full Name</label>
+                    <p className="mt-1 text-base font-semibold text-gray-900">
+                      {displayStudent.full_name}
+                    </p>
+                  </div>
 
-        {/* What each course cost and what was paid, as Delta finance approved it */}
-        <CourseFeesCard fees={displayStudent.course_fees} />
+                  <div>
+                    <label className="text-sm font-medium text-gray-500">Email</label>
+                    <p className="mt-1 text-base text-gray-900 break-all">
+                      {displayStudent.email}
+                    </p>
+                  </div>
 
-        {/* The courses they are on in the Delta LMS: progress, fee access, completed or dropped */}
-        <StudentLmsCoursesCard student={displayStudent} />
+                  <div>
+                    <label className="text-sm font-medium text-gray-500">Phone</label>
+                    <p className="mt-1 text-base font-mono text-gray-900">
+                      {displayStudent.phone}
+                    </p>
+                  </div>
 
-        {/* Their live classes in the Delta LMS: attended, missed, upcoming */}
-        <StudentClassesCard student={displayStudent} />
+                  <div>
+                    <label className="text-sm font-medium text-gray-500">Country</label>
+                    <p className="mt-1 text-base text-gray-900">
+                      {displayStudent.country || '-'}
+                    </p>
+                  </div>
 
-        {/* Their Delta LMS support tickets, with the conversation, and class assignments, with the reviews */}
-        <StudentLmsSupportCards student={displayStudent} />
+                  {/* Their MT5 accounts — from the call log, their funding requests, or added on the MT5 accounts tab */}
+                  <div>
+                    <label className="text-sm font-medium text-gray-500">MT5 Account</label>
+                    <Mt5Logins studentId={student.id} />
+                  </div>
 
-        {/* Follow-ups: stage, what they said, next date, click-to-call */}
-        <StudentFollowupsSection student={displayStudent} />
+                  {/* The language they study in, from their close in the sales CRM (or set here) */}
+                  <div>
+                    <label className="text-sm font-medium text-gray-500">Language</label>
+                    <p className="mt-1 text-base text-gray-900">
+                      {displayStudent.language || '-'}
+                    </p>
+                  </div>
 
-        {/* Calls with them through 3CX, with the recordings */}
-        <StudentCallsSection student={displayStudent} />
+                  <div>
+                    <label className="text-sm font-medium text-gray-500">CS</label>
+                    <p className="mt-1 text-base font-semibold text-gray-900">
+                      {displayStudent.primary_mentor_name || '-'}
+                    </p>
+                  </div>
 
-        {/* Payment links: their CS asks, a Super Admin adds the link */}
-        <PaymentLinksCard student={displayStudent} />
+                  <div>
+                    <label className="text-sm font-medium text-gray-500">Team</label>
+                    <p className="mt-1 text-base font-semibold text-gray-900">
+                      {history?.team?.name || displayStudent.team_name || '-'}
+                    </p>
+                  </div>
 
-        {/* Each CS's own chats — not the Sales role's to read */}
-        {!salesOnly && <StudentWhatsAppCard student={displayStudent} />}
+                  <div>
+                    <label className="text-sm font-medium text-gray-500">First Received By</label>
+                    <p className="mt-1 text-base font-semibold text-gray-900">
+                      {history?.firstReceivedBy?.name
+                        ? `${history.firstReceivedBy.name}${history.firstReceivedBy.role ? ` (${history.firstReceivedBy.role})` : ''}`
+                        : '-'}
+                    </p>
+                    {history?.firstReceivedBy?.name && (
+                      <p className="text-xs text-gray-500">
+                        {history.firstReceivedBy.at ? format(new Date(history.firstReceivedBy.at), 'MMMM d, yyyy') : ''}
+                        {history.firstReceivedBy.fromRecords ? ' · from earlier records' : ''}
+                      </p>
+                    )}
+                  </div>
 
-        {/* Everything that happened to this student */}
-        <StudentHistory studentId={studentId} enabled={!!currentUser} />
+                  <div>
+                    <label className="text-sm font-medium text-gray-500">Came From</label>
+                    <p className="mt-1 text-base text-gray-900">
+                      {history?.cameFrom?.label || '-'}
+                    </p>
+                    {(history?.cameFrom?.invoice || history?.cameFrom?.course || history?.cameFrom?.academy) && (
+                      <p className="text-xs text-gray-500">
+                        {[history.cameFrom.course, history.cameFrom.academy, history.cameFrom.invoice && `invoice ${history.cameFrom.invoice}`].filter(Boolean).join(' · ')}
+                      </p>
+                    )}
+                  </div>
 
-        {/* MT5 Accounts Section */}
-        <MT5AccountSection student={student} currentUser={currentUser} />
+                  {/* The sales person who closed them in the sales CRM — one per course they sold */}
+                  <div>
+                    <label className="text-sm font-medium text-gray-500">Closed By</label>
+                    <ClosedByList student={displayStudent} />
+                  </div>
 
-        {/* Funding Summary */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-          <Card className="border-none bg-gradient-to-br from-blue-100 to-blue-200 shadow-lg">
-            <CardContent className="p-4">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-sm font-medium text-blue-900">Total Deposits</p>
-                  <p className="text-2xl font-bold text-blue-900 mt-1">${totalDeposits.toFixed(2)}</p>
+                  <div>
+                    <label className="text-sm font-medium text-gray-500">Senior Mentor</label>
+                    <p className="mt-1 text-base font-semibold text-gray-900">
+                      {displayStudent.senior_mentor_name || '-'}
+                    </p>
+                  </div>
+
+                  <div>
+                    <label className="text-sm font-medium text-gray-500">Student Level</label>
+                    <div className="mt-1">
+                      <Badge variant="outline" className={displayStudent.student_level === 'LEVEL_2' ? 'bg-purple-100 text-purple-800 border-purple-200' : 'bg-blue-100 text-blue-800 border-blue-200'}>
+                        {displayStudent.student_level === 'LEVEL_2' ? 'Level 2' : 'Level 1'}
+                      </Badge>
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="text-sm font-medium text-gray-500">Created Date</label>
+                    <p className="mt-1 text-base text-gray-900">
+                      {displayStudent.created_date
+                        ? format(new Date(displayStudent.created_date), 'MMMM d, yyyy')
+                        : '-'}
+                    </p>
+                  </div>
+
+                  <div>
+                    <label className="text-sm font-medium text-gray-500">Co-Mentor(s)</label>
+                    <p className="mt-1 text-base font-semibold text-gray-900">
+                      {parsedCoMentors.length > 0
+                        ? parsedCoMentors.map(cm => cm.mentor_name).join(', ')
+                        : '-'}
+                    </p>
+                  </div>
+
+                  {displayStudent.notes && (
+                    <div className="md:col-span-2">
+                      <label className="text-sm font-medium text-gray-500">Notes</label>
+                      <p className="mt-1 text-base text-gray-700 whitespace-pre-wrap">
+                        {displayStudent.notes}
+                      </p>
+                    </div>
+                  )}
                 </div>
-                <TrendingUp className="h-8 w-8 text-blue-700" />
-              </div>
-            </CardContent>
-          </Card>
-          <Card className="border-none bg-gradient-to-br from-purple-100 to-purple-200 shadow-lg">
-            <CardContent className="p-4">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-sm font-medium text-purple-900">Total Withdrawals</p>
-                  <p className="text-2xl font-bold text-purple-900 mt-1">${totalWithdrawals.toFixed(2)}</p>
-                </div>
-                <TrendingDown className="h-8 w-8 text-purple-700" />
-              </div>
-            </CardContent>
-          </Card>
-          <Card className="border-none bg-gradient-to-br from-emerald-100 to-emerald-200 shadow-lg">
-            <CardContent className="p-4">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-sm font-medium text-emerald-900">Net Deposit</p>
-                  <p className="text-2xl font-bold text-emerald-900 mt-1">${netDeposit.toFixed(2)}</p>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-        </div>
+              </CardContent>
+            </Card>
+          </TabsContent>
 
-        {/* Deposits Section */}
-        <Card className="border-gray-200">
-          <CardHeader className="border-b border-gray-100 bg-gradient-to-r from-blue-50 to-indigo-50">
-            <CardTitle className="text-lg font-semibold flex items-center gap-2">
-              <TrendingUp className="h-5 w-5 text-blue-600" />
-              Deposits ({deposits.length})
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="p-0">
-            <Paged items={deposits} resetKey={studentId}>
-              {(pageRows, bar) => (<>
-                <div className="overflow-x-auto">
-                  <table className="w-full">
-                    <thead>
-                      <tr className="bg-gray-50 border-b">
-                        <th className="text-left p-3 text-sm font-semibold text-gray-700">Date</th>
-                        <th className="text-left p-3 text-sm font-semibold text-gray-700">Amount</th>
-                        <th className="text-left p-3 text-sm font-semibold text-gray-700">Payment Method</th>
-                        <th className="text-left p-3 text-sm font-semibold text-gray-700">MT5 Login</th>
-                        <th className="text-left p-3 text-sm font-semibold text-gray-700">Transaction ID</th>
-                        <th className="text-left p-3 text-sm font-semibold text-gray-700">Added By</th>
-                        <th className="text-left p-3 text-sm font-semibold text-gray-700">Status</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {deposits.length === 0 ? (
-                        <tr>
-                          <td colSpan={6} className="text-center py-8 text-gray-500">No deposits found</td>
-                        </tr>
-                      ) : (
-                        pageRows.map((txn) => (
-                          <tr key={txn.id} className="border-b hover:bg-gray-50">
-                            <td className="p-3 text-sm">{txn.requested_at ? format(new Date(txn.requested_at), 'MMM d, yyyy HH:mm') : '-'}</td>
-                            <td className="p-3 text-sm font-semibold text-gray-900">${txn.amount_usd?.toFixed(2)}</td>
-                            <td className="p-3 text-sm">{txn.payment_method}</td>
-                            <td className="p-3 text-sm font-mono">{txn.mt5_login || '-'}</td>
-                            <td className="p-3 text-sm font-mono">{txn.transaction_id || '-'}</td>
-                            <td className="p-3 text-sm">
-                              {txn.initiating_mentor_name ? (
-                                <>
-                                  {txn.initiating_mentor_name}
-                                  {txn.initiating_mentor_id === student.primary_mentor_id && <span className="text-xs text-gray-500 block">(Primary)</span>}
-                                  {txn.initiating_mentor_id === student.senior_mentor_id && <span className="text-xs text-gray-500 block">(Senior)</span>}
-                                  {(() => {
-                                    try {
-                                      const co = typeof student.co_mentors_details === 'string' ? JSON.parse(student.co_mentors_details) : student.co_mentors_details;
-                                      return Array.isArray(co) && co.some(cm => cm.mentor_id === txn.initiating_mentor_id) ? <span className="text-xs text-gray-500 block">(Co-Mentor)</span> : null;
-                                    } catch (_) { return null; }
-                                  })()}
-                                </>
-                              ) : '-'}
-                            </td>
-                            <td className="p-3">
-                              <Badge variant="outline" className={getTransactionStatusColor(txn.status)}>
-                                {txn.status}
-                              </Badge>
-                            </td>
-                          </tr>
-                        ))
-                      )}
-                    </tbody>
-                  </table>
-                </div>
-                <TablePagination {...bar} />
-              </>)}
-            </Paged>
-          </CardContent>
-        </Card>
+          {/* Follow-ups: stage, what they said, next date, click-to-call */}
+          <TabsContent {...panel('followups')}>
+            <StudentFollowupsSection student={displayStudent} />
+          </TabsContent>
 
-        {/* Withdrawals Section */}
-        <Card className="border-gray-200">
-          <CardHeader className="border-b border-gray-100 bg-gradient-to-r from-purple-50 to-pink-50">
-            <CardTitle className="text-lg font-semibold flex items-center gap-2">
-              <TrendingDown className="h-5 w-5 text-purple-600" />
-              Withdrawals ({withdrawals.length})
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="p-0">
-            <Paged items={withdrawals} resetKey={studentId}>
-              {(pageRows, bar) => (<>
-                <div className="overflow-x-auto">
-                  <table className="w-full">
-                    <thead>
-                      <tr className="bg-gray-50 border-b">
-                        <th className="text-left p-3 text-sm font-semibold text-gray-700">Date</th>
-                        <th className="text-left p-3 text-sm font-semibold text-gray-700">Amount</th>
-                        <th className="text-left p-3 text-sm font-semibold text-gray-700">Payment Method</th>
-                        <th className="text-left p-3 text-sm font-semibold text-gray-700">MT5 Login</th>
-                        <th className="text-left p-3 text-sm font-semibold text-gray-700">Transaction ID</th>
-                        <th className="text-left p-3 text-sm font-semibold text-gray-700">Added By</th>
-                        <th className="text-left p-3 text-sm font-semibold text-gray-700">Status</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {withdrawals.length === 0 ? (
-                        <tr>
-                          <td colSpan={6} className="text-center py-8 text-gray-500">No withdrawals found</td>
-                        </tr>
-                      ) : (
-                        pageRows.map((txn) => (
-                          <tr key={txn.id} className="border-b hover:bg-gray-50">
-                            <td className="p-3 text-sm">{txn.requested_at ? format(new Date(txn.requested_at), 'MMM d, yyyy HH:mm') : '-'}</td>
-                            <td className="p-3 text-sm font-semibold text-gray-900">${txn.amount_usd?.toFixed(2)}</td>
-                            <td className="p-3 text-sm">{txn.payment_method}</td>
-                            <td className="p-3 text-sm font-mono">{txn.mt5_login || '-'}</td>
-                            <td className="p-3 text-sm font-mono">{txn.transaction_id || '-'}</td>
-                            <td className="p-3 text-sm">
-                              {txn.initiating_mentor_name ? (
-                                <>
-                                  {txn.initiating_mentor_name}
-                                  {txn.initiating_mentor_id === student.primary_mentor_id && <span className="text-xs text-gray-500 block">(Primary)</span>}
-                                  {txn.initiating_mentor_id === student.senior_mentor_id && <span className="text-xs text-gray-500 block">(Senior)</span>}
-                                  {(() => {
-                                    try {
-                                      const co = typeof student.co_mentors_details === 'string' ? JSON.parse(student.co_mentors_details) : student.co_mentors_details;
-                                      return Array.isArray(co) && co.some(cm => cm.mentor_id === txn.initiating_mentor_id) ? <span className="text-xs text-gray-500 block">(Co-Mentor)</span> : null;
-                                    } catch (_) { return null; }
-                                  })()}
-                                </>
-                              ) : '-'}
-                            </td>
-                            <td className="p-3">
-                              <Badge variant="outline" className={getTransactionStatusColor(txn.status)}>
-                                {txn.status}
-                              </Badge>
-                            </td>
-                          </tr>
-                        ))
-                      )}
-                    </tbody>
-                  </table>
-                </div>
-                <TablePagination {...bar} />
-              </>)}
-            </Paged>
-          </CardContent>
-        </Card>
+          {/* Calls with them through 3CX, with the recordings */}
+          <TabsContent {...panel('calls')}>
+            <StudentCallsSection student={displayStudent} />
+          </TabsContent>
+
+          {/* Each CS's own chats — not the Sales role's to read */}
+          {!salesOnly && (
+            <TabsContent {...panel('whatsapp')}>
+              <StudentWhatsAppCard student={displayStudent} />
+            </TabsContent>
+          )}
+
+          {/* Every funding request — deposits, withdrawals, bonuses — pending, approved and rejected, with the totals */}
+          <TabsContent {...panel('funding')}>
+            <StudentFundingCard student={student} transactions={transactions} loading={loadingFunding} />
+          </TabsContent>
+
+          {/* What each course cost and what was paid, as Delta finance approved it, and their courses in the Delta LMS */}
+          <TabsContent {...panel('courses')}>
+            <CourseFeesCard fees={displayStudent.course_fees} />
+            <StudentLmsCoursesCard student={displayStudent} />
+          </TabsContent>
+
+          {/* Their live classes in the Delta LMS: attended, missed, upcoming */}
+          <TabsContent {...panel('classes')}>
+            <StudentClassesCard student={displayStudent} />
+          </TabsContent>
+
+          {/* Their Delta LMS support tickets, with the conversation, and class assignments, with the reviews */}
+          <TabsContent {...panel('support')}>
+            <StudentLmsSupportCards student={displayStudent} />
+          </TabsContent>
+
+          {/* Payment links: their CS asks, a Super Admin adds the link */}
+          <TabsContent {...panel('payment-links')}>
+            <PaymentLinksCard student={displayStudent} />
+          </TabsContent>
+
+          {/* MT5 Accounts Section */}
+          <TabsContent {...panel('mt5')}>
+            <MT5AccountSection student={student} currentUser={currentUser} />
+          </TabsContent>
+
+          {/* Everything that happened to this student */}
+          <TabsContent {...panel('history')}>
+            <StudentHistory studentId={studentId} enabled={!!currentUser} />
+          </TabsContent>
+        </Tabs>
 
         {/* Edit Dialog */}
         <Dialog open={showEditDialog} onOpenChange={setShowEditDialog}>
