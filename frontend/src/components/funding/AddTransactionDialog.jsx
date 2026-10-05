@@ -46,6 +46,8 @@ export default function AddTransactionDialog({ open, onClose, onSubmit, students
     tags: [],
   });
   const [uploading, setUploading] = useState(false);
+  // Money received — a deposit or a bonus — comes with its receipt, as on the CS's form; a withdrawal has none yet.
+  const needsReceipt = formData.type !== 'WITHDRAWAL';
 
   const handleFileUpload = async (e) => {
     const file = e.target.files?.[0];
@@ -53,10 +55,10 @@ export default function AddTransactionDialog({ open, onClose, onSubmit, students
       setUploading(true);
       try {
         const { file_url } = await base44.integrations.Core.UploadFile({ file });
-        setFormData({ ...formData, screenshot_url: file_url });
-        toast.success('Screenshot uploaded');
+        setFormData(f => ({ ...f, screenshot_url: file_url }));
+        toast.success('Receipt uploaded');
       } catch (error) {
-        toast.error('Failed to upload screenshot');
+        toast.error('Failed to upload the receipt');
       } finally {
         setUploading(false);
       }
@@ -74,6 +76,15 @@ export default function AddTransactionDialog({ open, onClose, onSubmit, students
 
     if (formData.type === 'BONUS' && (!formData.tags || formData.tags.length === 0)) {
       toast.error('Please pick a tag for the bonus');
+      return;
+    }
+
+    if (uploading) {
+      toast.error('Wait for the receipt to finish uploading');
+      return;
+    }
+    if (needsReceipt && !formData.screenshot_url) {
+      toast.error('Upload the payment receipt — a deposit or a bonus needs it');
       return;
     }
 
@@ -207,18 +218,24 @@ export default function AddTransactionDialog({ open, onClose, onSubmit, students
             </div>
 
             <div className="space-y-2">
-              <Label>Screenshot</Label>
+              <Label>{needsReceipt ? 'Receipt *' : 'Receipt (optional)'}</Label>
               <div className="flex items-center gap-2">
                 <Input
                   type="file"
-                  accept="image/*"
+                  accept="image/*,application/pdf"
                   onChange={handleFileUpload}
                   disabled={uploading}
                 />
                 {uploading && <Loader2 className="h-4 w-4 animate-spin" />}
               </div>
-              {formData.screenshot_url && (
-                <p className="text-xs text-green-600">✓ Screenshot uploaded</p>
+              {formData.screenshot_url ? (
+                <p className="text-xs text-green-600">
+                  ✓ Receipt uploaded · <a href={formData.screenshot_url} target="_blank" rel="noopener noreferrer" className="underline">View</a>
+                </p>
+              ) : (
+                <p className="text-xs text-muted-foreground">
+                  {needsReceipt ? 'A photo, screenshot or PDF of the payment receipt — Finance sees it with the request.' : 'A withdrawal has no receipt yet.'}
+                </p>
               )}
             </div>
           </div>

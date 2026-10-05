@@ -53,6 +53,7 @@ export default function FundingRequests() {
   const [selectedIds, setSelectedIds] = useState([]);
   const [isBulkProcessing, setIsBulkProcessing] = useState(false);
   const [creditsTx, setCreditsTx] = useState(null); // transaction whose commission breakdown is open
+  const [receipt, setReceipt] = useState(null);     // { url, name } — the receipt being looked at
 
   const queryClient = useQueryClient();
   // New deposits are approved by Delta Finance's accountants: while they have
@@ -794,6 +795,7 @@ export default function FundingRequests() {
                     <TableHead className="font-semibold">Product</TableHead>
                     <TableHead className="font-semibold">User ID</TableHead>
                     <TableHead className="font-semibold">Txn ID</TableHead>
+                    <TableHead className="font-semibold">Receipt</TableHead>
                     <TableHead className="font-semibold">Approved By</TableHead>
                     <TableHead className="font-semibold">Rejection Reason</TableHead>
                     <TableHead className="font-semibold text-right">Actions</TableHead>
@@ -802,7 +804,7 @@ export default function FundingRequests() {
                 <TableBody>
                   {filteredTransactions.length === 0 ? (
                     <TableRow>
-                      <TableCell colSpan={['super_admin', 'broker_admin'].includes(currentUser.app_role) ? 19 : 18} className="text-center py-8 text-gray-500">
+                      <TableCell colSpan={['super_admin', 'broker_admin'].includes(currentUser.app_role) ? 20 : 19} className="text-center py-8 text-gray-500">
                         No funding requests found
                       </TableCell>
                     </TableRow>
@@ -903,6 +905,14 @@ export default function FundingRequests() {
                         <TableCell className="text-sm">{transaction.user_id || '-'}</TableCell>
                         <TableCell className="text-sm font-mono">
                           {transaction.transaction_id || '-'}
+                        </TableCell>
+                        <TableCell className="text-sm">
+                          {transaction.screenshot_url ? (
+                            <Button size="sm" variant="outline" className="h-7 gap-1 px-2 text-xs"
+                              onClick={() => setReceipt({ url: transaction.screenshot_url, name: transaction.student_name })}>
+                              <Eye className="h-3.5 w-3.5" /> View
+                            </Button>
+                          ) : <span className="text-gray-400">-</span>}
                         </TableCell>
                         <TableCell className="text-sm">
                           {transaction.approved_by_name ? (
@@ -1044,6 +1054,22 @@ export default function FundingRequests() {
         </Dialog>
 
         {/* Add Transaction Dialog */}
+        {/* A request's receipt: a photo shows here, a PDF in its viewer, anything else opens in a new tab */}
+        <Dialog open={!!receipt} onOpenChange={(o) => { if (!o) setReceipt(null); }}>
+          <DialogContent className="max-w-3xl">
+            <DialogHeader>
+              <DialogTitle>Receipt{receipt?.name ? ` · ${receipt.name}` : ''}</DialogTitle>
+            </DialogHeader>
+            {receipt && (/\.pdf($|\?)/i.test(receipt.url)
+              ? <iframe src={receipt.url} title="Receipt" className="h-[70vh] w-full rounded-md border" />
+              : receipt.failed
+                ? <p className="text-sm text-gray-500">This receipt cannot be shown here — open it in a new tab.</p>
+                : <img src={receipt.url} alt="Receipt" className="max-h-[70vh] w-full rounded-md border object-contain"
+                    onError={() => setReceipt(r => (r ? { ...r, failed: true } : r))} />)}
+            {receipt && <a href={receipt.url} target="_blank" rel="noopener noreferrer" className="text-sm text-blue-600 hover:underline">Open in a new tab</a>}
+          </DialogContent>
+        </Dialog>
+
         <AddTransactionDialog
           open={showAddDialog}
           onClose={() => setShowAddDialog(false)}
