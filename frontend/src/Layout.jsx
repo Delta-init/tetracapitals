@@ -165,6 +165,8 @@ export default function Layout({ children, currentPageName }) {
   const filteredNavigation = navigation.filter(item => {
     if (item.hidden) return false;
     if (pageBlockedFor(currentUser?.app_role, item.name)) return false;
+    // Not the Sales role's, whatever pages its role has (the server refuses them too).
+    if (item.notForSales && readsClosedOnly(currentUser)) return false;
     if (item.everyone) return true;
     if (item.name === 'RolesManagement' && ['super_admin', 'admin'].includes(currentUser?.app_role)) return true;
     if (Array.isArray(allowedPages)) return allowedPages.includes(item.sameAccessAs || item.name);
@@ -183,6 +185,15 @@ export default function Layout({ children, currentPageName }) {
     queryKey: ['nav-ticket-count'],
     queryFn: async () => (await base44.functions.invoke('getLmsSupportTicketCount', {})).data,
     enabled: !!currentUser && seesTickets,
+    refetchInterval: 120_000,
+    staleTime: 60_000,
+  });
+  // LMS enrolment requests waiting for a decision (the LMS Requests page's Waiting tab) — from the LMS too.
+  const seesLmsRequests = filteredNavigation.some(i => i.name === 'LmsRequests');
+  const { data: lmsRequestCount } = useQuery({
+    queryKey: ['nav-lms-request-count'],
+    queryFn: async () => (await base44.functions.invoke('getLmsEnrolmentRequestCount', {})).data,
+    enabled: !!currentUser && seesLmsRequests,
     refetchInterval: 120_000,
     staleTime: 60_000,
   });
@@ -211,6 +222,7 @@ export default function Layout({ children, currentPageName }) {
       { n: ticketCount?.open, cls: 'bg-amber-400 text-brand-navy', title: 'support tickets waiting for an answer' },
       { n: ticketCount?.waiting, cls: 'bg-sky-400 text-brand-navy', title: 'support tickets waiting on the student' },
     ],
+    LmsRequests: [{ n: lmsRequestCount?.pending, cls: 'bg-amber-400 text-brand-navy', title: 'LMS enrolment requests waiting for a decision' }],
   };
   const pillsOf = (name, compact) => {
     const pills = (PILLS[name] || []).filter(p => p.n > 0);

@@ -30,7 +30,8 @@ export type HistoryType =
   | "details_changed"
   | "onboarding_changed"
   | "payment_link"
-  | "lms_ticket";
+  | "lms_ticket"
+  | "lms_enrolment";   // their LMS enrolment request approved or rejected from here (functions/lmsEnrolmentRequests.ts)
 
 export interface HistoryEntry {
   student_id: string;

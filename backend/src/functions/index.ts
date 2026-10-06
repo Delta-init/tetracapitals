@@ -33,6 +33,10 @@ import { resubmitSalesBonus } from "./salesBonus";
 import { getBonusApprovals } from "./bonusApprovals";
 import { getStudentClasses } from "./lmsClasses";
 import { getStudentLmsSupport, getLmsSupportTickets, getLmsSupportTicketCount, answerLmsTicket, resolveLmsTicket } from "./lmsSupport";
+import {
+  getLmsEnrolmentRequests, getLmsEnrolmentRequestCount, getLmsEnrolmentRequest, getLmsEnrolmentDocument,
+  approveLmsEnrolmentRequest, rejectLmsEnrolmentRequest,
+} from "./lmsEnrolmentRequests";
 import { getClassCompletions } from "./classCompletions";
 import { getStudentLmsCourses } from "./lmsCourses";
 import { getStudentTags, setStudentTag } from "./studentTags";
@@ -98,6 +102,13 @@ const AUTHED: Record<string, AuthedHandler> = {
   getClassCompletions,
   answerLmsTicket,
   resolveLmsTicket,
+  // LMS enrolment requests, decided here (lmsEnrolmentRequests.ts)
+  getLmsEnrolmentRequests,
+  getLmsEnrolmentRequestCount,
+  getLmsEnrolmentRequest,
+  getLmsEnrolmentDocument,
+  approveLmsEnrolmentRequest,
+  rejectLmsEnrolmentRequest,
   getStudentLmsCourses,
   getStudentTags,
   setStudentTag,

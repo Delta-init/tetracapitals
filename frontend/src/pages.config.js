@@ -101,6 +101,7 @@ import WhatsApp from './pages/WhatsApp';
 import PaymentLinks from './pages/PaymentLinks';
 import ClassCompletions from './pages/ClassCompletions';
 import SupportTickets from './pages/SupportTickets';
+import LmsRequests from './pages/LmsRequests';
 import NotOnboarded from './pages/NotOnboarded';
 import BonusApprovals from './pages/BonusApprovals';
 import __Layout from './Layout.jsx';
@@ -163,6 +164,7 @@ export const PAGES = {
     "PaymentLinks": PaymentLinks,
     "ClassCompletions": ClassCompletions,
     "SupportTickets": SupportTickets,
+    "LmsRequests": LmsRequests,
 }
 
 export const pagesConfig = {
