@@ -50,15 +50,16 @@ export function Mt5Logins({ studentId }) {
 
 /**
  * The MT5 login on a funding form: the student's saved accounts to pick — the primary one filled in once they load —
- * or a new one typed, which the server keeps as theirs (`newNote` says when).
+ * or a new one typed, which the server keeps as theirs (`newNote` says when). The call log uses it too, with its own
+ * `label` and `prefill` false: it picks the primary itself, on the onboarding call only (followupUi.jsx).
  */
-export function Mt5LoginField({ studentId, value, onChange, id = 'mt5_login', newNote = 'saved to their page with the request' }) {
+export function Mt5LoginField({ studentId, value, onChange, id = 'mt5_login', newNote = 'saved to their page with the request', label = 'MT5 Login *', prefill = true }) {
   const { data: accounts = [], isFetched } = useStudentMt5(studentId);
   const logins = accounts.map(a => String(a.mt5_login));
   // Filled in once per student: a box emptied by hand stays empty.
   const filledFor = useRef(null);
   useEffect(() => {
-    if (!studentId || !isFetched || filledFor.current === studentId) return;
+    if (!prefill || !studentId || !isFetched || filledFor.current === studentId) return;
     filledFor.current = studentId;
     if (!mt5LoginOf(value) && logins[0]) onChange(logins[0]);
   }, [studentId, isFetched]);
@@ -71,7 +72,7 @@ export function Mt5LoginField({ studentId, value, onChange, id = 'mt5_login', ne
     : isFetched ? `None saved for them yet — the one you enter is ${newNote}` : '';
   return (
     <div className="space-y-2">
-      <Label htmlFor={id}>MT5 Login *</Label>
+      <Label htmlFor={id}>{label}</Label>
       {accounts.length > 0 && (
         <div className="flex flex-wrap gap-1.5" role="group" aria-label="Their saved MT5 accounts">
           {accounts.map(a => {

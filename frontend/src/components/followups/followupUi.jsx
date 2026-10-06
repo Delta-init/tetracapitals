@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { base44 } from '@/api/base44Client';
 import { toast } from 'sonner';
@@ -13,6 +13,7 @@ import SearchableSelect from '@/components/common/SearchableSelect';
 import { AlertTriangle, Clock, Eye, Gift, Loader2, MailCheck, MailMinus, MailX, Phone } from 'lucide-react';
 import { dialInfo } from './phone';
 import { HistoryEntry } from './FollowupNotes';
+import { Mt5LoginField, useStudentMt5 } from '../students/mt5Accounts';
 
 // Same lists as the CSE Follow-up Tracker sheet (the server checks them too).
 export const OUTCOMES = ['DSLP', 'DQMP', 'DGMP', 'Additional Deposit / Top-up', 'Onboarding call', 'Other'];
@@ -152,12 +153,14 @@ export function LogFollowupDialog({ followup, onClose, onSaved }) {
   });
   const earlierSaid = (past?.history?.client_said || []).filter(e => e.followup_id === followup?.id);
   const earlierNotes = (past?.history?.notes || []).filter(e => e.followup_id === followup?.id);
-  // The student's MT5 — asked (and required) until they have one saved, and kept as theirs whenever it is given; after
-  // a call that connected, the sales close's bonus goes to the admins to credit there (backend logFollowup).
+  // The student's MT5 — picked from their saved ones or typed, and kept as theirs whenever it is given; after a call
+  // that connected, the sales close's bonus goes to the admins to credit in the one given (backend logFollowup).
   const mt5s = past?.mt5 || [];
   // After a call from the Not onboarded page: did it connect? Not connected — the MT5 not required, next follow-up today.
   const askConnected = !!followup?.ask_connected;
-  const needsMt5 = !!past && mt5s.length === 0 && (!askConnected || form.connected === 'yes');
+  // Required only on that onboarding call, once it connected, for a student with none saved; optional on every other
+  // follow-up (the user, 2026-10-06).
+  const needsMt5 = !!past && mt5s.length === 0 && askConnected && form.connected === 'yes';
 
   useEffect(() => {
     if (!followup) return;
@@ -177,6 +180,18 @@ export function LogFollowupDialog({ followup, onClose, onSaved }) {
     });
   }, [followup]);
 
+  // On the onboarding call their primary MT5 is picked for them — the sales-close bonus is credited in the one given.
+  // Picked here, after the reset above: the field's own effect runs first and would be wiped by it.
+  const { data: mt5Accounts = [], isFetched: mt5Fetched } = useStudentMt5(followup?.student_id);
+  const pickedFor = useRef(null);
+  useEffect(() => {
+    if (!followup) { pickedFor.current = null; return; }
+    if (!askConnected || !mt5Fetched || pickedFor.current === followup) return;
+    pickedFor.current = followup;
+    const primary = mt5Accounts[0]?.mt5_login;
+    if (primary) setForm(f => (f.mt5 ? f : { ...f, mt5: String(primary) }));
+  }, [followup, mt5Fetched]);
+
   const set = (k) => (v) => setForm(f => ({ ...f, [k]: v?.target ? v.target.value : v }));
   const closed = form.stage === 'Converted' || form.stage === 'Lost';
 
@@ -185,9 +200,9 @@ export function LogFollowupDialog({ followup, onClose, onSaved }) {
     if (form.stage === 'Converted' && (form.dealValue === '' || Number(form.dealValue) < 0)) { setError('Enter the deal value.'); return; }
     if (askConnected && !form.connected) { setError('Did the call connect? Pick Connected or Not connected.'); return; }
     const mt5 = String(form.mt5 || '').replace(/\s+/g, '');
-    if (needsMt5 && !MT5_LOGIN.test(mt5)) { setError("Enter the student's MT5 ID — its login number, digits only. It's needed until they have one saved."); return; }
-    // Given on a call that didn't connect: not needed, but kept all the same — so a login number too.
-    const sendMt5 = mt5s.length === 0 && !!mt5;
+    if (needsMt5 && !MT5_LOGIN.test(mt5)) { setError("Enter the student's MT5 ID — its login number, digits only. The onboarding call needs one until they have one saved."); return; }
+    // Picked or typed even when not needed: kept as theirs (a saved one stays as it is) — so a login number too.
+    const sendMt5 = !!mt5;
     if (sendMt5 && !MT5_LOGIN.test(mt5)) { setError("The MT5 ID is its login number — digits only."); return; }
     setBusy(true); setError(null);
     try {
@@ -265,11 +280,18 @@ export function LogFollowupDialog({ followup, onClose, onSaved }) {
 
         <div className="grid gap-3 sm:grid-cols-2">
           <div className="space-y-1.5">
-            <Label htmlFor="log-mt5">MT5 ID{needsMt5 ? ' *' : ''}</Label>
-            {mt5s.length
-              ? <p className="font-mono text-sm text-slate-800">{mt5s.join(' · ')}</p>
-              : <Input id="log-mt5" inputMode="numeric" value={form.mt5 || ''} onChange={set('mt5')} placeholder="The student's MT5 login" />}
-            <p className="text-[11px] text-slate-400">{mt5s.length ? 'Saved on their page' : askConnected && form.connected === 'no' ? "Optional — the call didn't connect. Saved as their MT5 account if you enter it" : 'Needed until they have one — saved as their MT5 account'}</p>
+            {/* Their saved logins to pick, or a new one typed. Picked for them only on the onboarding call (above) — where
+                the sales-close bonus is credited in the one given; an ordinary follow-up leaves it to the CS. */}
+            <Mt5LoginField
+              id="log-mt5"
+              studentId={followup?.student_id}
+              value={form.mt5 || ''}
+              onChange={set('mt5')}
+              label={`MT5 ID${needsMt5 ? ' *' : ' (optional)'}`}
+              prefill={false}
+              newNote="saved as their MT5 account"
+            />
+            {askConnected && mt5s.length > 0 && <p className="text-[11px] text-slate-400">A sales-close bonus is credited in the one picked</p>}
           </div>
           <SalesBonusNote bonuses={past?.sales_bonus} />
         </div>
