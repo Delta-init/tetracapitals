@@ -30,10 +30,10 @@ const PAYMENT_METHODS = [
   'Other'
 ];
 
-/* ── Money in AED or USD, and what a course payment earns (the user, 2026-10-03; Delta_Fee_Structure.pdf) ──────
-   An amount can be typed in AED or USD — USD to start, whatever the type or payment (the user, 2026-10-04). It is
-   kept in USD for commission and the reports (amount_usd), with what was typed, its AED and the rate — a fixed 3.67 —
-   beside it.
+/* ── Money in AED, USD or INR, and what a course payment earns (the user, 2026-10-03; Delta_Fee_Structure.pdf) ─
+   An amount can be typed in AED, USD or INR — USD to start, whatever the type or payment (the user, 2026-10-04; INR
+   2026-10-06). It is kept in USD for commission and the reports (amount_usd), with what was typed, its AED and the
+   rates beside it — fixed: 1 USD = 3.67 AED, 1 INR = 0.010 USD (INR reaches AED through USD).
    A Bonus is a course payment, for a course with a bonus set on the Products page (DWT, MSNR, DSLP Offer, DSLP Full):
      full payment — the course's price at once, and its whole bonus in the student's MT5 at once;
      partial      — instalments of AED 2,000 (as many as the course has): every full AED 2,000 paid is $500 bonus, the
@@ -41,6 +41,8 @@ const PAYMENT_METHODS = [
                     Once instalments have started, the rest is paid that way too.
    Shared with the co-management form (ReferralRequestPopup) and the request lists. */
 export const AED_PER_USD = 3.67;
+/** 1 INR = 0.010 USD — fixed (the user, 2026-10-06). */
+export const USD_PER_INR = 0.01;
 export const INSTALMENT_AED = 2000;
 export const BONUS_PER_INSTALMENT_USD = 500;
 const cents = (n) => Math.round((Number(n) || 0) * 100) / 100;
@@ -50,13 +52,21 @@ const ROUNDING_AED = 1;
 const fmt = (n) => (Number(n) || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 export const aedText = (n) => `AED ${fmt(n)}`;
 export const usdText = (n) => `$${fmt(n)}`;
-const moneyText = (n, currency) => (currency === 'AED' ? aedText(n) : usdText(n));
+export const inrText = (n) => `INR ${fmt(n)}`;
+const moneyText = (n, currency) => (currency === 'AED' ? aedText(n) : currency === 'INR' ? inrText(n) : usdText(n));
 
-/** `amount` typed in `currency`, in both: { aed, usd }. */
+/** `amount` typed in `currency` (AED, USD or INR), in AED and USD: { aed, usd }. */
 export function convert(amount, currency) {
   const n = Number(amount) || 0;
-  return currency === 'AED' ? { aed: cents(n), usd: cents(n / AED_PER_USD) } : { aed: cents(n * AED_PER_USD), usd: cents(n) };
+  if (currency === 'AED') return { aed: cents(n), usd: cents(n / AED_PER_USD) };
+  if (currency === 'INR') return { aed: cents(n * USD_PER_INR * AED_PER_USD), usd: cents(n * USD_PER_INR) };
+  return { aed: cents(n * AED_PER_USD), usd: cents(n) };
 }
+/** What `money` (from convert) is in the currencies other than the one typed — "$500.00 · AED 1,835.00" for INR. */
+const otherMoney = (money, currency) =>
+  currency === 'AED' ? usdText(money.usd) : currency === 'INR' ? `${usdText(money.usd)} · ${aedText(money.aed)}` : aedText(money.aed);
+/** The rate a typed amount went by. */
+const rateText = (currency) => (currency === 'INR' ? `1 INR = ${USD_PER_INR.toFixed(3)} USD` : `1 USD = ${AED_PER_USD} AED`);
 
 /** A course's terms (the Products page): its full price in AED or USD, its whole bonus, its AED 2,000 instalments. */
 export function coursePlan(product) {
@@ -115,7 +125,8 @@ export function coursePayment({ plan, kind, beforeAed, todayAed }) {
 /** The same, as one line — what the co-management path keeps of it (in the request's notes). */
 export function paymentNote({ amount, currency, product, plan, payment }) {
   const money = convert(amount, currency);
-  const parts = [`Paid ${currency === 'AED' ? aedText(money.aed) : usdText(money.usd)} (= ${currency === 'AED' ? usdText(money.usd) : aedText(money.aed)} at ${AED_PER_USD})`];
+  const typed = currency === 'INR' ? inrText(Number(amount) || 0) : currency === 'AED' ? aedText(money.aed) : usdText(money.usd);
+  const parts = [`Paid ${typed} (= ${otherMoney(money, currency)} at ${currency === 'INR' ? rateText('INR') : AED_PER_USD})`];
   if (product && plan && payment) {
     parts.push(payment.kind === 'full'
       ? `${product.name}: full payment (price ${moneyText(plan.price, plan.currency)})`
@@ -127,7 +138,7 @@ export function paymentNote({ amount, currency, product, plan, payment }) {
   return parts.join(' · ');
 }
 
-/** The amount box: AED or USD, and what it is in the other. */
+/** The amount box: AED, USD or INR, and what it is in the others. */
 export function CurrencyAmount({ id = 'amount', label, amount, currency, onAmount, onCurrency }) {
   const money = convert(amount, currency);
   return (
@@ -139,12 +150,13 @@ export function CurrencyAmount({ id = 'amount', label, amount, currency, onAmoun
           <SelectContent>
             <SelectItem value="AED">AED</SelectItem>
             <SelectItem value="USD">USD</SelectItem>
+            <SelectItem value="INR">INR</SelectItem>
           </SelectContent>
         </Select>
         <Input id={id} type="number" step="0.01" min="0.01" value={amount} onChange={(e) => onAmount(e.target.value)} placeholder="0.00" required />
       </div>
       <p className="text-xs text-muted-foreground">
-        {Number(amount) > 0 ? `= ${currency === 'AED' ? usdText(money.usd) : aedText(money.aed)} · ` : ''}1 USD = {AED_PER_USD} AED
+        {Number(amount) > 0 ? `= ${otherMoney(money, currency)} · ` : ''}{rateText(currency)}
       </p>
     </div>
   );
@@ -212,6 +224,8 @@ export function PaymentDetails({ tx }) {
   if (!(Number(tx?.amount_aed) > 0) && !cp && !tx?.bonus_credit) return null;
   return (
     <div className="mt-0.5 space-y-0.5 whitespace-nowrap text-[11px] font-normal leading-tight text-gray-500">
+      {/* Typed in INR: that too, as it was paid. */}
+      {tx.amount_currency === 'INR' && Number(tx.amount_original) > 0 && <div>{inrText(tx.amount_original)}</div>}
       {Number(tx.amount_aed) > 0 && <div>{aedText(tx.amount_aed)}</div>}
       {tx.bonus_credit && <div className="font-medium text-amber-700">Sales-close bonus credit · no commission</div>}
       {cp?.kind && <div>{cp.kind === 'full' ? 'Full payment' : 'Partial payment'}</div>}
@@ -227,7 +241,7 @@ export default function FundingRequestForm({ students, allStudents = [], current
     type: 'DEPOSIT',
     student_id: '',
     amount: '',       // as typed, in `currency`
-    currency: 'USD',  // AED or USD — USD to start, whatever the type and payment
+    currency: 'USD',  // AED, USD or INR — USD to start, whatever the type and payment
     payment_kind: '', // a Bonus: 'full' or 'partial' — asked once the course is picked
     payment_method: '',
     mt5_login: '',
@@ -387,7 +401,7 @@ export default function FundingRequestForm({ students, allStudents = [], current
       mt5_login: mt5,
       meeting_mentor_id: meetingMentor?.id || null,
       meeting_mentor_name: meetingMentor?.full_name || null,
-      // What was typed, in both currencies — amount_usd is what commission and the reports use.
+      // What was typed, in AED and USD too — amount_usd is what commission and the reports use.
       amount: undefined,
       currency: undefined,
       payment_kind: undefined,
@@ -396,6 +410,7 @@ export default function FundingRequestForm({ students, allStudents = [], current
       amount_aed: money.aed,
       amount_usd: money.usd,
       fx_rate_aed_per_usd: AED_PER_USD,
+      ...(formData.currency === 'INR' ? { fx_rate_usd_per_inr: USD_PER_INR } : {}),
       ...(payment ? {
         course_payment: {
           product: product.name, price: plan.price, price_currency: plan.currency, bonus_full_usd: plan.bonusUsd,
