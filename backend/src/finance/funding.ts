@@ -227,6 +227,27 @@ export function notesForFinance(tx: any): string {
   return out.slice(0, NOTES_MAX);
 }
 
+/**
+ * The same payments as a list, for finance to show each with its receipt (finance-delta's tetraDepositPaymentSchema):
+ * in cents of the currency typed. Only when every one is well formed — none at all rather than one that finance would
+ * refuse the request for; the notes say them all either way.
+ */
+export function paymentsForFinance(tx: any): Array<{ method: string; amountMinor: number; currency: string; receiptUrl: string; receiptName: string }> {
+  const list: any[] = Array.isArray(tx?.payments) ? tx.payments : [];
+  if (list.length < 2 || list.length > 10) return [];
+  const out = list.map((p) => {
+    const url = String(p?.receipt_url ?? "");
+    return {
+      method: String(p?.method ?? "").trim(),
+      amountMinor: Math.round((Number(p?.amount) || 0) * 100),
+      currency: String(p?.currency ?? "").toUpperCase(),
+      receiptUrl: /^https?:\/\//i.test(url) && url.length <= 1000 ? url : "",
+      receiptName: String(p?.receipt_name ?? "").trim().slice(0, 200),
+    };
+  });
+  return out.every((p) => p.method && p.method.length <= 60 && p.amountMinor > 0 && /^[A-Z]{3}$/.test(p.currency)) ? out : [];
+}
+
 /** What the accountants see: the request, the student, and the proof. */
 async function depositPayload(tx: any) {
   const sid = tx.student_id ? toObjectId(String(tx.student_id)) : null;
@@ -261,6 +282,8 @@ async function depositPayload(tx: any) {
       .map((a: any) => ({ login: String(a.mt5_login ?? ""), platform: String(a.platform ?? "") }))
       .filter((a) => a.login),
     screenshotUrl: String(tx.screenshot_url ?? ""),
+    // …and each payment with its receipt, which finance lists on the review (the user, 2026-10-06).
+    ...(paymentsForFinance(tx).length ? { payments: paymentsForFinance(tx) } : {}),
     notes: notesForFinance(tx),
     requestedAt: String(tx.requested_at || tx.created_date || new Date().toISOString()),
     requestedBy: String(tx.requested_by_name ?? ""),
