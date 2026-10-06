@@ -28,6 +28,7 @@ import StudentClassesCard from "@/components/students/StudentClassesCard";
 import StudentLmsCoursesCard from "@/components/students/StudentLmsCoursesCard";
 import StudentLmsSupportCards from "@/components/students/StudentLmsSupportCards";
 import StudentFundingCard from "@/components/students/StudentFundingCard";
+import { ViewInLmsButton, canViewInLms } from "@/components/students/ViewInLms";
 import { CallButton } from "@/components/followups/CallFlow";
 import { EnrolmentControl } from "@/components/students/enrolment";
 import { OnboardingControl } from "@/components/students/onboarding";
@@ -298,6 +299,10 @@ export default function StudentDetail() {
                 Book mentor session
               </Button>
             </Link>
+            {/* Their own LMS as they see it, read-only — for their CS (and leaders) and the Super Admin */}
+            {canViewInLms(currentUser) && student.email && (
+              <ViewInLmsButton studentId={student.id} name={displayStudent.full_name} className="h-9" />
+            )}
             {canEdit ? (
               <Button onClick={() => setShowEditDialog(true)} className="bg-blue-600 hover:bg-blue-700">
                 <Edit className="h-4 w-4 mr-2" />

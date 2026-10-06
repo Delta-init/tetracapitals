@@ -1,5 +1,6 @@
 import { col } from "../db";
-import { json, error, forbidden } from "../lib/response";
+import { json, error, forbidden, notFound } from "../lib/response";
+import { toObjectId } from "../lib/id";
 import type { AuthUser } from "../auth/middleware";
 import { isMentorRole } from "../lib/roles";
 import { visibleMentorIds, studentsOf } from "../students/followups";
@@ -17,6 +18,9 @@ import { callLms, lmsConfigured, LmsError } from "../lib/lms";
    (lms services/portalEnrolmentRequests.service.ts), recorded there under the
    deciding person's own LMS account, else the shared support one with their
    name. Not the Sales role's. The LMS deploys first.
+
+   The same people can open a student's own LMS as the student sees it,
+   read-only (viewStudentInLms) — from this page and from the student's page.
 ──────────────────────────────────────────────────────────────────────────── */
 
 const LMS_BATCH = 500;
@@ -297,4 +301,50 @@ export async function rejectLmsEnrolmentRequest(req: Request, user: AuthUser): P
     }]);
   }
   return json({ request: answer.request, from: answer.from ?? "" });
+}
+
+/**
+ * POST /api/functions/viewStudentInLms { studentId } | { email }
+ * The student's own LMS as they see it, READ-ONLY, in a new tab (the user, 2026-10-06) — the LMS admin's "view as
+ * student", started from here: a link good once, for 60 seconds, into a 30-minute session the LMS's admins see on
+ * their Impersonation sessions screen and can end, from the person's own LMS account, else the shared support one
+ * with their address on it (lms services/portalStudentView.service.ts). For whoever decides the student's requests:
+ * a CS their own students (leaders their people's), the Super Admin anyone's — by the LMS address too, for a request
+ * from somebody who isn't in the portal. → { url, expiresIn, sessionExpiresAt, from: "own" | "shared" }
+ */
+export async function viewStudentInLms(req: Request, user: AuthUser): Promise<Response> {
+  const reach = await reachOf(user);
+  if (!reach) return forbidden();
+  const body: any = await req.json().catch(() => ({}));
+  const scope = reach === "all" ? null : await theirStudents(user);
+  const within = (match: Record<string, any>) => (scope ? { $and: [scope, match] } : match);
+  let email = "";
+  if (body?.studentId) {
+    const oid = toObjectId(String(body.studentId));
+    if (!oid) return error("studentId is not valid", 400);
+    const student: any = await col("students").findOne(within({ _id: oid }), { projection: { email: 1 } });
+    if (!student) return scope ? forbidden() : notFound();
+    email = emailOf(student.email);
+    if (!email) return error("This student has no email here to find their LMS account by", 400);
+  } else {
+    email = emailOf(body?.email);
+    if (!email) return error("studentId or email is required", 400);
+    // A CS only their own students, as on the requests page.
+    const match = { email: { $regex: `^\\s*${escapeRe(email)}\\s*$`, $options: "i" } };
+    if (scope && !(await col("students").findOne(within(match), { projection: { _id: 1 } }))) return forbidden();
+  }
+  if (!lmsConfigured()) return error("The LMS isn't linked to this server (LMS_API_URL, LMS_SERVICE_SECRET)", 503);
+  // Whoever is really looking — the Super Admin, when they use "View as" here — is who the LMS's banner and trail name.
+  const looker = ((user as any)._impersonatedBy as { email?: string; full_name?: string } | undefined) ?? user;
+  try {
+    return json(await callLms<{ url: string; expiresIn: number; sessionExpiresAt: string; from: string }>("/students/view", {
+      method: "POST", body: { email, byName: looker.full_name || looker.email || "somebody", byEmail: looker.email ?? "" }, verb: "open the student's account",
+    }));
+  } catch (err) {
+    // An LMS without this route yet answers "Route POST … not found".
+    if (err instanceof LmsError && /route \S+ \S+ not found|cannot post/i.test(err.message)) {
+      return error("The LMS can't open a student's account from here yet — it needs its update", 409);
+    }
+    return lmsRefusal(err);
+  }
 }

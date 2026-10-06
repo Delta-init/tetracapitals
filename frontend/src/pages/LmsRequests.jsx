@@ -14,6 +14,7 @@ import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { ViewInLmsButton } from '@/components/students/ViewInLms';
 import { CheckCircle2, ClipboardCheck, ExternalLink, Eye, FileText, Loader2, RefreshCw, Search, XCircle } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
@@ -25,7 +26,8 @@ import { cn } from '@/lib/utils';
    lmsEnrolmentRequests.ts). Approve lets them in on Forex — the LMS tells them by
    email and WhatsApp; Reject turns a waiting request away with a reason they're
    emailed. Done in the LMS from your own LMS account, else Delta's support
-   account with your name.
+   account with your name. "As student" opens their own LMS as they see it,
+   read-only, in a new tab (components/students/ViewInLms.jsx).
 ──────────────────────────────────────────────────────────────────────────── */
 
 const TABS = [
@@ -175,6 +177,8 @@ function RequestDialog({ request, onClose, onDecide }) {
           </div>
         </div>
         <DialogFooter className="gap-2 sm:gap-2">
+          {/* What they see in the LMS right now — read-only */}
+          <ViewInLmsButton email={r.email} name={r.name} className="sm:mr-auto" />
           {r.status === 'pending' && (
             <Button variant="outline" className="border-rose-300 text-rose-700 hover:bg-rose-50" onClick={() => onDecide('reject', r)}>
               <XCircle className="mr-1.5 h-4 w-4" /> Reject
@@ -330,6 +334,7 @@ export default function LmsRequests() {
                                 <Button size="sm" variant="outline" className="h-8 gap-1 px-2 text-xs" onClick={() => setViewing(r)}>
                                   <Eye className="h-3.5 w-3.5" /> View
                                 </Button>
+                                <ViewInLmsButton email={r.email} name={r.name} label="As student" size="sm" className="h-8 gap-1 px-2 text-xs" />
                                 {r.status !== 'approved' && (
                                   <Button size="sm" className="h-8 gap-1 bg-emerald-600 px-2 text-xs hover:bg-emerald-700" onClick={() => decide('approve', r)}>
                                     <CheckCircle2 className="h-3.5 w-3.5" /> Approve

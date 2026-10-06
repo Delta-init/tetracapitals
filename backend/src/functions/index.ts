@@ -35,7 +35,7 @@ import { getStudentClasses } from "./lmsClasses";
 import { getStudentLmsSupport, getLmsSupportTickets, getLmsSupportTicketCount, answerLmsTicket, resolveLmsTicket } from "./lmsSupport";
 import {
   getLmsEnrolmentRequests, getLmsEnrolmentRequestCount, getLmsEnrolmentRequest, getLmsEnrolmentDocument,
-  approveLmsEnrolmentRequest, rejectLmsEnrolmentRequest,
+  approveLmsEnrolmentRequest, rejectLmsEnrolmentRequest, viewStudentInLms,
 } from "./lmsEnrolmentRequests";
 import { getClassCompletions } from "./classCompletions";
 import { getStudentLmsCourses } from "./lmsCourses";
@@ -109,6 +109,8 @@ const AUTHED: Record<string, AuthedHandler> = {
   getLmsEnrolmentDocument,
   approveLmsEnrolmentRequest,
   rejectLmsEnrolmentRequest,
+  // A student's own LMS, read-only — from LMS Requests and the student page
+  viewStudentInLms,
   getStudentLmsCourses,
   getStudentTags,
   setStudentTag,
