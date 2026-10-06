@@ -10,17 +10,9 @@ import { Loader2, Upload } from 'lucide-react';
 import { toast } from 'sonner';
 import SearchableStudentSelect from '../common/SearchableStudentSelect';
 import TagsPicker from './TagsPicker';
+import { PaymentRows, newPayment, paymentsTotal, paymentsMissing, paymentsToSave } from './payments';
 
-const DEPOSIT_PAYMENT_METHODS = [
-  'AED TRANSFER',
-  'UPI',
-  'CARD PAYMENT',
-  'USDT',
-  'INR TRANSFER',
-  'Cash deposit',
-  'Other'
-];
-
+// A withdrawal's method. Money in — a deposit or a bonus — is taken as payments, each with its own (./payments).
 const WITHDRAWAL_PAYMENT_METHODS = [
   'AED TRANSFER',
   'UPI',
@@ -46,8 +38,10 @@ export default function AddTransactionDialog({ open, onClose, onSubmit, students
     tags: [],
   });
   const [uploading, setUploading] = useState(false);
-  // Money received — a deposit or a bonus — comes with its receipt, as on the CS's form; a withdrawal has none yet.
-  const needsReceipt = formData.type !== 'WITHDRAWAL';
+  // Money received — a deposit or a bonus — as payments, as on the CS's form: each with its method, amount (USD) and
+  // receipt, adding up to the amount. A withdrawal has one amount and method, and no receipt yet.
+  const [payments, setPayments] = useState(() => [newPayment()]);
+  const takesPayments = formData.type !== 'WITHDRAWAL';
 
   const handleFileUpload = async (e) => {
     const file = e.target.files?.[0];
@@ -79,18 +73,21 @@ export default function AddTransactionDialog({ open, onClose, onSubmit, students
       return;
     }
 
-    if (uploading) {
-      toast.error('Wait for the receipt to finish uploading');
-      return;
-    }
-    if (needsReceipt && !formData.screenshot_url) {
-      toast.error('Upload the payment receipt — a deposit or a bonus needs it');
+    const missing = takesPayments ? paymentsMissing(payments) : uploading ? 'Wait for the receipt to finish uploading' : '';
+    if (missing) {
+      toast.error(missing);
       return;
     }
 
     const dataToSubmit = {
       ...formData,
-      amount_usd: parseFloat(formData.amount_usd),
+      amount_usd: takesPayments ? paymentsTotal(payments) : parseFloat(formData.amount_usd),
+      // Money in: every payment, and the first one's method and receipt where only one is read (./payments).
+      ...(takesPayments ? {
+        payments: paymentsToSave(payments, 'USD'),
+        payment_method: payments[0].method,
+        screenshot_url: payments[0].receipt_url,
+      } : {}),
       status: 'PENDING',
       student_name: selectedStudent.full_name,
       student_code: selectedStudent.student_code,
@@ -155,38 +152,49 @@ export default function AddTransactionDialog({ open, onClose, onSubmit, students
               </div>
             )}
 
-            <div className="space-y-2">
-              <Label>Amount (USD) *</Label>
-              <Input
-                type="number"
-                step="0.01"
-                min="0.01"
-                value={formData.amount_usd}
-                onChange={(e) => setFormData({ ...formData, amount_usd: e.target.value })}
-                placeholder="0.00"
-                required
-              />
-            </div>
+            {takesPayments ? (
+              <div className="space-y-2 md:col-span-2">
+                <Label>Payments (USD) *</Label>
+                {/* Part by card, part in cash: each payment with its method, amount and receipt — Finance sees them all */}
+                <PaymentRows rows={payments} onChange={setPayments} currency="USD" />
+                {paymentsTotal(payments) > 0 && (
+                  <p className="text-xs text-muted-foreground">Total ${paymentsTotal(payments).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</p>
+                )}
+              </div>
+            ) : (<>
+              <div className="space-y-2">
+                <Label>Amount (USD) *</Label>
+                <Input
+                  type="number"
+                  step="0.01"
+                  min="0.01"
+                  value={formData.amount_usd}
+                  onChange={(e) => setFormData({ ...formData, amount_usd: e.target.value })}
+                  placeholder="0.00"
+                  required
+                />
+              </div>
 
-            <div className="space-y-2">
-              <Label>Payment Method *</Label>
-              <Select
-                value={formData.payment_method}
-                onValueChange={(value) => setFormData({ ...formData, payment_method: value })}
-                required
-              >
-                <SelectTrigger>
-                  <SelectValue placeholder="Select payment method" />
-                </SelectTrigger>
-                <SelectContent>
-                  {(formData.type === 'WITHDRAWAL' ? WITHDRAWAL_PAYMENT_METHODS : DEPOSIT_PAYMENT_METHODS).map((method) => (
-                    <SelectItem key={method} value={method}>
-                      {method}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
+              <div className="space-y-2">
+                <Label>Payment Method *</Label>
+                <Select
+                  value={formData.payment_method}
+                  onValueChange={(value) => setFormData({ ...formData, payment_method: value })}
+                  required
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select payment method" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {WITHDRAWAL_PAYMENT_METHODS.map((method) => (
+                      <SelectItem key={method} value={method}>
+                        {method}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            </>)}
 
             <div className="space-y-2">
               <Label>MT5 Login</Label>
@@ -217,27 +225,28 @@ export default function AddTransactionDialog({ open, onClose, onSubmit, students
               />
             </div>
 
-            <div className="space-y-2">
-              <Label>{needsReceipt ? 'Receipt *' : 'Receipt (optional)'}</Label>
-              <div className="flex items-center gap-2">
-                <Input
-                  type="file"
-                  accept="image/*,application/pdf"
-                  onChange={handleFileUpload}
-                  disabled={uploading}
-                />
-                {uploading && <Loader2 className="h-4 w-4 animate-spin" />}
+            {/* A withdrawal's receipt, if there is one yet — money in has a receipt on each payment above */}
+            {!takesPayments && (
+              <div className="space-y-2">
+                <Label>Receipt (optional)</Label>
+                <div className="flex items-center gap-2">
+                  <Input
+                    type="file"
+                    accept="image/*,application/pdf"
+                    onChange={handleFileUpload}
+                    disabled={uploading}
+                  />
+                  {uploading && <Loader2 className="h-4 w-4 animate-spin" />}
+                </div>
+                {formData.screenshot_url ? (
+                  <p className="text-xs text-green-600">
+                    ✓ Receipt uploaded · <a href={formData.screenshot_url} target="_blank" rel="noopener noreferrer" className="underline">View</a>
+                  </p>
+                ) : (
+                  <p className="text-xs text-muted-foreground">A withdrawal has no receipt yet.</p>
+                )}
               </div>
-              {formData.screenshot_url ? (
-                <p className="text-xs text-green-600">
-                  ✓ Receipt uploaded · <a href={formData.screenshot_url} target="_blank" rel="noopener noreferrer" className="underline">View</a>
-                </p>
-              ) : (
-                <p className="text-xs text-muted-foreground">
-                  {needsReceipt ? 'A photo, screenshot or PDF of the payment receipt — Finance sees it with the request.' : 'A withdrawal has no receipt yet.'}
-                </p>
-              )}
-            </div>
+            )}
           </div>
 
           <div className="space-y-2">

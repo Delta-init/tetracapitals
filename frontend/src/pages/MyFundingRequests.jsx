@@ -13,6 +13,7 @@ import { Plus, TrendingUp, TrendingDown, DollarSign, Award, Wallet, Eye, Users, 
 import { Input } from "@/components/ui/input";
 import FundingRequestForm, { PaymentDetails } from "../components/funding/FundingRequestForm";
 import TagChips from "../components/funding/TagChips";
+import { ReceiptsButton, methodsText } from "../components/funding/payments";
 import { useFinanceLink, WithAccountsBadge, FinanceApprovalNote } from "../components/funding/FinanceApproval";
 import {
   canCreateFundingTransaction,
@@ -765,7 +766,7 @@ export default function MyFundingRequests() {
                                       {transaction.status === 'APPROVED' ? `$${commissionEarned.toFixed(2)}` : '-'}
                                     </TableCell>
                                   )}
-                                  <TableCell className="text-sm">{transaction.payment_method}</TableCell>
+                                  <TableCell className="text-sm">{methodsText(transaction)}</TableCell>
                                   <TableCell>
                                     {transaction.tags && transaction.tags.length > 0
                                       ? <TagChips tags={transaction.tags} />
@@ -777,11 +778,8 @@ export default function MyFundingRequests() {
                                     ) : '-'}
                                   </TableCell>
                                   <TableCell>
-                                    {transaction.screenshot_url ? (
-                                      <a href={transaction.screenshot_url} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:text-blue-800">
-                                        <Eye className="h-4 w-4" />
-                                      </a>
-                                    ) : '-'}
+                                    {/* Every payment's receipt — "View (2)" for two */}
+                                    <ReceiptsButton tx={transaction} title={transaction.student_name} />
                                   </TableCell>
                                 </TableRow>
                               );
@@ -954,7 +952,7 @@ export default function MyFundingRequests() {
                                   ? `$${uplineCommission.toFixed(2)} (${transaction.upline_commission_percentage || 0}%)` 
                                   : '-'}
                               </TableCell>
-                              <TableCell className="text-sm">{transaction.payment_method}</TableCell>
+                              <TableCell className="text-sm">{methodsText(transaction)}</TableCell>
                               </TableRow>
                               );
                               })

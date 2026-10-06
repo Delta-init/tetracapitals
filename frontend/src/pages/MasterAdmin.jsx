@@ -21,7 +21,7 @@ import { startImpersonation } from '../components/utils/ImpersonationContext';
 import { logAction } from '../components/utils/AuditLogger';
 import { TablePagination, usePagination } from '@/components/common/TablePagination';
 
-const PAYMENT_METHODS = ['AED TRANSFER','UPI','CARD PAYMENT','USDT','INR TRANSFER','Cash deposit','Cash Withdrawal','Bank Withdrawal','Other'];
+const PAYMENT_METHODS = ['AED TRANSFER','UPI','CARD PAYMENT','USDT','INR TRANSFER','Cash deposit','Pay by link','Cash','Bank Transfer','Cheque','Card','Easebuzz EMI','Tabby','Tamara','BillExPro','Cash Withdrawal','Bank Withdrawal','Other'];
 
 function toLocalInput(iso) {
   if (!iso) return '';

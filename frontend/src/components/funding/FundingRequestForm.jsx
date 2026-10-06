@@ -15,11 +15,13 @@ import TagsPicker from './TagsPicker';
 import { isMentorRole } from '../utils/roles';
 import { teamMembersOf } from '../utils/teams';
 import { Mt5LoginField, MT5_LOGIN, mt5LoginOf } from '../students/mt5Accounts';
+import { PaymentRows, newPayment, paymentsTotal, paymentsMissing, paymentsToSave } from './payments';
 
 const NONE = '__none__';
 // "junior_mentor" -> "Junior Mentor"
 const roleLabel = (r) => String(r || '').replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
 
+// A withdrawal's method. Money in — a deposit or a bonus — is taken as payments, each with its own (./payments).
 const PAYMENT_METHODS = [
   'AED TRANSFER',
   'UPI',
@@ -252,6 +254,11 @@ export default function FundingRequestForm({ students, allStudents = [], current
   const [uploading, setUploading] = useState(false);
   const [referralStudent, setReferralStudent] = useState(null);
   const [showCoManageModal, setShowCoManageModal] = useState(false);
+  // Money in — a deposit or a bonus — as payments, each with its method, amount and receipt; they add up to the amount.
+  // A withdrawal has one amount and method, and no receipt yet.
+  const [payments, setPayments] = useState(() => [newPayment()]);
+  const takesPayments = formData.type !== 'WITHDRAWAL';
+  const typed = takesPayments ? paymentsTotal(payments) : formData.amount;
 
   // Tag catalog with per-tag amounts — for BONUS, the product's price fills in the amount (which can still be changed).
   const { data: bonusTags = [] } = useQuery({
@@ -269,17 +276,26 @@ export default function FundingRequestForm({ students, allStudents = [], current
     queryFn: () => base44.entities.FundingTransaction.filter({ student_id: formData.student_id, type: 'BONUS' }),
     enabled: !!(formData.student_id && product),
   });
-  const money = convert(formData.amount, formData.currency);
+  const money = convert(typed, formData.currency);
   const plan = coursePlan(product);
   const beforeAed = product ? paidBefore(earlier, product.name) : 0;
   const kinds = paymentKinds(plan, beforeAed);
   const kind = kinds.length === 1 ? kinds[0] : formData.payment_kind;
   const payment = product && kind ? coursePayment({ plan, kind, beforeAed, todayAed: money.aed }) : null;
-  // Full: the course's price fills in, in USD. Partial: what was paid today — in USD unless an amount was already typed.
-  const chooseKind = (k) => setFormData(f => (k === 'full'
-    ? { ...f, payment_kind: k, ...(plan.price ? { amount: String(plan.priceMoney.usd), currency: 'USD' } : {}) }
-    : { ...f, payment_kind: k, ...(f.payment_kind === 'full' || !f.amount ? { amount: '', currency: 'USD' } : {}) }));
-  const needsReceipt = formData.type !== 'WITHDRAWAL';   // money received: its receipt (a withdrawal has none yet)
+  /** The payments' amounts: `first` in the first, the others emptied — methods and receipts stay. */
+  const setAmounts = (first) => setPayments(rows => rows.map((p, i) => ({ ...p, amount: i === 0 ? first : '' })));
+  // Full: the course's price fills in the first payment, in USD. Partial: what was paid today — in USD unless an
+  // amount was already typed.
+  const chooseKind = (k) => {
+    if (k === 'full') {
+      setFormData(f => ({ ...f, payment_kind: k, ...(plan.price ? { currency: 'USD' } : {}) }));
+      if (plan.price) setAmounts(String(plan.priceMoney.usd));
+    } else {
+      const restart = formData.payment_kind === 'full' || !paymentsTotal(payments);
+      setFormData(f => ({ ...f, payment_kind: k, ...(restart ? { currency: 'USD' } : {}) }));
+      if (restart) setAmounts('');
+    }
+  };
 
   // Mentors (junior / senior / sub-junior / chief) for the "meeting conducted by"
   // picker — only from the submitter's own team (their Up Head chain). Admins
@@ -353,11 +369,17 @@ export default function FundingRequestForm({ students, allStudents = [], current
       return;
     }
 
+    // Money in: every payment with its method, amount and receipt — then the total.
+    const missing = takesPayments ? paymentsMissing(payments) : '';
+    if (missing) {
+      toast.error(missing);
+      return;
+    }
     if (!(money.usd > 0)) {
       toast.error('Enter the amount');
       return;
     }
-    if (!formData.payment_method) {
+    if (!takesPayments && !formData.payment_method) {
       toast.error('Select the payment method');
       return;
     }
@@ -368,10 +390,6 @@ export default function FundingRequestForm({ students, allStudents = [], current
     }
     if (!MT5_LOGIN.test(mt5)) {
       toast.error('The MT5 login is its number — digits only');
-      return;
-    }
-    if (needsReceipt && !formData.screenshot_url) {
-      toast.error('Upload the receipt');
       return;
     }
     if (product && loadingEarlier) {
@@ -398,6 +416,12 @@ export default function FundingRequestForm({ students, allStudents = [], current
 
     const dataToSubmit = {
       ...formData,
+      // Money in: every payment, and the first one's method and receipt where only one is read (./payments).
+      ...(takesPayments ? {
+        payments: paymentsToSave(payments, formData.currency),
+        payment_method: payments[0].method,
+        screenshot_url: payments[0].receipt_url,
+      } : {}),
       mt5_login: mt5,
       meeting_mentor_id: meetingMentor?.id || null,
       meeting_mentor_name: meetingMentor?.full_name || null,
@@ -406,7 +430,7 @@ export default function FundingRequestForm({ students, allStudents = [], current
       currency: undefined,
       payment_kind: undefined,
       amount_currency: formData.currency,
-      amount_original: Number(formData.amount) || 0,
+      amount_original: Number(typed) || 0,
       amount_aed: money.aed,
       amount_usd: money.usd,
       fx_rate_aed_per_usd: AED_PER_USD,
@@ -519,12 +543,11 @@ export default function FundingRequestForm({ students, allStudents = [], current
                     ? picked0.includes.filter(n => n && n !== primary)
                     : [];
                   const allTags = primary ? [primary, ...included] : [];
-                  // Full payment only (no instalments): its price fills in. Otherwise full or partial is asked next.
+                  // Full payment only (no instalments): its price fills in the first payment. Otherwise full or partial
+                  // is asked next.
                   const terms = coursePlan(picked0);
-                  setFormData({
-                    ...formData, tags: allTags, payment_kind: '',
-                    ...(terms.instalments === 0 && terms.price ? { amount: String(terms.priceMoney.usd) } : { amount: '' }), currency: 'USD',
-                  });
+                  setFormData({ ...formData, tags: allTags, payment_kind: '', currency: 'USD' });
+                  setAmounts(terms.instalments === 0 && terms.price ? String(terms.priceMoney.usd) : '');
                 }}
               />
               {formData.tags.length > 1 && (
@@ -544,33 +567,54 @@ export default function FundingRequestForm({ students, allStudents = [], current
             </div>
           )}
 
-          <CurrencyAmount
-            label={formData.type !== 'BONUS' ? 'Amount *' : kind === 'full' ? 'Full payment received *' : 'Payment received today *'}
-            amount={formData.amount}
-            currency={formData.currency}
-            onAmount={(v) => setFormData(f => ({ ...f, amount: v }))}
-            onCurrency={(v) => setFormData(f => ({ ...f, currency: v }))}
-          />
+          {takesPayments ? (
+            <div className="space-y-2 md:col-span-2">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <Label>{formData.type !== 'BONUS' ? 'Payments *' : kind === 'full' ? 'Full payment received *' : 'Payments received today *'}</Label>
+                <Select value={formData.currency} onValueChange={(v) => setFormData(f => ({ ...f, currency: v }))}>
+                  <SelectTrigger className="h-8 w-24" aria-label="Currency"><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="AED">AED</SelectItem>
+                    <SelectItem value="USD">USD</SelectItem>
+                    <SelectItem value="INR">INR</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              {/* Part by card, part in cash: each payment with its method, amount and receipt, in the one currency */}
+              <PaymentRows rows={payments} onChange={setPayments} currency={formData.currency} />
+              <p className="text-xs text-muted-foreground">
+                {typed > 0 ? `Total ${moneyText(typed, formData.currency)} = ${otherMoney(money, formData.currency)} · ` : ''}{rateText(formData.currency)}
+              </p>
+            </div>
+          ) : (<>
+            <CurrencyAmount
+              label="Amount *"
+              amount={formData.amount}
+              currency={formData.currency}
+              onAmount={(v) => setFormData(f => ({ ...f, amount: v }))}
+              onCurrency={(v) => setFormData(f => ({ ...f, currency: v }))}
+            />
 
-          <div className="space-y-2">
-            <Label htmlFor="payment_method">Payment Method *</Label>
-            <Select
-              value={formData.payment_method}
-              onValueChange={(value) => setFormData({ ...formData, payment_method: value })}
-              required
-            >
-              <SelectTrigger>
-                <SelectValue placeholder="Select payment method" />
-              </SelectTrigger>
-              <SelectContent>
-                {PAYMENT_METHODS.map((method) => (
-                  <SelectItem key={method} value={method}>
-                    {method}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
+            <div className="space-y-2">
+              <Label htmlFor="payment_method">Payment Method *</Label>
+              <Select
+                value={formData.payment_method}
+                onValueChange={(value) => setFormData({ ...formData, payment_method: value })}
+                required
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Select payment method" />
+                </SelectTrigger>
+                <SelectContent>
+                  {PAYMENT_METHODS.map((method) => (
+                    <SelectItem key={method} value={method}>
+                      {method}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          </>)}
 
           <CoursePaymentPanel product={product} plan={plan} payment={payment} className="md:col-span-2" />
 
@@ -597,24 +641,23 @@ export default function FundingRequestForm({ students, allStudents = [], current
             onChange={(v) => setFormData(f => ({ ...f, mt5_login: v }))}
           />
 
-          <div className="space-y-2">
-            <Label htmlFor="screenshot">{needsReceipt ? 'Receipt *' : 'Receipt (Optional)'}</Label>
-            <div className="flex items-center gap-2">
-              <Input
-                id="screenshot"
-                type="file"
-                accept="image/*,application/pdf"
-                onChange={handleFileUpload}
-                disabled={uploading}
-              />
-              {uploading && <Loader2 className="h-4 w-4 animate-spin" />}
+          {/* A withdrawal's receipt, if there is one yet — money in has a receipt on each payment above */}
+          {!takesPayments && (
+            <div className="space-y-2">
+              <Label htmlFor="screenshot">Receipt (Optional)</Label>
+              <div className="flex items-center gap-2">
+                <Input
+                  id="screenshot"
+                  type="file"
+                  accept="image/*,application/pdf"
+                  onChange={handleFileUpload}
+                  disabled={uploading}
+                />
+                {uploading && <Loader2 className="h-4 w-4 animate-spin" />}
+              </div>
+              {formData.screenshot_url && <p className="text-xs text-green-600">✓ Receipt uploaded</p>}
             </div>
-            {formData.screenshot_url ? (
-              <p className="text-xs text-green-600">✓ Receipt uploaded</p>
-            ) : needsReceipt && (
-              <p className="text-xs text-muted-foreground">A photo, screenshot or PDF of the payment receipt.</p>
-            )}
-          </div>
+          )}
         </div>
 
         <div className="flex justify-end gap-3 pt-4">

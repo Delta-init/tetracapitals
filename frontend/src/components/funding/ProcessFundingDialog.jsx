@@ -9,16 +9,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Button } from "@/components/ui/button";
 import { CheckCircle, XCircle } from "lucide-react";
 import TagsPicker from "./TagsPicker";
-
-const DEPOSIT_PAYMENT_METHODS = [
-  'AED TRANSFER',
-  'UPI',
-  'CARD PAYMENT',
-  'USDT',
-  'INR TRANSFER',
-  'Cash deposit',
-  'Other'
-];
+import { DEPOSIT_METHODS as DEPOSIT_PAYMENT_METHODS, PaymentsList, paymentsOf } from "./payments";
 
 const WITHDRAWAL_PAYMENT_METHODS = [
   'AED TRANSFER',
@@ -436,17 +427,11 @@ export default function ProcessFundingDialog({ transaction, open, onClose, onPro
             </div>
           </div>
 
-          {transaction.screenshot_url && (
+          {/* How it was paid — each payment with its method, amount and receipt */}
+          {paymentsOf(transaction).some(p => p.receipt_url) && (
             <div className="space-y-2">
-              <Label>Screenshot</Label>
-              <a
-                href={transaction.screenshot_url}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="text-blue-600 hover:text-blue-800 text-sm underline"
-              >
-                View Screenshot
-              </a>
+              <Label>{paymentsOf(transaction).length > 1 ? `Payments (${paymentsOf(transaction).length})` : 'Payment receipt'}</Label>
+              <PaymentsList tx={transaction} />
             </div>
           )}
 

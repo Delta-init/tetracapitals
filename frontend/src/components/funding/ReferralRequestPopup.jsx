@@ -19,7 +19,7 @@ import {
 
 import { toast } from "sonner";
 
-const PAYMENT_METHODS = ['AED TRANSFER','UPI','CARD PAYMENT','USDT','INR TRANSFER','Cash deposit','Other'];
+const PAYMENT_METHODS = ['AED TRANSFER','UPI','CARD PAYMENT','USDT','INR TRANSFER','Cash deposit','Pay by link','Cash','Bank Transfer','Cheque','Card','Easebuzz EMI','Tabby','Tamara','BillExPro','Other'];
 
 export default function ReferralRequestPopup({ student, currentUser, onClose, transactionType = 'DEPOSIT', initialTags = [] }) {
   const isBonus = transactionType === 'BONUS';

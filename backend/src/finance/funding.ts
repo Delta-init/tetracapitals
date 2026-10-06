@@ -115,6 +115,10 @@ export function bonusMissing(doc: any): string | null {
   if (doc?.type !== "BONUS" || doc?.bonus_credit) return null;
   if (!String(doc.mt5_login ?? "").trim()) return "A bonus needs the student's MT5 login";
   if (!String(doc.screenshot_url ?? "").trim()) return "A bonus needs the payment receipt";
+  // Paid in several payments (the user, 2026-10-06): each with its own receipt.
+  if (Array.isArray(doc.payments) && doc.payments.some((p: any) => !String(p?.receipt_url ?? "").trim())) {
+    return "Every payment of a bonus needs its receipt";
+  }
   return null;
 }
 
@@ -194,6 +198,35 @@ function coursePaymentOf(cp: any) {
   };
 }
 
+/** Finance's limit on a request's notes (its tetra-deposit schema) — longer, and it refuses the request for good. */
+const NOTES_MAX = 2000;
+const twoPlaces = (n: number) => n.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
+/**
+ * The notes, and — paid in several payments (the user, 2026-10-06; frontend components/funding/payments.jsx) — every
+ * payment with its method, amount and receipt: finance takes one method and one receipt, the first payment's. Within
+ * finance's 2,000 characters; the payments that don't fit are counted instead.
+ */
+export function notesForFinance(tx: any): string {
+  const notes = String(tx?.notes ?? "").trim();
+  const list: any[] = Array.isArray(tx?.payments) ? tx.payments : [];
+  if (list.length < 2) return notes.slice(0, NOTES_MAX);
+  const lines = list.map((p, i) => {
+    const currency = /^[A-Z]{3}$/.test(String(p?.currency ?? "")) ? `${p.currency} ` : "";
+    const receipt = /^https?:\/\//i.test(String(p?.receipt_url ?? "")) ? String(p.receipt_url) : "no receipt";
+    return `${i + 1}. ${String(p?.method ?? "").trim().slice(0, 60) || "Payment"} · ${currency}${twoPlaces(Number(p?.amount) || 0)} · ${receipt}`;
+  });
+  const more = (n: number) => `\n… and ${n} more — every receipt is on the request in Tetra Commission`;
+  let out = [notes, `Paid in ${list.length} payments:`].filter(Boolean).join("\n\n");
+  for (const [i, line] of lines.entries()) {
+    const after = lines.length - i - 1;
+    // This one, with room left to say how many didn't fit — the last needs no such room.
+    if ((out + "\n" + line + (after ? more(after) : "")).length <= NOTES_MAX) out += `\n${line}`;
+    else return (out + more(lines.length - i)).slice(0, NOTES_MAX);
+  }
+  return out.slice(0, NOTES_MAX);
+}
+
 /** What the accountants see: the request, the student, and the proof. */
 async function depositPayload(tx: any) {
   const sid = tx.student_id ? toObjectId(String(tx.student_id)) : null;
@@ -221,13 +254,14 @@ async function depositPayload(tx: any) {
       level: String(student?.student_level ?? ""),
     },
     team: String(student?.team_name ?? ""),
+    // Paid in several payments: the first one's method and receipt here, and all of them in the notes.
     paymentMethod: String(tx.payment_method ?? ""),
     mt5Login: String(tx.mt5_login ?? ""),
     mt5Accounts: accounts
       .map((a: any) => ({ login: String(a.mt5_login ?? ""), platform: String(a.platform ?? "") }))
       .filter((a) => a.login),
     screenshotUrl: String(tx.screenshot_url ?? ""),
-    notes: String(tx.notes ?? ""),
+    notes: notesForFinance(tx),
     requestedAt: String(tx.requested_at || tx.created_date || new Date().toISOString()),
     requestedBy: String(tx.requested_by_name ?? ""),
     initiatingMentor: String(tx.initiating_mentor_name ?? ""),

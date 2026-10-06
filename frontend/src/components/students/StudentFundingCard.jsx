@@ -2,22 +2,21 @@ import { useMemo, useState } from 'react';
 import { format } from 'date-fns';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { Button } from '@/components/ui/button';
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Paged, TablePagination } from '@/components/common/TablePagination';
-import { Eye, TrendingDown, TrendingUp, Wallet } from 'lucide-react';
+import { TrendingDown, TrendingUp, Wallet } from 'lucide-react';
 import TagChips from '@/components/funding/TagChips';
 import { PaymentDetails } from '@/components/funding/FundingRequestForm';
 import { useFinanceLink, WithAccountsBadge, FinanceApprovalNote } from '@/components/funding/FinanceApproval';
+import { ReceiptsButton, methodsText } from '@/components/funding/payments';
 import { isWithAccounts } from '@/components/utils/FundingAccessControl';
 
 /* ────────────────────────────────────────────────────────────────────────────
    A student's funding requests, every one (the user, 2026-10-05): deposits,
    withdrawals and bonuses — the sales-close bonus credits too — pending,
    approved and rejected, with what each came with: the product, the MT5 login,
-   the receipt, who raised it, and why one was turned down. The totals are the
-   approved deposits and withdrawals, as before.
+   its payments and their receipts, who raised it, and why one was turned down.
+   The totals are the approved deposits and withdrawals, as before.
 ──────────────────────────────────────────────────────────────────────────── */
 
 const STATUSES = { all: 'All', PENDING: 'Pending', APPROVED: 'Approved', REJECTED: 'Rejected' };
@@ -50,7 +49,6 @@ export default function StudentFundingCard({ student, transactions = [], loading
   const financeOn = useFinanceLink();
   const [status, setStatus] = useState('all');
   const [type, setType] = useState('all');
-  const [receipt, setReceipt] = useState(null);   // { url, name, failed? } — the receipt being looked at
 
   const approved = (t) => t.status === 'APPROVED';
   const totalDeposits = transactions.filter(t => t.type === 'DEPOSIT' && approved(t)).reduce((s, t) => s + (t.amount_usd || 0), 0);
@@ -129,7 +127,7 @@ export default function StudentFundingCard({ student, transactions = [], loading
                             <Badge variant="outline" className={`whitespace-nowrap ${TYPE_STYLE[txn.type] || ''}`}>{typeLabel(txn)}</Badge>
                           </td>
                           <td className="whitespace-nowrap p-3 text-sm font-semibold text-gray-900">{money(txn.amount_usd)}<PaymentDetails tx={txn} /></td>
-                          <td className="p-3 text-sm">{txn.payment_method || '-'}</td>
+                          <td className="p-3 text-sm">{methodsText(txn) || '-'}</td>
                           <td className="p-3 font-mono text-sm">{txn.mt5_login || '-'}</td>
                           <td className="p-3 font-mono text-sm">{txn.transaction_id || '-'}</td>
                           <td className="p-3 text-sm">{txn.tags?.length ? <TagChips tags={txn.tags} /> : <span className="text-gray-400">-</span>}</td>
@@ -144,12 +142,7 @@ export default function StudentFundingCard({ student, transactions = [], loading
                             {txn.status === 'REJECTED' && txn.rejection_reason ? <span className="font-medium text-red-600">{txn.rejection_reason}</span> : <span className="text-gray-400">-</span>}
                           </td>
                           <td className="p-3 text-sm">
-                            {txn.screenshot_url ? (
-                              <Button size="sm" variant="outline" className="h-7 gap-1 px-2 text-xs"
-                                onClick={() => setReceipt({ url: txn.screenshot_url, name: `${typeLabel(txn)} · ${money(txn.amount_usd)}` })}>
-                                <Eye className="h-3.5 w-3.5" /> View
-                              </Button>
-                            ) : <span className="text-gray-400">-</span>}
+                            <ReceiptsButton tx={txn} title={`${typeLabel(txn)} · ${money(txn.amount_usd)}`} />
                           </td>
                         </tr>
                       ))}
@@ -162,22 +155,6 @@ export default function StudentFundingCard({ student, transactions = [], loading
           )}
         </CardContent>
       </Card>
-
-      {/* A request's receipt: a photo shows here, a PDF in its viewer, anything else opens in a new tab */}
-      <Dialog open={!!receipt} onOpenChange={(o) => { if (!o) setReceipt(null); }}>
-        <DialogContent className="max-w-3xl">
-          <DialogHeader>
-            <DialogTitle>Receipt{receipt?.name ? ` · ${receipt.name}` : ''}</DialogTitle>
-          </DialogHeader>
-          {receipt && (/\.pdf($|\?)/i.test(receipt.url)
-            ? <iframe src={receipt.url} title="Receipt" className="h-[70vh] w-full rounded-md border" />
-            : receipt.failed
-              ? <p className="text-sm text-gray-500">This receipt cannot be shown here — open it in a new tab.</p>
-              : <img src={receipt.url} alt="Receipt" className="max-h-[70vh] w-full rounded-md border object-contain"
-                  onError={() => setReceipt(r => (r ? { ...r, failed: true } : r))} />)}
-          {receipt && <a href={receipt.url} target="_blank" rel="noopener noreferrer" className="text-sm text-blue-600 hover:underline">Open in a new tab</a>}
-        </DialogContent>
-      </Dialog>
     </div>
   );
 }

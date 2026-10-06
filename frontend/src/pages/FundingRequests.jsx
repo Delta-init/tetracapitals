@@ -32,6 +32,7 @@ import { toast } from "sonner";
 import { format } from "date-fns";
 import { logAction } from "../components/utils/AuditLogger";
 import { PaymentDetails } from "../components/funding/FundingRequestForm";
+import { ReceiptsButton, methodsOf, methodsText } from "../components/funding/payments";
 
 export default function FundingRequests() {
   const [currentUser, setCurrentUser] = useState(null);
@@ -53,7 +54,6 @@ export default function FundingRequests() {
   const [selectedIds, setSelectedIds] = useState([]);
   const [isBulkProcessing, setIsBulkProcessing] = useState(false);
   const [creditsTx, setCreditsTx] = useState(null); // transaction whose commission breakdown is open
-  const [receipt, setReceipt] = useState(null);     // { url, name } — the receipt being looked at
 
   const queryClient = useQueryClient();
   // New deposits are approved by Delta Finance's accountants: while they have
@@ -201,7 +201,8 @@ export default function FundingRequests() {
     });
   }
   if (filterPaymentMethod !== 'all') {
-    filteredTransactions = filteredTransactions.filter(t => t.payment_method === filterPaymentMethod);
+    // Any of its payments' methods — part by card and part in cash is under both.
+    filteredTransactions = filteredTransactions.filter(t => methodsOf(t).includes(filterPaymentMethod));
   }
   if (filterTag !== 'all') {
     filteredTransactions = filteredTransactions.filter(t => Array.isArray(t.tags) && t.tags.includes(filterTag));
@@ -245,7 +246,7 @@ export default function FundingRequests() {
   const uniqueMentors = [...new Set(transactions.map(t => t.primary_mentor_name))].filter(Boolean);
   
   // Get unique payment methods for filter
-  const uniquePaymentMethods = [...new Set(transactions.map(t => t.payment_method))].filter(Boolean).sort();
+  const uniquePaymentMethods = [...new Set(transactions.flatMap(t => methodsOf(t)))].filter(Boolean).sort();
 
   const canProcess = canProcessFundingTransaction(currentUser.app_role);
   const canCreate = canCreateFundingTransaction(currentUser.app_role);
@@ -494,7 +495,7 @@ export default function FundingRequests() {
           escapeCSV(t.meeting_mentor_name || ''),
           escapeCSV(t.mt5_login || ''),
           escapeCSV(t.amount_usd?.toFixed(2) || '0.00'),
-          escapeCSV(t.payment_method || ''),
+          escapeCSV(methodsText(t)),
           escapeCSV(tagsStr),
           escapeCSV(t.user_id || ''),
           escapeCSV(t.transaction_id || ''),
@@ -896,7 +897,7 @@ export default function FundingRequests() {
                           ${transaction.amount_usd?.toFixed(2)}
                           <PaymentDetails tx={transaction} />
                         </TableCell>
-                        <TableCell className="text-sm">{transaction.payment_method}</TableCell>
+                        <TableCell className="text-sm">{methodsText(transaction)}</TableCell>
                         <TableCell>
                           {transaction.tags && transaction.tags.length > 0
                             ? <TagChips tags={transaction.tags} />
@@ -907,12 +908,8 @@ export default function FundingRequests() {
                           {transaction.transaction_id || '-'}
                         </TableCell>
                         <TableCell className="text-sm">
-                          {transaction.screenshot_url ? (
-                            <Button size="sm" variant="outline" className="h-7 gap-1 px-2 text-xs"
-                              onClick={() => setReceipt({ url: transaction.screenshot_url, name: transaction.student_name })}>
-                              <Eye className="h-3.5 w-3.5" /> View
-                            </Button>
-                          ) : <span className="text-gray-400">-</span>}
+                          {/* Every payment's receipt — "View (2)" for two */}
+                          <ReceiptsButton tx={transaction} title={transaction.student_name} />
                         </TableCell>
                         <TableCell className="text-sm">
                           {transaction.approved_by_name ? (
@@ -1054,22 +1051,6 @@ export default function FundingRequests() {
         </Dialog>
 
         {/* Add Transaction Dialog */}
-        {/* A request's receipt: a photo shows here, a PDF in its viewer, anything else opens in a new tab */}
-        <Dialog open={!!receipt} onOpenChange={(o) => { if (!o) setReceipt(null); }}>
-          <DialogContent className="max-w-3xl">
-            <DialogHeader>
-              <DialogTitle>Receipt{receipt?.name ? ` · ${receipt.name}` : ''}</DialogTitle>
-            </DialogHeader>
-            {receipt && (/\.pdf($|\?)/i.test(receipt.url)
-              ? <iframe src={receipt.url} title="Receipt" className="h-[70vh] w-full rounded-md border" />
-              : receipt.failed
-                ? <p className="text-sm text-gray-500">This receipt cannot be shown here — open it in a new tab.</p>
-                : <img src={receipt.url} alt="Receipt" className="max-h-[70vh] w-full rounded-md border object-contain"
-                    onError={() => setReceipt(r => (r ? { ...r, failed: true } : r))} />)}
-            {receipt && <a href={receipt.url} target="_blank" rel="noopener noreferrer" className="text-sm text-blue-600 hover:underline">Open in a new tab</a>}
-          </DialogContent>
-        </Dialog>
-
         <AddTransactionDialog
           open={showAddDialog}
           onClose={() => setShowAddDialog(false)}
