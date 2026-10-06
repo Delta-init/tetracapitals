@@ -138,9 +138,9 @@ async function courseFilter(value: string): Promise<Record<string, any> | null> 
   return null;
 }
 
-/* "Follow-up today" (the user, 2026-10-06): due today and not called yet — they drop off once the call is logged —
-   or called today. Called = a follow-up logged today, or opened today with what they said: the Follow-ups page's
-   Done today. Today is the follow-ups' business day (students/followups.ts BUSINESS_OFFSET_MS). */
+/* "Follow-up today" (the user, 2026-10-06): due today or overdue and not called yet — they drop off once the call is
+   logged — or called today. Called = a follow-up logged today, or opened today with what they said: the Follow-ups
+   page's Done today. Today is the follow-ups' business day (students/followups.ts BUSINESS_OFFSET_MS). */
 const FOLLOWUP_FILTERS = new Set(["due_not_called", "called_today"]);
 const BUSINESS_OFFSET_MS = 330 * 60_000;
 
@@ -153,7 +153,8 @@ async function followupFilter(which: string): Promise<Record<string, any>> {
   const called = new Set((await col("student_followups").distinct("student_id", calledToday)).map(String));
   const ids = which === "called_today"
     ? [...called]
-    : (await col("student_followups").distinct("student_id", { next_followup_date: today, stage: { $nin: ["Converted", "Lost"] } }))
+    // Due today or before ("" is no date — not due), still open.
+    : (await col("student_followups").distinct("student_id", { next_followup_date: { $gt: "", $lte: today }, stage: { $nin: ["Converted", "Lost"] } }))
       .map(String).filter((id) => !called.has(id));
   return { _id: { $in: ids.map((id) => toObjectId(id)).filter(Boolean) } };
 }

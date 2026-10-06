@@ -719,15 +719,15 @@ export default function Students() {
                 </SelectContent>
               </Select>
 
-              {/* Today's follow-up — everyone, on every tab: due today and not called yet (gone once the call is logged),
-                  or called today (backend studentsList.ts) */}
+              {/* Today's follow-up — everyone, on every tab: due today or overdue and not called yet (gone once the call is
+                  logged), or called today (backend studentsList.ts) */}
               <Select value={filterFollowup} onValueChange={(v) => v && setFilterFollowup(v)}>
-                <SelectTrigger className="w-full md:w-56">
+                <SelectTrigger className="w-full md:w-64">
                   <SelectValue placeholder="Follow-up today" />
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="all">Any follow-up</SelectItem>
-                  <SelectItem value="due_not_called">Due today · not called yet</SelectItem>
+                  <SelectItem value="due_not_called">Due or overdue · not called yet</SelectItem>
                   <SelectItem value="called_today">Called today</SelectItem>
                 </SelectContent>
               </Select>
