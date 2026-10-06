@@ -158,9 +158,16 @@ export function LogFollowupDialog({ followup, onClose, onSaved }) {
   const mt5s = past?.mt5 || [];
   // After a call from the Not onboarded page: did it connect? Not connected — the MT5 not required, next follow-up today.
   const askConnected = !!followup?.ask_connected;
-  // Required only on that onboarding call, once it connected, for a student with none saved; optional on every other
-  // follow-up (the user, 2026-10-06).
-  const needsMt5 = !!past && mt5s.length === 0 && askConnected && form.connected === 'yes';
+  // The onboarding call: that one, or the call after the welcome — CallFlow's suggested outcome, or a follow-up opened for it.
+  const onboardingCall = askConnected || (followup?.suggested_outcome || followup?.target_outcome) === 'Onboarding call';
+  // A bonus finance says was given at the sales close — raised to be credited in the MT5 given (backend logFollowup).
+  const bonusGiven = (past?.sales_bonus || []).some(b => b.given && b.amount > 0);
+  // Required on the onboarding call only, for a student with none saved: from the Not onboarded page once it connected,
+  // after the welcome only when they have that bonus; optional on every other follow-up (the user, 2026-10-06).
+  const needsMt5 = !!past && mt5s.length === 0 && (askConnected ? form.connected === 'yes' : onboardingCall && bonusGiven);
+  // Where that bonus goes, their primary is picked for them: on the Not onboarded page's call, and after the welcome
+  // when they have the bonus.
+  const picksPrimary = askConnected || (onboardingCall && bonusGiven);
 
   useEffect(() => {
     if (!followup) return;
@@ -180,17 +187,17 @@ export function LogFollowupDialog({ followup, onClose, onSaved }) {
     });
   }, [followup]);
 
-  // On the onboarding call their primary MT5 is picked for them — the sales-close bonus is credited in the one given.
-  // Picked here, after the reset above: the field's own effect runs first and would be wiped by it.
+  // Their primary MT5 picked for them (picksPrimary), once their logins and bonus are known. Picked here, after the
+  // reset above: the field's own effect runs first and would be wiped by it.
   const { data: mt5Accounts = [], isFetched: mt5Fetched } = useStudentMt5(followup?.student_id);
   const pickedFor = useRef(null);
   useEffect(() => {
     if (!followup) { pickedFor.current = null; return; }
-    if (!askConnected || !mt5Fetched || pickedFor.current === followup) return;
+    if (!mt5Fetched || !past || pickedFor.current === followup) return;
     pickedFor.current = followup;
     const primary = mt5Accounts[0]?.mt5_login;
-    if (primary) setForm(f => (f.mt5 ? f : { ...f, mt5: String(primary) }));
-  }, [followup, mt5Fetched]);
+    if (picksPrimary && primary) setForm(f => (f.mt5 ? f : { ...f, mt5: String(primary) }));
+  }, [followup, mt5Fetched, past]);
 
   const set = (k) => (v) => setForm(f => ({ ...f, [k]: v?.target ? v.target.value : v }));
   const closed = form.stage === 'Converted' || form.stage === 'Lost';
@@ -200,7 +207,10 @@ export function LogFollowupDialog({ followup, onClose, onSaved }) {
     if (form.stage === 'Converted' && (form.dealValue === '' || Number(form.dealValue) < 0)) { setError('Enter the deal value.'); return; }
     if (askConnected && !form.connected) { setError('Did the call connect? Pick Connected or Not connected.'); return; }
     const mt5 = String(form.mt5 || '').replace(/\s+/g, '');
-    if (needsMt5 && !MT5_LOGIN.test(mt5)) { setError("Enter the student's MT5 ID — its login number, digits only. The onboarding call needs one until they have one saved."); return; }
+    if (needsMt5 && !MT5_LOGIN.test(mt5)) {
+      setError(`Enter the student's MT5 ID — its login number, digits only. ${askConnected ? 'The onboarding call needs one until they have one saved.' : 'Their sales-close bonus is credited in it.'}`);
+      return;
+    }
     // Picked or typed even when not needed: kept as theirs (a saved one stays as it is) — so a login number too.
     const sendMt5 = !!mt5;
     if (sendMt5 && !MT5_LOGIN.test(mt5)) { setError("The MT5 ID is its login number — digits only."); return; }
@@ -280,8 +290,8 @@ export function LogFollowupDialog({ followup, onClose, onSaved }) {
 
         <div className="grid gap-3 sm:grid-cols-2">
           <div className="space-y-1.5">
-            {/* Their saved logins to pick, or a new one typed. Picked for them only on the onboarding call (above) — where
-                the sales-close bonus is credited in the one given; an ordinary follow-up leaves it to the CS. */}
+            {/* Their saved logins to pick, or a new one typed. Picked for them only where the sales-close bonus is credited
+                in the one given (picksPrimary, above); an ordinary follow-up leaves it to the CS. */}
             <Mt5LoginField
               id="log-mt5"
               studentId={followup?.student_id}
@@ -291,7 +301,7 @@ export function LogFollowupDialog({ followup, onClose, onSaved }) {
               prefill={false}
               newNote="saved as their MT5 account"
             />
-            {askConnected && mt5s.length > 0 && <p className="text-[11px] text-slate-400">A sales-close bonus is credited in the one picked</p>}
+            {picksPrimary && mt5s.length > 0 && <p className="text-[11px] text-slate-400">A sales-close bonus is credited in the one picked</p>}
           </div>
           <SalesBonusNote bonuses={past?.sales_bonus} />
         </div>
