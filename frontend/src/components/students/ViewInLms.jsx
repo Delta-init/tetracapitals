@@ -4,19 +4,25 @@ import { base44 } from '@/api/base44Client';
 import { Button } from '@/components/ui/button';
 import { ExternalLink, Loader2, LogIn } from 'lucide-react';
 import { isMentorRole, readsClosedOnly } from '@/components/utils/roles';
+import { isStudentOf } from '@/components/students/common';
 
 /* ────────────────────────────────────────────────────────────────────────────
    View as student (the user, 2026-10-06): the student's own Delta LMS as they
    see it, in a new tab — read-only, so nothing can be changed there, and the
    LMS shows whose view it is on a banner. The link works once, for a minute;
-   the view lasts 30 minutes, and the LMS's admins can see and end it. A CS
-   their own students, the Super Admin anyone's — as LMS Requests
-   (backend/src/functions/lmsEnrolmentRequests.ts viewStudentInLms).
+   the view lasts 30 minutes, and the LMS's admins can see and end it. Only
+   the student's own CS — both, for a Common student — not their leaders; the
+   Super Admin anyone's (backend/src/functions/lmsEnrolmentRequests.ts
+   viewStudentInLms).
 ──────────────────────────────────────────────────────────────────────────── */
 
 /** Whether someone may view students in the LMS at all: the Super Admin, CSs and their leaders — not the Sales role. */
 export const canViewInLms = (user) =>
   !!user && (user.app_role === 'super_admin' || (isMentorRole(user.app_role) && !readsClosedOnly(user)));
+
+/** Whether someone may view this student in the LMS: the Super Admin, or the student's own CS (or a CS they're Common with). */
+export const mayViewInLms = (user, student) =>
+  canViewInLms(user) && (user.app_role === 'super_admin' || isStudentOf(student, user.id));
 
 const WAITING = `<!doctype html><title>Opening the LMS…</title>
 <body style="margin:0;height:100vh;display:grid;place-items:center;font:15px system-ui,sans-serif;color:#64748b">Opening the student's LMS…</body>`;

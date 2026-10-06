@@ -3,7 +3,7 @@ import { json, error, forbidden, notFound } from "../lib/response";
 import { toObjectId } from "../lib/id";
 import type { AuthUser } from "../auth/middleware";
 import { isMentorRole } from "../lib/roles";
-import { visibleMentorIds, studentsOf } from "../students/followups";
+import { visibleMentorIds, studentsOf, isStudentOf } from "../students/followups";
 import { seesClosedOnly } from "../students/closedBy";
 import { recordHistory } from "../students/history";
 import { callLms, lmsConfigured, LmsError } from "../lib/lms";
@@ -29,7 +29,7 @@ const LMS_PAGE = 100;
 const PAGE = 50;
 const STATUSES = new Set(["pending", "approved", "rejected", "all"]);
 const str = (v: unknown, max = 200) => String(v ?? "").trim().slice(0, max);
-const who = (u: AuthUser) => u.full_name || u.email || "somebody";
+export const who = (u: AuthUser) => u.full_name || u.email || "somebody";
 const emailOf = (v: unknown) => {
   const e = String(v ?? "").trim().toLowerCase();
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(e) ? e : "";
@@ -53,10 +53,13 @@ async function theirStudents(user: AuthUser): Promise<Record<string, any>> {
   return ids ? studentsOf(ids) : {};
 }
 
-const STUDENT_FIELDS = { full_name: 1, student_code: 1, email: 1, primary_mentor_name: 1, team_name: 1 };
-/** A request's student here, as the page links them: who they are, whose they are. */
-const studentCard = (s: any) =>
-  s ? { id: String(s._id), name: str(s.full_name), code: str(s.student_code, 40), cs: str(s.primary_mentor_name), team: str(s.team_name) } : null;
+const STUDENT_FIELDS = { full_name: 1, student_code: 1, email: 1, primary_mentor_name: 1, team_name: 1, primary_mentor_id: 1, common_cs: 1 };
+/** A request's student here, as the page links them: who they are, whose they are — and whether they're the asker's own (their CS, or Common with them). */
+const studentCard = (s: any, user?: AuthUser) =>
+  s ? {
+    id: String(s._id), name: str(s.full_name), code: str(s.student_code, 40), cs: str(s.primary_mentor_name), team: str(s.team_name),
+    yours: !!user && isStudentOf(s, new Set([user.id])),
+  } : null;
 
 /** The students in `scope` with an email, one an address. */
 async function studentsByEmail(scope: Record<string, any> | null): Promise<Map<string, any>> {
@@ -130,7 +133,7 @@ export async function getLmsEnrolmentRequests(req: Request, user: AuthUser): Pro
       const here = await studentsWithEmails(requests.map((q) => emailOf(q.email)).filter(Boolean));
       return json({
         configured: true, available: true, reach, page, perPage: PAGE, total: Number(r?.total ?? 0),
-        requests: requests.map((q) => ({ ...q, student: studentCard(here.get(emailOf(q.email))) })),
+        requests: requests.map((q) => ({ ...q, student: studentCard(here.get(emailOf(q.email)), user) })),
       });
     }
     const byEmail = await studentsByEmail(await theirStudents(user));
@@ -138,7 +141,7 @@ export async function getLmsEnrolmentRequests(req: Request, user: AuthUser): Pro
       .sort((a, b) => String(b.appliedAt ?? "").localeCompare(String(a.appliedAt ?? "")));
     return json({
       configured: true, available: true, reach, page, perPage: PAGE, total: found.length,
-      requests: found.slice((page - 1) * PAGE, page * PAGE).map((q) => ({ ...q, student: studentCard(byEmail.get(emailOf(q.email))) })),
+      requests: found.slice((page - 1) * PAGE, page * PAGE).map((q) => ({ ...q, student: studentCard(byEmail.get(emailOf(q.email)), user) })),
     });
   } catch (err) {
     return json({ configured: true, available: false, message: lmsTrouble(err), ...empty });
@@ -202,7 +205,7 @@ async function requestFor(body: any, user: AuthUser): Promise<{ userId: string; 
 }
 
 /** The LMS's refusal, passed on in its own words (finance doesn't know them, not waiting any more, no account to act from). */
-const lmsRefusal = (err: unknown) =>
+export const lmsRefusal = (err: unknown) =>
   err instanceof LmsError ? error(err.message.replace(/^The LMS would not [^:]+: /, ""), err.status === 502 ? 502 : 409) : error("The LMS could not be asked", 502);
 
 /** POST /api/functions/getLmsEnrolmentRequest { userId, email } — one request, with the whole application. → { request, student } */
@@ -213,7 +216,7 @@ export async function getLmsEnrolmentRequest(req: Request, user: AuthUser): Prom
     const { request } = await callLms<{ request: any }>(`/enrolment-requests/${found.userId}`, {
       method: "POST", body: { email: found.email }, verb: "share the request",
     });
-    return json({ request, student: studentCard(found.student) });
+    return json({ request, student: studentCard(found.student, user) });
   } catch (err) {
     return lmsRefusal(err);
   }
@@ -239,34 +242,41 @@ export async function getLmsEnrolmentDocument(req: Request, user: AuthUser): Pro
 }
 
 /**
- * POST /api/functions/approveLmsEnrolmentRequest { userId, email }
- * Let them in on Forex in the LMS, as its admin's approve does — they're told by email and WhatsApp. Noted in
- * their history here. → { request, from: "own" | "shared", already? }
+ * POST /api/functions/approveLmsEnrolmentRequest { userId, email, courses? }
+ * Let them in on Forex in the LMS, as its admin's approve does — they're told by email and WhatsApp — and with
+ * `courses` ([{ courseId, locked }]) put them on those Forex courses at once, the modules picked locked (the LMS checks
+ * every one first: one it can't give approves nobody). Noted in their history here.
+ * → { request, from: "own" | "shared", already?, courses: { given, already } | null }
  */
 export async function approveLmsEnrolmentRequest(req: Request, user: AuthUser): Promise<Response> {
-  const found = await requestFor(await req.json().catch(() => ({})), user);
+  const body: any = await req.json().catch(() => ({}));
+  const found = await requestFor(body, user);
   if (found instanceof Response) return found;
-  let answer: { request: any; from?: string; already?: boolean };
+  const courses = Array.isArray(body?.courses) && body.courses.length ? body.courses : undefined;
+  let answer: { request: any; from?: string; already?: boolean; courses?: { given: string[]; already: string[] } };
   try {
     answer = await callLms(`/enrolment-requests/${found.userId}/approve`, {
-      method: "POST", body: { email: found.email, byName: who(user), byEmail: user.email }, verb: "approve the request",
+      method: "POST", body: { email: found.email, byName: who(user), byEmail: user.email, ...(courses ? { courses } : {}) }, verb: "approve the request",
     });
   } catch (err) {
     return lmsRefusal(err);
   }
   pendingCounts.clear();   // the sidebar's number changes
-  if (found.student && !answer.already) {
+  const given = answer.courses?.given ?? [];
+  if (found.student && (!answer.already || given.length)) {
+    const on = given.length ? ` — on ${given.join(", ")}` : "";
     await recordHistory([{
       student_id: String(found.student._id),
       at: new Date().toISOString(),
       type: "lms_enrolment",
-      text: "Approved their LMS enrolment request — in on Forex",
+      text: answer.already ? `Put on LMS course${given.length > 1 ? "s" : ""}: ${given.join(", ")}` : `Approved their LMS enrolment request — in on Forex${on}`,
       by_id: user.id,
       by_name: who(user),
-      to: { status: "approved", from: answer.from ?? "" },
+      to: { status: "approved", from: answer.from ?? "", ...(given.length ? { courses: given } : {}) },
     }]);
   }
-  return json({ request: answer.request, from: answer.from ?? "", already: !!answer.already });
+  // An LMS without course access yet approves and ignores the courses: said, not dropped quietly.
+  return json({ request: answer.request, from: answer.from ?? "", already: !!answer.already, courses: answer.courses ?? null, coursesSkipped: !!courses && !answer.courses });
 }
 
 /**
@@ -308,43 +318,60 @@ export async function rejectLmsEnrolmentRequest(req: Request, user: AuthUser): P
  * The student's own LMS as they see it, READ-ONLY, in a new tab (the user, 2026-10-06) — the LMS admin's "view as
  * student", started from here: a link good once, for 60 seconds, into a 30-minute session the LMS's admins see on
  * their Impersonation sessions screen and can end, from the person's own LMS account, else the shared support one
- * with their address on it (lms services/portalStudentView.service.ts). For whoever decides the student's requests:
- * a CS their own students (leaders their people's), the Super Admin anyone's — by the LMS address too, for a request
- * from somebody who isn't in the portal. → { url, expiresIn, sessionExpiresAt, from: "own" | "shared" }
+ * with their address on it (lms services/portalStudentView.service.ts). Only the student's own CS — both, for a
+ * Common student — not their leaders; the Super Admin anyone's, by the LMS address too for a request from somebody
+ * who isn't in the portal. → { url, expiresIn, sessionExpiresAt, from: "own" | "shared" }
  */
 export async function viewStudentInLms(req: Request, user: AuthUser): Promise<Response> {
+  // The student's own CS only — Common ones too — not their leaders; the Super Admin anyone's (the user, 2026-10-06).
+  const found = await lmsStudentFor(await req.json().catch(() => ({})), user, { ownOnly: true });
+  if (found instanceof Response) return found;
+  if (!lmsConfigured()) return error(NOT_LINKED, 503);
+  try {
+    return json(await callLms<{ url: string; expiresIn: number; sessionExpiresAt: string; from: string }>("/students/view", {
+      method: "POST", body: { email: found.email, ...byOf(user) }, verb: "open the student's account",
+    }));
+  } catch (err) {
+    if (lmsLacksRoute(err)) return error("The LMS can't open a student's account from here yet — it needs its update", 409);
+    return lmsRefusal(err);
+  }
+}
+
+export const NOT_LINKED = "The LMS isn't linked to this server (LMS_API_URL, LMS_SERVICE_SECRET)";
+
+/** An LMS without a route yet answers "Route POST … not found": it needs its update. */
+export const lmsLacksRoute = (err: unknown) => err instanceof LmsError && /route \S+ \S+ not found|cannot post/i.test(err.message);
+
+/** Whoever is really doing it — the Super Admin, when they use "View as" here — is who the LMS's banner and trail name. */
+export function byOf(user: AuthUser): { byName: string; byEmail: string } {
+  const person = ((user as any)._impersonatedBy as { email?: string; full_name?: string } | undefined) ?? user;
+  return { byName: person.full_name || person.email || "somebody", byEmail: person.email ?? "" };
+}
+
+/**
+ * The LMS student a call is about, if the user may act for them — by their record here ({ studentId }) or by the
+ * LMS address ({ email }, for a request from somebody who isn't here): the Super Admin anyone, a CS (and their
+ * leaders) only their own students, as on the requests page. → { email, student: their record here, or null }
+ */
+export async function lmsStudentFor(body: any, user: AuthUser, opts: { ownOnly?: boolean } = {}): Promise<{ email: string; student: any | null } | Response> {
   const reach = await reachOf(user);
   if (!reach) return forbidden();
-  const body: any = await req.json().catch(() => ({}));
-  const scope = reach === "all" ? null : await theirStudents(user);
+  // ownOnly: the student's own CS (or a CS they're Common with), never a leader for their people's.
+  const scope = reach === "all" ? null : opts.ownOnly ? studentsOf([user.id]) : await theirStudents(user);
   const within = (match: Record<string, any>) => (scope ? { $and: [scope, match] } : match);
-  let email = "";
   if (body?.studentId) {
     const oid = toObjectId(String(body.studentId));
     if (!oid) return error("studentId is not valid", 400);
-    const student: any = await col("students").findOne(within({ _id: oid }), { projection: { email: 1 } });
+    const student: any = await col("students").findOne(within({ _id: oid }), { projection: STUDENT_FIELDS });
     if (!student) return scope ? forbidden() : notFound();
-    email = emailOf(student.email);
+    const email = emailOf(student.email);
     if (!email) return error("This student has no email here to find their LMS account by", 400);
-  } else {
-    email = emailOf(body?.email);
-    if (!email) return error("studentId or email is required", 400);
-    // A CS only their own students, as on the requests page.
-    const match = { email: { $regex: `^\\s*${escapeRe(email)}\\s*$`, $options: "i" } };
-    if (scope && !(await col("students").findOne(within(match), { projection: { _id: 1 } }))) return forbidden();
+    return { email, student };
   }
-  if (!lmsConfigured()) return error("The LMS isn't linked to this server (LMS_API_URL, LMS_SERVICE_SECRET)", 503);
-  // Whoever is really looking — the Super Admin, when they use "View as" here — is who the LMS's banner and trail name.
-  const looker = ((user as any)._impersonatedBy as { email?: string; full_name?: string } | undefined) ?? user;
-  try {
-    return json(await callLms<{ url: string; expiresIn: number; sessionExpiresAt: string; from: string }>("/students/view", {
-      method: "POST", body: { email, byName: looker.full_name || looker.email || "somebody", byEmail: looker.email ?? "" }, verb: "open the student's account",
-    }));
-  } catch (err) {
-    // An LMS without this route yet answers "Route POST … not found".
-    if (err instanceof LmsError && /route \S+ \S+ not found|cannot post/i.test(err.message)) {
-      return error("The LMS can't open a student's account from here yet — it needs its update", 409);
-    }
-    return lmsRefusal(err);
-  }
+  const email = emailOf(body?.email);
+  if (!email) return error("studentId or email is required", 400);
+  const match = { email: { $regex: `^\\s*${escapeRe(email)}\\s*$`, $options: "i" } };
+  const student: any = await col("students").findOne(within(match), { projection: STUDENT_FIELDS });
+  if (scope && !student) return forbidden();
+  return { email, student: student ?? null };
 }

@@ -37,6 +37,7 @@ import {
   getLmsEnrolmentRequests, getLmsEnrolmentRequestCount, getLmsEnrolmentRequest, getLmsEnrolmentDocument,
   approveLmsEnrolmentRequest, rejectLmsEnrolmentRequest, viewStudentInLms,
 } from "./lmsEnrolmentRequests";
+import { getLmsCourseAccess, giveLmsCourses, setLmsModuleAccess } from "./lmsCourseAccess";
 import { getClassCompletions } from "./classCompletions";
 import { getStudentLmsCourses } from "./lmsCourses";
 import { getStudentTags, setStudentTag } from "./studentTags";
@@ -111,6 +112,10 @@ const AUTHED: Record<string, AuthedHandler> = {
   rejectLmsEnrolmentRequest,
   // A student's own LMS, read-only — from LMS Requests and the student page
   viewStudentInLms,
+  // Their LMS courses: put on Forex courses, modules opened or locked (lmsCourseAccess.ts)
+  getLmsCourseAccess,
+  giveLmsCourses,
+  setLmsModuleAccess,
   getStudentLmsCourses,
   getStudentTags,
   setStudentTag,

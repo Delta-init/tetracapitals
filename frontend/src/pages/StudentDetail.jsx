@@ -28,7 +28,7 @@ import StudentClassesCard from "@/components/students/StudentClassesCard";
 import StudentLmsCoursesCard from "@/components/students/StudentLmsCoursesCard";
 import StudentLmsSupportCards from "@/components/students/StudentLmsSupportCards";
 import StudentFundingCard from "@/components/students/StudentFundingCard";
-import { ViewInLmsButton, canViewInLms } from "@/components/students/ViewInLms";
+import { ViewInLmsButton, canViewInLms, mayViewInLms } from "@/components/students/ViewInLms";
 import { CallButton } from "@/components/followups/CallFlow";
 import { EnrolmentControl } from "@/components/students/enrolment";
 import { OnboardingControl } from "@/components/students/onboarding";
@@ -299,8 +299,8 @@ export default function StudentDetail() {
                 Book mentor session
               </Button>
             </Link>
-            {/* Their own LMS as they see it, read-only — for their CS (and leaders) and the Super Admin */}
-            {canViewInLms(currentUser) && student.email && (
+            {/* Their own LMS as they see it, read-only — for their own CS and the Super Admin */}
+            {mayViewInLms(currentUser, student) && student.email && (
               <ViewInLmsButton studentId={student.id} name={displayStudent.full_name} className="h-9" />
             )}
             {canEdit ? (
@@ -506,7 +506,7 @@ export default function StudentDetail() {
           {/* What each course cost and what was paid, as Delta finance approved it, and their courses in the Delta LMS */}
           <TabsContent {...panel('courses')}>
             <CourseFeesCard fees={displayStudent.course_fees} />
-            <StudentLmsCoursesCard student={displayStudent} />
+            <StudentLmsCoursesCard student={displayStudent} canManage={canViewInLms(currentUser) && !!student.email} />
           </TabsContent>
 
           {/* Their live classes in the Delta LMS: attended, missed, upcoming */}

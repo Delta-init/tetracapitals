@@ -15,6 +15,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { ViewInLmsButton } from '@/components/students/ViewInLms';
+import { CourseAccessButton, CoursesToGive, picksToCourses } from '@/components/students/LmsCourseAccess';
 import { CheckCircle2, ClipboardCheck, ExternalLink, Eye, FileText, Loader2, RefreshCw, Search, XCircle } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
@@ -27,7 +28,10 @@ import { cn } from '@/lib/utils';
    email and WhatsApp; Reject turns a waiting request away with a reason they're
    emailed. Done in the LMS from your own LMS account, else Delta's support
    account with your name. "As student" opens their own LMS as they see it,
-   read-only, in a new tab (components/students/ViewInLms.jsx).
+   read-only, in a new tab (components/students/ViewInLms.jsx). Approving can
+   put them on Forex courses at once, each module open or locked as you pick,
+   and "Courses" does that for an approved student any time after
+   (components/students/LmsCourseAccess.jsx).
 ──────────────────────────────────────────────────────────────────────────── */
 
 const TABS = [
@@ -52,13 +56,24 @@ const when = (iso) => (iso ? new Date(iso).toLocaleString('en-GB', { day: '2-dig
 const Empty = ({ children }) => <p className="px-4 py-10 text-center text-sm text-slate-400">{children}</p>;
 const call = async (name, body) => (await base44.functions.invoke(name, body)).data;
 
-/** Approve or reject — the confirm, and for a rejection the reason the student is emailed. */
+/** Approve or reject — the confirm; for an approval the Forex courses to put them on, for a rejection the reason the student is emailed. */
 function DecisionDialog({ decision, onClose, onDone }) {
   const [reason, setReason] = useState('');
   const [busy, setBusy] = useState(false);
+  const [picks, setPicks] = useState(() => new Map());   // courseId → Set of locked module ids
+  const approving = decision?.kind === 'approve';
+  // The Forex courses of their academy, for an approval — asked of the LMS as the window opens.
+  const { data: access, isLoading: coursesLoading, error: coursesError } = useQuery({
+    queryKey: ['lms-course-access', decision?.request?.email],
+    queryFn: () => call('getLmsCourseAccess', { email: decision.request.email }),
+    enabled: approving,
+    staleTime: 0,
+    retry: false,
+  });
   if (!decision) return null;
   const { kind, request: r } = decision;
   const reject = kind === 'reject';
+  const courses = picksToCourses(picks);
   const submit = async () => {
     if (reject && (reason.trim().length < 5 || reason.trim().length > 1000)) {
       toast.error('Give a reason of 5 to 1000 characters — the student is told it');
@@ -66,9 +81,16 @@ function DecisionDialog({ decision, onClose, onDone }) {
     }
     setBusy(true);
     try {
-      const out = await call(reject ? 'rejectLmsEnrolmentRequest' : 'approveLmsEnrolmentRequest', { userId: r.id, email: r.email, ...(reject ? { reason: reason.trim() } : {}) });
+      const out = await call(reject ? 'rejectLmsEnrolmentRequest' : 'approveLmsEnrolmentRequest', {
+        userId: r.id, email: r.email, ...(reject ? { reason: reason.trim() } : courses.length ? { courses } : {}),
+      });
       const from = out?.from === 'shared' ? " — from Delta's support account, with your name" : out?.from === 'own' ? ' — from your LMS account' : '';
-      toast.success(reject ? `${r.name || r.email}'s request rejected${from}` : out?.already ? `${r.name || r.email} was already in on Forex` : `${r.name || r.email} is in on Forex${from}`);
+      const given = out?.courses?.given ?? [];
+      const on = given.length ? `, on ${given.join(', ')}` : '';
+      toast.success(reject ? `${r.name || r.email}'s request rejected${from}`
+        : out?.already ? `${r.name || r.email} was already in on Forex${given.length ? ` — now on ${given.join(', ')}` : ''}`
+          : `${r.name || r.email} is in on Forex${on}${from}`);
+      if (out?.coursesSkipped) toast.warning("Approved, but the LMS couldn't take the courses yet — it needs its update. Give them later with Courses.");
       onDone();
       onClose();
       setReason('');
@@ -80,7 +102,7 @@ function DecisionDialog({ decision, onClose, onDone }) {
   };
   return (
     <Dialog open onOpenChange={(o) => { if (!o && !busy) onClose(); }}>
-      <DialogContent className="max-w-lg">
+      <DialogContent className={cn('max-h-[90vh] overflow-y-auto', reject ? 'max-w-lg' : 'max-w-2xl')}>
         <DialogHeader>
           <DialogTitle>{reject ? 'Reject this request?' : 'Approve this request?'}</DialogTitle>
           <DialogDescription>
@@ -89,6 +111,18 @@ function DecisionDialog({ decision, onClose, onDone }) {
               : `${r.name || r.email} is let in on Forex in the LMS now, and told by email and WhatsApp.`}
           </DialogDescription>
         </DialogHeader>
+        {!reject && (
+          <div className="space-y-2">
+            <p className="text-sm font-semibold text-slate-800">Forex courses to put them on <span className="font-normal text-slate-400">— optional</span></p>
+            {coursesLoading ? <Skeleton className="h-16 w-full" />
+              : coursesError ? <p className="text-xs text-slate-500">{coursesError.message || "The courses couldn't be loaded"} — they can still be approved, and given courses later.</p>
+                : access?.configured === false ? <p className="text-xs text-slate-500">The LMS isn't linked to this server.</p>
+                  : <CoursesToGive offered={access?.offered ?? []} picks={picks} onChange={setPicks} disabled={busy} />}
+            {(access?.courses?.length ?? 0) > 0 && (
+              <p className="text-xs text-slate-400">On already: {access.courses.map((c) => c.title).join(', ')}</p>
+            )}
+          </div>
+        )}
         {reject && (
           <div className="space-y-2">
             <Label htmlFor="lms-reject-reason">Reason *</Label>
@@ -101,7 +135,7 @@ function DecisionDialog({ decision, onClose, onDone }) {
           <Button variant="outline" onClick={onClose} disabled={busy}>Cancel</Button>
           <Button onClick={submit} disabled={busy} className={reject ? 'bg-rose-600 hover:bg-rose-700' : 'bg-emerald-600 hover:bg-emerald-700'}>
             {busy && <Loader2 className="mr-1.5 h-4 w-4 animate-spin" />}
-            {reject ? 'Reject' : 'Approve on Forex'}
+            {reject ? 'Reject' : courses.length ? `Approve, with ${courses.length} course${courses.length > 1 ? 's' : ''}` : 'Approve on Forex'}
           </Button>
         </DialogFooter>
       </DialogContent>
@@ -110,7 +144,7 @@ function DecisionDialog({ decision, onClose, onDone }) {
 }
 
 /** One request, as the LMS admin's card shows it: the application, and the ID scans through a 5-minute link. */
-function RequestDialog({ request, onClose, onDecide }) {
+function RequestDialog({ request, canView, onClose, onDecide }) {
   const { data, isLoading, error } = useQuery({
     queryKey: ['lms-enrolment-request', request?.id],
     queryFn: () => call('getLmsEnrolmentRequest', { userId: request.id, email: request.email }),
@@ -177,8 +211,11 @@ function RequestDialog({ request, onClose, onDecide }) {
           </div>
         </div>
         <DialogFooter className="gap-2 sm:gap-2">
-          {/* What they see in the LMS right now — read-only */}
-          <ViewInLmsButton email={r.email} name={r.name} className="sm:mr-auto" />
+          {/* What they see in the LMS right now — read-only — and, once they're in, their Forex courses */}
+          <span className="flex flex-wrap gap-2 sm:mr-auto">
+            {canView && <ViewInLmsButton email={r.email} name={r.name} />}
+            {r.status === 'approved' && <CourseAccessButton email={r.email} name={r.name} label="Courses" />}
+          </span>
           {r.status === 'pending' && (
             <Button variant="outline" className="border-rose-300 text-rose-700 hover:bg-rose-50" onClick={() => onDecide('reject', r)}>
               <XCircle className="mr-1.5 h-4 w-4" /> Reject
@@ -232,6 +269,8 @@ export default function LmsRequests() {
     : !data?.configured ? "The LMS isn't linked to this server, so there are no requests to show."
       : !data.available ? (data.message || 'The LMS could not be asked') : '';
   const whose = data?.reach === 'all' ? 'every Forex applicant' : 'your students';
+  // "As student": the Super Admin anyone's, otherwise only the student's own CS — not their leaders.
+  const viewable = (r) => data?.reach === 'all' || !!r.student?.yours;
 
   return (
     <div className="min-h-screen p-6">
@@ -334,7 +373,10 @@ export default function LmsRequests() {
                                 <Button size="sm" variant="outline" className="h-8 gap-1 px-2 text-xs" onClick={() => setViewing(r)}>
                                   <Eye className="h-3.5 w-3.5" /> View
                                 </Button>
-                                <ViewInLmsButton email={r.email} name={r.name} label="As student" size="sm" className="h-8 gap-1 px-2 text-xs" />
+                                {viewable(r) && <ViewInLmsButton email={r.email} name={r.name} label="As student" size="sm" className="h-8 gap-1 px-2 text-xs" />}
+                                {r.status === 'approved' && (
+                                  <CourseAccessButton email={r.email} name={r.name} label="Courses" size="sm" className="h-8 gap-1 px-2 text-xs" />
+                                )}
                                 {r.status !== 'approved' && (
                                   <Button size="sm" className="h-8 gap-1 bg-emerald-600 px-2 text-xs hover:bg-emerald-700" onClick={() => decide('approve', r)}>
                                     <CheckCircle2 className="h-3.5 w-3.5" /> Approve
@@ -360,7 +402,7 @@ export default function LmsRequests() {
         </Card>
       </div>
       {/* Each opens fresh for its request — a reason half-typed for one never reaches another */}
-      {viewing && <RequestDialog key={viewing.id} request={viewing} onClose={() => setViewing(null)} onDecide={decide} />}
+      {viewing && <RequestDialog key={viewing.id} request={viewing} canView={viewable(viewing)} onClose={() => setViewing(null)} onDecide={decide} />}
       {decision && <DecisionDialog key={`${decision.kind}-${decision.request.id}`} decision={decision} onClose={() => setDecision(null)} onDone={refresh} />}
     </div>
   );

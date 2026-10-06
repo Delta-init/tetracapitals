@@ -5,6 +5,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Award, BookOpen } from 'lucide-react';
 import { PROGRAMME, ACCESS, LmsModules } from '@/components/students/LmsCourseList';
+import { CourseAccessButton } from '@/components/students/LmsCourseAccess';
 
 /* ────────────────────────────────────────────────────────────────────────────
    The Delta LMS courses the student is on, fresh from the LMS by their email,
@@ -14,7 +15,9 @@ import { PROGRAMME, ACCESS, LmsModules } from '@/components/students/LmsCourseLi
    locked (by the fee, or by an admin by hand), their progress, and whether
    they finished it — with the certificate — or dropped it. The Students table
    shows the same courses under the Enrolled switch, as the hourly LMS check
-   last saw them.
+   last saw them. Their CS (and leaders) and the Super Admin can put them on a
+   Forex course and open or lock its modules here — Course access
+   (components/students/LmsCourseAccess.jsx).
 ──────────────────────────────────────────────────────────────────────────── */
 
 const HOW = { purchase: 'Bought', finance: 'Finance invoice', admin: 'By admin', script: 'By script', free: 'Free' };
@@ -26,7 +29,7 @@ const STATUS = {
 const ACCESS_CLS = { paid: 'text-emerald-700', partial: 'text-amber-700', unpaid: 'text-rose-700' };
 const day = (iso) => (iso ? format(new Date(iso), 'd MMM yyyy') : '—');
 
-export default function StudentLmsCoursesCard({ student }) {
+export default function StudentLmsCoursesCard({ student, canManage = false }) {
   const { data, isLoading } = useQuery({
     queryKey: ['student-lms-courses', student?.id],
     queryFn: async () => (await base44.functions.invoke('getStudentLmsCourses', { studentId: student.id })).data,
@@ -43,12 +46,17 @@ export default function StudentLmsCoursesCard({ student }) {
       <CardHeader className="border-b border-gray-100 py-3">
         <CardTitle className="flex flex-wrap items-center justify-between gap-2 text-lg font-semibold">
           <span className="flex items-center gap-2"><BookOpen className="h-5 w-5 text-indigo-600" />Courses (Delta LMS)</span>
-          {data?.available && courses.length > 0 && (
-            <span className="flex flex-wrap gap-1.5 text-xs font-normal">
-              <Badge variant="outline" className={STATUS.active.cls}>Active {active}</Badge>
-              <Badge variant="outline" className={STATUS.completed.cls}>Completed {completed}</Badge>
-            </span>
-          )}
+          <span className="flex flex-wrap items-center gap-1.5 text-xs font-normal">
+            {data?.available && courses.length > 0 && (
+              <>
+                <Badge variant="outline" className={STATUS.active.cls}>Active {active}</Badge>
+                <Badge variant="outline" className={STATUS.completed.cls}>Completed {completed}</Badge>
+              </>
+            )}
+            {canManage && data?.available && data?.has_account !== false && (
+              <CourseAccessButton studentId={student.id} name={student.full_name} size="sm" className="h-8 px-2.5 text-xs" />
+            )}
+          </span>
         </CardTitle>
       </CardHeader>
       <CardContent className="p-0">
