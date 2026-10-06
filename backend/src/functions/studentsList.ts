@@ -7,6 +7,7 @@ import { buildScopeFilter, getConfiguredScope, getDownlineIds } from "../lib/sco
 import { isMentorRole } from "../lib/roles";
 import { userCanListEntity } from "../entities/crud";
 import { courseLabel } from "../students/tags";
+import { businessToday } from "../students/followups";
 
 /* ────────────────────────────────────────────────────────────────────────────
    The Students page, one page at a time. Which students each tab holds and
@@ -137,6 +138,26 @@ async function courseFilter(value: string): Promise<Record<string, any> | null> 
   return null;
 }
 
+/* "Follow-up today" (the user, 2026-10-06): due today and not called yet — they drop off once the call is logged —
+   or called today. Called = a follow-up logged today, or opened today with what they said: the Follow-ups page's
+   Done today. Today is the follow-ups' business day (students/followups.ts BUSINESS_OFFSET_MS). */
+const FOLLOWUP_FILTERS = new Set(["due_not_called", "called_today"]);
+const BUSINESS_OFFSET_MS = 330 * 60_000;
+
+async function followupFilter(which: string): Promise<Record<string, any>> {
+  const today = businessToday();
+  const dayStart = new Date(Date.parse(`${today}T00:00:00.000Z`) - BUSINESS_OFFSET_MS).toISOString();
+  const calledToday = {
+    $or: [{ last_contact_date: today }, { client_said: { $nin: [null, ""] }, created_date: { $gte: dayStart } }],
+  };
+  const called = new Set((await col("student_followups").distinct("student_id", calledToday)).map(String));
+  const ids = which === "called_today"
+    ? [...called]
+    : (await col("student_followups").distinct("student_id", { next_followup_date: today, stage: { $nin: ["Converted", "Lost"] } }))
+      .map(String).filter((id) => !called.has(id));
+  return { _id: { $in: ids.map((id) => toObjectId(id)).filter(Boolean) } };
+}
+
 /** Every filter on the page, as Mongo — the search and the selects. */
 async function filters(user: AuthUser, tab: Tab, f: any): Promise<Record<string, any>[]> {
   const out: Record<string, any>[] = [];
@@ -151,6 +172,7 @@ async function filters(user: AuthUser, tab: Tab, f: any): Promise<Record<string,
   if (f?.onboarding === "not_onboarded") out.push({ onboarded: { $ne: true } });
   // LMS classes in their own courses (the hourly LMS check keeps the counts on the student).
   if (["attended", "booked", "upcoming"].includes(f?.classes)) out.push({ [`lms_classes.${f.classes}`]: { $gt: 0 } });
+  if (FOLLOWUP_FILTERS.has(f?.followup)) out.push(await followupFilter(f.followup));
   const course = str(f?.course);
   if (course && course !== "all") {
     const c = await courseFilter(course);
@@ -178,8 +200,9 @@ async function filters(user: AuthUser, tab: Tab, f: any): Promise<Record<string,
 /**
  * POST /api/functions/listStudents
  * Body: { tab, page?, pageSize? (25 | 50 | 100), all? (every match, up to 10,000 — export, select all),
- *         filters?: { search, onlyNew, tag, enrolment, onboarding, classes, course, balance, from, to, status, team, level, mentor } }
- * → { tab, tabs, rows, total, page, page_size, truncated?, counts: { new_for_me, co_managed?, admin_co_managed? } }
+ *         filters?: { search, onlyNew, tag, enrolment, onboarding, classes, followup, course, balance, from, to, status, team, level, mentor } }
+ * → { tab, tabs, rows, total, page, page_size, truncated?, counts: { new_for_me, co_managed?, admin_co_managed? },
+ *     followup_filter? (the follow-up filter applied — the page tells a server without it apart) }
  */
 export async function listStudents(req: Request, user: AuthUser): Promise<Response> {
   if (!userCanListEntity(user, "Student")) return forbidden();
@@ -200,7 +223,8 @@ export async function listStudents(req: Request, user: AuthUser): Promise<Respon
   if (tabs.includes("co_managed")) counts.co_managed = await col("students").countDocuments(and(scope, coMentorIs(user.id)));
   if (tabs.includes("admin_co_managed")) counts.admin_co_managed = await col("students").countDocuments(and(scope, hasCoMentors));
 
-  return json({ tab, tabs, ...result, counts });
+  const followup = takesFilters && FOLLOWUP_FILTERS.has(body?.filters?.followup) ? body.filters.followup : undefined;
+  return json({ tab, tabs, ...result, counts, ...(followup ? { followup_filter: followup } : {}) });
 }
 
 /**

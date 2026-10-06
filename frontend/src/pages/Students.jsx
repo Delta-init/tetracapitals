@@ -117,6 +117,7 @@ export default function Students() {
   const [filterEnrolment, setFilterEnrolment] = useState('all');
   const [filterOnboarding, setFilterOnboarding] = useState('all');
   const [filterClasses, setFilterClasses] = useState('all');
+  const [filterFollowup, setFilterFollowup] = useState('all');
   const [filterBalance, setFilterBalance] = useState('all');
   const [filterTag, setFilterTag] = useState('all');
   const [onlyNew, setOnlyNew] = useState(false);
@@ -172,10 +173,11 @@ export default function Students() {
     return null;
   }, [filterDateRange, customDateFrom, customDateTo]);
   const listFilters = useMemo(() => ({
-    search: debouncedSearch, onlyNew, tag: filterTag, enrolment: filterEnrolment, onboarding: filterOnboarding, classes: filterClasses, course: filterCourse, balance: filterBalance,
+    search: debouncedSearch, onlyNew, tag: filterTag, enrolment: filterEnrolment, onboarding: filterOnboarding, classes: filterClasses, followup: filterFollowup,
+    course: filterCourse, balance: filterBalance,
     from: dateRange ? new Date(dateRange.from).toISOString() : '', to: dateRange ? new Date(dateRange.to).toISOString() : '',
     status: filterStatus, team: filterTeam, level: filterLevel, mentor: filterMentor,
-  }), [debouncedSearch, onlyNew, filterTag, filterEnrolment, filterOnboarding, filterClasses, filterCourse, filterBalance, dateRange, filterStatus, filterTeam, filterLevel, filterMentor]);
+  }), [debouncedSearch, onlyNew, filterTag, filterEnrolment, filterOnboarding, filterClasses, filterFollowup, filterCourse, filterBalance, dateRange, filterStatus, filterTeam, filterLevel, filterMentor]);
   const filtersKey = JSON.stringify(listFilters);
   // A new tab, search or filter starts at page 1 with nothing ticked.
   useEffect(() => { setPage(1); setSelected({}); }, [serverTab, filtersKey]);
@@ -717,6 +719,19 @@ export default function Students() {
                 </SelectContent>
               </Select>
 
+              {/* Today's follow-up — everyone, on every tab: due today and not called yet (gone once the call is logged),
+                  or called today (backend studentsList.ts) */}
+              <Select value={filterFollowup} onValueChange={(v) => v && setFilterFollowup(v)}>
+                <SelectTrigger className="w-full md:w-56">
+                  <SelectValue placeholder="Follow-up today" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">Any follow-up</SelectItem>
+                  <SelectItem value="due_not_called">Due today · not called yet</SelectItem>
+                  <SelectItem value="called_today">Called today</SelectItem>
+                </SelectContent>
+              </Select>
+
               {/* Course / Product, Balance and Date — everyone, on every tab */}
               <Select value={filterCourse} onValueChange={(v) => v && setFilterCourse(v)}>
                 <SelectTrigger className="w-full md:w-52">
@@ -839,6 +854,10 @@ export default function Students() {
                 </>
               )}
             </div>
+            {/* A server from before the follow-up filter sends everyone: said, rather than looking filtered. */}
+            {filterFollowup !== 'all' && list && !listFetching && !['co_managed', 'admin_co_managed'].includes(serverTab) && list.followup_filter !== filterFollowup && (
+              <p className="mt-3 text-sm text-amber-700">The Follow-up today filter needs the server update — until then this list isn't filtered by it.</p>
+            )}
           </CardContent>
         </Card>
 

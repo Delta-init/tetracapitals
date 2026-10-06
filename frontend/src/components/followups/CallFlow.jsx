@@ -69,6 +69,7 @@ export function CallFlowProvider({ children }) {
     queryClient.invalidateQueries({ queryKey: ['followups'] });
     queryClient.invalidateQueries({ queryKey: ['nav-counts'] });   // the sidebar's today / overdue
     queryClient.invalidateQueries({ queryKey: ['students', 'not-onboarded'] });   // a call's Connected / Not connected there
+    queryClient.invalidateQueries({ queryKey: ['students', 'page'] });   // the Students page's Follow-up today filter
   }, [queryClient]);
 
   const openLog = useCallback((followup) => setLogging(followup), []);
