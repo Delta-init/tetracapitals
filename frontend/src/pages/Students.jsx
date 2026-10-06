@@ -21,7 +21,9 @@ import StudentRequestForm from "../components/students/StudentRequestForm";
 import BulkImportStudentsDialog from "../components/students/BulkImportStudentsDialog";
 import { isMentorRole as isMentorTier, getScope, readsClosedOnly } from "@/components/utils/roles";
 
-import { Plus, Search, Eye, Users, UserCheck, Upload, Download, Filter, ArrowUp, Share2, Trash2, ArrowRightLeft, Sparkles, RefreshCw, Loader2 } from "lucide-react";
+import { Plus, Search, Eye, Users, UserCheck, Upload, Download, Filter, ArrowUp, Share2, Trash2, ArrowRightLeft, Sparkles, RefreshCw, Loader2, ChevronDown, FileSpreadsheet, FileText } from "lucide-react";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
+import { downloadExcel } from "@/components/utils/excelExport";
 import TransferStudentsDialog from "../components/students/TransferStudentsDialog";
 import { CallButton } from "@/components/followups/CallFlow";
 import { listTeams } from "@/components/utils/teams";
@@ -74,6 +76,28 @@ function ClassesCell({ student }) {
     </span>
   );
 }
+
+// The students export — Excel or CSV, these columns (Excel keeps the class counts as numbers and the date as a date).
+const EXPORT_COLUMNS = [
+  { header: 'Student Code', value: s => s.student_code },
+  { header: 'Full Name', value: s => s.full_name },
+  { header: 'Email', value: s => s.email },
+  { header: 'Phone', value: s => s.phone },
+  { header: 'Country', value: s => s.country },
+  { header: 'User ID', value: s => s.user_id },
+  { header: 'CS', value: s => s.primary_mentor_name },
+  { header: 'Senior Mentor', value: s => s.senior_mentor_name },
+  { header: 'Team', value: s => s.team_name },
+  { header: 'Course', value: s => courseLabel(s.lms_course) },
+  { header: 'Status', value: s => s.status },
+  { header: 'Enrolment', value: s => ENROLMENT[enrolmentOf(s)].label },
+  { header: 'Classes Attended', type: 'number', value: s => s.lms_classes?.attended },
+  { header: 'Classes Booked', type: 'number', value: s => s.lms_classes?.booked },
+  { header: 'Classes Upcoming', type: 'number', value: s => s.lms_classes?.upcoming },
+  { header: 'Tags', value: s => tagNamesOf(s).join(', ') },
+  { header: 'Created Date', type: 'date', value: s => s.created_date },
+  { header: 'Notes', width: 40, value: s => s.notes },
+];
 
 /** What is still to pay, from Course fees: amber while owed, green when paid in full, a dash when nothing is known. */
 function BalanceCell({ student }) {
@@ -184,6 +208,7 @@ export default function Students() {
     enabled: canCheckLms,
   });
   const [lmsChecking, setLmsChecking] = useState(false);
+  const [exporting, setExporting] = useState(false);   // the export being made: every matching student, then the file
   const checkLms = async () => {
     setLmsChecking(true);
     try {
@@ -502,63 +527,55 @@ export default function Students() {
       : 'bg-gray-100 text-gray-800 border-gray-200';
   };
 
-  const handleExportStudents = async () => {
+  // Everyone the tab and filters match, not just this page — as an Excel workbook ('xlsx') or as CSV, the same columns.
+  const exportStudents = async (kind) => {
     if (total === 0) {
       toast.error('No students to export');
       return;
     }
-    // Everyone the tab and filters match, not just this page.
-    let filteredStudents;
+    setExporting(true);
+    let failed = 'Could not load the students to export';
     try {
-      filteredStudents = await fetchAllMatching();
-    } catch (e) {
-      toast.error(e?.message || 'Could not load the students to export');
-      return;
-    }
+      const filteredStudents = await fetchAllMatching();
+      const fileName = `students_export_${format(new Date(), 'yyyy-MM-dd')}.${kind === 'xlsx' ? 'xlsx' : 'csv'}`;
 
-    const escapeCSV = (value) => {
-      if (value === null || value === undefined) return '';
-      const stringValue = String(value);
-      if (stringValue.includes(',') || stringValue.includes('"') || stringValue.includes('\n')) {
-        return `"${stringValue.replace(/"/g, '""')}"`;
+      if (kind === 'xlsx') {
+        failed = 'Could not make the Excel file';
+        await downloadExcel({ fileName, sheet: 'Students', columns: EXPORT_COLUMNS, rows: filteredStudents.map(s => EXPORT_COLUMNS.map(c => c.value(s))) });
+      } else {
+        const escapeCSV = (value) => {
+          if (value === null || value === undefined) return '';
+          const stringValue = String(value);
+          if (stringValue.includes(',') || stringValue.includes('"') || stringValue.includes('\n')) {
+            return `"${stringValue.replace(/"/g, '""')}"`;
+          }
+          return stringValue;
+        };
+        const csvValue = (c, s) => {
+          const v = c.value(s);
+          return c.type === 'date' ? (v ? format(new Date(v), 'yyyy-MM-dd') : '') : v;
+        };
+        const csvContent = [
+          EXPORT_COLUMNS.map(c => c.header).join(','),
+          ...filteredStudents.map(s => EXPORT_COLUMNS.map(c => escapeCSV(csvValue(c, s))).join(','))
+        ].join('\n');
+
+        const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = url;
+        link.download = fileName;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        URL.revokeObjectURL(url);
       }
-      return stringValue;
-    };
-
-    const csvContent = [
-      ['Student Code', 'Full Name', 'Email', 'Phone', 'Country', 'User ID', 'CS', 'Senior Mentor', 'Team', 'Course', 'Status', 'Enrolment', 'Classes Attended', 'Classes Booked', 'Classes Upcoming', 'Tags', 'Created Date', 'Notes'].join(','),
-      ...filteredStudents.map(s => [
-        escapeCSV(s.student_code || ''),
-        escapeCSV(s.full_name || ''),
-        escapeCSV(s.email || ''),
-        escapeCSV(s.phone || ''),
-        escapeCSV(s.country || ''),
-        escapeCSV(s.user_id || ''),
-        escapeCSV(s.primary_mentor_name || ''),
-        escapeCSV(s.senior_mentor_name || ''),
-        escapeCSV(s.team_name || ''),
-        escapeCSV(courseLabel(s.lms_course)),
-        escapeCSV(s.status || ''),
-        escapeCSV(ENROLMENT[enrolmentOf(s)].label),
-        escapeCSV(s.lms_classes?.attended ?? ''),
-        escapeCSV(s.lms_classes?.booked ?? ''),
-        escapeCSV(s.lms_classes?.upcoming ?? ''),
-        escapeCSV(tagNamesOf(s).join(', ')),
-        escapeCSV(s.created_date ? format(new Date(s.created_date), 'yyyy-MM-dd') : ''),
-        escapeCSV(s.notes || '')
-      ].join(','))
-    ].join('\n');
-
-    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    link.href = url;
-    link.download = `students_export_${format(new Date(), 'yyyy-MM-dd')}.csv`;
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-    URL.revokeObjectURL(url);
-    toast.success(`Exported ${filteredStudents.length} students successfully`);
+      toast.success(`Exported ${filteredStudents.length} students successfully`);
+    } catch (e) {
+      toast.error(e?.message || failed);
+    } finally {
+      setExporting(false);
+    }
   };
 
   return (
@@ -592,10 +609,26 @@ export default function Students() {
               </Button>
             )}
             {['super_admin', 'broker_admin'].includes(currentUser.app_role) && (
-              <Button onClick={handleExportStudents} variant="outline" className="border-green-600 text-green-600 hover:bg-green-50">
-                <Download className="h-4 w-4 mr-2" />
-                Export
-              </Button>
+              // Every student the tab and filters match: an Excel workbook or a CSV
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button variant="outline" disabled={exporting} className="border-green-600 text-green-600 hover:bg-green-50">
+                    {exporting ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Download className="h-4 w-4 mr-2" />}
+                    Export
+                    <ChevronDown className="h-4 w-4 ml-1" />
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end">
+                  <DropdownMenuItem onSelect={() => exportStudents('xlsx')}>
+                    <FileSpreadsheet className="h-4 w-4 mr-2 text-green-600" />
+                    Excel (.xlsx)
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onSelect={() => exportStudents('csv')}>
+                    <FileText className="h-4 w-4 mr-2 text-slate-500" />
+                    CSV
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
             )}
             {['super_admin', 'broker_admin'].includes(currentUser.app_role) && (
               <Button onClick={() => setShowBulkImportDialog(true)} variant="outline" className="border-blue-600 text-blue-600 hover:bg-blue-50">

@@ -9,7 +9,9 @@ import { Card, CardContent, CardHeader } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { AlarmClock, BellRing, CheckCircle2, DoorOpen, Download, Hourglass, Search, Users, XCircle } from 'lucide-react';
+import { AlarmClock, BellRing, CheckCircle2, DoorOpen, Download, FileSpreadsheet, Hourglass, Loader2, Search, Users, XCircle } from 'lucide-react';
+import { toast } from 'sonner';
+import { downloadExcel } from '@/components/utils/excelExport';
 import { getEffectiveUser } from '@/components/utils/ImpersonationContext';
 import { createPageUrl } from '@/utils';
 import { CallButton, ONBOARDING_CONNECTED } from '@/components/followups/CallFlow';
@@ -29,6 +31,49 @@ const FROM = { finance: 'Finance', lms: 'LMS sign-up', sheet: 'Sheet', added: 'A
 const callText = (c) => (!c ? '' : c.connected ? 'Connected' : `Not connected${c.attempts > 1 ? ` ×${c.attempts}` : ''}`);
 const CALLS = { all: 'Any call', not_connected: 'Not connected', none: 'Not called yet' };
 const callMatch = (c, f) => f === 'all' || (f === 'not_connected' ? !!c && !c.connected : f === 'none' ? !c : true);
+
+// The Not onboarded list as a download — CSV or Excel, these columns (Excel keeps the times and hours as such).
+const WAITING_COLUMNS = [
+  { header: 'Student', value: s => s.full_name },
+  { header: 'Code', value: s => s.student_code },
+  { header: 'Phone', value: s => s.phone },
+  { header: 'Email', value: s => s.email },
+  { header: 'Course', value: s => s.course },
+  { header: 'CS', value: s => s.primary_mentor_name },
+  { header: 'Team', value: s => s.team_name },
+  { header: 'Closed By', value: s => closedByText(s) },
+  { header: 'Platform', value: s => platformOf(s) },
+  { header: 'From', value: s => FROM[s.from] || '' },
+  { header: 'Call', value: s => callText(s.call) },
+  { header: 'Arrived', type: 'datetime', value: s => s.created_date },
+  { header: 'Hours Waiting', type: 'number', value: s => Math.floor(s.waited) },
+  { header: 'Leaders Told', type: 'datetime', value: s => s.alert?.at || '' },
+];
+// The verification tabs as Excel: one row per bonus, as VerificationTable lists them (components/students/bonusVerification.jsx).
+const BONUS_STATES = { not_requested: 'Bonus not raised yet', pending: 'Verification pending', rejected: 'Rejected', approved: 'Approved' };
+const bonusRows = (list, kind) =>
+  list.flatMap(s => (s.bonuses || []).filter(b => kind === 'approved' || b.state !== 'approved' || s.bonuses.length === 1).map(b => ({ s, b })));
+const verificationColumns = (kind) => [
+  { header: 'Student', value: ({ s }) => s.full_name },
+  { header: 'Code', value: ({ s }) => s.student_code },
+  { header: 'Course', value: ({ b }) => b.course },
+  { header: 'Invoice', value: ({ b }) => b.invoice_number },
+  { header: 'CS', value: ({ s }) => s.primary_mentor_name },
+  { header: 'Team', value: ({ s }) => s.team_name },
+  { header: 'Closed By', value: ({ s }) => closedByText(s) },
+  { header: 'Platform', value: ({ s }) => platformOf(s) },
+  { header: 'Bonus', type: 'number', value: ({ b }) => b.amount },
+  { header: 'Currency', value: ({ b }) => b.currency },
+  { header: 'Status', value: ({ b }) => BONUS_STATES[b.state] || b.state },
+  ...(kind === 'approved' ? [] : [{ header: 'Submitted Again', type: 'number', value: ({ b }) => b.resubmitted || '' }]),
+  ...(kind === 'pending'
+    ? [{ header: 'Raised', type: 'datetime', value: ({ b }) => b.requested_at }]
+    : [{ header: 'Decided', type: 'datetime', value: ({ b }) => b.decided_at }, { header: 'Decided By', value: ({ b }) => b.decided_by }]),
+  ...(kind === 'rejected' ? [{ header: 'Reason', width: 40, value: ({ b }) => b.reason }] : []),
+  { header: 'Welcome Sent', type: 'datetime', value: ({ s }) => s.onboarded_at },
+  { header: 'Welcome Sent By', value: ({ s }) => s.onboarded_by_name },
+];
+const FILE_NAMES = { waiting: 'not_onboarded', pending: 'verification_pending', rejected: 'bonus_rejected', approved: 'bonus_approved_this_month' };
 
 /**
  * Not onboarded — new students from finance who haven't been onboarded yet, the longest waiting first. Onboarding
@@ -68,6 +113,7 @@ export default function NotOnboarded() {
   const [welcome, setWelcome] = useState(null);   // a connected onboarding call: their welcome, to send
   const [tab, setTab] = useState('waiting');
   const [resubmit, setResubmit] = useState(null); // { student, bonus } — a rejected bonus to submit again
+  const [exporting, setExporting] = useState(false);
 
   const limit = data?.wait_hours ?? 6;
   const waiting = useMemo(
@@ -112,14 +158,32 @@ export default function NotOnboarded() {
   const vRows = tab === 'waiting' ? [] : lists[tab].filter(vMatch);
 
   const exportCsv = () => {
-    const head = ['Student', 'Code', 'Phone', 'Email', 'Course', 'CS', 'Team', 'Closed By', 'Platform', 'From', 'Call', 'Arrived', 'Hours Waiting', 'Leaders Told'];
-    const lines = [head, ...rows.map(s => [s.full_name, s.student_code, s.phone, s.email, s.course, s.primary_mentor_name, s.team_name, closedByText(s), platformOf(s), FROM[s.from] || '', callText(s.call), when(s.created_date), Math.floor(s.waited), s.alert?.at ? when(s.alert.at) : ''])];
+    const lines = [WAITING_COLUMNS.map(c => c.header), ...rows.map(s => WAITING_COLUMNS.map(c => (c.type === 'datetime' ? when(c.value(s)) : c.value(s))))];
     const csv = lines.map(r => r.map(v => `"${String(v ?? '').replace(/"/g, '""')}"`).join(',')).join('\n');
     const a = document.createElement('a');
     a.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv' }));
     a.download = `not_onboarded_${new Date().toISOString().slice(0, 10)}.csv`;
     a.click();
   };
+  // The open tab as Excel, with its filters: the students waiting, or one row per bonus on a verification tab.
+  const exportExcel = async () => {
+    const columns = tab === 'waiting' ? WAITING_COLUMNS : verificationColumns(tab);
+    const items = tab === 'waiting' ? rows : bonusRows(vRows, tab);
+    setExporting(true);
+    try {
+      await downloadExcel({
+        fileName: `${FILE_NAMES[tab]}_${new Date().toISOString().slice(0, 10)}.xlsx`,
+        sheet: TABS.find(t => t.key === tab).label,
+        columns,
+        rows: items.map(item => columns.map(c => c.value(item))),
+      });
+    } catch (e) {
+      toast.error(e?.message || 'Could not make the Excel file');
+    } finally {
+      setExporting(false);
+    }
+  };
+  const exportable = tab === 'waiting' ? rows.length : vRows.length;
 
   const TH = ({ children }) => <th className="whitespace-nowrap px-3 py-3 text-left text-[11px] font-semibold uppercase tracking-wider text-slate-500">{children}</th>;
 
@@ -257,6 +321,11 @@ export default function NotOnboarded() {
               </Select>
               <Button variant="outline" size="sm" onClick={exportCsv} disabled={!rows.length}><Download className="h-4 w-4" /> CSV</Button>
               </>)}
+              {/* Whichever tab is open, as filtered */}
+              <Button variant="outline" size="sm" onClick={exportExcel} disabled={exporting || !exportable}
+                className="border-green-600 text-green-700 hover:bg-green-50">
+                {exporting ? <Loader2 className="h-4 w-4 animate-spin" /> : <FileSpreadsheet className="h-4 w-4" />} Excel
+              </Button>
             </div>
           </CardHeader>
           <CardContent className="p-0">
