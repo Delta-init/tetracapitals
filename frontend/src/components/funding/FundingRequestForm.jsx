@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { EnterCoursesDialog, UpgradeDialog, PaymentDialog } from '../students/StudentCoursesCard';
 import ReferralRequestPopup from './ReferralRequestPopup';
 import CoManageSearchModal from './CoManageSearchModal';
 import { base44 } from "@/api/base44Client";
@@ -288,6 +289,14 @@ export default function FundingRequestForm({ students, allStudents = [], current
   // A withdrawal has one amount and method, and no receipt yet.
   const [payments, setPayments] = useState(() => (from ? paymentsFrom(from) : [newPayment()]));
   const takesPayments = formData.type !== 'WITHDRAWAL';
+  // A course upgrade's payment is recorded on the upgrade (CourseUpgradePanel), not as a funding request.
+  const upgradeMode = formData.type === 'COURSE_UPGRADE';
+  const { data: studentCourses } = useQuery({
+    queryKey: ['student-courses', formData.student_id],
+    queryFn: async () => (await base44.functions.invoke('getStudentCourses', { studentId: formData.student_id })).data,
+    enabled: !!formData.student_id,
+    retry: false,
+  });
   const typed = takesPayments ? paymentsTotal(payments) : formData.amount;
 
   // Tag catalog with per-tag amounts — for BONUS, the product's price fills in the amount (which can still be changed).
@@ -390,6 +399,11 @@ export default function FundingRequestForm({ students, allStudents = [], current
       return;
     }
 
+    // One course, one way: while an upgrade is in progress its payments go under Course Upgrade, never as a Bonus too.
+    if (formData.type === 'BONUS' && studentCourses?.active) {
+      toast.error(`${selectedStudent.full_name || 'This student'} has a course upgrade in progress (${studentCourses.active.courseName}) — record the payment under Course Upgrade`);
+      return;
+    }
     if (formData.type === 'BONUS' && (!formData.tags || formData.tags.length === 0)) {
       toast.error('Please pick a product for the bonus');
       return;
@@ -541,6 +555,7 @@ export default function FundingRequestForm({ students, allStudents = [], current
                 <SelectItem value="DEPOSIT">Deposit</SelectItem>
                 <SelectItem value="WITHDRAWAL">Withdrawal</SelectItem>
                 <SelectItem value="BONUS">Bonus</SelectItem>
+                <SelectItem value="COURSE_UPGRADE">Course Upgrade</SelectItem>
               </SelectContent>
             </Select>
           </div>
@@ -565,6 +580,16 @@ export default function FundingRequestForm({ students, allStudents = [], current
           </div>
 
           {formData.student_id && <CurrentCourses studentId={formData.student_id} />}
+
+          {upgradeMode && formData.student_id && (
+            <CourseUpgradePanel student={students.find(st => st.id === formData.student_id)} data={studentCourses} onDone={onCancel} />
+          )}
+          {formData.type === 'BONUS' && studentCourses?.active && (
+            <p className="md:col-span-2 rounded-md bg-amber-50 px-3 py-2 text-xs text-amber-800">
+              A course upgrade is in progress for this student — record its payments under <b>Course Upgrade</b>, not as a Bonus.
+            </p>
+          )}
+          {!upgradeMode && (<>
 
           {formData.type === 'BONUS' && (
             <div className="space-y-2 md:col-span-2">
@@ -698,9 +723,10 @@ export default function FundingRequestForm({ students, allStudents = [], current
               {formData.screenshot_url && <p className="text-xs text-green-600">✓ Receipt uploaded</p>}
             </div>
           )}
+          </>)}
         </div>
 
-        <div className="flex justify-end gap-3 pt-4">
+        {!upgradeMode && <div className="flex justify-end gap-3 pt-4">
           <Button type="button" variant="outline" onClick={onCancel}>
             Cancel
           </Button>
@@ -718,7 +744,12 @@ export default function FundingRequestForm({ students, allStudents = [], current
               'Submit Request'
             )}
           </Button>
-        </div>
+        </div>}
+        {upgradeMode && (
+          <div className="flex justify-end pt-2">
+            <Button type="button" variant="outline" onClick={onCancel}>Close</Button>
+          </div>
+        )}
       </form>
     </>
   );
@@ -751,6 +782,54 @@ function CurrentCourses({ studentId }) {
           {!a.progress.done && a.nextPaymentAed ? `, next ${aed(a.nextPaymentAed)}` : ''}
         </p>
       )}
+    </div>
+  );
+}
+
+/**
+ * Course Upgrade (the user, 2026-10-08): the student's upgrade from here, as on their Courses tab — enter their
+ * courses, start an upgrade (full or instalments), or record its next payment for Delta Finance to approve.
+ */
+function CourseUpgradePanel({ student, data, onDone }) {
+  const queryClient = useQueryClient();
+  const [open, setOpen] = useState(null);
+  const refresh = () => {
+    queryClient.invalidateQueries({ queryKey: ['student-courses', student?.id] });
+    queryClient.invalidateQueries({ queryKey: ['course-upgrades'] });
+  };
+  if (!student) return null;
+  if (!data) return <p className="md:col-span-2 text-sm text-muted-foreground"><Loader2 className="mr-2 inline h-4 w-4 animate-spin" />Loading their courses…</p>;
+  const a = data.active;
+  const room = a ? Math.max(0, a.progress.balanceAed - a.pendingAed) : 0;
+  const aed = (n) => `AED ${Number(n || 0).toLocaleString('en-US')}`;
+  return (
+    <div className="md:col-span-2 space-y-2 rounded-lg border border-sky-200 bg-sky-50/50 p-3 text-sm">
+      {!data.canWork ? (
+        <p className="text-muted-foreground">Only this student's CS, the people above them and admins can record their course upgrade.</p>
+      ) : !data.entered ? (
+        <>
+          <p>Enter {student.full_name}'s current courses first — the upgrade is worked out from them.</p>
+          <Button type="button" size="sm" onClick={() => setOpen('enter')}>Enter current courses</Button>
+        </>
+      ) : !a ? (
+        <>
+          <p>No upgrade in progress. Pick the course they're upgrading to — full payment or instalments.</p>
+          <Button type="button" size="sm" disabled={!data.options.length} onClick={() => setOpen('start')}>Start upgrade</Button>
+        </>
+      ) : (
+        <>
+          <p>
+            <b>{a.courseName}</b> ({a.plan === 'full' ? 'full payment' : 'instalments'}) — balance {aed(a.progress.balanceAed)}
+            {a.pendingAed > 0 ? `, ${aed(a.pendingAed)} waiting for finance` : ''}. MT5 bonus earned ${Number(a.progress.bonusEarnedUsd).toLocaleString('en-US')} of ${Number(a.quote.bonusUsd).toLocaleString('en-US')}.
+          </p>
+          {room > 0
+            ? <Button type="button" size="sm" onClick={() => setOpen('pay')}>Record payment{a.nextPaymentAed ? ` — next ${aed(Math.min(a.nextPaymentAed, room))}` : ''}</Button>
+            : <p className="text-xs text-muted-foreground">Nothing left to record — the rest is with Delta Finance.</p>}
+        </>
+      )}
+      {open === 'enter' && <EnterCoursesDialog student={student} owned={data.owned} onClose={() => setOpen(null)} onSaved={refresh} />}
+      {open === 'start' && <UpgradeDialog student={student} options={data.options} onClose={() => setOpen(null)} onSaved={refresh} />}
+      {open === 'pay' && a && <PaymentDialog upgrade={a} onClose={() => setOpen(null)} onSaved={() => { refresh(); onDone?.(); }} />}
     </div>
   );
 }

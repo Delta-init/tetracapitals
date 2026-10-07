@@ -17,6 +17,8 @@ import { ArrowUpCircle, BookOpen, CheckCircle2, GraduationCap, Loader2, Papercli
    Delta finance approves, come next; until then an upgrade waits for its first.
 ──────────────────────────────────────────────────────────────────────────── */
 
+/** The funding form's fixed rate (FundingRequestForm.jsx). */
+const AED_PER_USD = 3.67;
 export const aed = (n) => `AED ${Number(n || 0).toLocaleString('en-US')}`;
 export const usd = (n) => `$${Number(n || 0).toLocaleString('en-US')}`;
 
@@ -273,9 +275,10 @@ function PaymentsList({ payments }) {
 const METHODS = ['Card', 'Cash', 'Bank transfer', 'Payment link', 'Tabby'];
 
 /** The CS records a payment the student made, with its receipt; it goes to Delta Finance to approve. */
-function PaymentDialog({ upgrade, onClose, onSaved }) {
+export function PaymentDialog({ upgrade, onClose, onSaved }) {
   const room = Math.max(0, upgrade.progress.balanceAed - upgrade.pendingAed);
   const [amount, setAmount] = useState(String(Math.min(upgrade.nextPaymentAed || room, room)));
+  const [currency, setCurrency] = useState('AED');
   const [method, setMethod] = useState('Card');
   const [paidOn, setPaidOn] = useState(new Date().toISOString().slice(0, 10));
   const [note, setNote] = useState('');
@@ -293,13 +296,18 @@ function PaymentDialog({ upgrade, onClose, onSaved }) {
   };
   const save = useMutation({
     mutationFn: async () => (await base44.functions.invoke('recordCoursePayment', {
-      upgradeId: upgrade.id, amountAed: Number(amount), method, receiptUrl: receipt?.url, receiptName: receipt?.name, paidOn, note,
+      upgradeId: upgrade.id, amountAed: aedAmount, method, receiptUrl: receipt?.url, receiptName: receipt?.name, paidOn,
+      note: [currency !== 'AED' ? `Paid ${currency} ${Number(amount).toLocaleString('en-US')} (${currency === 'INR' ? '1 INR = 0.010 USD, ' : ''}1 USD = ${AED_PER_USD} AED)` : '', note].filter(Boolean).join(' · '),
     })).data,
     onSuccess: () => { toast.success('Payment recorded — sent to Delta Finance for approval'); onSaved(); onClose(); },
     onError: (e) => toast.error(e?.message || 'Could not record the payment'),
   });
-  const n = Number(amount);
-  const valid = n > 0 && n <= room && receipt && !uploading;
+  // Typed in AED, USD or INR (the funding form's fixed rates); kept in AED. A USD amount a little over the room from
+  // the rounding is taken as the room.
+  const typed = Number(amount) || 0;
+  const raw = currency === 'AED' ? typed : currency === 'USD' ? typed * AED_PER_USD : typed * 0.01 * AED_PER_USD;
+  const aedAmount = Math.round((raw > room && raw - room < 1 ? room : raw) * 100) / 100;
+  const valid = aedAmount > 0 && aedAmount <= room && receipt && !uploading;
   return (
     <Dialog open onOpenChange={(o) => !o && onClose()}>
       <DialogContent className="max-w-md">
@@ -308,9 +316,16 @@ function PaymentDialog({ upgrade, onClose, onSaved }) {
           <DialogDescription>{upgrade.courseName} upgrade · up to {aed(room)} left to record. Delta Finance approves it; it counts once approved.</DialogDescription>
         </DialogHeader>
         <div className="space-y-3 text-sm">
-          <label className="block">Amount (AED)
-            <Input type="number" min="0" max={room} value={amount} onChange={(e) => setAmount(e.target.value)} className="mt-1 h-9" />
-          </label>
+          <div>
+            <span>Amount</span>
+            <div className="mt-1 flex gap-2">
+              <select value={currency} onChange={(e) => setCurrency(e.target.value)} aria-label="Currency" className="h-9 rounded-md border bg-background px-2">
+                {['AED', 'USD', 'INR'].map((c) => <option key={c}>{c}</option>)}
+              </select>
+              <Input type="number" min="0" value={amount} onChange={(e) => setAmount(e.target.value)} className="h-9" />
+            </div>
+            {currency !== 'AED' && typed > 0 && <span className="text-xs text-muted-foreground">= {aed(aedAmount)}{aedAmount > room ? ` — more than the ${aed(room)} left` : ''}</span>}
+          </div>
           <label className="block">Method
             <select value={method} onChange={(e) => setMethod(e.target.value)} className="mt-1 h-9 w-full rounded-md border bg-background px-2">
               {METHODS.map((m) => <option key={m}>{m}</option>)}
@@ -347,7 +362,7 @@ function Figure({ label, value, strong }) {
 }
 
 /** The courses a student already has, and what they paid — entered once by their CS. */
-function EnterCoursesDialog({ student, owned, onClose, onSaved }) {
+export function EnterCoursesDialog({ student, owned, onClose, onSaved }) {
   const { data: prices } = useQuery({
     queryKey: ['course-price-list'],
     queryFn: async () => (await base44.functions.invoke('getCoursePriceList', {})).data,
@@ -396,7 +411,7 @@ function EnterCoursesDialog({ student, owned, onClose, onSaved }) {
 }
 
 /** Pick the course and how they pay; see what it costs and brings before starting. */
-function UpgradeDialog({ student, options, onClose, onSaved }) {
+export function UpgradeDialog({ student, options, onClose, onSaved }) {
   const [pick, setPick] = useState(null); // { code, plan }
   const chosen = pick && options.find((o) => o.code === pick.code)?.[pick.plan === 'full' ? 'full' : 'installments'];
   const start = useMutation({
