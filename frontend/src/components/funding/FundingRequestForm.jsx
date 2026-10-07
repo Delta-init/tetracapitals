@@ -15,7 +15,7 @@ import TagsPicker from './TagsPicker';
 import { isMentorRole } from '../utils/roles';
 import { teamMembersOf } from '../utils/teams';
 import { Mt5LoginField, MT5_LOGIN, mt5LoginOf } from '../students/mt5Accounts';
-import { PaymentRows, newPayment, paymentsTotal, paymentsMissing, paymentsToSave } from './payments';
+import { PaymentRows, newPayment, paymentsOf, paymentsTotal, paymentsMissing, paymentsToSave } from './payments';
 
 const NONE = '__none__';
 // "junior_mentor" -> "Junior Mentor"
@@ -238,8 +238,38 @@ export function PaymentDetails({ tx }) {
   );
 }
 
-export default function FundingRequestForm({ students, allStudents = [], currentUser, onSubmit, onCancel, isSubmitting }) {
-  const [formData, setFormData] = useState({
+/**
+ * A rejected request, corrected (the user, 2026-10-07): the form starts from everything it had — every field can be
+ * changed — and sends it as a new request naming it (`resubmit_of`; backend finance/funding.ts claimResubmit).
+ */
+const startFrom = (tx) => ({
+  type: tx.type || 'DEPOSIT',
+  student_id: tx.student_id || '',
+  amount: tx.type === 'WITHDRAWAL' ? String(tx.amount_original || tx.amount_usd || '') : '',
+  currency: tx.amount_currency || 'USD',
+  payment_kind: tx.course_payment?.kind || '',
+  payment_method: tx.payment_method || '',
+  mt5_login: tx.mt5_login || '',
+  screenshot_url: tx.screenshot_url || '',
+  tags: Array.isArray(tx.tags) ? tx.tags : [],
+  meeting_mentor_id: tx.meeting_mentor_id || '',
+});
+const paymentsFrom = (tx) => {
+  const list = paymentsOf(tx);
+  if (!list.length) return [newPayment()];
+  // One payment from before there were several: the request's amount is its amount.
+  const one = list.length === 1 ? String(tx.amount_original || tx.amount_usd || '') : '';
+  return list.map(p => newPayment({
+    method: p.method || '',
+    amount: p.amount > 0 ? String(p.amount) : one,
+    ...(p.collected_on ? { collected_on: p.collected_on } : {}),
+    receipt_url: p.receipt_url || '',
+    receipt_name: p.receipt_name || '',
+  }));
+};
+
+export default function FundingRequestForm({ students, allStudents = [], currentUser, onSubmit, onCancel, isSubmitting, from = null }) {
+  const [formData, setFormData] = useState(() => (from ? startFrom(from) : {
     type: 'DEPOSIT',
     student_id: '',
     amount: '',       // as typed, in `currency`
@@ -250,13 +280,13 @@ export default function FundingRequestForm({ students, allStudents = [], current
     screenshot_url: '',
     tags: [],          // only meaningful when type === 'BONUS'
     meeting_mentor_id: '', // mentor who conducted the meeting with the client
-  });
+  }));
   const [uploading, setUploading] = useState(false);
   const [referralStudent, setReferralStudent] = useState(null);
   const [showCoManageModal, setShowCoManageModal] = useState(false);
   // Money in — a deposit or a bonus — as payments, each with its method, amount and receipt; they add up to the amount.
   // A withdrawal has one amount and method, and no receipt yet.
-  const [payments, setPayments] = useState(() => [newPayment()]);
+  const [payments, setPayments] = useState(() => (from ? paymentsFrom(from) : [newPayment()]));
   const takesPayments = formData.type !== 'WITHDRAWAL';
   const typed = takesPayments ? paymentsTotal(payments) : formData.amount;
 
@@ -456,7 +486,9 @@ export default function FundingRequestForm({ students, allStudents = [], current
         : currentUser.id,
       initiating_mentor_name: currentUser.app_role === 'assistance' && currentUser.assigned_mentor_name
         ? currentUser.assigned_mentor_name
-        : currentUser.full_name
+        : currentUser.full_name,
+      // Correcting a rejected request: sent as a new one, naming it.
+      ...(from ? { resubmit_of: from.id } : {}),
     };
 
     onSubmit(dataToSubmit);
@@ -488,6 +520,12 @@ export default function FundingRequestForm({ students, allStudents = [], current
         />
       )}
       <form onSubmit={handleSubmit} className="space-y-4">
+        {from && (
+          <div className="rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-sm">
+            <p className="font-medium text-rose-800">Rejected{from.rejection_reason ? `: ${from.rejection_reason}` : ''}</p>
+            <p className="mt-0.5 text-xs text-rose-700">Correct anything below and send it again — it goes as a new request; the rejected one stays as it was.</p>
+          </div>
+        )}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <div className="space-y-2">
             <Label htmlFor="type">Transaction Type *</Label>

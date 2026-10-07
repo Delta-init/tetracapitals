@@ -39,6 +39,8 @@ const two = (n) => (n || 0).toLocaleString('en-US', { minimumFractionDigits: 2, 
 export default function MyFundingRequests() {
   const [currentUser, setCurrentUser] = useState(null);
   const [showAddDialog, setShowAddDialog] = useState(false);
+  // A rejected request being corrected and sent again (FundingRequestForm `from`).
+  const [resending, setResending] = useState(null);
   const [activeTab, setActiveTab] = useState('my');
   const [dateFrom, setDateFrom] = useState('');
   const [dateTo, setDateTo] = useState('');
@@ -137,8 +139,10 @@ export default function MyFundingRequests() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['funding-transactions'] });
       setShowAddDialog(false);
-      toast.success('Funding request submitted successfully');
-    }
+      toast.success(resending ? 'Corrected and sent again as a new request' : 'Funding request submitted successfully');
+      setResending(null);
+    },
+    onError: (e) => toast.error(e?.message || 'The request could not be sent'),
   });
 
   if (!currentUser) {
@@ -406,7 +410,7 @@ export default function MyFundingRequests() {
             <p className="mt-2 max-w-3xl text-sm text-slate-500 sm:text-base">Manage your deposit and withdrawal requests</p>
           </div>
           {canCreate && activeTab === 'my' && (
-            <Button onClick={() => setShowAddDialog(true)} className="bg-blue-600 hover:bg-blue-700">
+            <Button onClick={() => { setResending(null); setShowAddDialog(true); }} className="bg-blue-600 hover:bg-blue-700">
               <Plus className="h-4 w-4 mr-2" />
               New Request
             </Button>
@@ -776,6 +780,16 @@ export default function MyFundingRequests() {
                                     {transaction.status === 'REJECTED' && transaction.rejection_reason ? (
                                       <span className="text-red-600 font-medium">{transaction.rejection_reason}</span>
                                     ) : '-'}
+                                    {/* Rejected: corrected and sent again as a new request, once (the user, 2026-10-07) */}
+                                    {transaction.status === 'REJECTED' && (transaction.resubmitted_as ? (
+                                      <div className="mt-1 text-xs font-medium text-emerald-700">Corrected and sent again</div>
+                                    ) : (
+                                      <Button size="sm" variant="outline" className="mt-1 h-7 px-2 text-xs"
+                                        onClick={() => { setResending(transaction); setShowAddDialog(true); }}>
+                                        Correct &amp; resend
+                                      </Button>
+                                    ))}
+                                    {transaction.resubmit_of && <div className="mt-1 text-xs text-slate-500">A corrected request, sent again</div>}
                                   </TableCell>
                                   <TableCell>
                                     {/* Every payment's receipt — "View (2)" for two */}
@@ -969,17 +983,19 @@ export default function MyFundingRequests() {
         </Tabs>
 
         {/* Add Request Dialog */}
-        <Dialog open={showAddDialog} onOpenChange={setShowAddDialog}>
+        <Dialog open={showAddDialog} onOpenChange={(o) => { setShowAddDialog(o); if (!o) setResending(null); }}>
           <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
             <DialogHeader>
-              <DialogTitle>New Funding Request</DialogTitle>
+              <DialogTitle>{resending ? 'Correct & send again' : 'New Funding Request'}</DialogTitle>
             </DialogHeader>
             <FundingRequestForm
+              key={resending?.id || 'new'}
+              from={resending}
               students={myStudents}
               allStudents={students}
               currentUser={currentUser}
               onSubmit={(data) => createMutation.mutate(data)}
-              onCancel={() => setShowAddDialog(false)}
+              onCancel={() => { setShowAddDialog(false); setResending(null); }}
               isSubmitting={createMutation.isPending}
             />
           </DialogContent>

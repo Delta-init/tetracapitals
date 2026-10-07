@@ -9,7 +9,7 @@ import { buildScopeFilter, applyScope, docMatchesScope } from "../lib/scope";
 import { stampNewStudents, recordCreated, prepareStudentUpdate, recordHistory, type HistoryEntry } from "../students/history";
 import { notifyStudentsGiven } from "../lib/notify";
 import type { TeamIndex } from "../students/teams";
-import { stampFundingForFinance, kickFinanceFunding, financeLock, withFinance, WITH_FINANCE_MESSAGE, bonusRefusal, bonusMissing, dropServerFields } from "../finance/funding";
+import { stampFundingForFinance, kickFinanceFunding, financeLock, withFinance, WITH_FINANCE_MESSAGE, bonusRefusal, bonusMissing, dropServerFields, claimResubmit, releaseResubmit } from "../finance/funding";
 import { seesClosedOnly, SALES_READ_ONLY } from "../students/closedBy";
 import { keepRequestMt5 } from "../students/mt5";
 
@@ -194,6 +194,9 @@ export async function createEntity(req: Request, entityName: string): Promise<Re
     dropServerFields(data);
     const missing = bonusMissing(data);
     if (missing) return error(missing, 400);
+    // A rejected request, corrected and sent again: that one claimed, once (finance/funding.ts).
+    const refused = await claimResubmit(data, ctx.user);
+    if (refused) return error(refused.message, refused.status);
   }
   // Attribution
   if (!data.created_by) data.created_by = ctx.user.id;
@@ -211,7 +214,13 @@ export async function createEntity(req: Request, entityName: string): Promise<Re
   // A new deposit request goes to Delta finance for approval (finance/funding.ts).
   const toFinance = entityName === "FundingTransaction" && stampFundingForFinance(data);
 
-  const res = await col(ctx.cfg.collection).insertOne(data as any);
+  let res;
+  try {
+    res = await col(ctx.cfg.collection).insertOne(data as any);
+  } catch (e) {
+    if (entityName === "FundingTransaction") await releaseResubmit(data);
+    throw e;
+  }
   const created = await col(ctx.cfg.collection).findOne({ _id: res.insertedId });
   if (teams && created) {
     await recordCreated([created], ctx.user, "created", teams);

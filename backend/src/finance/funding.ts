@@ -1,5 +1,5 @@
 import { createHash, createHmac, randomUUID } from "node:crypto";
-import type { ObjectId } from "mongodb";
+import { ObjectId } from "mongodb";
 import { col } from "../db";
 import { config } from "../config";
 import { toObjectId } from "../lib/id";
@@ -80,6 +80,51 @@ export function withFinance(tx: any): boolean {
 }
 
 export const WITH_FINANCE_MESSAGE = "This request is with Delta Finance for approval — it is approved or rejected there";
+
+/* ── Correct and send again (the user, 2026-10-07) ──────────────────────────
+   A rejected request is corrected — every field — and sent as a new request,
+   which goes the whole way again (Delta finance knows a request by its id and
+   has already decided the old one). The rejected one stays, with its reason,
+   and says which request it was sent again as. Once each. */
+
+const MAY_RESEND_ANY = ["super_admin", "admin"];
+
+/**
+ * For a new request that names `resubmit_of`: the rejected request it corrects. Claims that one — its
+ * `resubmitted_as` set to the new request's id, given here as `data._id` — so it is sent again only once, even
+ * twice at the same instant. Mutates `data`; a refusal, or null (also when it corrects nothing).
+ */
+export async function claimResubmit(data: Record<string, any>, user: { id: string; app_role: string; full_name?: string; email?: string }): Promise<{ status: number; message: string } | null> {
+  const from = String(data.resubmit_of ?? "").trim();
+  delete data.resubmit_of;
+  delete data.resubmit_reason;
+  if (!from) return null;
+  const oid = toObjectId(from);
+  const old: any = oid ? await col("funding_transactions").findOne({ _id: oid }) : null;
+  if (!old) return { status: 404, message: "The rejected request to correct wasn't found" };
+  if (old.status !== "REJECTED") return { status: 409, message: "Only a rejected request can be corrected and sent again" };
+  if (old.resubmitted_as) return { status: 409, message: "This request has already been corrected and sent again" };
+  const theirs = [old.requested_by_id, old.initiating_mentor_id, old.created_by].map((v) => String(v ?? "")).includes(user.id);
+  if (!theirs && !MAY_RESEND_ANY.includes(user.app_role)) return { status: 403, message: "Only whoever made this request, or an admin, can send it again" };
+  const id = new ObjectId();
+  const claimed = await col("funding_transactions").updateOne(
+    { _id: old._id, status: "REJECTED", resubmitted_as: { $in: [null, ""] } },
+    { $set: { resubmitted_as: String(id), resubmitted_at: new Date().toISOString(), resubmitted_by_id: user.id, resubmitted_by_name: user.full_name || user.email || "" } },
+  );
+  if (!claimed.modifiedCount) return { status: 409, message: "This request has already been corrected and sent again" };
+  data._id = id;
+  data.resubmit_of = String(oid);
+  data.resubmit_reason = String(old.rejection_reason ?? "");
+  return null;
+}
+
+/** The new request wasn't made after all: the rejected one may be sent again. */
+export async function releaseResubmit(data: Record<string, any>): Promise<void> {
+  const oid = toObjectId(String(data.resubmit_of ?? ""));
+  if (oid && data._id) {
+    await col("funding_transactions").updateOne({ _id: oid, resubmitted_as: String(data._id) }, { $unset: { resubmitted_as: "", resubmitted_at: "", resubmitted_by_id: "", resubmitted_by_name: "" } });
+  }
+}
 
 /* ── A bonus's second approval ─────────────────────────────────────────────── */
 
