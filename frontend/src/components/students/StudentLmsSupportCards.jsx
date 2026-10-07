@@ -63,6 +63,9 @@ export function TicketAnswer({ studentId, ticket }) {
   const qc = useQueryClient();
   const { user } = useAuth();
   const [text, setText] = useState('');
+  // A CS's answer goes to the student on their WhatsApp too — the first for a ticket with the problem above it.
+  const isCs = user?.app_role === 'cs';
+  const [onWhatsApp, setOnWhatsApp] = useState(true);
   const done = () => {
     qc.invalidateQueries({ queryKey: ['student-lms-support', studentId] });
     qc.invalidateQueries({ queryKey: ['lms-support-tickets'] });
@@ -70,12 +73,16 @@ export function TicketAnswer({ studentId, ticket }) {
     qc.invalidateQueries({ queryKey: ['student-history', studentId] });
   };
   const answer = useMutation({
-    mutationFn: async () => (await base44.functions.invoke('answerLmsTicket', { studentId, ticketId: ticket.id, body: text.trim() })).data,
+    mutationFn: async () => (await base44.functions.invoke('answerLmsTicket', {
+      studentId, ticketId: ticket.id, body: text.trim(), whatsapp: isCs && onWhatsApp,
+    })).data,
     onSuccess: (r) => {
       setText('');
       toast.success(r?.from === 'shared'
         ? "Answer sent from Delta's support account, signed with your name — you have no LMS account of your own"
         : 'Answer sent from your LMS account — the student sees it on their ticket');
+      if (r?.whatsapp?.sent) toast.success(r.whatsapp.with_problem ? 'Also sent on your WhatsApp, with their problem above it' : 'Also sent on your WhatsApp');
+      else if (r?.whatsapp?.why_not) toast.warning(`Not sent on WhatsApp: ${r.whatsapp.why_not}`);
       done();
     },
     onError: (e) => toast.error(e?.message || 'The answer could not be sent'),
@@ -101,7 +108,15 @@ export function TicketAnswer({ studentId, ticket }) {
         className="bg-white text-sm"
       />
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <span className="text-xs text-slate-400">Sent from your own LMS account; without one, from Delta's support account signed with your name.</span>
+        <span className="flex flex-col gap-1 text-xs text-slate-400">
+          Sent from your own LMS account; without one, from Delta's support account signed with your name.
+          {isCs && (
+            <label className="flex cursor-pointer items-center gap-1.5 text-slate-600">
+              <input type="checkbox" checked={onWhatsApp} onChange={(e) => setOnWhatsApp(e.target.checked)} disabled={busy} className="h-3.5 w-3.5 accent-emerald-600" />
+              Also send on my WhatsApp — the first time with their problem above it
+            </label>
+          )}
+        </span>
         <div className="flex gap-2">
           {ticket.status !== 'resolved' && (
             <Button size="sm" variant="outline" className="gap-1.5" disabled={busy} onClick={() => resolve.mutate()}>

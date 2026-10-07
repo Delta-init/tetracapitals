@@ -6,6 +6,7 @@ import { userCanReadDoc, userCanListEntity } from "../entities/crud";
 import { buildScopeFilter } from "../lib/scope";
 import { recordHistory } from "../students/history";
 import { callLms, lmsConfigured, LmsError } from "../lib/lms";
+import { status as whatsAppStatus, sendText, intlNumbers } from "../whatsapp/service";
 
 /* The LMS answers for at most this many addresses at a time; a few asks at once. */
 const LMS_BATCH = 500;
@@ -210,12 +211,49 @@ async function ticketStudent(body: any, user: AuthUser): Promise<{ student: any;
 const lmsRefusal = (err: unknown) =>
   err instanceof LmsError ? error(err.message.replace(/^The LMS would not [^:]+: /, ""), err.status === 502 ? 502 : 409) : error("The LMS could not be asked", 502);
 
+/* Tickets whose answer has gone to the student on WhatsApp: the first WhatsApp carries their problem, later ones
+   only the answer (the user, 2026-10-07). Keyed by the LMS ticket id. */
+const TICKET_WHATSAPP = "lms_ticket_whatsapp";
+
 /**
- * POST /api/functions/answerLmsTicket { studentId, ticketId, body }
+ * The answer, on WhatsApp too — from the answering CS's own WhatsApp, as the onboarding welcome goes, to the
+ * student's first number here. The first for a ticket starts with the problem they raised; later ones are just the
+ * answer. Never stops the answer: what didn't go is said why. → { sent, to?, with_problem?, why_not? }
+ */
+async function answerOnWhatsApp(user: AuthUser, student: any, ticketId: string, ticket: any, answer: string) {
+  if (user.app_role !== "cs") return { sent: false, why_not: "WhatsApp goes from a CS's own WhatsApp — only a CS can send it" };
+  if (whatsAppStatus(user.id).status !== "connected") return { sent: false, why_not: "Your WhatsApp is not linked — link it on the WhatsApp page" };
+  const to = intlNumbers(student.phone)[0];
+  if (!to) return { sent: false, why_not: "The student has no phone number here" };
+  const first = !(await col<any>(TICKET_WHATSAPP).findOne({ _id: ticketId }));
+  const problem = String((ticket?.messages ?? []).find((m: any) => m?.from === "student")?.body ?? "").trim();
+  const subject = str(ticket?.subject, 150);
+  const text = first
+    ? [`*Your support ticket${subject ? `: ${subject}` : ""}*`, problem ? `You wrote: "${problem.length > 1000 ? `${problem.slice(0, 1000)}…` : problem}"` : "", "", answer]
+        .filter((line, i) => line || i === 2).join("\n")
+    : answer;
+  try {
+    await sendText({ id: user.id, name: who(user) }, to, text);
+  } catch (err) {
+    return { sent: false, why_not: err instanceof Error ? err.message : "WhatsApp did not answer" };
+  }
+  const now = new Date().toISOString();
+  await col<any>(TICKET_WHATSAPP).updateOne(
+    { _id: ticketId },
+    { $setOnInsert: { student_id: String(student._id), first_at: now, first_by: user.id }, $set: { last_at: now }, $inc: { sent: 1 } },
+    { upsert: true },
+  );
+  return { sent: true, to, with_problem: first };
+}
+
+/**
+ * POST /api/functions/answerLmsTicket { studentId, ticketId, body, whatsapp = true }
  * An answer on the student's ticket in the Delta LMS: from the user's own LMS account (found by their
  * email) when they have one as staff — the student sees their name — else from the LMS's shared support
  * account, signed with their name. The ticket then waits on the student, and the LMS tells them. For
- * whoever may see the student. Noted in the student's history. → { ticket, from: "own" | "shared" }
+ * whoever may see the student. With `whatsapp` (on unless false) the answer goes to the student on WhatsApp too —
+ * the first time for a ticket with their problem above it (answerOnWhatsApp). Noted in the student's history.
+ * → { ticket, from: "own" | "shared", whatsapp: { sent, to?, with_problem?, why_not? } | null }
  */
 export async function answerLmsTicket(req: Request, user: AuthUser): Promise<Response> {
   const body: any = await req.json().catch(() => ({}));
@@ -236,6 +274,7 @@ export async function answerLmsTicket(req: Request, user: AuthUser): Promise<Res
     return lmsRefusal(err);
   }
   ticketCounts.clear();   // the sidebar's numbers change
+  const whatsapp = body?.whatsapp === false ? null : await answerOnWhatsApp(user, found.student, found.ticketId, ticket, text);
   await recordHistory([{
     student_id: String(found.student._id),
     at: new Date().toISOString(),
@@ -243,9 +282,9 @@ export async function answerLmsTicket(req: Request, user: AuthUser): Promise<Res
     text: `Answered the LMS ticket “${str(ticket?.subject, 120) || "a ticket"}”: ${text.length > 140 ? `${text.slice(0, 140)}…` : text}`,
     by_id: user.id,
     by_name: who(user),
-    to: { ticket_id: found.ticketId, status: ticket?.status ?? "", from: from ?? "" },
+    to: { ticket_id: found.ticketId, status: ticket?.status ?? "", from: from ?? "", ...(whatsapp?.sent ? { whatsapp: whatsapp.to } : {}) },
   }]);
-  return json({ ticket, from: from ?? "" });
+  return json({ ticket, from: from ?? "", whatsapp });
 }
 
 /**
