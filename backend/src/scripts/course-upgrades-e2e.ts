@@ -253,6 +253,29 @@ check("before finance approves a payment: refused", (await fn("getUpgradeLmsPlan
 check("history: the modules opened", (await db.collection("student_history").find({ student_id: S1, text: /LMS modules opened/ }).toArray()).length >= 1);
 lms.stop(true);
 
+step("Case 7 — the course balance: on the Students list, its filter, and the student's courses");
+const bonusPay = (status: string, paid: number, at: string) => ({
+  type: "BONUS", status, student_id: S1, amount_usd: paid / 3.67, requested_at: at, created_date: at,
+  course_payment: { product: "DSLP", kind: "partial", plan_aed: 20000, paid_today_aed: paid, balance_aed: 0 },
+});
+await db.collection("funding_transactions").insertMany([
+  bonusPay("APPROVED", 18000, "2026-10-08T01:15:00.000Z"),
+  bonusPay("REJECTED", 2000, "2026-10-08T02:00:00.000Z"),
+] as any[]);
+r = await fn("listStudents", { tab: "my", filters: {} }, tCs);
+const row = r.body.rows?.find((x: any) => x.student_code === "STU-1");
+const dslpBal = row?.course_balances?.find((b: any) => b.source === "bonus");
+const upBal = row?.course_balances?.find((b: any) => b.source === "upgrade");
+check("the list: DSLP owes 2,000 (the rejected one doesn't count), and the DSLP PRO upgrade its whole price", dslpBal?.balanceAed === 2000 && dslpBal.paidAed === 18000 && dslpBal.totalAed === 20000
+  && /^DSLP PRO/.test(upBal?.course ?? "") && upBal.balanceAed === upBal.totalAed && upBal.paidAed === 0, show(row?.course_balances));
+r = await fn("listStudents", { tab: "my", filters: { balance: "owing" } }, tCs);
+check("\"Has balance\" finds them, with no finance balance at all", r.body.rows?.some((x: any) => x.student_code === "STU-1"), show(r.body.rows?.map((x: any) => x.student_code)));
+r = await fn("getStudentCourses", { studentId: S1 }, tCs);
+check("their courses carry the same balances", r.body.balances?.length === 2 && r.body.balances.some((b: any) => b.course === "DSLP" && b.balanceAed === 2000));
+await db.collection("funding_transactions").insertOne(bonusPay("PENDING", 2000, "2026-10-08T03:00:00.000Z") as any);
+r = await fn("getStudentCourses", { studentId: S1 }, tCs);
+check("a payment waiting for approval counts, as the Bonus form counts it", r.body.balances?.find((b: any) => b.course === "DSLP")?.balanceAed === 0);
+
 await client.close();
 console.log(`\n${pass}/${pass + fail} checks passed`);
 process.exit(fail ? 1 : 0);

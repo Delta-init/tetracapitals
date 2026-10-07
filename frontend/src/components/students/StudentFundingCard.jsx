@@ -4,7 +4,9 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Paged, TablePagination } from '@/components/common/TablePagination';
-import { TrendingDown, TrendingUp, Wallet } from 'lucide-react';
+import { GraduationCap, TrendingDown, TrendingUp, Wallet } from 'lucide-react';
+import { useQuery } from '@tanstack/react-query';
+import { base44 } from '@/api/base44Client';
 import TagChips from '@/components/funding/TagChips';
 import { PaymentDetails } from '@/components/funding/FundingRequestForm';
 import { useFinanceLink, WithAccountsBadge, FinanceApprovalNote } from '@/components/funding/FinanceApproval';
@@ -61,7 +63,7 @@ export default function StudentFundingCard({ student, transactions = [], loading
 
   return (
     <div className="space-y-4">
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
         {[
           { label: 'Total Deposits', value: totalDeposits, icon: TrendingUp, tone: 'from-blue-100 to-blue-200 text-blue-900' },
           { label: 'Total Withdrawals', value: totalWithdrawals, icon: TrendingDown, tone: 'from-purple-100 to-purple-200 text-purple-900' },
@@ -77,6 +79,7 @@ export default function StudentFundingCard({ student, transactions = [], loading
             </CardContent>
           </Card>
         ))}
+        <CourseBalanceBox studentId={studentIdOf(transactions, student)} />
       </div>
 
       <Card className="border-gray-200">
@@ -156,5 +159,34 @@ export default function StudentFundingCard({ student, transactions = [], loading
         </CardContent>
       </Card>
     </div>
+  );
+}
+
+const studentIdOf = (transactions, student) => student?.id || transactions?.[0]?.student_id || '';
+
+/** What they still owe on courses recorded here: Bonus instalments and an upgrade in progress (courses/courseBalance.ts). */
+function CourseBalanceBox({ studentId }) {
+  const { data, isLoading } = useQuery({
+    queryKey: ['student-courses', studentId],
+    queryFn: async () => (await base44.functions.invoke('getStudentCourses', { studentId })).data,
+    enabled: !!studentId,
+    retry: false,
+  });
+  const owing = (data?.balances || []).filter((b) => b.balanceAed > 0);
+  const total = owing.reduce((s, b) => s + b.balanceAed, 0);
+  const aed = (n) => `AED ${Number(n || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+  return (
+    <Card className="border-none bg-gradient-to-br from-amber-100 to-amber-200 text-amber-900 shadow-sm">
+      <CardContent className="flex items-start justify-between p-4">
+        <div>
+          <p className="text-sm font-medium">Course balance</p>
+          <p className="mt-1 text-2xl font-bold">{isLoading ? '…' : aed(total)}</p>
+          {owing.map((b) => (
+            <p key={`${b.source}-${b.course}`} className="text-xs">{b.course}: {aed(b.balanceAed)} <span className="opacity-70">of {aed(b.totalAed)}</span></p>
+          ))}
+        </div>
+        <GraduationCap className="h-7 w-7 opacity-70" />
+      </CardContent>
+    </Card>
   );
 }

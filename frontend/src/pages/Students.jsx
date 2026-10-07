@@ -5,7 +5,7 @@ import { isStudentOf } from '@/components/students/common';
 import { StudentTagChips, tagNamesOf, useStudentTagCatalog } from '@/components/students/tags';
 import PageHeader from '@/components/common/PageHeader';
 import { Link, useNavigate } from 'react-router-dom';
-import { courseLabel, studentCourses, studentBalance, balanceText } from '@/components/utils/studentProducts';
+import { courseLabel, studentCourses, studentBalance, balanceText, courseBalanceText } from '@/components/utils/studentProducts';
 import { TablePagination, DEFAULT_PAGE_SIZE } from '@/components/common/TablePagination';
 import { base44 } from "@/api/base44Client";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
@@ -102,8 +102,14 @@ const EXPORT_COLUMNS = [
 /** What is still to pay, from Course fees: amber while owed, green when paid in full, a dash when nothing is known. */
 function BalanceCell({ student }) {
   const { known, owing } = studentBalance(student);
-  if (!known) return <span className="text-slate-300">—</span>;
-  return <span className={`whitespace-nowrap text-sm font-medium ${owing ? 'text-amber-700' : 'text-emerald-700'}`}>{balanceText(student)}</span>;
+  const courses = courseBalanceText(student);
+  if (!known && !courses) return <span className="text-slate-300">—</span>;
+  return (
+    <div className="space-y-0.5">
+      {known && <span className={`block whitespace-nowrap text-sm font-medium ${owing ? 'text-amber-700' : 'text-emerald-700'}`}>{balanceText(student)}</span>}
+      {courses && <span className="block whitespace-nowrap text-xs font-medium text-amber-700" title="Owed on courses recorded in Tetra">{courses}</span>}
+    </div>
+  );
 }
 
 export default function Students() {

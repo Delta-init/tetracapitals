@@ -110,3 +110,11 @@ export function matchesCourseProduct(student, products, value) {
   if (value.startsWith('product:')) return prods.includes(value.slice(8));
   return true;
 }
+
+/** What they owe on courses recorded in Tetra (Bonus instalments, an upgrade in progress) — "AED 2,000.00 · DSLP". */
+export function courseBalanceText(student) {
+  return (Array.isArray(student?.course_balances) ? student.course_balances : [])
+    .filter(b => b.balanceAed > 0)
+    .map(b => `AED ${Number(b.balanceAed).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} · ${b.course}`)
+    .join(' — ');
+}

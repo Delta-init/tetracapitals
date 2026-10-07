@@ -8,6 +8,7 @@ import { DEFAULT_PRICE_LIST, type CourseCode, type CoursePrice } from "../course
 import { quoteUpgrade, progressOf, UpgradeError, type OwnedCourse, type PlanType, type UpgradeQuote } from "../courses/upgradeCalc";
 import { approvedAmounts, queueCoursePayment, PAYMENT_METHODS } from "../courses/coursePayments";
 import { lmsTargetsOf, sameTitle } from "../courses/lmsMapping";
+import { courseBalancesOf } from "../courses/courseBalance";
 import { callLms, lmsConfigured } from "../lib/lms";
 import { lmsStudentFor, lmsRefusal, lmsLacksRoute, byOf, NOT_LINKED } from "./lmsEnrolmentRequests";
 
@@ -189,6 +190,7 @@ export async function getStudentCourses(req: Request, user: AuthUser): Promise<R
     past: upgrades.filter((u) => u.status !== "open").map((u) => upgradeView(u, list)),
     options,
     canWork: canWorkOn(user, found.s),
+    balances: (await courseBalancesOf([found.id])).get(found.id) ?? [],
   });
 }
 

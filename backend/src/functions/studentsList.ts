@@ -1,3 +1,4 @@
+import { courseBalancesOf, idsOwingOnCourses } from "../courses/courseBalance";
 import { col } from "../db";
 import { json, error, forbidden } from "../lib/response";
 import { toObjectId } from "../lib/id";
@@ -185,7 +186,11 @@ async function filters(user: AuthUser, tab: Tab, f: any): Promise<Record<string,
     const c = await courseFilter(course);
     if (c) out.push(c);
   }
-  if (f?.balance === "owing") out.push({ course_fees: { $elemMatch: { balance_minor: { $gt: 0 } } } });
+  if (f?.balance === "owing") {
+    // Finance's balance, or one on a course recorded here (courses/courseBalance.ts).
+    const owing = (await idsOwingOnCourses()).map(toObjectId).filter(Boolean);
+    out.push({ $or: [{ course_fees: { $elemMatch: { balance_minor: { $gt: 0 } } } }, { _id: { $in: owing } }] });
+  }
   if (f?.balance === "paid") {
     out.push({ course_fees: { $elemMatch: { balance_minor: { $type: "number" } } } });
     out.push({ course_fees: { $not: { $elemMatch: { balance_minor: { $gt: 0 } } } } });
@@ -223,6 +228,8 @@ export async function listStudents(req: Request, user: AuthUser): Promise<Respon
   const query = and(scope, await tabFilter(user, tab), ...(takesFilters ? await filters(user, tab, body?.filters) : []));
 
   const result = await pageOf("students", query, { created_date: -1, _id: -1 }, body);
+  const balances = await courseBalancesOf(result.rows.map((r: any) => String(r.id)));
+  for (const r of result.rows as any[]) r.course_balances = balances.get(String(r.id)) ?? [];
 
   const counts: Record<string, number> = {
     new_for_me: await col("students").countDocuments(and(scope, { new_for_id: user.id, primary_mentor_id: user.id })),

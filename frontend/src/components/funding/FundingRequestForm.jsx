@@ -629,6 +629,11 @@ export default function FundingRequestForm({ students, allStudents = [], current
           {product && (
             <div className="md:col-span-2">
               <PaymentKind value={kind} kinds={kinds} onChange={chooseKind} started={plan.instalments > 0 && beforeAed > 0} />
+              {plan.instalments > 0 && beforeAed > 0 && (
+                <p className="mt-2 rounded-md bg-amber-50 px-3 py-2 text-sm text-amber-800">
+                  {product.name}: paid {aedText(beforeAed)} of {aedText(plan.planAed)} · <b>balance {aedText(Math.max(0, plan.planAed - beforeAed))}</b>
+                </p>
+              )}
             </div>
           )}
 
@@ -776,6 +781,9 @@ function CurrentCourses({ studentId }) {
           ))
           : <span className="text-muted-foreground">none</span>}
       </div>
+      {(data?.balances || []).filter((b) => b.balanceAed > 0 && b.source === 'bonus').map((b) => (
+        <p key={b.course} className="mt-1 text-xs text-amber-700">{b.course}: paid {aed(b.paidAed)} of {aed(b.totalAed)}, <b>balance {aed(b.balanceAed)}</b></p>
+      ))}
       {a && (
         <p className="mt-1 text-xs text-amber-700">
           Upgrading to {a.courseName} ({a.plan === 'full' ? 'full payment' : 'instalments'}) — paid {aed(a.progress.paidAed)} of {aed(a.quote.dueAed)}, balance {aed(a.progress.balanceAed)}
