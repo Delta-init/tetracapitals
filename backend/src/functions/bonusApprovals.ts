@@ -55,8 +55,8 @@ export async function getBonusApprovals(_req: Request, user: AuthUser): Promise<
     const s = studentOf.get(String(t.student_id ?? ""));
     return {
       ...serialize(t),
-      source: t.bonus_credit === "sales_close" ? "sales_close" : "request",
-      course: String(t.sales_close?.course || (Array.isArray(t.tags) ? t.tags[0] ?? "" : "") || s?.lms_course || ""),
+      source: t.bonus_credit === "sales_close" ? "sales_close" : t.bonus_credit === "course_upgrade" ? "course_upgrade" : "request",
+      course: String(t.sales_close?.course || t.course_upgrade?.course || (Array.isArray(t.tags) ? t.tags[0] ?? "" : "") || s?.lms_course || ""),
       student: s
         ? {
             id: String(s._id), full_name: String(s.full_name ?? ""), student_code: String(s.student_code ?? ""),

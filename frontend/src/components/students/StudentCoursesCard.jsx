@@ -179,6 +179,7 @@ function PaymentsList({ payments }) {
             {p.status === 'pending' && !p.sent && <span className="text-xs text-muted-foreground">sending to finance…</span>}
             {p.status === 'rejected' && p.reason && <span className="w-full text-xs text-rose-600">{p.reason}</span>}
             {p.status === 'approved' && p.transactionId && <span className="text-xs text-muted-foreground">{p.transactionId}</span>}
+            {p.bonus && <span className="text-xs text-amber-700">MT5 bonus {usd(p.bonus.usd)} · {p.bonus.status === 'approved' ? 'credited' : p.bonus.status === 'rejected' ? 'rejected' : 'waiting for MT5 Bonus Approvals'}</span>}
           </li>
         );
       })}

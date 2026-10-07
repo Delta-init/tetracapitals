@@ -51,6 +51,11 @@ const paymentsOf = (u: any): number[] => approvedAmounts(u.payments ?? []);
 async function withPayments(ups: any[]): Promise<any[]> {
   if (!ups.length) return ups;
   const all = (await col("course_payments").find({ upgrade_id: { $in: ups.map((u) => String(u._id)) } }).sort({ recorded_at: 1 }).toArray()) as any[];
+  const bonuses = (await col("funding_transactions")
+    .find({ bonus_credit: "course_upgrade", "course_upgrade.payment_id": { $in: all.map((p) => String(p._id)) } }, { projection: { course_upgrade: 1, amount_usd: 1, status: 1, mt5_login: 1 } })
+    .toArray()) as any[];
+  const bonusOf = new Map(bonuses.map((b) => [String(b.course_upgrade?.payment_id), b]));
+  for (const p of all) p.bonus = bonusOf.get(String(p._id)) ?? null;
   for (const u of ups) u.payments = all.filter((p) => p.upgrade_id === String(u._id));
   return ups;
 }
@@ -61,6 +66,7 @@ const paymentView = (p: any) => ({
   status: p.status, reason: p.reason ?? "", transactionId: p.transaction_id ?? "",
   sent: p.finance_approval?.state === "sent" || p.finance_approval?.state === "decided",
   lastError: p.status === "pending" ? p.finance_approval?.last_error ?? null : null,
+  bonus: p.bonus ? { usd: Number(p.bonus.amount_usd) || 0, status: String(p.bonus.status ?? "").toLowerCase(), mt5Login: String(p.bonus.mt5_login ?? "") } : null,
   recordedAt: p.recorded_at, recordedBy: p.recorded_by_name ?? "", decidedBy: p.decided_by_name ?? "", decidedAt: p.decided_at ?? null,
 });
 

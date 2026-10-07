@@ -5,6 +5,7 @@ import { recordHistory } from "../students/history";
 import { financeFundingConfigured, postToFinance, FinancePermanentError, backoffMs, FINANCE_INTAKE_PATH, kickFinanceFunding } from "../finance/funding";
 import { progressOf, type UpgradeQuote } from "./upgradeCalc";
 import { DEFAULT_PRICE_LIST } from "./priceList";
+import { mt5Of } from "../students/mt5";
 
 const courseName = (u: any) => DEFAULT_PRICE_LIST.find((c) => c.code === u?.course)?.name ?? String(u?.course ?? "Course");
 
@@ -164,8 +165,13 @@ export async function decideCoursePayment(
   // Paid in full: the upgrade is done, and the course theirs.
   const u: any = await col("course_upgrades").findOne({ _id: new ObjectId(p.upgrade_id) });
   let done = false;
+  let bonusUsd = 0;
   if (u && approved) {
-    const progress = progressOf(u.quote, approvedAmounts(await paymentsOfUpgrade(p.upgrade_id)));
+    const all = await paymentsOfUpgrade(p.upgrade_id);
+    const progress = progressOf(u.quote, approvedAmounts(all));
+    const before = progressOf(u.quote, approvedAmounts(all.filter((x) => String(x._id) !== String(p._id))));
+    bonusUsd = progress.bonusEarnedUsd - before.bonusEarnedUsd;
+    if (bonusUsd > 0) await raiseUpgradeBonus(p, u, bonusUsd, progress.stepsEarned - before.stepsEarned, d.at);
     if (progress.done && u.status === "open") {
       await col("course_upgrades").updateOne({ _id: u._id, status: "open" }, { $set: { status: "done", done_at: d.at } });
       done = true;
@@ -175,8 +181,43 @@ export async function decideCoursePayment(
   await recordHistory([{
     student_id: p.student_id, at: d.at, type: "course_upgrade", by_id: null, by_name: `${d.byName} (Delta Finance)`,
     text: approved
-      ? `Course payment of ${aed(d.amountMinor / 100)} approved by Delta Finance (transaction ${d.transactionId})${done ? " — the upgrade is paid in full" : ""}`
+      ? `Course payment of ${aed(d.amountMinor / 100)} approved by Delta Finance (transaction ${d.transactionId})${bonusUsd > 0 ? ` — MT5 bonus of $${bonusUsd.toLocaleString("en-US")} sent to MT5 Bonus Approvals` : ""}${done ? " — the upgrade is paid in full" : ""}`
       : `Course payment of ${aed(p.amount_aed)} rejected by Delta Finance: ${d.reason}`,
   }]);
   return ok({ fundingId: String(p._id), status: set.status, upgradeDone: done });
+}
+
+const AED_PER_USD = 3.67;
+
+/**
+ * Phase 4 (the user, 2026-10-07): the $500 steps an approved payment completes
+ * go to MT5 Bonus Approvals, for a broker admin or a Super Admin to credit. A
+ * credit only — `bonus_credit` keeps it away from finance (which approved the
+ * money already) and from commission. Once per payment: an upsert on it, so
+ * finance repeating its approval raises nothing more.
+ */
+async function raiseUpgradeBonus(p: any, u: any, usd: number, steps: number, at: string): Promise<void> {
+  const s: any = await col("students").findOne({ _id: new ObjectId(p.student_id) });
+  const login = (await mt5Of(p.student_id))[0] ?? "";
+  const name = courseName(u);
+  const why = u?.quote?.steps ? `${steps} step${steps === 1 ? "" : "s"} of $500` : "the flat bonus";
+  await col("funding_transactions").updateOne(
+    { bonus_credit: "course_upgrade", "course_upgrade.payment_id": String(p._id) },
+    {
+      $setOnInsert: {
+        type: "BONUS", status: "PENDING", bonus_credit: "course_upgrade",
+        course_upgrade: { upgrade_id: p.upgrade_id, payment_id: String(p._id), course: name, steps },
+        amount_currency: "USD", amount_original: usd, amount_usd: usd, amount_aed: Math.round(usd * AED_PER_USD * 100) / 100, fx_rate_aed_per_usd: AED_PER_USD,
+        mt5_login: login, tags: [name], payment_method: "", screenshot_url: String(p.receipt_url ?? ""),
+        student_id: p.student_id, student_name: s?.full_name ?? "", student_code: s?.student_code ?? "",
+        primary_mentor_id: s?.primary_mentor_id ?? "", primary_mentor_name: s?.primary_mentor_name ?? "",
+        senior_mentor_id: s?.senior_mentor_id ?? null, senior_mentor_name: s?.senior_mentor_name ?? null,
+        initiating_mentor_id: p.recorded_by ?? "", initiating_mentor_name: p.recorded_by_name ?? "", upline_commission_percentage: 0,
+        requested_by_id: p.recorded_by ?? "", requested_by_name: p.recorded_by_name ?? "", requested_at: at,
+        notes: `Course upgrade bonus — ${name}: $${usd.toLocaleString("en-US")} (${why}) for a payment of AED ${Number(p.approved_amount_aed ?? p.amount_aed).toLocaleString("en-US")} approved by Delta Finance. Credit it in MT5 ${login || "(no MT5 login on file — pick one)"}. No commission on it.`,
+        created_date: at, updated_date: at,
+      },
+    },
+    { upsert: true },
+  );
 }

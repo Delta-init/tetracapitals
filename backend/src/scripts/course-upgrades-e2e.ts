@@ -4,6 +4,7 @@
  *   - a CS entering a student's current courses, then the upgrades offered with what each costs and earns;
  *   - starting one: the quote kept, one at a time, the courses locked; cancelling before any payment;
  *   - who may: the student's CS and admins, not another CS; the Upgrades list scoped the same way;
+ *   - phase 4: each approved payment's new $500 steps raised in MT5 Bonus Approvals, once, never commission;
  *   - phase 3: recording payments (queued for Delta finance), finance's decision coming back, the upgrade done when paid.
  * Run through ./test-course-upgrades.sh (throwaway mongod, the API — no .env). Scratch database only.
  */
@@ -127,6 +128,10 @@ await db.collection("settings").deleteMany({ key: "cse_price_list" });
 r = await fn("startCourseUpgrade", { studentId: S1, course: "DSLP_OFFER", plan: "installments" }, tCs);
 const up = r.body.upgrade?.id;
 const RECEIPT = "https://files.example.test/receipt.png";
+await db.collection("mt5_accounts").insertMany([
+  { student_id: S1, mt5_login: "5550001", created_date: now },
+  { student_id: S1, mt5_login: "5550002", is_primary: true, created_date: now },
+] as any[]);
 const pay = (body: any, t = tCs) => fn("recordCoursePayment", { upgradeId: up, method: "Card", receiptUrl: RECEIPT, ...body }, t);
 check("no receipt, a bad method, 0, or more than the balance: refused",
   (await pay({ amountAed: 2750, receiptUrl: "" })).status === 400 && (await pay({ amountAed: 2750, method: "Gold" })).status === 400
@@ -149,10 +154,18 @@ r = await approve(p1, 4500);
 check("finance approves the 4,500", r.status === 200 && r.body.status === "approved", show(r.body));
 r = await fn("getStudentCourses", { studentId: S1 }, tCs);
 check("…it counts: paid 4,500, one step (+$500), 1,750 on hold", r.body.active?.progress?.paidAed === 4500 && r.body.active?.progress?.bonusEarnedUsd === 500 && r.body.active?.progress?.onHoldAed === 1750, show(r.body.active?.progress));
+const bonusRows = () => db.collection("funding_transactions").find({ bonus_credit: "course_upgrade" }).toArray() as Promise<any[]>;
+let bs = await bonusRows();
+check("phase 4: one step completed → $500 raised in MT5 Bonus Approvals, on the primary MT5", bs.length === 1 && bs[0].amount_usd === 500 && bs[0].status === "PENDING"
+  && bs[0].type === "BONUS" && bs[0].mt5_login === "5550002" && bs[0].course_upgrade?.payment_id === p1, JSON.stringify(bs).slice(0, 300));
+r = await fn("getBonusApprovals", {}, tAdmin);
+check("…on the approvals page as a course upgrade bonus", r.body.pending?.some((t: any) => t.source === "course_upgrade" && t.course === "DSLP Offer"), show(r.body.pending));
+check("…and no commission from it", (await fn("creditCommission", { transaction_id: String(bs[0]._id) }, tAdmin)).body?.skipped === true);
 check("the same approval again is fine; a rejection now is 409", (await approve(p1, 4500)).body.already === true
   && (await decide({ fundingId: p1, decision: "rejected", reason: "wrong" })).status === 409);
 const p2: any = await db.collection("course_payments").findOne({ amount_aed: 12250 });
 r = await decide({ fundingId: String(p2._id), decision: "rejected", reason: "Receipt unreadable" });
+check("finance approving again raises no second bonus", (await bonusRows()).length === 1);
 check("finance rejects the 12,250 with a reason", r.status === 200 && r.body.status === "rejected");
 r = await fn("getStudentCourses", { studentId: S1 }, tCs);
 check("…shown rejected with the reason, the balance unchanged", r.body.active?.payments?.find((x: any) => x.id === String(p2._id))?.reason === "Receipt unreadable" && r.body.active?.progress?.balanceAed === 12250);
@@ -160,6 +173,10 @@ const p3 = (await pay({ amountAed: 12250 })).body.id;
 r = await approve(p3, 12250);
 check("the rest approved: the upgrade is done", r.status === 200 && r.body.upgradeDone === true, show(r.body));
 r = await fn("getStudentCourses", { studentId: S1 }, tCs);
+bs = await bonusRows();
+check("the last payment's 7 steps → $3,500 more; nothing for the rejected one", bs.length === 2 && bs.some((b) => b.amount_usd === 3500 && b.course_upgrade?.payment_id === p3)
+  && bs.reduce((t, b) => t + b.amount_usd, 0) === 4000, JSON.stringify(bs.map((b) => b.amount_usd)));
+check("the card shows each payment's bonus", r.body.past?.[0]?.payments?.find((x: any) => x.id === p3)?.bonus?.usd === 3500, show(r.body.past?.[0]?.payments));
 check("…DSLP Offer now theirs, at 16,750, all $4,000 earned", !r.body.active && r.body.owned?.some((o: any) => o.code === "DSLP_OFFER" && o.paidAed === 16750)
   && r.body.past?.[0]?.progress?.bonusEarnedUsd === 4000, show(r.body.owned));
 check("no more payments on a done upgrade", (await pay({ amountAed: 1 })).status === 409);

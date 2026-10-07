@@ -173,10 +173,11 @@ export default function BonusApprovals() {
                               <div className="mt-0.5 font-mono text-xs text-slate-600">{t.mt5_login ? `MT5 ${t.mt5_login}` : 'No MT5 login'}</div>
                             </td>
                             <td className="whitespace-nowrap px-3 py-2.5">
-                              <span className={`inline-block rounded-full px-2 py-0.5 text-[11px] font-semibold ${t.source === 'sales_close' ? 'bg-violet-50 text-violet-700' : 'bg-sky-50 text-sky-700'}`}>
-                                {t.source === 'sales_close' ? 'Sales close' : 'Bonus request'}
+                              <span className={`inline-block rounded-full px-2 py-0.5 text-[11px] font-semibold ${t.source === 'sales_close' ? 'bg-violet-50 text-violet-700' : t.source === 'course_upgrade' ? 'bg-amber-50 text-amber-700' : 'bg-sky-50 text-sky-700'}`}>
+                                {t.source === 'sales_close' ? 'Sales close' : t.source === 'course_upgrade' ? 'Course upgrade' : 'Bonus request'}
                               </span>
-                              {t.source !== 'sales_close' && t.finance_approval?.decision === 'approved' && (
+                              {t.source === 'course_upgrade' && <div className="mt-0.5 text-[11px] text-slate-400">Payment approved by finance</div>}
+                              {t.source === 'request' && t.finance_approval?.decision === 'approved' && (
                                 <div className="mt-0.5 text-[11px] text-slate-400">Finance approved</div>
                               )}
                               {t.resubmit_count ? <div className="mt-0.5 text-[11px] text-slate-400">Submitted again{t.resubmit_count > 1 ? ` ×${t.resubmit_count}` : ''}</div> : null}
