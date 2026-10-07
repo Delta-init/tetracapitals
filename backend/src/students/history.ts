@@ -32,7 +32,8 @@ export type HistoryType =
   | "payment_link"
   | "lms_ticket"
   | "lms_enrolment"    // their LMS enrolment request approved or rejected from here (functions/lmsEnrolmentRequests.ts)
-  | "lms_access";      // put on an LMS course, or its modules opened or locked, from here (functions/lmsCourseAccess.ts)
+  | "lms_access"       // put on an LMS course, or its modules opened or locked, from here (functions/lmsCourseAccess.ts)
+  | "course_upgrade";  // their CSE courses entered, or an upgrade started or cancelled (functions/courseUpgrades.ts)
 
 export interface HistoryEntry {
   student_id: string;

@@ -19,6 +19,7 @@ import MT5AccountSection from "../components/students/MT5AccountSection";
 import { Mt5Logins } from "../components/students/mt5Accounts";
 import CourseFeesCard from "../components/students/CourseFeesCard";
 import ZohoInvoicesCard from "../components/students/ZohoInvoicesCard";
+import StudentCoursesCard from "../components/students/StudentCoursesCard";
 import { SalesCrmBadge, salesCrmOfStudent } from "@/components/students/salesCrm";
 import StudentHistory, { useStudentHistory } from "../components/students/StudentHistory";
 import StudentFollowupsSection from "@/components/followups/StudentFollowupsSection";
@@ -506,6 +507,8 @@ export default function StudentDetail() {
 
           {/* What each course cost and what was paid, as Delta finance approved it, and their courses in the Delta LMS */}
           <TabsContent {...panel('courses')}>
+            {/* CSE courses: what they have, and upgrades — full or installments, with the MT5 bonus */}
+            <StudentCoursesCard student={displayStudent} />
             <CourseFeesCard fees={displayStudent.course_fees} />
             {/* Their Zoho Books invoices, 2024 – Jun 2026 — apart from Delta finance's course fees */}
             <ZohoInvoicesCard studentId={student.id} />

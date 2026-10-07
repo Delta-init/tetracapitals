@@ -31,6 +31,7 @@ import { getOnboardingDraft, setOnboarding } from "./studentOnboarding";
 import { getNotOnboarded } from "./notOnboarded";
 import { resubmitSalesBonus } from "./salesBonus";
 import { getBonusApprovals } from "./bonusApprovals";
+import { getCoursePriceList, saveCoursePriceList, getStudentCourses, setStudentCourses, startCourseUpgrade, cancelCourseUpgrade, listCourseUpgrades } from "./courseUpgrades";
 import { getStudentClasses } from "./lmsClasses";
 import { getStudentLmsSupport, getLmsSupportTickets, getLmsSupportTicketCount, answerLmsTicket, resolveLmsTicket } from "./lmsSupport";
 import {
@@ -95,6 +96,14 @@ const AUTHED: Record<string, AuthedHandler> = {
   getNotOnboarded,
   resubmitSalesBonus,
   getBonusApprovals,
+  // CSE course upgrades: the price list, a student's courses, starting one (courseUpgrades.ts)
+  getCoursePriceList,
+  saveCoursePriceList,
+  getStudentCourses,
+  setStudentCourses,
+  startCourseUpgrade,
+  cancelCourseUpgrade,
+  listCourseUpgrades,
   getLmsEnrolment,
   syncLmsEnrolmentNow,
   getStudentClasses,
