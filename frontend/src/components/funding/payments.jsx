@@ -12,12 +12,13 @@ import { Eye, Loader2, Paperclip, Plus, Upload, X } from 'lucide-react';
    payment has its own method, amount and receipt. Together they are the
    request's amount, in its one currency.
 
-   A request keeps the list (`payments`: method, amount, currency, receipt_url,
+   A request keeps the list (`payments`: method, amount, currency, collected_on —
+   the day the money was collected (the user, 2026-10-07) — receipt_url,
    receipt_name) — and the first payment's method and receipt in payment_method
    and screenshot_url, for whatever reads only one: the filters, the reports, the
    server's bonus check and Delta Finance (which gets every payment in the notes,
    backend/src/finance/funding.ts). A request from before has no list: its one
-   method and receipt are its payment.
+   method and receipt are its payment, and no collected date.
 ──────────────────────────────────────────────────────────────────────────── */
 
 /** How money came in: the portal's own, Pay by link (the student paid a payment link), and the sales CRMs' — the user,
@@ -28,11 +29,25 @@ export const MAX_PAYMENTS = 10;
 
 // A row's own id — random, not a counter, so no two rows ever share one (a counter restarts when the module reloads).
 const rowId = () => `payment-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
-export const newPayment = (over = {}) => ({ id: rowId(), method: '', amount: '', receipt_url: '', receipt_name: '', ...over });
+/** Today on this computer, as a date box has it: 2026-10-07. */
+const today = () => {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+};
+// Collected today, unless they change it.
+export const newPayment = (over = {}) => ({ id: rowId(), method: '', amount: '', collected_on: today(), receipt_url: '', receipt_name: '', ...over });
 const amountOf = (p) => Math.max(0, Number(p?.amount) || 0);
 export const paymentsTotal = (rows) => Math.round(rows.reduce((s, p) => s + amountOf(p), 0) * 100) / 100;
+/** 2026-10-05 as that day (midnight UTC), or null — not a date, or one that isn't a day (2026-13-45). */
+const dayOf = (s) => {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(s || '')) return null;
+  const [y, m, d] = s.split('-').map(Number);
+  const at = new Date(Date.UTC(y, m - 1, d));
+  return at.toISOString().slice(0, 10) === s ? at : null;
+};
 
-/** What the rows still need, the first thing first — '' once every payment has its method, amount and receipt. */
+/** What the rows still need, the first thing first — '' once every payment has its method, amount, collected date and
+ *  receipt. */
 export function paymentsMissing(rows) {
   const one = rows.length === 1;
   for (const [i, p] of rows.entries()) {
@@ -40,6 +55,8 @@ export function paymentsMissing(rows) {
     if (p.uploading) return `Wait for ${its} receipt to finish uploading`;
     if (!p.method) return `Select ${one ? 'the payment' : its} method`;
     if (!(amountOf(p) > 0)) return `Enter ${its} amount`;
+    if (!dayOf(p.collected_on)) return `Enter the date ${one ? 'the payment' : `payment ${i + 1}`} was collected`;
+    if (p.collected_on > today()) return `${one ? 'The payment' : `Payment ${i + 1}`} can't be collected in the future — check its date`;
     if (!p.receipt_url) return `Upload ${its} receipt`;
   }
   return '';
@@ -50,6 +67,7 @@ export const paymentsToSave = (rows, currency) => rows.map(p => ({
   method: p.method,
   amount: amountOf(p),
   currency,
+  collected_on: p.collected_on,
   receipt_url: p.receipt_url,
   receipt_name: p.receipt_name || '',
 }));
@@ -66,8 +84,13 @@ export const methodsText = (tx) => methodsOf(tx).join(' + ');
 
 const fmt = (n) => (Number(n) || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 export const amountText = (amount, currency) => (currency === 'USD' ? `$${fmt(amount)}` : `${currency || ''} ${fmt(amount)}`.trim());
+/** "collected 05 Oct 2026" — '' for a payment from before the date was asked. */
+export const collectedText = (p) => {
+  const at = dayOf(p?.collected_on);
+  return at ? `collected ${at.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric', timeZone: 'UTC' })}` : '';
+};
 
-/** The payments taken: method · amount · receipt for each, and "Add another payment". */
+/** The payments taken: method · amount · collected date · receipt for each, and "Add another payment". */
 export function PaymentRows({ rows, onChange, currency, methods = DEPOSIT_METHODS }) {
   const update = (id, patch) => onChange(prev => prev.map(p => (p.id === id ? { ...p, ...patch } : p)));
   const attach = async (id, file) => {
@@ -116,6 +139,18 @@ export function PaymentRows({ rows, onChange, currency, methods = DEPOSIT_METHOD
               </button>
             )}
           </div>
+          {/* The day the money was collected: today to start, never later. */}
+          <label className="flex items-center gap-2 pl-6 text-xs text-slate-500">
+            Collected on
+            <Input
+              type="date"
+              value={p.collected_on || ''}
+              max={today()}
+              onChange={(e) => update(p.id, { collected_on: e.target.value })}
+              className="h-8 w-[160px] bg-white text-sm text-slate-900"
+              aria-label={`Payment ${i + 1} collected on`}
+            />
+          </label>
           {p.receipt_url ? (
             <div className="flex items-center gap-2 rounded-md border border-slate-200 bg-white px-2.5 py-1.5 text-xs">
               <Paperclip className="h-3.5 w-3.5 shrink-0 text-slate-400" />
@@ -167,12 +202,13 @@ function ReceiptPreview({ url }) {
   return <img src={url} alt="Receipt" className="max-h-[65vh] w-full rounded-md border object-contain" onError={() => setFailed(true)} />;
 }
 
-/** A request's receipts — every payment's — in one viewer, each with its method and amount; `start`: the one to show first. */
+/** A request's receipts — every payment's — in one viewer, each with its method, amount and collected date; `start`: the
+ *  one to show first. */
 export function ReceiptsDialog({ tx, title, start, onClose }) {
   const list = paymentsOf(tx).filter(p => p.receipt_url);
   const [at, setAt] = useState(() => Math.max(0, list.findIndex(p => p.receipt_url === start)));
   const shown = list[Math.min(at, list.length - 1)];
-  const label = (p) => [p.method, p.amount > 0 ? amountText(p.amount, p.currency) : ''].filter(Boolean).join(' · ');
+  const label = (p) => [p.method, p.amount > 0 ? amountText(p.amount, p.currency) : '', collectedText(p)].filter(Boolean).join(' · ');
   return (
     <Dialog open onOpenChange={(o) => { if (!o) onClose(); }}>
       <DialogContent className="max-w-3xl">
@@ -217,7 +253,8 @@ export function ReceiptsButton({ tx, title }) {
   );
 }
 
-/** The payments, listed — method, amount and receipt each — where a request is looked at closely (the approval). */
+/** The payments, listed — method, amount, collected date and receipt each — where a request is looked at closely (the
+ *  approval). */
 export function PaymentsList({ tx }) {
   const [open, setOpen] = useState(null);   // the receipt opened first
   const list = paymentsOf(tx);
@@ -229,6 +266,7 @@ export function PaymentsList({ tx }) {
           {list.length > 1 && <span className="text-xs font-semibold text-slate-400">{i + 1}.</span>}
           <span className="font-medium text-slate-800">{p.method || '—'}</span>
           {p.amount > 0 && <span className="text-slate-600">{amountText(p.amount, p.currency)}</span>}
+          {collectedText(p) && <span className="text-xs text-slate-500">{collectedText(p)}</span>}
           {p.receipt_url
             ? <button type="button" onClick={() => setOpen(p.receipt_url)} className="ml-auto text-xs font-medium text-blue-600 hover:underline">View receipt</button>
             : <span className="ml-auto text-xs text-slate-400">No receipt</span>}

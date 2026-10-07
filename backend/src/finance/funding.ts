@@ -202,19 +202,37 @@ function coursePaymentOf(cp: any) {
 const NOTES_MAX = 2000;
 const twoPlaces = (n: number) => n.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
+/** A payment's collected_on (2026-10-05) as "05 Oct 2026" — "" for one from before the date was asked (the user, 2026-10-07). */
+function collectedOn(p: any): string {
+  const day = String(p?.collected_on ?? "");
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(day)) return "";
+  const [y, m, d] = day.split("-").map(Number);
+  const at = new Date(Date.UTC(y, m - 1, d));
+  // A day that isn't one (2026-13-45) would roll over into another: left out instead.
+  if (at.toISOString().slice(0, 10) !== day) return "";
+  return at.toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric", timeZone: "UTC" });
+}
+
 /**
  * The notes, and — paid in several payments (the user, 2026-10-06; frontend components/funding/payments.jsx) — every
- * payment with its method, amount and receipt: finance takes one method and one receipt, the first payment's. Within
- * finance's 2,000 characters; the payments that don't fit are counted instead.
+ * payment with its method, amount, the day it was collected and its receipt: finance takes one method and one receipt,
+ * the first payment's. One payment: only the day it was collected is added. Within finance's 2,000 characters; the
+ * payments that don't fit are counted instead.
  */
 export function notesForFinance(tx: any): string {
   const notes = String(tx?.notes ?? "").trim();
   const list: any[] = Array.isArray(tx?.payments) ? tx.payments : [];
-  if (list.length < 2) return notes.slice(0, NOTES_MAX);
+  if (list.length < 2) {
+    const on = list.length ? collectedOn(list[0]) : "";
+    if (!on) return notes.slice(0, NOTES_MAX);
+    const line = `Collected on ${on}`;
+    return notes ? `${notes.slice(0, NOTES_MAX - line.length - 2)}\n\n${line}` : line;
+  }
   const lines = list.map((p, i) => {
     const currency = /^[A-Z]{3}$/.test(String(p?.currency ?? "")) ? `${p.currency} ` : "";
     const receipt = /^https?:\/\//i.test(String(p?.receipt_url ?? "")) ? String(p.receipt_url) : "no receipt";
-    return `${i + 1}. ${String(p?.method ?? "").trim().slice(0, 60) || "Payment"} · ${currency}${twoPlaces(Number(p?.amount) || 0)} · ${receipt}`;
+    const on = collectedOn(p);
+    return `${i + 1}. ${String(p?.method ?? "").trim().slice(0, 60) || "Payment"} · ${currency}${twoPlaces(Number(p?.amount) || 0)}${on ? ` · collected ${on}` : ""} · ${receipt}`;
   });
   const more = (n: number) => `\n… and ${n} more — every receipt is on the request in Tetra Commission`;
   let out = [notes, `Paid in ${list.length} payments:`].filter(Boolean).join("\n\n");
