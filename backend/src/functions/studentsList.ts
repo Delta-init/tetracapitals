@@ -139,9 +139,10 @@ async function courseFilter(value: string): Promise<Record<string, any> | null> 
 }
 
 /* "Follow-up today" (the user, 2026-10-06): due today or overdue and not called yet — they drop off once the call is
-   logged — or called today. Called = a follow-up logged today, or opened today with what they said: the Follow-ups
-   page's Done today. Today is the follow-ups' business day (students/followups.ts BUSINESS_OFFSET_MS). */
-const FOLLOWUP_FILTERS = new Set(["due_not_called", "called_today"]);
+   logged — or called today; and (2026-10-07) every student not called today, follow-up or not. Called = a follow-up
+   logged today, or opened today with what they said (the Follow-ups page's Done today), or a 3CX call with them today.
+   Today is the follow-ups' business day (students/followups.ts BUSINESS_OFFSET_MS). */
+const FOLLOWUP_FILTERS = new Set(["due_not_called", "called_today", "not_called_today"]);
 const BUSINESS_OFFSET_MS = 330 * 60_000;
 
 async function followupFilter(which: string): Promise<Record<string, any>> {
@@ -150,13 +151,18 @@ async function followupFilter(which: string): Promise<Record<string, any>> {
   const calledToday = {
     $or: [{ last_contact_date: today }, { client_said: { $nin: [null, ""] }, created_date: { $gte: dayStart } }],
   };
-  const called = new Set((await col("student_followups").distinct("student_id", calledToday)).map(String));
-  const ids = which === "called_today"
-    ? [...called]
-    // Due today or before ("" is no date — not due), still open.
-    : (await col("student_followups").distinct("student_id", { next_followup_date: { $gt: "", $lte: today }, stage: { $nin: ["Converted", "Lost"] } }))
-      .map(String).filter((id) => !called.has(id));
-  return { _id: { $in: ids.map((id) => toObjectId(id)).filter(Boolean) } };
+  const [logged, rang] = await Promise.all([
+    col("student_followups").distinct("student_id", calledToday),
+    col("student_calls").distinct("student_id", { started_at: { $gte: dayStart } }),
+  ]);
+  const called = new Set([...logged, ...rang].map(String).filter(Boolean));
+  const asIds = (ids: string[]) => ids.map((id) => toObjectId(id)).filter(Boolean);
+  if (which === "called_today") return { _id: { $in: asIds([...called]) } };
+  if (which === "not_called_today") return { _id: { $nin: asIds([...called]) } };
+  // Due today or before ("" is no date — not due), still open.
+  const due = (await col("student_followups").distinct("student_id", { next_followup_date: { $gt: "", $lte: today }, stage: { $nin: ["Converted", "Lost"] } }))
+    .map(String).filter((id) => !called.has(id));
+  return { _id: { $in: asIds(due) } };
 }
 
 /** Every filter on the page, as Mongo — the search and the selects. */
