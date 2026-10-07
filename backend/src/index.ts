@@ -11,6 +11,7 @@ import { startCallSyncWorker } from "./students/calls";
 import { startWhatsApp } from "./whatsapp/service";
 import { startLmsEnrolmentWorker } from "./students/lmsEnrolment";
 import { startLmsActivityWorker } from "./students/lmsActivity";
+import { startLmsCsWorker } from "./students/lmsCs";
 import { ensureSalesRole } from "./students/closedBy";
 
 async function main() {
@@ -50,6 +51,8 @@ async function main() {
   startLmsEnrolmentWorker();
   // LMS support tickets and class assignments, told to the student's CS every 2 minutes (LMS_ACTIVITY=off to keep a server out of it).
   startLmsActivityWorker();
+  // Each student's CS and CS team, told to the LMS for its admin every 10 minutes (LMS_CS_SYNC=off to keep a server out of it).
+  startLmsCsWorker();
 }
 
 const shutdown = async (signal: string) => {
