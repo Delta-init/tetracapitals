@@ -10,6 +10,8 @@ import { Button } from "@/components/ui/button";
 import { CheckCircle, XCircle } from "lucide-react";
 import TagsPicker from "./TagsPicker";
 import { DEPOSIT_METHODS as DEPOSIT_PAYMENT_METHODS, PaymentsList, paymentsOf } from "./payments";
+import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
+import StudentPayments, { useStudentZohoInvoices, paymentsCount } from "./StudentPayments";
 
 const WITHDRAWAL_PAYMENT_METHODS = [
   'AED TRANSFER',
@@ -62,6 +64,17 @@ export default function ProcessFundingDialog({ transaction, open, onClose, onPro
     queryFn: () => base44.entities.FundingTransaction.list(),
     enabled: open
   });
+
+  // The student's payments beside this request — a tab of its own, to verify against (the user, 2026-10-07).
+  const [view, setView] = useState('request');
+  useEffect(() => { setView('request'); }, [transaction?.id]);
+  const { data: zoho, isLoading: loadingZoho } = useStudentZohoInvoices(open ? transaction?.student_id : null);
+  const otherRequests = useMemo(
+    () => allTransactions.filter(t => t.student_id && t.student_id === transaction?.student_id && t.id !== transaction?.id)
+      .sort((a, b) => String(b.requested_at || b.created_date || '').localeCompare(String(a.requested_at || a.created_date || ''))),
+    [allTransactions, transaction?.student_id, transaction?.id],
+  );
+  const courseFees = Array.isArray(student?.course_fees) ? student.course_fees : [];
 
   // Product catalog — used to recompute bundled products if a super admin
   // changes the product during approval.
@@ -217,6 +230,12 @@ export default function ProcessFundingDialog({ transaction, open, onClose, onPro
           <DialogTitle>Process Funding Request</DialogTitle>
         </DialogHeader>
 
+        <Tabs value={view} onValueChange={setView}>
+          <TabsList className="w-full justify-start">
+            <TabsTrigger value="request">Request</TabsTrigger>
+            <TabsTrigger value="payments">Payments ({paymentsCount(zoho, courseFees, otherRequests)})</TabsTrigger>
+          </TabsList>
+          <TabsContent value="request" className="space-y-4">
         {/* A bonus Delta Finance approved: its payment is confirmed — credit the bonus in MT5, then approve. */}
         {transaction.type === 'BONUS' && transaction.status === 'PENDING' && transaction.finance_approval?.state === 'decided' && transaction.finance_approval?.decision === 'approved' && (
           <div className="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-900">
@@ -474,6 +493,11 @@ export default function ProcessFundingDialog({ transaction, open, onClose, onPro
             </div>
           )}
         </div>
+          </TabsContent>
+          <TabsContent value="payments">
+            <StudentPayments studentName={transaction.student_name} fees={courseFees} others={otherRequests} zoho={zoho} loading={loadingZoho} />
+          </TabsContent>
+        </Tabs>
 
         <DialogFooter className="flex gap-2">
           <Button variant="outline" onClick={onClose}>
