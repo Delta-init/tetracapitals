@@ -212,7 +212,8 @@ export function EnrolmentControl({ student, currentUser }) {
   };
   return (
     <div>
-      <span className="inline-flex items-center gap-2">
+      {/* Wraps on a phone, as the Onboarded line under it does — the buttons would push the page sideways. */}
+      <span className="inline-flex flex-wrap items-center gap-2">
         <span className="text-sm text-slate-500">Enrolment</span>
         <EnrolmentBadge student={student} />
         {mayChange(currentUser, student) && ['old', 'open'].filter(to => to !== k).map(to => (

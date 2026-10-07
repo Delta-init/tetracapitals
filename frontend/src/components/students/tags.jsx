@@ -40,12 +40,13 @@ const colorOf = (catalog, name) => catalog.find(t => t.name === name)?.color || 
 
 export function TagChip({ name, color, onRemove, busy }) {
   return (
-    <Badge variant="outline" className="gap-1 whitespace-nowrap text-xs font-medium"
+    // Never wider than where it sits (a phone's student page): a long name ends in "…", whole on hover.
+    <Badge variant="outline" className="max-w-full gap-1 whitespace-nowrap text-xs font-medium" title={name}
       style={{ backgroundColor: `${color}1a`, color, borderColor: `${color}55` }}>
-      {name}
+      <span className="min-w-0 truncate">{name}</span>
       {onRemove && (
         <button type="button" onClick={(e) => { e.stopPropagation(); onRemove(); }} disabled={busy}
-          className="-mr-1 rounded-full p-0.5 hover:bg-black/10" aria-label={`Remove tag ${name}`}>
+          className="-mr-1 shrink-0 rounded-full p-0.5 hover:bg-black/10" aria-label={`Remove tag ${name}`}>
           {busy ? <Loader2 className="h-3 w-3 animate-spin" /> : <X className="h-3 w-3" />}
         </button>
       )}
