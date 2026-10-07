@@ -7,6 +7,9 @@ import { recordHistory } from "../students/history";
 import { DEFAULT_PRICE_LIST, type CourseCode, type CoursePrice } from "../courses/priceList";
 import { quoteUpgrade, progressOf, UpgradeError, type OwnedCourse, type PlanType, type UpgradeQuote } from "../courses/upgradeCalc";
 import { approvedAmounts, queueCoursePayment, PAYMENT_METHODS } from "../courses/coursePayments";
+import { lmsTargetsOf, sameTitle } from "../courses/lmsMapping";
+import { callLms, lmsConfigured } from "../lib/lms";
+import { lmsStudentFor, lmsRefusal, lmsLacksRoute, byOf, NOT_LINKED } from "./lmsEnrolmentRequests";
 
 /*
  * CSE course upgrades (the user, 2026-10-07) — phase 2: the price list, each
@@ -102,6 +105,8 @@ function upgradeView(u: any, list: CoursePrice[]) {
     quote,
     progress,
     nextPaymentAed: progress.done ? 0 : Math.min(progress.balanceAed, quote.schedule[paidCount] ?? quote.schedule[quote.schedule.length - 1] ?? progress.balanceAed),
+    lms: u.lms ? { doneAt: u.lms.done_at, doneBy: u.lms.done_by_name, courses: u.lms.courses ?? [] } : null,
+    lmsDue: !u.lms && u.status !== "cancelled" && (u.payments ?? []).some((p: any) => p.status === "approved"),
     pendingAed: (u.payments ?? []).filter((p: any) => p.status === "pending").reduce((a: number, p: any) => a + (Number(p.amount_aed) || 0), 0),
     payments: (u.payments ?? []).map(paymentView),
     createdAt: u.created_at,
@@ -349,4 +354,109 @@ export async function recordCoursePayment(req: Request, user: AuthUser): Promise
     text: `Course payment of AED ${amount.toLocaleString("en-US")} (${body.method}) recorded for ${nameOf(list, u.course)} — sent to Delta Finance for approval`,
   }]);
   return json({ id });
+}
+
+// ─── Phase 5: the LMS modules an upgrade opens (the user, 2026-10-08) ─────────
+
+type LmsModule = { id: string; title: string; locked?: boolean };
+type LmsAccess = {
+  courses: { enrolmentId: string; courseId: string; title: string; modules: LmsModule[] }[];
+  offered: { courseId: string; title: string; modules: LmsModule[] }[];
+};
+
+/** The upgrade and the student, for someone who may work on them, once finance approved a payment on it. */
+async function upgradeForLms(user: AuthUser, upgradeId: unknown) {
+  const oid = toObjectId(String(upgradeId ?? ""));
+  if (!oid) return { err: error("upgradeId is required", 400) };
+  const u: any = await col("course_upgrades").findOne({ _id: oid });
+  if (!u) return { err: notFound() };
+  const found = await studentFor(user, u.student_id, true);
+  if (found.err) return { err: found.err };
+  if (u.status === "cancelled") return { err: error("This upgrade was cancelled", 409) };
+  if (!(await col("course_payments").countDocuments({ upgrade_id: String(oid), status: "approved" }))) {
+    return { err: error("Its modules open once Delta Finance approves a payment on it", 409) };
+  }
+  const lms = await lmsStudentFor({ studentId: u.student_id }, user);
+  if (lms instanceof Response) return { err: lms };
+  return { u, oid, found, email: lms.email };
+}
+
+/**
+ * POST /api/functions/getUpgradeLmsPlan { upgradeId }
+ * The LMS courses the upgrade opens (lmsMapping.ts), in the student's academy, each module with whether it is open
+ * now and whether the mapping opens it. → { courses: [{ title, courseId, enrolmentId, modules: [{ id, title, locked, suggested }] }], missing, noLmsCourse, done }
+ */
+export async function getUpgradeLmsPlan(req: Request, user: AuthUser): Promise<Response> {
+  const body: any = await req.json().catch(() => ({}));
+  const g = await upgradeForLms(user, body?.upgradeId);
+  if (g.err) return g.err;
+  if (!lmsConfigured()) return error(NOT_LINKED, 503);
+  let access: LmsAccess;
+  try {
+    access = await callLms<LmsAccess>("/students/course-access", { method: "POST", body: { email: g.email }, verb: "share their courses" });
+  } catch (err) {
+    return lmsLacksRoute(err) ? error("The LMS can't share course access yet", 409) : lmsRefusal(err);
+  }
+  const { targets, ownMapped } = lmsTargetsOf(g.u.course);
+  const courses: any[] = [];
+  const missing: string[] = [];
+  for (const t of targets) {
+    const on = access.courses.find((c) => sameTitle(c.title, t.title));
+    const offered = on ? null : access.offered.find((c) => sameTitle(c.title, t.title));
+    const course = on ?? offered;
+    if (!course) { missing.push(t.title); continue; }
+    const n = t.firstModules ?? course.modules.length;
+    courses.push({
+      title: course.title, courseId: course.courseId, enrolmentId: on?.enrolmentId ?? null,
+      modules: course.modules.map((m, i) => ({ id: m.id, title: m.title, locked: on ? !!m.locked : true, suggested: i < n })),
+    });
+  }
+  return json({ courses, missing, noLmsCourse: !ownMapped, done: g.u.lms ?? null });
+}
+
+/**
+ * POST /api/functions/applyUpgradeLms { upgradeId, courses: [{ courseId, open: [moduleId] }] }
+ * Opens the modules ticked — puts the student on a course first if they are not on it, the rest of its modules
+ * locked — and never locks one already open. Notes on the upgrade that its modules were done.
+ */
+export async function applyUpgradeLms(req: Request, user: AuthUser): Promise<Response> {
+  const body: any = await req.json().catch(() => ({}));
+  const g = await upgradeForLms(user, body?.upgradeId);
+  if (g.err) return g.err;
+  if (!lmsConfigured()) return error(NOT_LINKED, 503);
+  const picks: any[] = Array.isArray(body?.courses) ? body.courses : [];
+  if (!picks.length) return error("Pick the modules to open", 400);
+  const by = byOf(user);
+  const done: string[] = [];
+  try {
+    let access = await callLms<LmsAccess>("/students/course-access", { method: "POST", body: { email: g.email }, verb: "share their courses" });
+    for (const p of picks) {
+      const open = new Set<string>((Array.isArray(p?.open) ? p.open : []).map(String));
+      const on = access.courses.find((c) => c.courseId === String(p?.courseId));
+      const offered = access.offered.find((c) => c.courseId === String(p?.courseId));
+      if (on) {
+        const locked = on.modules.filter((m) => m.locked && !open.has(m.id)).map((m) => m.id);
+        if (locked.length !== on.modules.filter((m) => m.locked).length) {
+          access = await callLms(`/students/course-access/${on.enrolmentId}`, { method: "POST", body: { email: g.email, locked, ...by }, verb: "open the modules" });
+        }
+        done.push(`${on.title} (${on.modules.length - locked.length} of ${on.modules.length} open)`);
+      } else if (offered) {
+        const locked = offered.modules.filter((m) => !open.has(m.id)).map((m) => m.id);
+        access = await callLms("/students/course-access/give", { method: "POST", body: { email: g.email, courses: [{ courseId: offered.courseId, locked }], ...by }, verb: "give the course" });
+        done.push(`${offered.title} (${offered.modules.length - locked.length} of ${offered.modules.length} open)`);
+      } else {
+        return error("That course isn't one of their academy's Forex courses in the LMS", 400);
+      }
+    }
+  } catch (err) {
+    return lmsLacksRoute(err) ? error("The LMS can't change course access yet", 409) : lmsRefusal(err);
+  }
+  const now = new Date().toISOString();
+  await col("course_upgrades").updateOne({ _id: g.oid }, { $set: { lms: { done_at: now, done_by: user.id, done_by_name: who(user), courses: done } } });
+  const list = await priceList();
+  await recordHistory([{
+    student_id: g.u.student_id, at: now, type: "course_upgrade", by_id: user.id, by_name: who(user),
+    text: `LMS modules opened for the ${nameOf(list, g.u.course)} upgrade: ${done.join(", ")}`.slice(0, 400),
+  }]);
+  return json({ ok: true, courses: done });
 }

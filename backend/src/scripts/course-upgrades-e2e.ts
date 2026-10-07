@@ -5,6 +5,7 @@
  *   - starting one: the quote kept, one at a time, the courses locked; cancelling before any payment;
  *   - who may: the student's CS and admins, not another CS; the Upgrades list scoped the same way;
  *   - phase 4: each approved payment's new $500 steps raised in MT5 Bonus Approvals, once, never commission;
+ *   - phase 5: the LMS modules an upgrade opens, ticked from the mapping, opened in a stand-in LMS;
  *   - phase 3: recording payments (queued for Delta finance), finance's decision coming back, the upgrade done when paid.
  * Run through ./test-course-upgrades.sh (throwaway mongod, the API — no .env). Scratch database only.
  */
@@ -183,6 +184,74 @@ check("no more payments on a done upgrade", (await pay({ amountAed: 1 })).status
 check("an unknown id: 410", (await approve(String(new ObjectId()), 1)).status === 410);
 const hist = await db.collection("student_history").find({ student_id: S1, type: "course_upgrade" }).toArray();
 check("history: payments recorded, approved, rejected", hist.some((h: any) => /approved by Delta Finance/.test(h.text)) && hist.some((h: any) => /rejected by Delta Finance/.test(h.text)) && hist.some((h: any) => /recorded/.test(h.text)), String(hist.length));
+
+step("Case 6 — the LMS modules an upgrade opens (a stand-in LMS)");
+// The student's academy in the LMS: their Forex courses, and the ones they could be put on.
+const mods = (prefix: string, n: number) => Array.from({ length: n }, (_, i) => ({ id: new ObjectId().toHexString(), title: `${prefix} ${i + 1}` }));
+const LMS_COURSES = [
+  { courseId: new ObjectId().toHexString(), title: "MARKET BREAK-OUT TRADING PROGRAM", modules: mods("MBT", 8) },
+  { courseId: new ObjectId().toHexString(), title: "DELTA WAVE THEORY TRADING PROGRAMME", modules: mods("IM", 5) },
+  { courseId: new ObjectId().toHexString(), title: "MMC (MARKET MAKING CYCLE)", modules: mods("ADVANCE", 6) },
+  { courseId: new ObjectId().toHexString(), title: "DSLP  - Delta Structure & Liquidity Programme", modules: mods("MODULE", 14) },
+  { courseId: new ObjectId().toHexString(), title: "HADC  - Heikin Ashi Decisive Candle", modules: mods("HA", 4) },
+];
+const enrolled = new Map<string, { enrolmentId: string; courseId: string; locked: Set<string> }>([
+  [LMS_COURSES[0]!.courseId, { enrolmentId: new ObjectId().toHexString(), courseId: LMS_COURSES[0]!.courseId, locked: new Set() }],
+  [LMS_COURSES[1]!.courseId, { enrolmentId: new ObjectId().toHexString(), courseId: LMS_COURSES[1]!.courseId, locked: new Set(LMS_COURSES[1]!.modules.map((m) => m.id)) }],
+]);
+const lmsCalls: string[] = [];
+const access = () => ({
+  student: { id: "lms-1", name: "Student STU-1", email: "stu1@e2e-upg.test", academy: "Dubai Academy", approved: true, active: true },
+  courses: [...enrolled.values()].map((e) => {
+    const c = LMS_COURSES.find((x) => x.courseId === e.courseId)!;
+    return { enrolmentId: e.enrolmentId, courseId: c.courseId, title: c.title, status: "active", how: "admin", access: null, progress: 0, enrolledAt: now, modules: c.modules.map((m) => ({ ...m, locked: e.locked.has(m.id) })) };
+  }),
+  offered: LMS_COURSES.filter((c) => !enrolled.has(c.courseId)),
+});
+const lms = Bun.serve({
+  port: Number(process.env.E2E_LMS_PORT), hostname: "127.0.0.1",
+  async fetch(req) {
+    const path = new URL(req.url).pathname.replace("/api/v1/service", "");
+    if (req.headers.get("x-portal-secret") !== "course-upgrades-e2e-lms-secret") return Response.json({ message: "bad secret" }, { status: 401 });
+    const b: any = await req.json().catch(() => ({}));
+    lmsCalls.push(path);
+    if (path === "/students/course-access") return Response.json({ data: access() });
+    if (path === "/students/course-access/give") {
+      for (const c of b.courses) enrolled.set(c.courseId, { enrolmentId: new ObjectId().toHexString(), courseId: c.courseId, locked: new Set(c.locked) });
+      return Response.json({ data: { ...access(), given: b.courses.map((c: any) => LMS_COURSES.find((x) => x.courseId === c.courseId)?.title), already: [] } });
+    }
+    const m = path.match(/^\/students\/course-access\/([a-f\d]{24})$/);
+    const e = m ? [...enrolled.values()].find((x) => x.enrolmentId === m[1]) : null;
+    if (e) { e.locked = new Set(b.locked); return Response.json({ data: { ...access(), changed: true, course: "x", opened: [], locked: [] } }); }
+    return Response.json({ message: "no such route" }, { status: 404 });
+  },
+});
+await db.collection("students").updateOne({ _id: s1._id }, { $set: { email: "stu1@e2e-upg.test" } });
+const doneUp = (await fn("getStudentCourses", { studentId: S1 }, tCs)).body.past?.[0];
+check("the paid DSLP Offer upgrade asks for its LMS modules", doneUp?.course === "DSLP_OFFER" && doneUp?.lmsDue === true && doneUp?.lms === null, show(doneUp));
+check("another CS cannot see or open them", (await fn("getUpgradeLmsPlan", { upgradeId: doneUp.id }, tOther)).status === 403);
+r = await fn("getUpgradeLmsPlan", { upgradeId: doneUp.id }, tCs);
+const dslp = r.body.courses?.find((c: any) => /DSLP/.test(c.title));
+const dwt = r.body.courses?.find((c: any) => /WAVE/.test(c.title));
+check("the plan: DSLP (not on it yet) with modules 1–10 ticked, and DWT (on it, all locked) all ticked; nothing else",
+  r.status === 200 && r.body.courses?.length === 2 && dslp?.enrolmentId === null && dslp.modules.filter((m: any) => m.suggested).length === 10
+    && dslp.modules[9].suggested && !dslp.modules[10].suggested && dwt?.enrolmentId && dwt.modules.every((m: any) => m.suggested && m.locked), show(r.body));
+r = await fn("applyUpgradeLms", { upgradeId: doneUp.id, courses: r.body.courses.map((c: any) => ({ courseId: c.courseId, open: c.modules.filter((m: any) => m.suggested).map((m: any) => m.id) })) }, tCs);
+check("opened: put on DSLP with 1–10 open and 11–14 locked; DWT all opened", r.status === 200
+  && enrolled.get(dslp.courseId)?.locked.size === 4 && !!enrolled.get(dslp.courseId)?.locked.has(dslp.modules[13].id) && enrolled.get(dwt.courseId)?.locked.size === 0, show(r.body));
+r = await fn("getStudentCourses", { studentId: S1 }, tCs);
+check("the upgrade shows them done, by its CS", r.body.past?.[0]?.lms?.doneBy === "Cee Ess" && r.body.past?.[0]?.lmsDue === false, show(r.body.past?.[0]?.lms));
+const listed = (await fn("listCourseUpgrades", { status: "done" }, tCs)).body.rows?.[0];
+check("…and on the Upgrades list", listed?.lms?.doneAt && listed.lmsDue === false);
+r = await fn("getUpgradeLmsPlan", { upgradeId: doneUp.id }, tCs);
+check("opening again never locks an open module", (await fn("applyUpgradeLms", { upgradeId: doneUp.id, courses: [{ courseId: dslp.courseId, open: [] }] }, tCs)).status === 200
+  && enrolled.get(dslp.courseId)?.locked.size === 4);
+check("a course outside their academy's Forex ones is refused", (await fn("applyUpgradeLms", { upgradeId: doneUp.id, courses: [{ courseId: new ObjectId().toHexString(), open: [] }] }, tCs)).status === 400);
+r = await fn("startCourseUpgrade", { studentId: S1, course: "DSLP_PRO", plan: "installments" }, tCs);
+check("before finance approves a payment: refused", (await fn("getUpgradeLmsPlan", { upgradeId: r.body.upgrade?.id }, tCs)).status === 409
+  && r.body.upgrade?.lmsDue === false);
+check("history: the modules opened", (await db.collection("student_history").find({ student_id: S1, text: /LMS modules opened/ }).toArray()).length >= 1);
+lms.stop(true);
 
 await client.close();
 console.log(`\n${pass}/${pass + fail} checks passed`);

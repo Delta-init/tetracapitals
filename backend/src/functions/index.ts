@@ -31,7 +31,7 @@ import { getOnboardingDraft, setOnboarding } from "./studentOnboarding";
 import { getNotOnboarded } from "./notOnboarded";
 import { resubmitSalesBonus } from "./salesBonus";
 import { getBonusApprovals } from "./bonusApprovals";
-import { getCoursePriceList, saveCoursePriceList, getStudentCourses, setStudentCourses, startCourseUpgrade, cancelCourseUpgrade, listCourseUpgrades, recordCoursePayment } from "./courseUpgrades";
+import { getCoursePriceList, saveCoursePriceList, getStudentCourses, setStudentCourses, startCourseUpgrade, cancelCourseUpgrade, listCourseUpgrades, recordCoursePayment, getUpgradeLmsPlan, applyUpgradeLms } from "./courseUpgrades";
 import { getStudentClasses } from "./lmsClasses";
 import { getStudentLmsSupport, getLmsSupportTickets, getLmsSupportTicketCount, answerLmsTicket, resolveLmsTicket } from "./lmsSupport";
 import {
@@ -105,6 +105,8 @@ const AUTHED: Record<string, AuthedHandler> = {
   cancelCourseUpgrade,
   listCourseUpgrades,
   recordCoursePayment,
+  getUpgradeLmsPlan,
+  applyUpgradeLms,
   getLmsEnrolment,
   syncLmsEnrolmentNow,
   getStudentClasses,

@@ -75,7 +75,7 @@ function UpgradesTable() {
           <p className="py-8 text-center text-sm text-muted-foreground">No upgrades here. Start one from a student&apos;s Courses tab.</p>
         ) : (
           <div className="overflow-x-auto">
-            <table className="w-full min-w-[900px] text-sm">
+            <table className="w-full min-w-[980px] text-sm">
               <thead>
                 <tr className="border-b text-left text-xs text-muted-foreground">
                   <th className="pb-2 pr-3 font-medium">Student</th>
@@ -86,6 +86,7 @@ function UpgradesTable() {
                   <th className="pb-2 pr-3 text-right font-medium">Next</th>
                   <th className="pb-2 pr-3 text-right font-medium">On hold</th>
                   <th className="pb-2 pr-3 text-right font-medium">MT5 bonus</th>
+                  <th className="pb-2 pr-3 font-medium">LMS modules</th>
                   <th className="pb-2 font-medium">Status</th>
                 </tr>
               </thead>
@@ -103,6 +104,7 @@ function UpgradesTable() {
                     <td className="py-2 pr-3 text-right tabular-nums">{r.progress.done ? '—' : aed(r.nextPaymentAed)}</td>
                     <td className="py-2 pr-3 text-right tabular-nums">{aed(r.progress.onHoldAed)}</td>
                     <td className="py-2 pr-3 text-right tabular-nums">{usd(r.progress.bonusEarnedUsd)} <span className="text-xs text-muted-foreground">of {usd(r.quote.bonusUsd)}</span></td>
+                    <td className="py-2 pr-3 text-xs">{r.lms ? <span className="text-emerald-700">Done</span> : r.lmsDue ? <span className="font-medium text-amber-700">To do</span> : <span className="text-muted-foreground">—</span>}</td>
                     <td className="py-2"><UpgradeStatusBadge status={r.status} /></td>
                   </tr>
                 ))}

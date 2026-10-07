@@ -7,6 +7,7 @@
  */
 import { quoteUpgrade, progressOf, UpgradeError, type OwnedCourse, type PlanType } from "../courses/upgradeCalc";
 import type { CourseCode } from "../courses/priceList";
+import { lmsTargetsOf, sameTitle } from "../courses/lmsMapping";
 
 let checks = 0, failures = 0;
 function check(label: string, ok: boolean, detail = "") {
@@ -86,6 +87,14 @@ const refused = (fn: () => unknown, re: RegExp) => { try { fn(); return false; }
 check("DWT in installments", refused(() => quoteUpgrade("DWT", "installments" as PlanType, [MBT]), /paid once/));
 check("a course the student already has", refused(() => quoteUpgrade("MSNR", "full", has(["MSNR", 12_000])), /already has/));
 check("an unknown course", refused(() => quoteUpgrade("DGMP" as CourseCode, "full", [MBT]), /Unknown course/));
+
+console.log("\nThe LMS modules each upgrade opens (lmsMapping.ts)");
+const titles = (c: CourseCode) => lmsTargetsOf(c).targets.map((t) => `${t.title.split(" ")[0]}${t.firstModules ? `:${t.firstModules}` : ""}`).sort().join(",");
+check("MSNR opens MMC", titles("MSNR") === "MMC");
+check("DSLP Offer opens DSLP 1–10 and DWT", titles("DSLP_OFFER") === "DELTA,DSLP:10", titles("DSLP_OFFER"));
+check("DSLP PRO opens all of DSLP, DWT and MMC", titles("DSLP_PRO") === "DELTA,DSLP,MMC", titles("DSLP_PRO"));
+check("DQMP: no LMS course yet, DSLP PRO's courses", !lmsTargetsOf("DQMP").ownMapped && titles("DQMP") === "DELTA,DSLP,MMC", titles("DQMP"));
+check("titles match however the LMS spaces them", sameTitle("DSLP  - Delta Structure & Liquidity Programme", "DSLP - Delta Structure & Liquidity Programme"));
 
 console.log(`\n${checks - failures}/${checks} checks passed`);
 process.exit(failures ? 1 : 0);

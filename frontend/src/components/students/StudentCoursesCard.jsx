@@ -7,7 +7,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
-import { ArrowUpCircle, GraduationCap, Loader2, Paperclip, Pencil, Plus, XCircle } from 'lucide-react';
+import { ArrowUpCircle, BookOpen, CheckCircle2, GraduationCap, Loader2, Paperclip, Pencil, Plus, XCircle } from 'lucide-react';
 
 /* ────────────────────────────────────────────────────────────────────────────
    CSE courses and upgrades on the student page (backend/src/functions/
@@ -46,6 +46,7 @@ export default function StudentCoursesCard({ student }) {
   const [entering, setEntering] = useState(false);
   const [upgrading, setUpgrading] = useState(false);
   const [paying, setPaying] = useState(false);
+  const [lmsFor, setLmsFor] = useState(null);
   const { data, isLoading, error } = useQuery({
     queryKey: ['student-courses', student.id],
     queryFn: async () => (await base44.functions.invoke('getStudentCourses', { studentId: student.id })).data,
@@ -120,6 +121,7 @@ export default function StudentCoursesCard({ student }) {
               <p className="mt-2 text-xs text-muted-foreground">The first payment includes {aed(a.quote.noBonusAed)} that earns no bonus.</p>
             )}
             <PaymentsList payments={a.payments} />
+            <LmsLine upgrade={a} canWork={data.canWork} onOpen={() => setLmsFor(a)} />
             <div className="mt-2 flex flex-wrap gap-2">
               {data.canWork && !a.progress.done && a.progress.balanceAed - a.pendingAed > 0 && (
                 <Button size="sm" onClick={() => setPaying(true)} className="bg-brand-navy hover:bg-brand-navy/90">
@@ -143,6 +145,7 @@ export default function StudentCoursesCard({ student }) {
               {data.past.map((u) => (
                 <li key={u.id} className="flex flex-wrap items-center gap-2">
                   <UpgradeStatusBadge status={u.status} /> {u.courseName} · {aed(u.quote.dueAed)} · {usd(u.quote.bonusUsd)} bonus
+                  {u.status !== 'cancelled' && <LmsLine upgrade={u} canWork={data.canWork} onOpen={() => setLmsFor(u)} compact />}
                 </li>
               ))}
             </ul>
@@ -151,9 +154,89 @@ export default function StudentCoursesCard({ student }) {
       </CardContent>
 
       {entering && <EnterCoursesDialog student={student} owned={data.owned} onClose={() => setEntering(false)} onSaved={refresh} />}
+      {lmsFor && <LmsDialog upgrade={lmsFor} onClose={() => setLmsFor(null)} onSaved={refresh} />}
       {paying && a && <PaymentDialog upgrade={a} onClose={() => setPaying(false)} onSaved={refresh} />}
       {upgrading && <UpgradeDialog student={student} options={data.options} onClose={() => setUpgrading(false)} onSaved={refresh} />}
     </Card>
+  );
+}
+
+/** Where the upgrade's LMS modules stand, and the button to open them once finance approved a payment. */
+function LmsLine({ upgrade, canWork, onOpen, compact }) {
+  if (upgrade.lms) {
+    return (
+      <span className={`${compact ? '' : 'mt-3 flex'} items-center gap-1.5 text-xs text-emerald-700`}>
+        <CheckCircle2 className="inline h-3.5 w-3.5" />LMS modules opened{upgrade.lms.doneBy ? ` by ${upgrade.lms.doneBy}` : ''}
+        {canWork && <button type="button" onClick={onOpen} className="ml-1 text-brand-navy underline">change</button>}
+      </span>
+    );
+  }
+  if (!upgrade.lmsDue) return null;
+  return (
+    <div className={compact ? 'inline-flex' : 'mt-3 flex flex-wrap items-center gap-2 rounded-md border border-sky-200 bg-sky-50 px-3 py-2 text-xs text-sky-800'}>
+      {!compact && <span>Payment approved — open their LMS modules.</span>}
+      {canWork && <Button size="sm" variant="outline" className="h-7" onClick={onOpen}><BookOpen className="mr-1.5 h-3.5 w-3.5" />Update LMS modules</Button>}
+    </div>
+  );
+}
+
+/** The LMS courses the upgrade opens, ticked from the mapping; the CS changes the ticks and opens them. */
+function LmsDialog({ upgrade, onClose, onSaved }) {
+  const { data, isLoading, error } = useQuery({
+    queryKey: ['upgrade-lms-plan', upgrade.id],
+    queryFn: async () => (await base44.functions.invoke('getUpgradeLmsPlan', { upgradeId: upgrade.id })).data,
+  });
+  const [ticks, setTicks] = useState(null);
+  const plan = data?.courses || [];
+  const picked = ticks ?? Object.fromEntries(plan.map((c) => [c.courseId, c.modules.filter((m) => !m.locked || m.suggested).map((m) => m.id)]));
+  const toggle = (courseId, id) => setTicks({ ...picked, [courseId]: picked[courseId]?.includes(id) ? picked[courseId].filter((x) => x !== id) : [...(picked[courseId] || []), id] });
+  const save = useMutation({
+    mutationFn: async () => (await base44.functions.invoke('applyUpgradeLms', {
+      upgradeId: upgrade.id, courses: plan.map((c) => ({ courseId: c.courseId, open: picked[c.courseId] || [] })),
+    })).data,
+    onSuccess: () => { toast.success('LMS modules opened'); onSaved(); onClose(); },
+    onError: (e) => toast.error(e?.message || 'Could not open the modules'),
+  });
+  return (
+    <Dialog open onOpenChange={(o) => !o && onClose()}>
+      <DialogContent className="max-h-[85vh] max-w-lg overflow-y-auto">
+        <DialogHeader>
+          <DialogTitle>LMS modules — {upgrade.courseName}</DialogTitle>
+          <DialogDescription>Ticked: what this upgrade opens. Change the ticks if needed. Modules already open stay open.</DialogDescription>
+        </DialogHeader>
+        {isLoading ? <p className="py-6 text-center text-sm text-muted-foreground"><Loader2 className="mr-2 inline h-4 w-4 animate-spin" />Asking the LMS…</p>
+          : error ? <p className="py-6 text-sm text-rose-600">{error.message || 'Could not reach the LMS'}</p>
+          : (
+            <div className="space-y-4 text-sm">
+              {data.noLmsCourse && <p className="rounded-md bg-amber-50 p-2 text-xs text-amber-800">{upgrade.courseName} has no course in the LMS yet — only the courses it includes are below.</p>}
+              {data.missing?.length > 0 && <p className="text-xs text-amber-700">Not found in their academy&apos;s LMS: {data.missing.join(', ')}</p>}
+              {plan.map((c) => (
+                <div key={c.courseId}>
+                  <p className="mb-1 font-medium">{c.title}{!c.enrolmentId && <span className="ml-2 text-xs font-normal text-muted-foreground">(they'll be put on it)</span>}</p>
+                  <ul className="space-y-1">
+                    {c.modules.map((m) => {
+                      const already = !m.locked;
+                      return (
+                        <li key={m.id}>
+                          <label className="flex items-center gap-2">
+                            <input type="checkbox" disabled={already} checked={already || picked[c.courseId]?.includes(m.id)} onChange={() => toggle(c.courseId, m.id)} />
+                            <span className={already ? 'text-muted-foreground' : ''}>{m.title}{already ? ' — open' : ''}</span>
+                          </label>
+                        </li>
+                      );
+                    })}
+                  </ul>
+                </div>
+              ))}
+              {!plan.length && <p className="text-muted-foreground">Nothing in the LMS to open for this upgrade.</p>}
+            </div>
+          )}
+        <DialogFooter>
+          <Button variant="ghost" onClick={onClose}>Cancel</Button>
+          <Button onClick={() => save.mutate()} disabled={!plan.length || save.isPending}>{save.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}Open in the LMS</Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }
 

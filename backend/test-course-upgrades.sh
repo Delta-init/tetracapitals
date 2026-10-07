@@ -3,18 +3,18 @@
 # end to end: throwaway mongod and the API — neither reading a .env. Tears everything down afterwards.
 set -euo pipefail
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-MONGO_PORT="${E2E_MONGO_PORT:-27094}"; API_PORT="${E2E_API_PORT:-4164}"
+MONGO_PORT="${E2E_MONGO_PORT:-27094}"; API_PORT="${E2E_API_PORT:-4164}"; LMS_PORT="${E2E_LMS_PORT:-4165}"
 WORK="$(mktemp -d "${TMPDIR:-/tmp}/course-upgrades-e2e.XXXXXX")"
 release() { local p; for p in "$@"; do local pids; pids="$(lsof -nP -t -iTCP:"$p" -sTCP:LISTEN 2>/dev/null || true)"; [ -n "$pids" ] && kill $pids 2>/dev/null || true; done; }
-cleanup() { local code=$?; release "$API_PORT" "$MONGO_PORT"; sleep 1; rm -rf "$WORK"; exit $code; }
+cleanup() { local code=$?; release "$API_PORT" "$MONGO_PORT" "$LMS_PORT"; sleep 1; rm -rf "$WORK"; exit $code; }
 trap cleanup EXIT INT TERM
-for p in "$MONGO_PORT" "$API_PORT"; do lsof -nP -iTCP:"$p" -sTCP:LISTEN >/dev/null 2>&1 && { echo "port $p busy" >&2; exit 1; }; done
+for p in "$MONGO_PORT" "$API_PORT" "$LMS_PORT"; do lsof -nP -iTCP:"$p" -sTCP:LISTEN >/dev/null 2>&1 && { echo "port $p busy" >&2; exit 1; }; done
 mkdir -p "$WORK/db"
 mongod --dbpath "$WORK/db" --port "$MONGO_PORT" --bind_ip 127.0.0.1 --fork --logpath "$WORK/mongod.log" >/dev/null
 export MONGO_URI="mongodb://127.0.0.1:$MONGO_PORT" MONGO_DB="commission_course_upgrades_e2e" JWT_SECRET="course-upgrades-e2e-secret-0123456789abcdef" \
   PORT="$API_PORT" E2E_API_PORT="$API_PORT" UPLOAD_DIR="$WORK/uploads" \
   FINANCE_API_URL="" FINANCE_CLIENT_ID="" FINANCE_INTEGRATION_SECRET="" FINANCE_S2S_SECRET="course-upgrades-e2e-shared-secret-0123456789" ROOT_ERP_API_URL="" ROOT_ERP_SECRET="" \
-  LMS_API_URL="" LMS_SERVICE_SECRET="" LMS_ACTIVITY=off LMS_ENROLMENT_SYNC=off FOLLOWUP_REMINDERS=off ONBOARDING_ALERTS=off WHATSAPP=off \
+  LMS_API_URL="http://127.0.0.1:$LMS_PORT" LMS_SERVICE_SECRET="course-upgrades-e2e-lms-secret" E2E_LMS_PORT="$LMS_PORT" LMS_CS_SYNC=off LMS_ACTIVITY=off LMS_ENROLMENT_SYNC=off FOLLOWUP_REMINDERS=off ONBOARDING_ALERTS=off WHATSAPP=off \
   SMTP_HOST="" SMTP_USER="" SMTP_PASS="" ANTHROPIC_API_KEY=""
 cd "$HERE"
 bun --no-env-file src/index.ts > "$WORK/api.log" 2>&1 &
