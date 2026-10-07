@@ -39,6 +39,7 @@ import {
 } from "./lmsEnrolmentRequests";
 import { getLmsCourseAccess, giveLmsCourses, setLmsModuleAccess } from "./lmsCourseAccess";
 import { getClassCompletions } from "./classCompletions";
+import { getStudentZohoInvoices, listZohoInvoices, getZohoInvoiceOptions, linkZohoInvoice } from "./zohoInvoices";
 import { getStudentLmsCourses } from "./lmsCourses";
 import { getStudentTags, setStudentTag } from "./studentTags";
 import { getPushConfig, savePushSubscription, deletePushSubscription, sendTestPush } from "./push";
@@ -101,6 +102,11 @@ const AUTHED: Record<string, AuthedHandler> = {
   getLmsSupportTickets,
   getLmsSupportTicketCount,
   getClassCompletions,
+  // Zoho Books invoices 2024–2026 (zohoInvoices.ts)
+  getStudentZohoInvoices,
+  listZohoInvoices,
+  getZohoInvoiceOptions,
+  linkZohoInvoice,
   answerLmsTicket,
   resolveLmsTicket,
   // LMS enrolment requests, decided here (lmsEnrolmentRequests.ts)

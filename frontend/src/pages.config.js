@@ -102,6 +102,7 @@ import PaymentLinks from './pages/PaymentLinks';
 import ClassCompletions from './pages/ClassCompletions';
 import SupportTickets from './pages/SupportTickets';
 import LmsRequests from './pages/LmsRequests';
+import ZohoInvoices from './pages/ZohoInvoices';
 import NotOnboarded from './pages/NotOnboarded';
 import BonusApprovals from './pages/BonusApprovals';
 import __Layout from './Layout.jsx';
@@ -165,6 +166,7 @@ export const PAGES = {
     "ClassCompletions": ClassCompletions,
     "SupportTickets": SupportTickets,
     "LmsRequests": LmsRequests,
+    "ZohoInvoices": ZohoInvoices,
 }
 
 export const pagesConfig = {

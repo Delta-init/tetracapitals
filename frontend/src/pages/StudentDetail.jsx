@@ -18,6 +18,7 @@ import { EditDetailsButton } from "@/components/students/EditDetails";
 import MT5AccountSection from "../components/students/MT5AccountSection";
 import { Mt5Logins } from "../components/students/mt5Accounts";
 import CourseFeesCard from "../components/students/CourseFeesCard";
+import ZohoInvoicesCard from "../components/students/ZohoInvoicesCard";
 import { SalesCrmBadge, salesCrmOfStudent } from "@/components/students/salesCrm";
 import StudentHistory, { useStudentHistory } from "../components/students/StudentHistory";
 import StudentFollowupsSection from "@/components/followups/StudentFollowupsSection";
@@ -49,7 +50,7 @@ const TABS = [
   { key: 'calls', label: 'Calls', icon: Phone },
   { key: 'whatsapp', label: 'WhatsApp', icon: MessageCircle, empty: 'No WhatsApp chats with this student yet.' },
   { key: 'funding', label: 'Funding', icon: Wallet },
-  { key: 'courses', label: 'Courses & fees', icon: GraduationCap, empty: 'No course fees or LMS courses for this student yet.' },
+  { key: 'courses', label: 'Courses & fees', icon: GraduationCap, empty: 'No course fees, invoices or LMS courses for this student yet.' },
   { key: 'classes', label: 'Classes', icon: Presentation, empty: 'No LMS classes to show for this student.' },
   { key: 'support', label: 'Support & assignments', icon: LifeBuoy, empty: 'No support tickets or assignments to show.' },
   { key: 'payment-links', label: 'Payment links', icon: Link2, empty: 'No payment links for this student.' },
@@ -506,6 +507,8 @@ export default function StudentDetail() {
           {/* What each course cost and what was paid, as Delta finance approved it, and their courses in the Delta LMS */}
           <TabsContent {...panel('courses')}>
             <CourseFeesCard fees={displayStudent.course_fees} />
+            {/* Their Zoho Books invoices, 2024 – Jun 2026 — apart from Delta finance's course fees */}
+            <ZohoInvoicesCard studentId={student.id} />
             <StudentLmsCoursesCard student={displayStudent} canManage={canViewInLms(currentUser) && !!student.email} />
           </TabsContent>
 
