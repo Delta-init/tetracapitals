@@ -7,7 +7,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Button } from "@/components/ui/button";
-import { Loader2 } from "lucide-react";
+import { GraduationCap, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import SearchableStudentSelect from '../common/SearchableStudentSelect';
 import SearchableSelect from '../common/SearchableSelect';
@@ -564,6 +564,8 @@ export default function FundingRequestForm({ students, allStudents = [], current
             )}
           </div>
 
+          {formData.student_id && <CurrentCourses studentId={formData.student_id} />}
+
           {formData.type === 'BONUS' && (
             <div className="space-y-2 md:col-span-2">
               <Label>Product *</Label>
@@ -719,5 +721,36 @@ export default function FundingRequestForm({ students, allStudents = [], current
         </div>
       </form>
     </>
+  );
+}
+/** The student's current CSE courses (entered by their CS, and every upgrade paid since), and an upgrade in progress. */
+function CurrentCourses({ studentId }) {
+  const { data, isLoading, isError } = useQuery({
+    queryKey: ['student-courses', studentId],
+    queryFn: async () => (await base44.functions.invoke('getStudentCourses', { studentId })).data,
+    retry: false,
+  });
+  if (isError) return null;
+  const aed = (n) => `AED ${Number(n || 0).toLocaleString('en-US')}`;
+  const a = data?.active;
+  return (
+    <div className="md:col-span-2 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm">
+      <div className="flex flex-wrap items-center gap-2">
+        <GraduationCap className="h-4 w-4 text-brand-navy" />
+        <span className="font-medium">Current course{data?.owned?.length === 1 ? '' : 's'}:</span>
+        {isLoading ? <Loader2 className="h-3.5 w-3.5 animate-spin text-muted-foreground" />
+          : !data?.entered ? <span className="text-muted-foreground">not entered yet — their CS enters them on the student&apos;s Courses tab</span>
+          : data.owned.length ? data.owned.map((o) => (
+            <span key={o.code} className="rounded-full border bg-white px-2 py-0.5 text-xs">{o.name} <span className="text-muted-foreground">· {aed(o.paidAed)}</span></span>
+          ))
+          : <span className="text-muted-foreground">none</span>}
+      </div>
+      {a && (
+        <p className="mt-1 text-xs text-amber-700">
+          Upgrading to {a.courseName} ({a.plan === 'full' ? 'full payment' : 'instalments'}) — paid {aed(a.progress.paidAed)} of {aed(a.quote.dueAed)}, balance {aed(a.progress.balanceAed)}
+          {!a.progress.done && a.nextPaymentAed ? `, next ${aed(a.nextPaymentAed)}` : ''}
+        </p>
+      )}
+    </div>
   );
 }
