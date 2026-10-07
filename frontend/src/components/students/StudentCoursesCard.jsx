@@ -7,7 +7,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
-import { ArrowUpCircle, GraduationCap, Loader2, Pencil, XCircle } from 'lucide-react';
+import { ArrowUpCircle, GraduationCap, Loader2, Paperclip, Pencil, Plus, XCircle } from 'lucide-react';
 
 /* ────────────────────────────────────────────────────────────────────────────
    CSE courses and upgrades on the student page (backend/src/functions/
@@ -45,6 +45,7 @@ export default function StudentCoursesCard({ student }) {
   const queryClient = useQueryClient();
   const [entering, setEntering] = useState(false);
   const [upgrading, setUpgrading] = useState(false);
+  const [paying, setPaying] = useState(false);
   const { data, isLoading, error } = useQuery({
     queryKey: ['student-courses', student.id],
     queryFn: async () => (await base44.functions.invoke('getStudentCourses', { studentId: student.id })).data,
@@ -118,12 +119,20 @@ export default function StudentCoursesCard({ student }) {
             {a.quote.noBonusAed > 0 && (
               <p className="mt-2 text-xs text-muted-foreground">The first payment includes {aed(a.quote.noBonusAed)} that earns no bonus.</p>
             )}
-            <p className="mt-2 text-xs text-muted-foreground">Payments are recorded and approved by Delta finance — coming in the next step.</p>
-            {data.canWork && a.progress.paidAed === 0 && (
+            <PaymentsList payments={a.payments} />
+            <div className="mt-2 flex flex-wrap gap-2">
+              {data.canWork && !a.progress.done && a.progress.balanceAed - a.pendingAed > 0 && (
+                <Button size="sm" onClick={() => setPaying(true)} className="bg-brand-navy hover:bg-brand-navy/90">
+                  <Plus className="mr-1.5 h-3.5 w-3.5" />Record payment
+                </Button>
+              )}
+            {data.canWork && !a.payments.some((p) => p.status !== 'rejected') && (
               <Button size="sm" variant="ghost" className="mt-2 text-rose-600" disabled={cancel.isPending} onClick={() => cancel.mutate(a.id)}>
                 <XCircle className="mr-1.5 h-3.5 w-3.5" />Cancel upgrade
               </Button>
             )}
+            </div>
+            {a.pendingAed > 0 && <p className="mt-2 text-xs text-muted-foreground">{aed(a.pendingAed)} is waiting for Delta Finance to approve — it counts once approved.</p>}
           </div>
         )}
 
@@ -142,8 +151,105 @@ export default function StudentCoursesCard({ student }) {
       </CardContent>
 
       {entering && <EnterCoursesDialog student={student} owned={data.owned} onClose={() => setEntering(false)} onSaved={refresh} />}
+      {paying && a && <PaymentDialog upgrade={a} onClose={() => setPaying(false)} onSaved={refresh} />}
       {upgrading && <UpgradeDialog student={student} options={data.options} onClose={() => setUpgrading(false)} onSaved={refresh} />}
     </Card>
+  );
+}
+
+const PAYMENT_STATUS = {
+  pending: { label: 'With finance', cls: 'border-amber-200 bg-amber-50 text-amber-700' },
+  approved: { label: 'Approved', cls: 'border-emerald-200 bg-emerald-50 text-emerald-700' },
+  rejected: { label: 'Rejected', cls: 'border-rose-200 bg-rose-50 text-rose-700' },
+};
+
+/** Each payment recorded on the upgrade, and where it stands with Delta Finance. */
+function PaymentsList({ payments }) {
+  if (!payments?.length) return <p className="mt-3 text-xs text-muted-foreground">No payments recorded yet. Record each one with its receipt — Delta Finance approves it.</p>;
+  return (
+    <ul className="mt-3 divide-y rounded-md border bg-white text-sm">
+      {payments.map((p) => {
+        const st = PAYMENT_STATUS[p.status] || PAYMENT_STATUS.pending;
+        return (
+          <li key={p.id} className="flex flex-wrap items-center gap-2 px-3 py-2">
+            <Badge variant="outline" className={st.cls}>{st.label}</Badge>
+            <span className="font-medium tabular-nums">{aed(p.approvedAed ?? p.amountAed)}</span>
+            <span className="text-muted-foreground">{p.method}{p.paidOn ? ` · ${p.paidOn}` : ''}{p.recordedBy ? ` · by ${p.recordedBy}` : ''}</span>
+            {p.receiptUrl && <a href={p.receiptUrl} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 text-xs text-brand-navy hover:underline"><Paperclip className="h-3 w-3" />Receipt</a>}
+            {p.status === 'pending' && !p.sent && <span className="text-xs text-muted-foreground">sending to finance…</span>}
+            {p.status === 'rejected' && p.reason && <span className="w-full text-xs text-rose-600">{p.reason}</span>}
+            {p.status === 'approved' && p.transactionId && <span className="text-xs text-muted-foreground">{p.transactionId}</span>}
+          </li>
+        );
+      })}
+    </ul>
+  );
+}
+
+const METHODS = ['Card', 'Cash', 'Bank transfer', 'Payment link', 'Tabby'];
+
+/** The CS records a payment the student made, with its receipt; it goes to Delta Finance to approve. */
+function PaymentDialog({ upgrade, onClose, onSaved }) {
+  const room = Math.max(0, upgrade.progress.balanceAed - upgrade.pendingAed);
+  const [amount, setAmount] = useState(String(Math.min(upgrade.nextPaymentAed || room, room)));
+  const [method, setMethod] = useState('Card');
+  const [paidOn, setPaidOn] = useState(new Date().toISOString().slice(0, 10));
+  const [note, setNote] = useState('');
+  const [receipt, setReceipt] = useState(null);
+  const [uploading, setUploading] = useState(false);
+  const upload = async (file) => {
+    if (!file) return;
+    setUploading(true);
+    try {
+      const { file_url } = await base44.integrations.Core.UploadFile({ file });
+      setReceipt({ url: file_url, name: file.name });
+    } catch (e) {
+      toast.error(e?.message || 'Could not upload the receipt');
+    } finally { setUploading(false); }
+  };
+  const save = useMutation({
+    mutationFn: async () => (await base44.functions.invoke('recordCoursePayment', {
+      upgradeId: upgrade.id, amountAed: Number(amount), method, receiptUrl: receipt?.url, receiptName: receipt?.name, paidOn, note,
+    })).data,
+    onSuccess: () => { toast.success('Payment recorded — sent to Delta Finance for approval'); onSaved(); onClose(); },
+    onError: (e) => toast.error(e?.message || 'Could not record the payment'),
+  });
+  const n = Number(amount);
+  const valid = n > 0 && n <= room && receipt && !uploading;
+  return (
+    <Dialog open onOpenChange={(o) => !o && onClose()}>
+      <DialogContent className="max-w-md">
+        <DialogHeader>
+          <DialogTitle>Record payment</DialogTitle>
+          <DialogDescription>{upgrade.courseName} upgrade · up to {aed(room)} left to record. Delta Finance approves it; it counts once approved.</DialogDescription>
+        </DialogHeader>
+        <div className="space-y-3 text-sm">
+          <label className="block">Amount (AED)
+            <Input type="number" min="0" max={room} value={amount} onChange={(e) => setAmount(e.target.value)} className="mt-1 h-9" />
+          </label>
+          <label className="block">Method
+            <select value={method} onChange={(e) => setMethod(e.target.value)} className="mt-1 h-9 w-full rounded-md border bg-background px-2">
+              {METHODS.map((m) => <option key={m}>{m}</option>)}
+            </select>
+          </label>
+          <label className="block">Paid on
+            <Input type="date" value={paidOn} onChange={(e) => setPaidOn(e.target.value)} className="mt-1 h-9" />
+          </label>
+          <label className="block">Receipt
+            <Input type="file" accept="image/*,application/pdf" onChange={(e) => upload(e.target.files?.[0])} className="mt-1 h-9" />
+            {uploading && <span className="text-xs text-muted-foreground"><Loader2 className="mr-1 inline h-3 w-3 animate-spin" />Uploading…</span>}
+            {receipt && <span className="text-xs text-emerald-700">Attached: {receipt.name}</span>}
+          </label>
+          <label className="block">Note (optional)
+            <Input value={note} onChange={(e) => setNote(e.target.value)} className="mt-1 h-9" />
+          </label>
+        </div>
+        <DialogFooter>
+          <Button variant="ghost" onClick={onClose}>Cancel</Button>
+          <Button onClick={() => save.mutate()} disabled={!valid || save.isPending}>{save.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}Send to finance</Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }
 

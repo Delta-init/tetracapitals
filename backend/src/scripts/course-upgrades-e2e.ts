@@ -3,7 +3,8 @@
  *   - the price list, and a Super Admin changing it (and nobody else);
  *   - a CS entering a student's current courses, then the upgrades offered with what each costs and earns;
  *   - starting one: the quote kept, one at a time, the courses locked; cancelling before any payment;
- *   - who may: the student's CS and admins, not another CS; the Upgrades list scoped the same way.
+ *   - who may: the student's CS and admins, not another CS; the Upgrades list scoped the same way;
+ *   - phase 3: recording payments (queued for Delta finance), finance's decision coming back, the upgrade done when paid.
  * Run through ./test-course-upgrades.sh (throwaway mongod, the API — no .env). Scratch database only.
  */
 import bcrypt from "bcryptjs";
@@ -90,10 +91,12 @@ await db.collection("settings").deleteMany({ key: "cse_price_list" });
 check("another CS cannot cancel it", (await fn("cancelCourseUpgrade", { upgradeId: upId }, tOther)).status === 403);
 r = await fn("cancelCourseUpgrade", { upgradeId: upId }, tCs);
 check("its CS cancels it before any payment", r.status === 200 && (await fn("getStudentCourses", { studentId: S1 }, tCs)).body.active === null);
-await db.collection("course_upgrades").insertOne({ student_id: S1, course: "MSNR", plan: "full", status: "open", quote: { dueAed: 11010, schedule: [11010], plan: "full", noBonusAed: 0, steps: 6, bonusUsd: 3000 }, payments: [{ amount_aed: 5000, status: "pending" }], created_at: now } as any);
+await db.collection("course_upgrades").insertOne({ student_id: S1, course: "MSNR", plan: "full", status: "open", quote: { dueAed: 11010, schedule: [11010], plan: "full", noBonusAed: 0, steps: 6, bonusUsd: 3000 }, created_at: now } as any);
 const withPay: any = await db.collection("course_upgrades").findOne({ course: "MSNR", student_id: S1 });
+await db.collection("course_payments").insertOne({ upgrade_id: String(withPay._id), student_id: S1, amount_aed: 5000, status: "pending" } as any);
 check("…but not once a payment is recorded on it", (await fn("cancelCourseUpgrade", { upgradeId: String(withPay._id) }, tCs)).status === 409);
 await db.collection("course_upgrades").deleteOne({ _id: withPay._id });
+await db.collection("course_payments").deleteMany({});
 
 step("Case 3 — bad input");
 check("an unknown course", (await fn("startCourseUpgrade", { studentId: S1, course: "DGMP", plan: "full" }, tCs)).status === 400);
@@ -117,6 +120,52 @@ const mine = (await fn("listCourseUpgrades", {}, tCs)).body.rows ?? [];
 const all = (await fn("listCourseUpgrades", {}, tAdmin)).body.rows ?? [];
 check("the Upgrades list: a CS sees their own students' only, the Super Admin all", mine.length === 1 && mine[0].student.code === "STU-1" && mine[0].quote.dueAed === 14000 && all.length === 2, show([mine.length, all.length]));
 check("no session: 401", (await fn("listCourseUpgrades", {})).status === 401);
+
+step("Case 5 — payments: recorded by the CS, decided by Delta finance");
+await db.collection("course_upgrades").deleteMany({});
+await db.collection("settings").deleteMany({ key: "cse_price_list" });
+r = await fn("startCourseUpgrade", { studentId: S1, course: "DSLP_OFFER", plan: "installments" }, tCs);
+const up = r.body.upgrade?.id;
+const RECEIPT = "https://files.example.test/receipt.png";
+const pay = (body: any, t = tCs) => fn("recordCoursePayment", { upgradeId: up, method: "Card", receiptUrl: RECEIPT, ...body }, t);
+check("no receipt, a bad method, 0, or more than the balance: refused",
+  (await pay({ amountAed: 2750, receiptUrl: "" })).status === 400 && (await pay({ amountAed: 2750, method: "Gold" })).status === 400
+  && (await pay({ amountAed: 0 })).status === 400 && (await pay({ amountAed: 16751 })).status === 400);
+check("another CS cannot record one", (await pay({ amountAed: 2750 }, tOther)).status === 403);
+r = await pay({ amountAed: 4500, paidOn: "2026-10-07" });
+const p1 = r.body.id;
+check("its CS records 4,500: queued for finance", r.status === 200 && ((await db.collection("course_payments").findOne({ _id: new ObjectId(p1) })) as any)?.finance_approval?.state === "queued", show(r.body));
+r = await fn("getStudentCourses", { studentId: S1 }, tCs);
+check("…shown with finance, nothing counted yet", r.body.active?.payments?.[0]?.status === "pending" && r.body.active?.progress?.paidAed === 0 && r.body.active?.pendingAed === 4500, show(r.body.active));
+check("…and the upgrade can no longer be cancelled", (await fn("cancelCourseUpgrade", { upgradeId: up }, tCs)).status === 409);
+check("more than what is left after the one waiting is refused", (await pay({ amountAed: 12251 })).status === 400 && (await pay({ amountAed: 12250 })).status === 200);
+const decide = async (body: any, secret = process.env.FINANCE_S2S_SECRET!) => {
+  const res = await fetch(`${API}/api/v1/integrations/finance/funding-decisions`, { method: "POST", headers: { "content-type": "application/json", "x-finance-secret": secret }, body: JSON.stringify(body) });
+  const j: any = await res.json().catch(() => ({})); return { status: res.status, body: j.data ?? j };
+};
+const approve = (id: string, aed: number) => decide({ fundingId: id, decision: "approved", amountMinor: aed * 100, transactionId: "TXN-1", decidedBy: { name: "Acc Ountant", email: "acc@finance.test" }, decidedAt: now });
+check("a wrong secret is refused", (await decide({ fundingId: p1, decision: "approved" }, "nope")).status === 401);
+r = await approve(p1, 4500);
+check("finance approves the 4,500", r.status === 200 && r.body.status === "approved", show(r.body));
+r = await fn("getStudentCourses", { studentId: S1 }, tCs);
+check("…it counts: paid 4,500, one step (+$500), 1,750 on hold", r.body.active?.progress?.paidAed === 4500 && r.body.active?.progress?.bonusEarnedUsd === 500 && r.body.active?.progress?.onHoldAed === 1750, show(r.body.active?.progress));
+check("the same approval again is fine; a rejection now is 409", (await approve(p1, 4500)).body.already === true
+  && (await decide({ fundingId: p1, decision: "rejected", reason: "wrong" })).status === 409);
+const p2: any = await db.collection("course_payments").findOne({ amount_aed: 12250 });
+r = await decide({ fundingId: String(p2._id), decision: "rejected", reason: "Receipt unreadable" });
+check("finance rejects the 12,250 with a reason", r.status === 200 && r.body.status === "rejected");
+r = await fn("getStudentCourses", { studentId: S1 }, tCs);
+check("…shown rejected with the reason, the balance unchanged", r.body.active?.payments?.find((x: any) => x.id === String(p2._id))?.reason === "Receipt unreadable" && r.body.active?.progress?.balanceAed === 12250);
+const p3 = (await pay({ amountAed: 12250 })).body.id;
+r = await approve(p3, 12250);
+check("the rest approved: the upgrade is done", r.status === 200 && r.body.upgradeDone === true, show(r.body));
+r = await fn("getStudentCourses", { studentId: S1 }, tCs);
+check("…DSLP Offer now theirs, at 16,750, all $4,000 earned", !r.body.active && r.body.owned?.some((o: any) => o.code === "DSLP_OFFER" && o.paidAed === 16750)
+  && r.body.past?.[0]?.progress?.bonusEarnedUsd === 4000, show(r.body.owned));
+check("no more payments on a done upgrade", (await pay({ amountAed: 1 })).status === 409);
+check("an unknown id: 410", (await approve(String(new ObjectId()), 1)).status === 410);
+const hist = await db.collection("student_history").find({ student_id: S1, type: "course_upgrade" }).toArray();
+check("history: payments recorded, approved, rejected", hist.some((h: any) => /approved by Delta Finance/.test(h.text)) && hist.some((h: any) => /rejected by Delta Finance/.test(h.text)) && hist.some((h: any) => /recorded/.test(h.text)), String(hist.length));
 
 await client.close();
 console.log(`\n${pass}/${pass + fail} checks passed`);

@@ -6,6 +6,7 @@ import { visibleMentorIds, isStudentOf, studentsOf, canWorkOn } from "../student
 import { recordHistory } from "../students/history";
 import { DEFAULT_PRICE_LIST, type CourseCode, type CoursePrice } from "../courses/priceList";
 import { quoteUpgrade, progressOf, UpgradeError, type OwnedCourse, type PlanType, type UpgradeQuote } from "../courses/upgradeCalc";
+import { approvedAmounts, queueCoursePayment, PAYMENT_METHODS } from "../courses/coursePayments";
 
 /*
  * CSE course upgrades (the user, 2026-10-07) — phase 2: the price list, each
@@ -17,7 +18,8 @@ import { quoteUpgrade, progressOf, UpgradeError, type OwnedCourse, type PlanType
  *   settings            { key: "cse_price_list", courses, updated_by, updated_at }
  *   student_courses     { student_id, owned: [{ code, plan, paid_aed }], entered_by, entered_at }
  *                       — the courses a student already had, entered once by their CS
- *   course_upgrades     { student_id, course, plan, quote, payments: [], status: open | done | cancelled, … }
+ *   course_upgrades     { student_id, course, plan, quote, status: open | done | cancelled, … }
+ *   course_payments     each payment, approved by Delta finance (courses/coursePayments.ts)
  *
  * Who: the student's CS (and Common CSs), the people above them, and admins
  * (canWorkOn / visibleMentorIds, as follow-ups); the price list is a Super
@@ -36,15 +38,31 @@ export async function priceList(): Promise<CoursePrice[]> {
 async function ownedOf(studentId: string): Promise<{ owned: OwnedCourse[]; entered: boolean }> {
   const [doc, done] = await Promise.all([
     col("student_courses").findOne({ student_id: studentId }) as Promise<any>,
-    col("course_upgrades").find({ student_id: studentId, status: "done" }).toArray() as Promise<any[]>,
+    col("course_upgrades").find({ student_id: studentId, status: "done" }).toArray().then(withPayments),
   ]);
   const owned: OwnedCourse[] = (doc?.owned ?? []).map((o: any) => ({ code: o.code, paidAed: Number(o.paid_aed) || 0 }));
   for (const u of done) owned.push({ code: u.course, paidAed: progressOf(u.quote, paymentsOf(u)).paidAed });
   return { owned, entered: !!doc };
 }
 
-const paymentsOf = (u: any): number[] =>
-  (u.payments ?? []).filter((p: any) => p.status === "approved").map((p: any) => Number(p.amount_aed) || 0);
+const paymentsOf = (u: any): number[] => approvedAmounts(u.payments ?? []);
+
+/** Puts each upgrade's payments (course_payments) on it as u.payments. */
+async function withPayments(ups: any[]): Promise<any[]> {
+  if (!ups.length) return ups;
+  const all = (await col("course_payments").find({ upgrade_id: { $in: ups.map((u) => String(u._id)) } }).sort({ recorded_at: 1 }).toArray()) as any[];
+  for (const u of ups) u.payments = all.filter((p) => p.upgrade_id === String(u._id));
+  return ups;
+}
+
+const paymentView = (p: any) => ({
+  id: String(p._id), amountAed: p.amount_aed, approvedAed: p.approved_amount_aed ?? null, method: p.method,
+  receiptUrl: p.receipt_url ?? "", receiptName: p.receipt_name ?? "", paidOn: p.paid_on ?? "", note: p.note ?? "",
+  status: p.status, reason: p.reason ?? "", transactionId: p.transaction_id ?? "",
+  sent: p.finance_approval?.state === "sent" || p.finance_approval?.state === "decided",
+  lastError: p.status === "pending" ? p.finance_approval?.last_error ?? null : null,
+  recordedAt: p.recorded_at, recordedBy: p.recorded_by_name ?? "", decidedBy: p.decided_by_name ?? "", decidedAt: p.decided_at ?? null,
+});
 
 async function studentFor(user: AuthUser, studentId: unknown, write: boolean) {
   const oid = toObjectId(String(studentId ?? ""));
@@ -78,6 +96,8 @@ function upgradeView(u: any, list: CoursePrice[]) {
     quote,
     progress,
     nextPaymentAed: progress.done ? 0 : Math.min(progress.balanceAed, quote.schedule[paidCount] ?? quote.schedule[quote.schedule.length - 1] ?? progress.balanceAed),
+    pendingAed: (u.payments ?? []).filter((p: any) => p.status === "pending").reduce((a: number, p: any) => a + (Number(p.amount_aed) || 0), 0),
+    payments: (u.payments ?? []).map(paymentView),
     createdAt: u.created_at,
     createdBy: u.created_by_name,
   };
@@ -140,7 +160,7 @@ export async function getStudentCourses(req: Request, user: AuthUser): Promise<R
   if (found.err) return found.err;
   const list = await priceList();
   const { owned, entered } = await ownedOf(found.id);
-  const upgrades = (await col("course_upgrades").find({ student_id: found.id }).sort({ created_at: -1 }).toArray()) as any[];
+  const upgrades = await withPayments((await col("course_upgrades").find({ student_id: found.id }).sort({ created_at: -1 }).toArray()) as any[]);
   const active = upgrades.find((u) => u.status === "open");
   const ownedCodes = new Set(owned.map((o) => o.code));
   const options = list
@@ -225,7 +245,7 @@ export async function startCourseUpgrade(req: Request, user: AuthUser): Promise<
   }
   const now = new Date().toISOString();
   const doc = {
-    student_id: found.id, course: code, plan: quote.plan, quote, payments: [], status: "open",
+    student_id: found.id, course: code, plan: quote.plan, quote, status: "open",
     created_by: user.id, created_by_name: who(user), created_at: now,
   };
   const ins = await col("course_upgrades").insertOne(doc as any);
@@ -246,7 +266,7 @@ export async function cancelCourseUpgrade(req: Request, user: AuthUser): Promise
   const found = await studentFor(user, u.student_id, true);
   if (found.err) return found.err;
   if (u.status !== "open") return error("Only an upgrade in progress can be cancelled", 409);
-  if ((u.payments ?? []).length) return error("Payments have been recorded on it — it can no longer be cancelled", 409);
+  if (await col("course_payments").countDocuments({ upgrade_id: String(oid), status: { $ne: "rejected" } })) return error("Payments have been recorded on it — it can no longer be cancelled", 409);
   const now = new Date().toISOString();
   await col("course_upgrades").updateOne({ _id: oid, status: "open" }, { $set: { status: "cancelled", cancelled_by: user.id, cancelled_by_name: who(user), cancelled_at: now } });
   const list = await priceList();
@@ -270,7 +290,7 @@ export async function listCourseUpgrades(req: Request, user: AuthUser): Promise<
   }
   const filter: Record<string, unknown> = status === "all" ? { status: { $ne: "cancelled" } } : { status };
   if (studentIds) filter.student_id = { $in: studentIds };
-  const ups = (await col("course_upgrades").find(filter).sort({ created_at: -1 }).limit(2000).toArray()) as any[];
+  const ups = await withPayments((await col("course_upgrades").find(filter).sort({ created_at: -1 }).limit(2000).toArray()) as any[]);
   const students = (await col("students")
     .find({ _id: { $in: ups.map((u) => toObjectId(u.student_id)).filter(Boolean) as any[] } }, { projection: { full_name: 1, student_code: 1, primary_mentor_name: 1 } })
     .toArray()) as any[];
@@ -282,4 +302,45 @@ export async function listCourseUpgrades(req: Request, user: AuthUser): Promise<
       return { ...upgradeView(u, list), student: { id: u.student_id, name: s?.full_name ?? "", code: s?.student_code ?? "", cs: s?.primary_mentor_name ?? "" } };
     }),
   });
+}
+
+/**
+ * POST /api/functions/recordCoursePayment { upgradeId, amountAed, method, receiptUrl, receiptName?, paidOn?, note? }
+ * The CS records a payment the student made, with its receipt. It goes to
+ * Delta finance accounts to approve; only once approved does it count.
+ */
+export async function recordCoursePayment(req: Request, user: AuthUser): Promise<Response> {
+  const body: any = await req.json().catch(() => ({}));
+  const oid = toObjectId(String(body?.upgradeId ?? ""));
+  if (!oid) return error("upgradeId is required", 400);
+  const u: any = await col("course_upgrades").findOne({ _id: oid });
+  if (!u) return notFound();
+  const found = await studentFor(user, u.student_id, true);
+  if (found.err) return found.err;
+  if (u.status !== "open") return error("Payments are recorded only on an upgrade in progress", 409);
+  const amount = Math.round(Number(body?.amountAed) * 100) / 100;
+  if (!Number.isFinite(amount) || amount <= 0) return error("The amount must be above 0", 400);
+  if (!(PAYMENT_METHODS as readonly string[]).includes(body?.method)) return error(`Method is one of ${PAYMENT_METHODS.join(", ")}`, 400);
+  const receipt = String(body?.receiptUrl ?? "").trim();
+  if (!/^https?:\/\//i.test(receipt)) return error("Attach the receipt", 400);
+  const [withP] = await withPayments([u]);
+  const progress = progressOf(u.quote, paymentsOf(withP));
+  const pending = (withP.payments as any[]).filter((p) => p.status === "pending").reduce((a, p) => a + (Number(p.amount_aed) || 0), 0);
+  const room = Math.round((progress.balanceAed - pending) * 100) / 100;
+  if (amount > room) {
+    return error(room > 0 ? `Only AED ${room.toLocaleString("en-US")} is left to pay${pending ? " (counting payments waiting for finance)" : ""}` : "Nothing is left to pay — the rest is waiting for finance", 400);
+  }
+  const paidOn = /^\d{4}-\d{2}-\d{2}$/.test(String(body?.paidOn ?? "")) ? String(body.paidOn) : "";
+  const id = await queueCoursePayment({
+    upgrade_id: String(oid), student_id: found.id, amount_aed: amount, method: body.method,
+    receipt_url: receipt.slice(0, 1000), receipt_name: String(body?.receiptName ?? "").slice(0, 200),
+    paid_on: paidOn, note: String(body?.note ?? "").trim().slice(0, 500),
+    recorded_by: user.id, recorded_by_name: who(user),
+  });
+  const list = await priceList();
+  await recordHistory([{
+    student_id: found.id, at: new Date().toISOString(), type: "course_upgrade", by_id: user.id, by_name: who(user),
+    text: `Course payment of AED ${amount.toLocaleString("en-US")} (${body.method}) recorded for ${nameOf(list, u.course)} — sent to Delta Finance for approval`,
+  }]);
+  return json({ id });
 }

@@ -43,6 +43,8 @@ import { notify } from "../lib/notify";
 ──────────────────────────────────────────────────────────────────────────── */
 
 const INTAKE_PATH = "/api/v1/integrations/tetra-deposits";
+/** Course upgrade payments go to the same door, as type COURSE_UPGRADE (courses/coursePayments.ts). */
+export const FINANCE_INTAKE_PATH = INTAKE_PATH;
 const TIMEOUT_MS = 20_000;
 const TICK_MS = 15_000;
 const BATCH = 20;
@@ -186,7 +188,7 @@ export function financeLock(existing: any, data: Record<string, any>): string | 
 /* ── Sending ─────────────────────────────────────────────────────────────── */
 
 /** Finance will never take it as it is. Everything else is waited out. */
-class FinancePermanentError extends Error {}
+export class FinancePermanentError extends Error {}
 
 const sha256 = (s: string) => createHash("sha256").update(s).digest("hex");
 
@@ -195,7 +197,7 @@ const sha256 = (s: string) => createHash("sha256").update(s).digest("hex");
  * middleware/service-auth.ts checks and the sales CRM's financeClient.ts sends:
  * METHOD \n PATH \n TIMESTAMP \n NONCE \n sha256(body), HMAC-SHA256.
  */
-async function postToFinance(path: string, payload: unknown): Promise<any> {
+export async function postToFinance(path: string, payload: unknown): Promise<any> {
   const raw = JSON.stringify(payload);
   const timestamp = String(Date.now());
   const nonce = randomUUID();
@@ -357,7 +359,7 @@ async function depositPayload(tx: any) {
 }
 
 /** Backs off to a quarter of an hour and stays there, still trying. */
-const backoffMs = (attempts: number) => Math.min(2 ** attempts * 1000, 15 * 60_000);
+export const backoffMs = (attempts: number) => Math.min(2 ** attempts * 1000, 15 * 60_000);
 
 async function sendOne(tx: any): Promise<void> {
   const now = new Date().toISOString();
@@ -439,6 +441,8 @@ async function runPass(): Promise<void> {
     do {
       again = false;
       await sendDueDeposits();
+      // Course upgrade payments, on the same beat (courses/coursePayments.ts).
+      await (await import("../courses/coursePayments")).sendDueCoursePayments();
     } while (again);
   } catch (err) {
     console.error("[finance funding] pass failed", err);
@@ -689,7 +693,14 @@ export async function handleFundingDecision(req: Request): Promise<Response> {
 
   const txs = col("funding_transactions");
   const tx: any = await txs.findOne({ _id: oid });
-  if (!tx) return refuse(410, "GONE", "This funding request is no longer in Tetra Commission");
+  if (!tx) {
+    // Not a funding request: a course upgrade payment, decided the same way (courses/coursePayments.ts).
+    const answer = await (await import("../courses/coursePayments")).decideCoursePayment(oid, {
+      decision, byName, byEmail, at, note, reason, transactionId, amountMinor,
+    });
+    if (answer) return answer;
+    return refuse(410, "GONE", "This funding request is no longer in Tetra Commission");
+  }
   const settled = await settledAnswer(tx, decision, byName, byEmail);
   if (settled) return settled;
   // A bonus finance approves stays PENDING: the second approval is a broker admin's here (awaitingBroker).
