@@ -12,6 +12,7 @@ import { startWhatsApp } from "./whatsapp/service";
 import { startLmsEnrolmentWorker } from "./students/lmsEnrolment";
 import { startLmsActivityWorker } from "./students/lmsActivity";
 import { startLmsCsWorker } from "./students/lmsCs";
+import { startMentorScheduleWorker } from "./students/mentorScheduleAlerts";
 import { ensureSalesRole } from "./students/closedBy";
 
 async function main() {
@@ -53,6 +54,8 @@ async function main() {
   startLmsActivityWorker();
   // Each student's CS and CS team, told to the LMS for its admin every 10 minutes (LMS_CS_SYNC=off to keep a server out of it).
   startLmsCsWorker();
+  // Each mentor told of sessions booked with them, moved or cancelled, and 30 minutes before (MENTOR_SCHEDULE_ALERTS=off).
+  startMentorScheduleWorker();
 }
 
 const shutdown = async (signal: string) => {

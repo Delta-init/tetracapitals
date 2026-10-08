@@ -148,14 +148,29 @@ export default function MentorCalendar() {
   const sameDay = (iso, day) => new Date(iso).toLocaleDateString('en-CA', { timeZone: tz }) === columnKey(day);
   const at = (iso) => new Date(iso).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', timeZone: tz });
 
+  // The person looking, when they are one of the mentors (same email): their own week first (the user, 2026-10-08).
+  const { data: me } = useQuery({ queryKey: ['me'], queryFn: () => base44.auth.me(), staleTime: 5 * 60_000 });
+  const myEmail = String(me?.email || '').trim().toLowerCase();
+  const myMentor = useMemo(() => (schedule.data?.mentors ?? []).find(m => String(m.email || '').trim().toLowerCase() === myEmail) || null, [schedule.data, myEmail]);
+  const [onlyMe, setOnlyMe] = useState(false);
+  const myItems = useMemo(() => {
+    if (!myMentor) return [];
+    const now = Date.now();
+    return [
+      ...myMentor.classes.filter(c => c.mine && c.status !== 'cancelled').map(c => ({ id: `c${c.id}`, startsAt: c.startsAt, mins: c.durationMins, what: c.title || 'Class', sub: `Class · ${c.booked}/${c.capacity} booked`, kind: 'class' })),
+      ...myMentor.meetings.map(v => ({ id: `m${v.id}`, startsAt: v.startsAt, mins: v.durationMins, what: v.title, sub: `${KIND_LABEL[v.kind] ?? v.kind}${v.attendeeNames?.length ? ` · with ${v.attendeeNames.join(', ')}` : ''}${v.inPerson ? ` · in person, ${v.location}` : ''}`, kind: 'meeting' })),
+    ].filter(i => new Date(i.startsAt).getTime() + (i.mins || 0) * 60_000 > now).sort((a, b) => a.startsAt.localeCompare(b.startsAt));
+  }, [myMentor]);
+
   const [query, setQuery] = useState('');
   const shown = useMemo(() => {
     const all = schedule.data?.mentors ?? [];
+    if (onlyMe && myMentor) return [myMentor];
     const q = query.trim().toLowerCase();
     return q ? all.filter(m => String(m.name || '').toLowerCase().includes(q) || String(m.email || '').toLowerCase().includes(q)) : all;
-  }, [schedule.data, query]);
+  }, [schedule.data, query, onlyMe, myMentor]);
   // One page for both layouts. Stepping the week keeps the page: the mentors are the same.
-  const { pageItems: pageShown, bar } = usePagination(shown, { resetKey: query });
+  const { pageItems: pageShown, bar } = usePagination(shown, { resetKey: `${query}|${onlyMe}` });
 
   /* ── booking: opened from the day it is for, with that mentor already chosen ── */
   const [booking, setBooking] = useState(null); // { mentor, day }
@@ -406,6 +421,31 @@ export default function MentorCalendar() {
               <Button size="sm" variant="ghost" className="h-8" onClick={() => navigate(createPageUrl('MentorCalendar'))}>Not for a student</Button>
             </span>
           </div>
+        )}
+
+        {/* Your own classes and sessions still to come this week — when you are one of the mentors. */}
+        {myMentor && (
+          <Card className="border-blue-200">
+            <CardContent className="space-y-3 p-4">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <p className="text-sm font-semibold text-slate-900">Your schedule{offset === 0 ? ' this week' : ''} · {myItems.length ? `${myItems.length} coming up` : 'nothing booked'}</p>
+                <Button size="sm" variant={onlyMe ? 'default' : 'outline'} className="h-8" onClick={() => setOnlyMe(v => !v)}>{onlyMe ? 'Showing only you — show everyone' : 'Only me'}</Button>
+              </div>
+              {myItems.length > 0 && (
+                <ul className="divide-y divide-slate-100 rounded-lg border border-slate-200">
+                  {myItems.map(i => (
+                    <li key={i.id} className="flex flex-wrap items-baseline gap-x-3 gap-y-0.5 px-3 py-2 text-sm">
+                      <span className="w-40 shrink-0 tabular-nums text-slate-600">{new Date(i.startsAt).toLocaleString('en-GB', { weekday: 'short', day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit', timeZone: tz })}</span>
+                      <span className={cn('h-2 w-2 shrink-0 rounded-full', i.kind === 'class' ? 'bg-blue-500' : 'bg-violet-500')} />
+                      <span className="font-medium text-slate-900">{i.what}</span>
+                      <span className="text-xs text-slate-500">{i.sub} · {i.mins} min</span>
+                    </li>
+                  ))}
+                </ul>
+              )}
+              <p className="text-xs text-slate-400">You're told in the bell when a session is booked with you, moved or cancelled, and 30 minutes before each class or session.</p>
+            </CardContent>
+          </Card>
         )}
 
         <div className="flex flex-wrap items-center gap-3 text-xs text-slate-500">
