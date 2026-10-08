@@ -8,6 +8,9 @@ import { isMentorRole } from './roles';
 // climbing stops there even if the Chief has an Up Head of their own (otherwise
 // several Chiefs under one person would merge into a single giant team). Also
 // stops at a missing or non-staff parent so a team never crosses into admins.
+/** A CS Manager over every team — every CS reports to them too (backend lib/scope isAllTeamsCsManager, 2026-10-07). */
+export const isAllTeamsCsManager = (u) => !!u && u.app_role === 'cs_manager' && u.all_teams_cs_manager === true && u.status !== 'inactive';
+
 export function teamRootId(user, byId) {
   let cur = user;
   const seen = new Set();

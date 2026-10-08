@@ -52,7 +52,7 @@ export interface TeamIndex {
 
 export async function loadTeams(): Promise<TeamIndex> {
   const users = (await col("users")
-    .find({}, { projection: { full_name: 1, email: 1, app_role: 1, up_head_id: 1, team_name: 1, status: 1, created_date: 1 } })
+    .find({}, { projection: { full_name: 1, email: 1, app_role: 1, up_head_id: 1, team_name: 1, status: 1, created_date: 1, all_teams_cs_manager: 1 } })
     .toArray()) as any[];
   const userById = new Map(users.map((u) => [String(u._id), u]));
   const isStaff = (u: any) => isMentorRole(String(u?.app_role ?? ""));

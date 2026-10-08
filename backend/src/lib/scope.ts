@@ -82,6 +82,10 @@ export async function getDataScope(user: AuthUser): Promise<DataScope> {
   return (await getConfiguredScope(user)) ?? "all";
 }
 
+/** A CS Manager over every team: every CS reports to them as well as to their own chief (the user, 2026-10-07). */
+export const isAllTeamsCsManager = (u: any): boolean =>
+  !!u && u.app_role === "cs_manager" && u.all_teams_cs_manager === true && u.status !== "inactive";
+
 /**
  * All user ids at or below `userId` in the Up-Head hierarchy (inclusive).
  * up_head_id points from a user to their manager, so we invert it into a
@@ -89,15 +93,18 @@ export async function getDataScope(user: AuthUser): Promise<DataScope> {
  */
 export async function getDownlineIds(userId: string): Promise<string[]> {
   const users = await col("users")
-    .find({}, { projection: { _id: 1, up_head_id: 1 } })
+    .find({}, { projection: { _id: 1, up_head_id: 1, app_role: 1, all_teams_cs_manager: 1 } })
     .toArray();
   const childrenOf: Record<string, string[]> = {};
   for (const u of users as any[]) {
     const parent = u.up_head_id ? String(u.up_head_id) : null;
     if (parent) (childrenOf[parent] ||= []).push(String(u._id));
   }
-  const result = new Set<string>([userId]);
-  const queue = [userId];
+  // A CS Manager over every team (the user, 2026-10-07): every CS is below them too, wherever their own chain goes.
+  const me: any = (users as any[]).find((u) => String(u._id) === userId);
+  const everyCs = isAllTeamsCsManager(me) ? (users as any[]).filter((u) => u.app_role === "cs").map((u) => String(u._id)) : [];
+  const result = new Set<string>([userId, ...everyCs]);
+  const queue = [userId, ...everyCs];
   while (queue.length) {
     const cur = queue.shift()!;
     for (const child of childrenOf[cur] || []) {

@@ -18,7 +18,7 @@ import TeamDialog from '@/components/teams/TeamDialog';
 import { logAction } from '@/components/utils/AuditLogger';
 import { getEffectiveUser } from '@/components/utils/ImpersonationContext';
 import { isMentorRole } from '@/components/utils/roles';
-import { teamRootId } from '@/components/utils/teams';
+import { teamRootId, isAllTeamsCsManager } from '@/components/utils/teams';
 
 // Admin roles that may see EVERY team (not just their own).
 const ADMIN_VIEWERS = ['super_admin', 'admin', 'broker_admin', 'academic_head', 'academic_admin', 'admin_supervisor', 'finance_admin'];
@@ -54,7 +54,9 @@ export default function Teams() {
     for (const u of users) byId[u.id] = u;
     // Only staff-tier people belong to teams (mentors + custom roles like cs /
     // cs_manager / chief_mentor). Admins aren't part of a mentor team.
-    const staff = users.filter(u => isMentorRole(u.app_role));
+    // A CS Manager over every team (backend lib/scope isAllTeamsCsManager) is shown in each team, not on their own.
+    const overAll = users.filter(isAllTeamsCsManager);
+    const staff = users.filter(u => isMentorRole(u.app_role) && !isAllTeamsCsManager(u));
 
     const rootOf = (u) => teamRootId(u, byId);
 
@@ -68,6 +70,7 @@ export default function Teams() {
       // A lone person with nobody under them isn't a team yet — bucket them as
       // "unassigned" — unless the team was named (created empty on purpose).
       if (members.length === 1 && !root?.team_name) { unassigned.push(members[0]); continue; }
+      members.push(...overAll);
       members.sort((a, b) => (tierIndex(a.app_role) - tierIndex(b.app_role)) || String(a.full_name || '').localeCompare(String(b.full_name || '')));
       teams.push({ rootId: rid, name: root?.team_name || root?.full_name || '—', root, members });
     }
@@ -75,7 +78,7 @@ export default function Teams() {
     unassigned.sort((a, b) => String(a.full_name || '').localeCompare(String(b.full_name || '')));
 
     const isAdmin = currentUser && ADMIN_VIEWERS.includes(currentUser.app_role);
-    if (!isAdmin && currentUser) {
+    if (!isAdmin && currentUser && !isAllTeamsCsManager(users.find(u => u.id === currentUser.id) || currentUser)) {
       // Non-admins: only the team they belong to. A Chief roots their own team.
       const myRoot = rootOf(currentUser);
       return { teams: teams.filter(t => t.rootId === myRoot), unassigned: [], isAdmin };

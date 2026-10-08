@@ -5,6 +5,7 @@ import { toObjectId } from "../lib/id";
 import { mailConfigured, sendMail } from "../lib/mailer";
 import { notify } from "../lib/notify";
 import { isMentorRole } from "../lib/roles";
+import { isAllTeamsCsManager } from "../lib/scope";
 import { CLOSED_STAGES, followupStatus } from "./followups";
 import { loadTeams, type TeamIndex } from "./teams";
 
@@ -229,7 +230,8 @@ function countsOf(items: Item[]): string {
 
 /**
  * A CS's leaders: their team's leader (the Chief Mentor at its top, as the
- * Teams page has it) and every CS Manager above them on the Up Head chain.
+ * Teams page has it), every CS Manager above them on the Up Head chain, and a
+ * CS Manager over every team.
  */
 export function leadersOf(csId: string, teams: TeamIndex): string[] {
   const out = new Set<string>();
@@ -244,6 +246,10 @@ export function leadersOf(csId: string, teams: TeamIndex): string[] {
     if (up.app_role === "cs_manager") out.add(String(up._id));
     if (up.app_role === "chief_mentor") { out.add(String(up._id)); break; }
     cur = up;
+  }
+  // A CS Manager over every team is every CS's too (lib/scope isAllTeamsCsManager).
+  if (teams.userById.get(csId)?.app_role === "cs") {
+    for (const u of teams.userById.values()) if (isAllTeamsCsManager(u)) out.add(String(u._id));
   }
   out.delete(csId);
   return [...out];
