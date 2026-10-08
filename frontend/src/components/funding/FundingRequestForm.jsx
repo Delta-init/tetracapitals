@@ -399,9 +399,9 @@ export default function FundingRequestForm({ students, allStudents = [], current
       return;
     }
 
-    // One course, one way: while an upgrade is in progress its payments go under Course Upgrade, never as a Bonus too.
+    // One course, one way: while an upgrade is in progress its payments are recorded on the upgrade (the Courses tab), never as a Bonus too.
     if (formData.type === 'BONUS' && studentCourses?.active) {
-      toast.error(`${selectedStudent.full_name || 'This student'} has a course upgrade in progress (${studentCourses.active.courseName}) — record the payment under Course Upgrade`);
+      toast.error(`${selectedStudent.full_name || 'This student'} has a course upgrade in progress (${studentCourses.active.courseName}) — record its payments on their Courses tab`);
       return;
     }
     if (formData.type === 'BONUS' && (!formData.tags || formData.tags.length === 0)) {
@@ -555,7 +555,7 @@ export default function FundingRequestForm({ students, allStudents = [], current
                 <SelectItem value="DEPOSIT">Deposit</SelectItem>
                 <SelectItem value="WITHDRAWAL">Withdrawal</SelectItem>
                 <SelectItem value="BONUS">Bonus</SelectItem>
-                <SelectItem value="COURSE_UPGRADE">Course Upgrade</SelectItem>
+                {/* Course Upgrade is hidden here for now (the user, 2026-10-08) — upgrades are done on the student's Courses tab. */}
               </SelectContent>
             </Select>
           </div>
@@ -586,7 +586,7 @@ export default function FundingRequestForm({ students, allStudents = [], current
           )}
           {formData.type === 'BONUS' && studentCourses?.active && (
             <p className="md:col-span-2 rounded-md bg-amber-50 px-3 py-2 text-xs text-amber-800">
-              A course upgrade is in progress for this student — record its payments under <b>Course Upgrade</b>, not as a Bonus.
+              A course upgrade is in progress for this student — record its payments on the student's <b>Courses</b> tab, not as a Bonus.
             </p>
           )}
           {!upgradeMode && (<>
