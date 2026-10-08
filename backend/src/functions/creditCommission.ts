@@ -29,7 +29,7 @@ export async function creditCommission(req: Request, _user: AuthUser): Promise<R
  * is credited when the decision arrives (finance/funding.ts), with nobody's
  * browser involved. Null when there is no such transaction.
  */
-export async function creditCommissionFor(txId: string): Promise<Record<string, unknown> | null> {
+export async function creditCommissionFor(txId: string, opts: { preview?: boolean } = {}): Promise<Record<string, unknown> | null> {
   const oid = toObjectId(txId);
   if (!oid) return null;
 
@@ -44,7 +44,8 @@ export async function creditCommissionFor(txId: string): Promise<Record<string, 
   if (tx.bonus_credit) return { ok: true, skipped: true, reason: "A bonus credit only — no commission" };
 
   // Idempotency: never double-credit the same transaction.
-  const already = await col("commission_credits").countDocuments({ transaction_id: txId });
+  // A preview (scripts/backfill-commission-by-role.ts) works the credits out without writing them.
+  const already = opts.preview ? 0 : await col("commission_credits").countDocuments({ transaction_id: txId });
   if (already > 0) return { ok: true, skipped: true, reason: "Already credited", count: already };
 
   // Which method? Bonus type comes from the tag.
@@ -211,6 +212,7 @@ export async function creditCommissionFor(txId: string): Promise<Record<string, 
     }
   }
 
+  if (opts.preview) return { ok: true, preview: true, credits };
   if (credits.length) await col("commission_credits").insertMany(credits as any[]);
   return {
     ok: true,

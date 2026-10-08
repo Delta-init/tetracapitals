@@ -12,4 +12,5 @@ mkdir -p "$WORK/db"
 mongod --dbpath "$WORK/db" --port "$MONGO_PORT" --bind_ip 127.0.0.1 --fork --logpath "$WORK/mongod.log" >/dev/null
 export MONGO_URI="mongodb://127.0.0.1:$MONGO_PORT" MONGO_DB="commission_by_role_e2e"
 cd "$HERE"
-bun --no-env-file src/scripts/commission-by-role-e2e.ts
+bun --no-env-file src/scripts/commission-by-role-e2e.ts && HOME="$WORK" \
+bun --no-env-file src/scripts/backfill-commission-by-role-e2e.ts
