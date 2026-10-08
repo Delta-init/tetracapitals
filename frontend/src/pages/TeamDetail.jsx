@@ -14,7 +14,8 @@ import { Label } from '@/components/ui/label';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { AlertTriangle, ArrowLeft, ArrowRightLeft, Loader2, Search, ShieldAlert, UserCheck, Users, UsersRound } from 'lucide-react';
-import { getEffectiveUser } from '@/components/utils/ImpersonationContext';
+import { getEffectiveUser, isImpersonating, startImpersonation } from '@/components/utils/ImpersonationContext';
+import { logAction } from '@/components/utils/AuditLogger';
 import { BUILTIN_ROLE_NAMES, isAdminRole } from '@/components/utils/roles';
 import { listTeams } from '@/components/utils/teams';
 import { createPageUrl } from '@/utils';
@@ -87,6 +88,11 @@ export default function TeamDetail() {
   const [personFilter, setPersonFilter] = useState('all');
   const [selected, setSelected] = useState([]);
   const [dialogFor, setDialogFor] = useState(null); // array of students to reassign
+  const viewAs = async (m) => {
+    await logAction('other', 'User', m.id, `${currentUser.full_name} (team leader) started viewing as ${m.full_name} (${m.app_role})`,
+      null, { impersonated_user: m.full_name, impersonated_role: m.app_role });
+    startImpersonation(m, currentUser);
+  };
 
   const needle = q.trim().toLowerCase();
   const visible = teamStudents.filter(s =>
@@ -189,13 +195,15 @@ export default function TeamDetail() {
             <CardContent className="p-0 divide-y">
               {members.map(m => {
                 const count = seesAll || m.id === currentUser.id ? (countByMentor[m.id] || 0) : null;
+                // The team's leader views as one of its CS (the server allows only their own team's, 2026-10-08).
+                const canViewAs = isLeader && !isImpersonating() && m.app_role === 'cs' && m.status !== 'inactive';
                 return (
+                  <div key={m.id} className="flex items-center">
                   <button
-                    key={m.id}
                     type="button"
                     disabled={!seesAll}
                     onClick={() => setPersonFilter(personFilter === m.id ? 'all' : m.id)}
-                    className={`flex w-full items-center justify-between gap-2 px-4 py-2.5 text-left transition-colors ${personFilter === m.id ? 'bg-brand-cyan/[0.08]' : seesAll ? 'hover:bg-slate-50' : ''}`}
+                    className={`flex min-w-0 flex-1 items-center justify-between gap-2 px-4 py-2.5 text-left transition-colors ${personFilter === m.id ? 'bg-brand-cyan/[0.08]' : seesAll ? 'hover:bg-slate-50' : ''}`}
                   >
                     <span className="min-w-0">
                       <span className="block truncate text-sm font-medium text-slate-900">
@@ -207,6 +215,12 @@ export default function TeamDetail() {
                     </span>
                     {count !== null && <Badge variant="secondary" className="tabular">{count}</Badge>}
                   </button>
+                  {canViewAs && (
+                    <Button size="sm" variant="ghost" className="mr-2 h-7 shrink-0 px-2 text-xs" onClick={() => viewAs(m)} title={`See the portal as ${m.full_name} sees it`}>
+                      View as
+                    </Button>
+                  )}
+                  </div>
                 );
               })}
             </CardContent>

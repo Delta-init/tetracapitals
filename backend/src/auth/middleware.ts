@@ -2,6 +2,7 @@ import { col } from "../db";
 import { verifyJwt } from "./jwt";
 import { serialize } from "../lib/id";
 import { toObjectId } from "../lib/id";
+import { getDownlineIds } from "../lib/scope";
 
 export interface AuthUser {
   id: string;
@@ -43,12 +44,15 @@ export async function getAuthUser(req: Request): Promise<AuthUser | null> {
 
   // Impersonation handoff.
   const impersonateId = req.headers.get("x-impersonate-user-id") ?? req.headers.get("X-Impersonate-User-Id");
-  if (impersonateId && ["super_admin", "admin"].includes(realUser.app_role)) {
+  // A team's leader — a Chief Mentor or CS Manager — views as a CS of their own team only (the user, 2026-10-08).
+  const leads = realUser.app_role === "chief_mentor" || realUser.app_role === "cs_manager";
+  if (impersonateId && (["super_admin", "admin"].includes(realUser.app_role) || leads)) {
     const targetOid = toObjectId(impersonateId);
     if (targetOid) {
       const targetDoc = await col("users").findOne({ _id: targetOid });
+      const teamCs = leads && (targetDoc as any)?.app_role === "cs" && (await getDownlineIds(realUser.id)).includes(impersonateId);
       // Anybody but a Super Admin — the Personnel page never offers one, and the server doesn't take one either.
-      if (targetDoc && (targetDoc as any).app_role !== "super_admin") {
+      if (targetDoc && (targetDoc as any).app_role !== "super_admin" && (!leads || teamCs)) {
         const { password_hash: _pw, ...targetSafe } = targetDoc as any;
         const target = serialize(targetSafe) as AuthUser;
         // Stamp the real admin so audit logs and request-scoped logic can read it.
