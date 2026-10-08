@@ -87,10 +87,11 @@ export async function creditCommissionFor(txId: string, opts: { preview?: boolea
   }
 
   // Who holds each level. A plan whose positions are all named by role (CS, CS Manager, Junior, Senior, Chief) pays
-  // each level to the person of that role above the initiator — a team without a Junior pays that level to nobody,
-  // and a Chief straight above a CS gets the Chief's % (the user, 2026-10-08). A CS Manager over every team
-  // (lib/scope isAllTeamsCsManager) holds a CS's CS Manager level when their own line has none. Level 1 is always
-  // the initiator. A plan with any other position names keeps the old rule: Level 2 = their Up Head, and so on.
+  // each level by the TEAM the initiator is on — everyone under the same Chief, as the Teams page shows it (the user,
+  // 2026-10-08): the Chief's % to the Chief, the Junior and Senior levels to the team's Junior and Senior Mentors
+  // (shared equally when there are several), the CS Manager level to the team's CS Manager or else the one over every
+  // team (lib/scope isAllTeamsCsManager). A role nobody holds pays nobody. Level 1 is always the initiator.
+  // A plan with any other position names keeps the old rule: Level 2 = their Up Head, and so on.
   const line: any[] = [initiator];
   const seen = new Set<string>([initiator._id.toString()]);
   let curId: string | null = initiator.up_head_id || null;
@@ -104,22 +105,32 @@ export async function creditCommissionFor(txId: string, opts: { preview?: boolea
   }
   const roles = levels.map((l: any) => roleOfPosition(l?.label));
   const byRole = levels.length > 1 && roles.slice(1).every(Boolean);
-  let chain: any[];
+  const teamChief: any = byRole ? line.find((u) => u.app_role === "chief_mentor") ?? null : null;
+  let chain: any[][];
   if (byRole) {
-    const above = line.slice(1);
-    if (!above.some((u) => u.app_role === "cs_manager")) {
-      const overAll: any = await col("users").findOne({ app_role: "cs_manager", all_teams_cs_manager: true, status: { $ne: "inactive" } }, { projection: { password_hash: 0 } });
-      if (overAll && !seen.has(overAll._id.toString())) above.unshift(overAll);
-    }
-    const taken = new Set<string>();
+    const staff = (await col("users").find({ status: { $ne: "inactive" } }, { projection: { password_hash: 0 } }).toArray()) as any[];
+    const byId = new Map(staff.map((u) => [u._id.toString(), u]));
+    const chiefOf = (u: any): string | null => {
+      let c = u; const been = new Set<string>();
+      while (c && !been.has(c._id.toString())) {
+        if (c.app_role === "chief_mentor") return c._id.toString();
+        been.add(c._id.toString());
+        c = c.up_head_id ? byId.get(String(c.up_head_id)) : null;
+      }
+      return null;
+    };
+    const me = initiator._id.toString();
+    const team = teamChief ? staff.filter((u) => u._id.toString() !== me && !u.all_teams_cs_manager && chiefOf(u) === teamChief._id.toString()) : line.slice(1);
+    const overAll = staff.find((u) => u.app_role === "cs_manager" && u.all_teams_cs_manager === true);
     chain = roles.map((role: string | null, i: number) => {
-      if (i === 0) return initiator;
-      const u = above.find((x) => x.app_role === role && !taken.has(x._id.toString()));
-      if (u) taken.add(u._id.toString());
-      return u ?? null;
+      if (i === 0) return [initiator];
+      if (role === "chief_mentor") return teamChief ? [teamChief] : [];
+      const held = team.filter((u) => u.app_role === role);
+      if (!held.length && role === "cs_manager" && overAll && overAll._id.toString() !== me) return [overAll];
+      return held;
     });
   } else {
-    chain = line.slice(0, levels.length);
+    chain = line.slice(0, levels.length).map((u) => [u]);
   }
 
   const amount = tx.amount_usd || 0;
@@ -152,12 +163,13 @@ export async function creditCommissionFor(txId: string, opts: { preview?: boolea
   // The pool "group" anchor is the top-most person in the chain (typically the
   // Chief). Pool-flagged deposit positions accrue to this group's shared pool
   // instead of paying the individual per transaction; it's split at closing.
-  const topOfChain = (byRole ? line.find((u) => u.app_role === "chief_mentor") ?? line[line.length - 1] : chain[chain.length - 1]) || null;
+  const topOfChain = (byRole ? teamChief ?? line[line.length - 1] : chain[chain.length - 1]?.[0]) || null;
   const credits: any[] = [];
   for (let i = 0; i < levels.length; i++) {
-    const recipient = chain[i];
-    if (!recipient) continue; // no one at this level in the chain
-    const pct = levels[i]?.percentage || 0;
+    const holders = chain[i] ?? [];   // nobody at this level: it pays nobody
+    for (const recipient of holders) {
+    // Several holders (two Senior Mentors on the team) share the level's % equally.
+    const pct = (levels[i]?.percentage || 0) / holders.length;
     // Any method's position can be flagged Pool: its % accrues to a shared pool
     // (anchored on the top of the chain) instead of paying the individual, and is
     // split among pool members at closing (bonus monthly, deposit quarterly).
@@ -209,6 +221,7 @@ export async function creditCommissionFor(txId: string, opts: { preview?: boolea
         recipient_name: recipient.full_name,
         status: "accrued",
       });
+    }
     }
   }
 
