@@ -85,17 +85,40 @@ export async function creditCommissionFor(txId: string): Promise<Record<string, 
     return { ok: true, skipped: true, reason: `Plan has no levels configured for ${methodKey}` };
   }
 
-  // Build the chain of people from the initiator up, following up_head_id.
-  const chain: any[] = [initiator];
+  // Who holds each level. A plan whose positions are all named by role (CS, CS Manager, Junior, Senior, Chief) pays
+  // each level to the person of that role above the initiator — a team without a Junior pays that level to nobody,
+  // and a Chief straight above a CS gets the Chief's % (the user, 2026-10-08). A CS Manager over every team
+  // (lib/scope isAllTeamsCsManager) holds a CS's CS Manager level when their own line has none. Level 1 is always
+  // the initiator. A plan with any other position names keeps the old rule: Level 2 = their Up Head, and so on.
+  const line: any[] = [initiator];
   const seen = new Set<string>([initiator._id.toString()]);
   let curId: string | null = initiator.up_head_id || null;
-  while (curId && !seen.has(curId) && chain.length < levels.length) {
+  while (curId && !seen.has(curId) && line.length < 20) {
     seen.add(curId);
     const cur = toObjectId(curId);
     const u: any = cur ? await col("users").findOne({ _id: cur }, { projection: { password_hash: 0 } }) : null;
     if (!u) break;
-    chain.push(u);
+    line.push(u);
     curId = u.up_head_id || null;
+  }
+  const roles = levels.map((l: any) => roleOfPosition(l?.label));
+  const byRole = levels.length > 1 && roles.slice(1).every(Boolean);
+  let chain: any[];
+  if (byRole) {
+    const above = line.slice(1);
+    if (!above.some((u) => u.app_role === "cs_manager")) {
+      const overAll: any = await col("users").findOne({ app_role: "cs_manager", all_teams_cs_manager: true, status: { $ne: "inactive" } }, { projection: { password_hash: 0 } });
+      if (overAll && !seen.has(overAll._id.toString())) above.unshift(overAll);
+    }
+    const taken = new Set<string>();
+    chain = roles.map((role: string | null, i: number) => {
+      if (i === 0) return initiator;
+      const u = above.find((x) => x.app_role === role && !taken.has(x._id.toString()));
+      if (u) taken.add(u._id.toString());
+      return u ?? null;
+    });
+  } else {
+    chain = line.slice(0, levels.length);
   }
 
   const amount = tx.amount_usd || 0;
@@ -128,7 +151,7 @@ export async function creditCommissionFor(txId: string): Promise<Record<string, 
   // The pool "group" anchor is the top-most person in the chain (typically the
   // Chief). Pool-flagged deposit positions accrue to this group's shared pool
   // instead of paying the individual per transaction; it's split at closing.
-  const topOfChain = chain[chain.length - 1] || null;
+  const topOfChain = (byRole ? line.find((u) => u.app_role === "chief_mentor") ?? line[line.length - 1] : chain[chain.length - 1]) || null;
   const credits: any[] = [];
   for (let i = 0; i < levels.length; i++) {
     const recipient = chain[i];
@@ -196,4 +219,17 @@ export async function creditCommissionFor(txId: string): Promise<Record<string, 
     method: methodKey,
     breakdown: credits.map((c) => ({ level: c.level, recipient: c.recipient_name, pct: c.percentage, amount: c.commission_usd })),
   };
+}
+
+/** The role a plan position is named for — "CS Manager" → cs_manager, "Junior" → junior_mentor … — or null. */
+export function roleOfPosition(label: unknown): string | null {
+  const l = String(label ?? "").trim().toLowerCase().replace(/[\s_-]+/g, " ");
+  if (!l) return null;
+  if (/^cs manager$|^cs mgr$|^customer success manager$/.test(l)) return "cs_manager";
+  if (/^cs$|^cs staff$|^customer success$/.test(l)) return "cs";
+  if (/sub ?junior/.test(l)) return "subjunior_mentor";
+  if (/junior/.test(l)) return "junior_mentor";
+  if (/senior/.test(l)) return "senior_mentor";
+  if (/chief/.test(l)) return "chief_mentor";
+  return null;
 }

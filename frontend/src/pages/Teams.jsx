@@ -49,6 +49,14 @@ export default function Teams() {
   const [deleting, setDeleting] = useState(false);
   const [deleteError, setDeleteError] = useState(null);
 
+  // A CS reports to the CS Manager over every team first, then their own Up Head (the user, 2026-10-08) — as commission pays.
+  const overAllName = users.find(isAllTeamsCsManager)?.full_name;
+  const reportsTo = (m) => {
+    if (isAllTeamsCsManager(m)) return 'over every team';
+    const viaManager = overAllName && m.app_role === 'cs' && users.find(u => u.id === m.up_head_id)?.app_role !== 'cs_manager';
+    if (viaManager) return `↳ reports to ${overAllName}${m.up_head_name ? ` → ${m.up_head_name}` : ''}`;
+    return m.up_head_name ? `↳ reports to ${m.up_head_name}` : 'top of chain';
+  };
   const { teams, unassigned, isAdmin } = useMemo(() => {
     const byId = {};
     for (const u of users) byId[u.id] = u;
@@ -223,7 +231,7 @@ export default function Teams() {
                           {people.map(m => (
                             <div key={m.id} className="flex items-center justify-between gap-2 pl-4">
                               <span className="font-medium text-gray-900 text-sm">{m.full_name}</span>
-                              <span className="text-xs text-gray-400 truncate">{m.up_head_name ? `↳ reports to ${m.up_head_name}` : 'top of chain'}</span>
+                              <span className="text-xs text-gray-400 truncate">{reportsTo(m)}</span>
                             </div>
                           ))}
                         </div>
