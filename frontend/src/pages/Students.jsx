@@ -21,7 +21,7 @@ import StudentRequestForm from "../components/students/StudentRequestForm";
 import BulkImportStudentsDialog from "../components/students/BulkImportStudentsDialog";
 import { isMentorRole as isMentorTier, getScope, readsClosedOnly } from "@/components/utils/roles";
 
-import { Plus, Search, Eye, Users, UserCheck, Upload, Download, Filter, ArrowUp, Share2, Trash2, ArrowRightLeft, Sparkles, RefreshCw, Loader2, ChevronDown, FileSpreadsheet, FileText } from "lucide-react";
+import { Plus, Search, Eye, Users, UserCheck, Upload, Download, Filter, ArrowUp, Trash2, ArrowRightLeft, Sparkles, RefreshCw, Loader2, ChevronDown, FileSpreadsheet, FileText } from "lucide-react";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { downloadExcel } from "@/components/utils/excelExport";
 import TransferStudentsDialog from "../components/students/TransferStudentsDialog";
@@ -862,34 +862,23 @@ export default function Students() {
               )}
             </div>
             {/* A server from before the follow-up filter sends everyone: said, rather than looking filtered. */}
-            {filterFollowup !== 'all' && list && !listFetching && !['co_managed', 'admin_co_managed'].includes(serverTab) && list.followup_filter !== filterFollowup && (
+            {filterFollowup !== 'all' && list && !listFetching && list.followup_filter !== filterFollowup && (
               <p className="mt-3 text-sm text-amber-700">The Follow-up today filter needs the server update — until then this list isn't filtered by it.</p>
             )}
           </CardContent>
         </Card>
 
-        {/* Tabs for mentors and admins, single table for assistance/others */}
+        {/* Tabs for mentors and admins, single table for assistance/others. No Co-Managed tab (the user, 2026-10-08) —
+            co-management itself works as before. */}
         {isMentor || isAdmin ? (
           <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-            <TabsList className="flex h-auto w-full max-w-5xl justify-start overflow-x-auto sm:grid" style={{ gridTemplateColumns: isMentor ? (hasTeamView ? '1fr 1fr 1fr 1fr' : '1fr 1fr 1fr') : (['broker_admin', 'super_admin'].includes(currentUser.app_role) ? '1fr 1fr 1fr 1fr' : (currentUser.app_role === 'academic_head' ? '1fr 1fr' : '1fr')) }}>
+            <TabsList className="flex h-auto w-full max-w-5xl justify-start overflow-x-auto sm:grid" style={{ gridTemplateColumns: isMentor ? (hasTeamView ? '1fr 1fr' : '1fr') : (['academic_head', 'broker_admin', 'super_admin'].includes(currentUser.app_role) ? '1fr 1fr' : '1fr') }}>
               {isMentor && <TabsTrigger value="my">My Students</TabsTrigger>}
               {hasTeamView && <TabsTrigger value="team">Team Students</TabsTrigger>}
-              {isMentor && (
-                <TabsTrigger value="co_managed" className="flex items-center gap-1">
-                  <Share2 className="h-3.5 w-3.5" />
-                  Co-Managed ({(counts.co_managed ?? 0).toLocaleString()})
-                </TabsTrigger>
-              )}
 
               {isAdmin && <TabsTrigger value="all">All Students</TabsTrigger>}
               {['academic_head', 'broker_admin', 'super_admin'].includes(currentUser.app_role) && (
                 <TabsTrigger value="open_pool">Delta Open Students</TabsTrigger>
-              )}
-              {['broker_admin', 'super_admin'].includes(currentUser.app_role) && (
-                <TabsTrigger value="admin_co_managed" className="flex items-center gap-1">
-                  <Share2 className="h-3.5 w-3.5" />
-                  Co-Managed ({(counts.admin_co_managed ?? 0).toLocaleString()})
-                </TabsTrigger>
               )}
             </TabsList>
 
@@ -1208,104 +1197,6 @@ export default function Students() {
             </TabsContent>
           )}
 
-          {/* Co-Managed Clients Tab */}
-          {isMentor && (
-            <TabsContent value="co_managed">
-              <div className="rounded-xl border border-purple-200 bg-white overflow-hidden">
-                <div className="p-4 bg-gradient-to-r from-purple-50 to-indigo-50 border-b border-purple-200">
-                  <h3 className="text-lg font-semibold flex items-center gap-2 tracking-tight">
-                    <Share2 className="h-5 w-5 text-purple-600" />
-                    Co-Managed Clients ({total.toLocaleString()})
-                  </h3>
-                  <p className="text-sm text-gray-500 mt-1">Clients where you are a co-mentor. Commission is attributed to your deposits only.</p>
-                </div>
-                <Table>
-                  <TableHeader>
-                    <TableRow className="bg-gray-50">
-                      <TableHead className="font-semibold">Client Name</TableHead>
-                      <TableHead className="font-semibold">Code</TableHead>
-                      <TableHead className="font-semibold">CS</TableHead>
-                      <TableHead className="font-semibold">Team</TableHead>
-                      <TableHead className="font-semibold">Course</TableHead>
-                      <TableHead className="font-semibold">Balance</TableHead>
-                      <TableHead className="font-semibold">Enrolled</TableHead>
-                      <TableHead className="font-semibold">Onboarded</TableHead>
-                      <TableHead className="font-semibold">Classes</TableHead>
-                      <TableHead className="font-semibold">Tags</TableHead>
-                      <TableHead className="font-semibold">My Net Deposits</TableHead>
-                      <TableHead className="font-semibold">Primary Net Deposits</TableHead>
-                      <TableHead className="font-semibold">Combined Total</TableHead>
-                      <TableHead className="font-semibold">Co-Mentor Since</TableHead>
-                      <TableHead className="font-semibold text-right">Actions</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {displayStudents.length === 0 ? (
-                      <TableRow>
-                        <TableCell colSpan={15} className="text-center py-8 text-gray-500">
-                          {emptyText('No co-managed clients yet. Send a referral request from a Fund Request to get started.')}
-                        </TableCell>
-                      </TableRow>
-                    ) : (
-                      displayStudents.map((student) => {
-        const _coMentors = Array.isArray(student.co_mentors_details)
-          ? student.co_mentors_details
-          : (() => { try { return JSON.parse(student.co_mentors_details || '[]'); } catch(_) { return []; } })();
-        const myNet = _coMentors.find(cm => cm.mentor_id === currentUser?.id)?.net_deposit_contribution_usd || 0;
-        const combinedNet = _coMentors.reduce((sum, cm) => sum + (cm.net_deposit_contribution_usd || 0), 0);
-        const primaryNet = combinedNet - myNet;
-        const myEntry = _coMentors.find(cm => cm.mentor_id === currentUser?.id);
-                        return (
-                          <TableRow key={student.id} className="cursor-pointer hover:bg-gray-50 transition-colors" onClick={(e) => openStudent(e, student.id)}>
-                            <TableCell className="font-medium">{student.full_name}<NewForYou student={student} me={currentUser.id} /></TableCell>
-                            <TableCell className="font-mono text-sm text-blue-600">{student.student_code || '-'}</TableCell>
-                            <TableCell className="text-sm">{student.primary_mentor_name}</TableCell>
-                            <TableCell className="text-sm">{student.team_name || '-'}</TableCell>
-                            <TableCell className="max-w-[220px] text-sm"><CourseCell student={student} /></TableCell>
-                            <TableCell><BalanceCell student={student} /></TableCell>
-                            <TableCell><EnrolledSwitch student={student} currentUser={currentUser} /></TableCell>
-                            <TableCell><OnboardedSwitch student={student} currentUser={currentUser} /></TableCell>
-                            <TableCell><ClassesCell student={student} /></TableCell>
-                            <TableCell><StudentTagChips student={student} catalog={tagCatalog} /></TableCell>
-                            <TableCell className="text-sm font-semibold text-green-700">${myNet.toLocaleString()}</TableCell>
-                            <TableCell className="text-sm text-gray-600">${primaryNet.toLocaleString()}</TableCell>
-                            <TableCell className="text-sm font-semibold">${combinedNet.toLocaleString()}</TableCell>
-                            <TableCell className="text-sm text-gray-500">
-                              {myEntry?.since ? format(new Date(myEntry.since), 'MMM d, yyyy') : '-'}
-                            </TableCell>
-                            <TableCell className="text-right">
-                              <div className="flex justify-end gap-1">
-                                <CallButton variant="icon" student={student} />
-                                <EditDetailsButton student={student} currentUser={currentUser} />
-                                <Link to={createPageUrl('StudentDetail') + '?id=' + student.id}>
-                                  <Button size="sm" variant="ghost" className="h-8 w-8 p-0" title="View">
-                                    <Eye className="h-4 w-4" />
-                                  </Button>
-                                </Link>
-                                {canDelete && (
-                                  <Button
-                                    size="sm"
-                                    variant="ghost"
-                                    className="h-8 w-8 p-0 text-red-600 hover:text-red-700 hover:bg-red-50"
-                                    title="Delete"
-                                    onClick={() => handleDeleteStudent(student)}
-                                    disabled={deleteStudentMutation.isPending}
-                                  >
-                                    <Trash2 className="h-4 w-4" />
-                                  </Button>
-                                )}
-                              </div>
-                            </TableCell>
-                          </TableRow>
-                        );
-                      })
-                    )}
-                  </TableBody>
-                </Table>
-                {pager}
-              </div>
-            </TabsContent>
-          )}
 
 
           {/* Open Pool Students Tab */}
@@ -1409,88 +1300,6 @@ export default function Students() {
             </div>
           </TabsContent>
 
-          {/* Admin Co-Managed Tab */}
-          {['broker_admin', 'super_admin'].includes(currentUser.app_role) && (
-            <TabsContent value="admin_co_managed">
-              <div className="rounded-xl border border-purple-200 bg-white overflow-hidden">
-                <div className="p-4 bg-gradient-to-r from-purple-50 to-indigo-50 border-b border-purple-200">
-                  <h3 className="text-lg font-semibold flex items-center gap-2 tracking-tight">
-                    <Share2 className="h-5 w-5 text-purple-600" />
-                    Co-Managed Clients ({total.toLocaleString()})
-                  </h3>
-                  <p className="text-sm text-gray-500 mt-1">All co-managed client relationships across all mentors</p>
-                </div>
-                <Table>
-                  <TableHeader>
-                    <TableRow className="bg-gray-50">
-                      <TableHead className="font-semibold">Client Name</TableHead>
-                      <TableHead className="font-semibold">Code</TableHead>
-                      <TableHead className="font-semibold">CS</TableHead>
-                      <TableHead className="font-semibold">Team</TableHead>
-                      <TableHead className="font-semibold">Course</TableHead>
-                      <TableHead className="font-semibold">Balance</TableHead>
-                      <TableHead className="font-semibold">Co-Mentor</TableHead>
-                      <TableHead className="font-semibold">Primary Net Deposits</TableHead>
-                      <TableHead className="font-semibold">Co-Mentor Net Deposits</TableHead>
-                      <TableHead className="font-semibold">Combined Total</TableHead>
-                      <TableHead className="font-semibold">Status</TableHead>
-                      <TableHead className="font-semibold">Enrolled</TableHead>
-                      <TableHead className="font-semibold">Onboarded</TableHead>
-                      <TableHead className="font-semibold">Classes</TableHead>
-                      <TableHead className="font-semibold">Tags</TableHead>
-                      <TableHead className="font-semibold">Co-Mentor Since</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {displayStudents.length === 0 ? (
-                      <TableRow>
-                        <TableCell colSpan={16} className="text-center py-8 text-gray-500">
-                          {emptyText('No co-managed clients found')}
-                        </TableCell>
-                      </TableRow>
-                    ) : (
-                      displayStudents.flatMap((student) => {
-                        let coMentors = [];
-                        try { coMentors = JSON.parse(student.co_mentors_details || '[]'); } catch (_) {}
-                        return coMentors.map((co, idx) => {
-                          const combined = student.net_deposit_usd || 0;
-                          const coNet = co.net_deposit_contribution_usd || 0;
-                          const primaryNet = Math.max(0, combined - coNet);
-                          return (
-                            <TableRow key={`${student.id}-${idx}`} className="cursor-pointer hover:bg-gray-50 transition-colors" onClick={(e) => openStudent(e, student.id)}>
-                              <TableCell className="font-medium">{student.full_name}<NewForYou student={student} me={currentUser.id} /></TableCell>
-                              <TableCell className="font-mono text-sm text-blue-600">{student.student_code || '-'}</TableCell>
-                              <TableCell className="text-sm">{student.primary_mentor_name}</TableCell>
-                              <TableCell className="text-sm">{student.team_name || '-'}</TableCell>
-                            <TableCell className="max-w-[220px] text-sm"><CourseCell student={student} /></TableCell>
-                            <TableCell><BalanceCell student={student} /></TableCell>
-                              <TableCell className="text-sm font-medium text-purple-700">{co.mentor_name}</TableCell>
-                              <TableCell className="text-sm text-gray-700">${primaryNet.toLocaleString()}</TableCell>
-                              <TableCell className="text-sm font-semibold text-green-700">${coNet.toLocaleString()}</TableCell>
-                              <TableCell className="text-sm font-semibold">${combined.toLocaleString()}</TableCell>
-                              <TableCell>
-                                <Badge variant="outline" className={getStatusColor(student.status)}>
-                                  {student.status}
-                                </Badge>
-                              </TableCell>
-                              <TableCell><EnrolledSwitch student={student} currentUser={currentUser} /></TableCell>
-                              <TableCell><OnboardedSwitch student={student} currentUser={currentUser} /></TableCell>
-                            <TableCell><ClassesCell student={student} /></TableCell>
-                              <TableCell><StudentTagChips student={student} catalog={tagCatalog} /></TableCell>
-                              <TableCell className="text-sm text-gray-500">
-                                {co.since ? format(new Date(co.since), 'MMM d, yyyy') : '-'}
-                              </TableCell>
-                            </TableRow>
-                          );
-                        });
-                      })
-                    )}
-                  </TableBody>
-                </Table>
-                {pager}
-              </div>
-            </TabsContent>
-          )}
           </Tabs>
         ) : (
           /* One table — every student they may see; for the Sales role, the ones they closed */
