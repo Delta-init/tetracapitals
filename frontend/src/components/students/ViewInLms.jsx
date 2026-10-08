@@ -20,9 +20,11 @@ import { isStudentOf } from '@/components/students/common';
 export const canViewInLms = (user) =>
   !!user && (user.app_role === 'super_admin' || (isMentorRole(user.app_role) && !readsClosedOnly(user)));
 
-/** Whether someone may view this student in the LMS: the Super Admin, or the student's own CS (or a CS they're Common with). */
-export const mayViewInLms = (user, student) =>
-  canViewInLms(user) && (user.app_role === 'super_admin' || isStudentOf(student, user.id));
+/** Whether someone may view this student in the LMS: the Super Admin, the student's own CS (or a CS they're Common
+ *  with), or their team's Chief Mentor / CS Manager — `teamIds`, the CSs under them (2026-10-08). */
+export const mayViewInLms = (user, student, teamIds = []) =>
+  canViewInLms(user) && (user.app_role === 'super_admin' || isStudentOf(student, user.id)
+    || (['chief_mentor', 'cs_manager'].includes(user.app_role) && teamIds.some(id => isStudentOf(student, id))));
 
 const WAITING = `<!doctype html><title>Opening the LMS…</title>
 <body style="margin:0;height:100vh;display:grid;place-items:center;font:15px system-ui,sans-serif;color:#64748b">Opening the student's LMS…</body>`;

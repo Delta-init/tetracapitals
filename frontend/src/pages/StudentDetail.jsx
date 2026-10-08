@@ -91,6 +91,16 @@ export default function StudentDetail() {
     fetchUser();
   }, []);
 
+  // A Chief Mentor or CS Manager opens their team's students — those of the CSs under them (2026-10-08).
+  const leads = ['chief_mentor', 'cs_manager'].includes(currentUser?.app_role);
+  const { data: myTeam } = useQuery({
+    queryKey: ['my-team-cs-ids', currentUser?.id],
+    queryFn: async () => (await base44.functions.invoke('getMyTeamCsIds', {})).data,
+    enabled: leads,
+    staleTime: 5 * 60_000,
+  });
+  const teamIds = myTeam?.ids || [];
+
   const { data: student, isLoading } = useQuery({
     queryKey: ['student', studentId],
     queryFn: async () => {
@@ -214,12 +224,18 @@ export default function StudentDetail() {
     } catch (_) { return false; }
   })();
 
+  const ofMyTeam = leads && teamIds.some(id => isStudentOf(student, id));
   const hasAccess = isAdminRole ||
     isStudentOf(student, currentUser.id) ||
+    ofMyTeam ||
     currentUser.id === student.senior_mentor_id ||
     isCoMentor ||
     (salesOnly && closedByMe(student, currentUser));
 
+  // A leader's team is still on its way: wait for it rather than say "no access".
+  if (isMentorRole && !hasAccess && leads && !myTeam) {
+    return <div className="flex min-h-screen items-center justify-center"><div className="h-10 w-10 animate-spin rounded-full border-b-2 border-blue-600" /></div>;
+  }
   if (isMentorRole && !hasAccess) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100 p-6">
@@ -302,7 +318,7 @@ export default function StudentDetail() {
               </Button>
             </Link>
             {/* Their own LMS as they see it, read-only — for their own CS and the Super Admin */}
-            {mayViewInLms(currentUser, student) && student.email && (
+            {mayViewInLms(currentUser, student, teamIds) && student.email && (
               <ViewInLmsButton studentId={student.id} name={displayStudent.full_name} className="h-9" />
             )}
             {canEdit ? (

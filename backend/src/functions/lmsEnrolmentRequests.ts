@@ -323,8 +323,10 @@ export async function rejectLmsEnrolmentRequest(req: Request, user: AuthUser): P
  * who isn't in the portal. → { url, expiresIn, sessionExpiresAt, from: "own" | "shared" }
  */
 export async function viewStudentInLms(req: Request, user: AuthUser): Promise<Response> {
-  // The student's own CS only — Common ones too — not their leaders; the Super Admin anyone's (the user, 2026-10-06).
-  const found = await lmsStudentFor(await req.json().catch(() => ({})), user, { ownOnly: true });
+  // The student's own CS — Common ones too — and the Super Admin anyone's (the user, 2026-10-06); their team's leaders
+  // too — a Chief Mentor or CS Manager, for the students of the CSs under them (2026-10-08).
+  const leads = user.app_role === "chief_mentor" || user.app_role === "cs_manager";
+  const found = await lmsStudentFor(await req.json().catch(() => ({})), user, { ownOnly: !leads });
   if (found instanceof Response) return found;
   if (!lmsConfigured()) return error(NOT_LINKED, 503);
   try {

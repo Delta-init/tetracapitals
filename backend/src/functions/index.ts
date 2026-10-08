@@ -40,6 +40,7 @@ import {
 } from "./lmsEnrolmentRequests";
 import { getLmsCourseAccess, giveLmsCourses, setLmsModuleAccess } from "./lmsCourseAccess";
 import { getClassCompletions } from "./classCompletions";
+import { getMyTeamCsIds } from "./myTeam";
 import { getStudentZohoInvoices, listZohoInvoices, getZohoInvoiceOptions, linkZohoInvoice } from "./zohoInvoices";
 import { getStudentLmsCourses } from "./lmsCourses";
 import { getStudentTags, setStudentTag } from "./studentTags";
@@ -114,6 +115,7 @@ const AUTHED: Record<string, AuthedHandler> = {
   getLmsSupportTickets,
   getLmsSupportTicketCount,
   getClassCompletions,
+  getMyTeamCsIds,
   // Zoho Books invoices 2024–2026 (zohoInvoices.ts)
   getStudentZohoInvoices,
   listZohoInvoices,
