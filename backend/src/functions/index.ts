@@ -54,6 +54,7 @@ import {
   getWhatsAppStatus, connectWhatsApp, disconnectWhatsApp, getWhatsAppChats, getWhatsAppMessages, markWhatsAppRead,
   sendWhatsApp, sendWhatsAppFile, linkWhatsAppChat, getStudentWhatsApp, getWhatsAppUnread,
 } from "./whatsapp";
+import { listPrograms, searchProgramStudents, createProgram, changeProgramStudents, rescheduleProgram, stopProgram } from "./programs";
 import { getMentorSchedule, getMentorClass, bookMentorMeeting, getMentorMeeting, updateMentorMeeting, cancelMentorMeeting } from "./mentorCalendar";
 import { getInactivityTransfer, setInactivityTransfer, runInactivityTransfer } from "./inactivityTransfer";
 import { financeFundingConfigured } from "../finance/funding";
@@ -85,6 +86,12 @@ const AUTHED: Record<string, AuthedHandler> = {
   getMyCallState,
   hangUpMyCall,
   getMentorSchedule,
+  listPrograms,
+  searchProgramStudents,
+  createProgram,
+  changeProgramStudents,
+  rescheduleProgram,
+  stopProgram,
   getMentorClass,
   bookMentorMeeting,
   getMentorMeeting,

@@ -94,6 +94,7 @@ import StudentFollowups from './pages/StudentFollowups';
 import OverdueFollowups from './pages/OverdueFollowups';
 import StudentCalls from './pages/StudentCalls';
 import MentorCalendar from './pages/MentorCalendar';
+import Programs from './pages/Programs';
 import Tickets from './pages/Tickets';
 import Transactions from './pages/Transactions';
 import TransactionTags from './pages/TransactionTags';
@@ -159,6 +160,7 @@ export const PAGES = {
     "BonusApprovals": BonusApprovals,
     "StudentCalls": StudentCalls,
     "MentorCalendar": MentorCalendar,
+    "Programs": Programs,
     "Tickets": Tickets,
     "Transactions": Transactions,
     "TransactionTags": TransactionTags,
