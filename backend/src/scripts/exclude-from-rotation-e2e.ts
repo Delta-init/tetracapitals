@@ -35,7 +35,9 @@ const run = async (...args: string[]) => {
 };
 
 let out = await run();
-check("dry run: the 4 from sales to share, 1 staying (no other CS in Team B)", /still theirs: 5 — 4 to share out in their team, 1 staying/.test(out) && /team Team A: 4 students over CS Anna, CS Ben/.test(out), out);
+check("dry run: the 4 from sales to share, 1 staying (no other CS in Team B)", /still theirs: 5 — 4 to share out in their team, 1 staying/.test(out), out);
+const goes = (o: string) => o.split("\n").filter((l) => /^\| \d/.test(l)).map((l) => l.split("|").at(-2)!.trim());
+check("…as a table, each with where they'd go, in turn", goes(out).join() === "CS Anna,CS Ben,CS Anna,CS Ben,stays — no other CS in the team", goes(out).join());
 check("…writing nothing", (await mentorOf(sales[0])) === String(cs1._id) && !(await db.collection("users").findOne({ _id: cs1._id }) as any).no_auto_assign);
 
 out = await run("--apply");
@@ -59,6 +61,25 @@ const undoFile = out.match(/Undo file: (\S+)/)?.[1] ?? "";
 await run(`--undo=${undoFile}`, "--apply");
 check("the undo puts students and switches back", (await Promise.all(sales.map(mentorOf))).every((m) => m === String(cs1._id)) && (await db.collection("users").countDocuments({ no_auto_assign: true })) === 0);
 (await import("node:fs")).rmSync(undoFile, { force: true });
+
+console.log("\n\x1b[1mThe last 3 days' new students (--days=3)\x1b[0m");
+const ago = (d: number) => new Date(Date.now() - d * 864e5).toISOString();
+const recentHand = st("R1", cs1, { finance_invoice_id: "", created_date: ago(1), full_name: "Recent By Hand" });
+const recentLms = st("R2", cs1, { finance_invoice_id: "", source: "delta_lms", created_date: ago(2), full_name: "Recent From LMS" });
+const old = st("O1", cs1, { created_date: ago(10), full_name: "Old One" });
+const otherCs = st("X1", csA, { created_date: ago(1), full_name: "Anna's Own" });
+await db.collection("students").insertMany([recentHand, recentLms, old, otherCs] as any[]);
+await db.collection("users").updateMany({}, { $unset: { no_auto_assign: "" } });
+const csv = `${process.env.HOME}/moves.csv`;
+out = await run("--days=3", `--report=${csv}`);
+check("dry run: only the 2 who arrived in the last 3 days, whatever the source", /in the last 3 days .*: 2 — 2 to share out/.test(out) && /Recent By Hand/.test(out) && /Recent From LMS/.test(out) && !/Old One/.test(out) && !/Anna's Own/.test(out), out);
+check("…with where they came from", /Added here/.test(out) && /Delta LMS/.test(out));
+check("…saved as CSV", (await Bun.file(csv).text()).split("\n").filter(Boolean).length === 3);
+out = await run("--days=3", "--apply");
+check("--apply moves those 2, one to each other CS", [await mentorOf(recentHand), await mentorOf(recentLms)].sort().join() === [String(csA._id), String(csB._id)].sort().join());
+check("…the older ones stay", (await mentorOf(old)) === String(cs1._id) && (await mentorOf(sales[0])) === String(cs1._id));
+(await import("node:fs")).rmSync(out.match(/Undo file: (\S+)/)?.[1] ?? "", { force: true });
+
 await db.dropDatabase(); await client.close();
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);
