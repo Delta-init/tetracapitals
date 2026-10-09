@@ -16,6 +16,7 @@ import { ArrowLeft, CalendarDays, ChevronLeft, ChevronRight, Clock, Loader2, Plu
 import { cn } from '@/lib/utils';
 import { createPageUrl } from '@/utils';
 import { TablePagination, usePagination } from '@/components/common/TablePagination';
+import { ClassInfoSection } from '@/components/classes/ClassInfo';
 
 /* ────────────────────────────────────────────────────────────────────────────
    Mentor Calendar — the Sales CRM's Mentors page, ported. When the academy's
@@ -784,6 +785,11 @@ export default function MentorCalendar() {
                   {!c.inPerson && c.meetingUrl && <Field label="Joining link"><a href={String(c.meetingUrl)} target="_blank" rel="noreferrer" className="break-all text-cyan-700 hover:underline">{String(c.meetingUrl)}</a></Field>}
                   {c.mentorNotes && <Field label="Mentor's notes">{String(c.mentorNotes)}</Field>}
                   {c.recordingUrl && <Field label="Recording"><a href={String(c.recordingUrl)} target="_blank" rel="noreferrer" className="text-cyan-700 hover:underline">Watch it back</a></Field>}
+                </div>
+                {/* Info: who booked, joined, cancelled and reviewed, and when it started and ended. */}
+                <div className="border-t border-slate-100 pt-3">
+                  <p className="mb-2 text-sm font-semibold text-slate-900">Info</p>
+                  <ClassInfoSection c={c} tz={tz} />
                 </div>
               </>
             );

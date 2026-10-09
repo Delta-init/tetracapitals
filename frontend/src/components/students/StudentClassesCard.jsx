@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { format } from 'date-fns';
 import { base44 } from '@/api/base44Client';
@@ -6,6 +6,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { GraduationCap } from 'lucide-react';
 import { Paged, TablePagination } from '@/components/common/TablePagination';
+import { ClassInfoDialog } from '@/components/classes/ClassInfo';
 
 /* ────────────────────────────────────────────────────────────────────────────
    The student's live classes in the Delta LMS, by their email, across both
@@ -25,6 +26,7 @@ const SHOWN = ['attended', 'booked', 'upcoming'];
 const when = (iso) => (iso ? format(new Date(iso), 'd MMM yyyy, HH:mm') : '—');
 
 export default function StudentClassesCard({ student }) {
+  const [infoFor, setInfoFor] = useState(null);   // the class whose Info is open
   const { data, isLoading } = useQuery({
     queryKey: ['student-classes', student?.id],
     queryFn: async () => (await base44.functions.invoke('getStudentClasses', { studentId: student.id })).data,
@@ -67,7 +69,7 @@ export default function StudentClassesCard({ student }) {
                     <thead>
                       <tr className="border-b bg-slate-50/80 text-left text-[11px] font-semibold uppercase tracking-wider text-slate-500">
                         <th className="px-4 py-2.5">Date</th><th className="px-4 py-2.5">Class</th><th className="px-4 py-2.5">Course</th>
-                        <th className="px-4 py-2.5">Mentor</th><th className="px-4 py-2.5">Academy</th><th className="px-4 py-2.5">Status</th>
+                        <th className="px-4 py-2.5">Mentor</th><th className="px-4 py-2.5">Academy</th><th className="px-4 py-2.5">Status</th><th className="px-4 py-2.5" />
                       </tr>
                     </thead>
                     <tbody>
@@ -83,6 +85,11 @@ export default function StudentClassesCard({ student }) {
                             <td className="px-4 py-2.5">
                               <Badge variant="outline" className={s.cls} title={k.status === 'attended' && k.attendedAt ? `Attended ${when(k.attendedAt)}` : s.hint}>{s.label}</Badge>
                             </td>
+                            <td className="px-4 py-2.5 text-right">
+                              {k.classId && (
+                                <button type="button" onClick={() => setInfoFor(k)} className="text-xs font-medium text-cyan-700 hover:underline">Info</button>
+                              )}
+                            </td>
                           </tr>
                         );
                       })}
@@ -95,6 +102,7 @@ export default function StudentClassesCard({ student }) {
           </Paged>
         )}
       </CardContent>
+      {infoFor && <ClassInfoDialog classId={infoFor.classId} title={infoFor.title} onClose={() => setInfoFor(null)} />}
     </Card>
   );
 }
