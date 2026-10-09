@@ -153,24 +153,50 @@ export default function MentorCalendar() {
   const myEmail = String(me?.email || '').trim().toLowerCase();
   const myMentor = useMemo(() => (schedule.data?.mentors ?? []).find(m => String(m.email || '').trim().toLowerCase() === myEmail) || null, [schedule.data, myEmail]);
   const [onlyMe, setOnlyMe] = useState(false);
+
+  /* Search the sessions — a class by its title, course or module, a booked session by its title or who it is with —
+     and narrow the classes to a course and its module (the user, 2026-10-09). Booked sessions belong to no course,
+     so the course and module leave them be. */
+  const [find, setFind] = useState('');
+  const [course, setCourse] = useState('');
+  const [mod, setMod] = useState('');
+  const { courses, modules } = useMemo(() => {
+    const cs = new Map(), ms = new Map();
+    for (const m of schedule.data?.mentors ?? []) for (const c of m.classes ?? []) {
+      if (c.courseId) cs.set(c.courseId, c.course || 'Course');
+      if (c.courseId === course && c.moduleId) ms.set(c.moduleId, c.module || 'Module');
+    }
+    const sorted = (m) => [...m].sort((a, b) => String(a[1]).localeCompare(String(b[1])));
+    return { courses: sorted(cs), modules: sorted(ms) };
+  }, [schedule.data, course]);
+  const needle = find.trim().toLowerCase();
+  const filtering = !!(needle || course);
+  const has = (...vs) => vs.some(v => String(v ?? '').toLowerCase().includes(needle));
+  const classShown = (c) => (!course || c.courseId === course) && (!mod || c.moduleId === mod) && (!needle || (c.mine && has(c.title, c.course, c.module)));
+  const meetingShown = (v) => !needle || has(v.title, ...(v.attendeeNames ?? []));
+
   const myItems = useMemo(() => {
     if (!myMentor) return [];
     const now = Date.now();
     return [
-      ...myMentor.classes.filter(c => c.mine && c.status !== 'cancelled').map(c => ({ id: `c${c.id}`, startsAt: c.startsAt, mins: c.durationMins, what: c.title || 'Class', sub: `Class · ${c.booked}/${c.capacity} booked`, kind: 'class' })),
-      ...myMentor.meetings.map(v => ({ id: `m${v.id}`, startsAt: v.startsAt, mins: v.durationMins, what: v.title, sub: `${KIND_LABEL[v.kind] ?? v.kind}${v.attendeeNames?.length ? ` · with ${v.attendeeNames.join(', ')}` : ''}${v.inPerson ? ` · in person, ${v.location}` : ''}`, kind: 'meeting' })),
+      ...myMentor.classes.filter(c => c.mine && c.status !== 'cancelled' && classShown(c)).map(c => ({ id: `c${c.id}`, startsAt: c.startsAt, mins: c.durationMins, what: c.title || 'Class', sub: `Class · ${c.booked}/${c.capacity} booked`, kind: 'class' })),
+      ...myMentor.meetings.filter(meetingShown).map(v => ({ id: `m${v.id}`, startsAt: v.startsAt, mins: v.durationMins, what: v.title, sub: `${KIND_LABEL[v.kind] ?? v.kind}${v.attendeeNames?.length ? ` · with ${v.attendeeNames.join(', ')}` : ''}${v.inPerson ? ` · in person, ${v.location}` : ''}`, kind: 'meeting' })),
     ].filter(i => new Date(i.startsAt).getTime() + (i.mins || 0) * 60_000 > now).sort((a, b) => a.startsAt.localeCompare(b.startsAt));
-  }, [myMentor]);
+  }, [myMentor, needle, course, mod]);
 
   const [query, setQuery] = useState('');
   const shown = useMemo(() => {
     const all = schedule.data?.mentors ?? [];
-    if (onlyMe && myMentor) return [myMentor];
     const q = query.trim().toLowerCase();
-    return q ? all.filter(m => String(m.name || '').toLowerCase().includes(q) || String(m.email || '').toLowerCase().includes(q)) : all;
-  }, [schedule.data, query, onlyMe, myMentor]);
+    const people = onlyMe && myMentor ? [myMentor]
+      : q ? all.filter(m => String(m.name || '').toLowerCase().includes(q) || String(m.email || '').toLowerCase().includes(q)) : all;
+    // Searching or narrowing: only the mentors with something that matches this week.
+    return filtering
+      ? people.filter(m => (m.classes ?? []).some(c => c.status !== 'cancelled' && classShown(c)) || (m.meetings ?? []).some(meetingShown))
+      : people;
+  }, [schedule.data, query, onlyMe, myMentor, needle, course, mod]);
   // One page for both layouts. Stepping the week keeps the page: the mentors are the same.
-  const { pageItems: pageShown, bar } = usePagination(shown, { resetKey: `${query}|${onlyMe}` });
+  const { pageItems: pageShown, bar } = usePagination(shown, { resetKey: `${query}|${onlyMe}|${needle}|${course}|${mod}` });
 
   /* ── booking: opened from the day it is for, with that mentor already chosen ── */
   const [booking, setBooking] = useState(null); // { mentor, day }
@@ -329,8 +355,8 @@ export default function MentorCalendar() {
   const dayCell = (m, day) => {
     const work = m.work?.days?.[columnKey(day)];
     const slots = m.slots.filter(s => s.dayOfWeek === day.getDay());
-    const classes = m.classes.filter(c => sameDay(c.startsAt, day));
-    const meetings = m.meetings.filter(v => sameDay(v.startsAt, day));
+    const classes = m.classes.filter(c => sameDay(c.startsAt, day) && classShown(c));
+    const meetings = m.meetings.filter(v => sameDay(v.startsAt, day) && meetingShown(v));
     if (!work && !slots.length && !classes.length && !meetings.length) return null;
     return (
       <div className="space-y-1">
@@ -357,6 +383,7 @@ export default function MentorCalendar() {
             )}
           >
             <span className="tabular">{at(c.startsAt)}</span> {c.mine ? (c.title || 'Class') : 'Booked elsewhere'}
+            {c.mine && c.course && <span className="block truncate text-[10px] opacity-70">{c.course}{c.module ? ` · ${c.module}` : ''}</span>}
           </button>
         ))}
         {meetings.map(v => (
@@ -456,6 +483,25 @@ export default function MentorCalendar() {
           {hrms?.configured && !hrms.available && <span className="text-amber-700">Working hours from the HRMS are not showing: {hrms.message || 'it did not answer'}</span>}
         </div>
 
+        {/* Search and narrow the sessions — booked sessions have no course, so the course and module keep them. */}
+        <div className="flex flex-wrap items-center gap-2">
+          <div className="relative min-w-[220px] flex-1">
+            <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+            <Input value={find} onChange={e => setFind(e.target.value)} placeholder="Search sessions — title, course, module, who it's with…" className="h-9 pl-9" />
+          </div>
+          <select value={course} onChange={e => { setCourse(e.target.value); setMod(''); }} aria-label="Course"
+            className="h-9 rounded-md border border-input bg-background px-2 text-sm">
+            <option value="">All courses</option>
+            {courses.map(([id, title]) => <option key={id} value={id}>{title}</option>)}
+          </select>
+          <select value={mod} onChange={e => setMod(e.target.value)} aria-label="Module" disabled={!course || !modules.length}
+            className="h-9 rounded-md border border-input bg-background px-2 text-sm disabled:opacity-50">
+            <option value="">{course && !modules.length ? 'No modules' : 'All modules'}</option>
+            {modules.map(([id, title]) => <option key={id} value={id}>{title}</option>)}
+          </select>
+          {filtering && <Button variant="ghost" size="sm" className="h-9" onClick={() => { setFind(''); setCourse(''); setMod(''); }}>Clear</Button>}
+        </div>
+
         {schedule.isPending && (
           <Card><CardContent className="space-y-3 py-6">{[0, 1, 2].map(i => <Skeleton key={i} className="h-12 w-full" />)}</CardContent></Card>
         )}
@@ -470,10 +516,10 @@ export default function MentorCalendar() {
         {schedule.data && shown.length === 0 && (
           <Card><CardContent className="py-16 text-center">
             <Users2 className="mx-auto h-8 w-8 text-slate-300" />
-            {query.trim() ? (
+            {query.trim() || filtering ? (
               <>
-                <p className="mt-3 text-sm font-medium text-slate-700">Nobody matches that</p>
-                <button onClick={() => setQuery('')} className="mt-2 text-xs text-cyan-700 hover:underline">Clear the search</button>
+                <p className="mt-3 text-sm font-medium text-slate-700">{filtering ? 'Nothing this week matches' : 'Nobody matches that'}</p>
+                <button onClick={() => { setQuery(''); setFind(''); setCourse(''); setMod(''); }} className="mt-2 text-xs text-cyan-700 hover:underline">Clear the search</button>
               </>
             ) : (
               <>
