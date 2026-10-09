@@ -30,7 +30,7 @@ import StudentClassesCard from "@/components/students/StudentClassesCard";
 import StudentLmsCoursesCard from "@/components/students/StudentLmsCoursesCard";
 import StudentLmsSupportCards from "@/components/students/StudentLmsSupportCards";
 import StudentFundingCard from "@/components/students/StudentFundingCard";
-import { ViewInLmsButton, canViewInLms, mayViewInLms } from "@/components/students/ViewInLms";
+import { ViewInLmsButton, canViewInLms, mayViewInLms, mayActInLms } from "@/components/students/ViewInLms";
 import { CallButton } from "@/components/followups/CallFlow";
 import { EnrolmentControl } from "@/components/students/enrolment";
 import { OnboardingControl } from "@/components/students/onboarding";
@@ -309,7 +309,7 @@ export default function StudentDetail() {
               <div className="mt-2"><StudentTagsEditor student={student} currentUser={currentUser} /></div>
             </div>
           </div>
-          <div className="flex flex-wrap items-center gap-2 lg:shrink-0 lg:justify-end">
+          <div className="flex flex-wrap items-center gap-2 lg:max-w-[60%] lg:justify-end">
             {/* Call with 3CX, then log it against the student's follow-up */}
             <CallButton student={displayStudent} className="h-9 px-4 text-sm" />
             {/* Time with a mentor, in the LMS's diary — the Mentor Calendar, filled in for this student */}
@@ -322,6 +322,9 @@ export default function StudentDetail() {
             {/* Their own LMS as they see it, read-only — for their own CS and the Super Admin */}
             {mayViewInLms(currentUser, student, teamIds) && student.email && (
               <ViewInLmsButton studentId={student.id} name={displayStudent.full_name} className="h-9" />
+            )}
+            {mayActInLms(currentUser, student, teamIds) && student.email && (
+              <ViewInLmsButton studentId={student.id} name={displayStudent.full_name} className="h-9" mode="write" />
             )}
             {canEdit ? (
               <Button onClick={() => setShowEditDialog(true)} className="bg-blue-600 hover:bg-blue-700">

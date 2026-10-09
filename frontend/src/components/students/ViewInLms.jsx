@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { toast } from 'sonner';
 import { base44 } from '@/api/base44Client';
 import { Button } from '@/components/ui/button';
-import { ExternalLink, Loader2, LogIn } from 'lucide-react';
+import { ExternalLink, Loader2, LogIn, PenLine } from 'lucide-react';
 import { isMentorRole, readsClosedOnly } from '@/components/utils/roles';
 import { isStudentOf } from '@/components/students/common';
 
@@ -26,22 +26,34 @@ export const mayViewInLms = (user, student, teamIds = []) =>
   canViewInLms(user) && (user.app_role === 'super_admin' || isStudentOf(student, user.id)
     || (['chief_mentor', 'cs_manager'].includes(user.app_role) && teamIds.some(id => isStudentOf(student, id))));
 
+/** "Act as student" — read & write (2026-10-09): the student's own CS (or a CS they're Common with), the CS Manager
+ *  over them (`teamIds`), a Super Admin; not a Chief Mentor. The server checks the same. */
+export const mayActInLms = (user, student, teamIds = []) =>
+  canViewInLms(user) && (user.app_role === 'super_admin'
+    || (user.app_role === 'cs' && isStudentOf(student, user.id))
+    || (user.app_role === 'cs_manager' && (isStudentOf(student, user.id) || teamIds.some(id => isStudentOf(student, id)))));
+
 const WAITING = `<!doctype html><title>Opening the LMS…</title>
 <body style="margin:0;height:100vh;display:grid;place-items:center;font:15px system-ui,sans-serif;color:#64748b">Opening the student's LMS…</body>`;
 
 /** Opens a student's LMS — by their record here (studentId), or by the LMS address for a request from someone who isn't here. */
-export function ViewInLmsButton({ studentId, email, name, label = 'View as student', className, size, variant = 'outline' }) {
+export function ViewInLmsButton({ studentId, email, name, label, className, size, variant = 'outline', mode = 'read' }) {
   const [busy, setBusy] = useState(false);
+  const write = mode === 'write';
   const open = async () => {
+    if (write && !window.confirm(`Act as ${name || 'the student'} in the LMS — read & write?\n\n`
+      + 'You can book classes, submit work and send messages as them. Their password, email, payments and ID documents stay locked. '
+      + 'Every change you make is recorded under your name. Lasts 30 minutes.')) return;
     // The tab opens now, while the click still counts — one opened after the LMS answers is blocked as a pop-up.
     const tab = window.open('', '_blank');
     try { tab?.document.write(WAITING); tab?.document.close(); } catch { /* nothing to show it in */ }
     setBusy(true);
     try {
-      const { data } = await base44.functions.invoke('viewStudentInLms', studentId ? { studentId } : { email });
+      const { data } = await base44.functions.invoke('viewStudentInLms', { ...(studentId ? { studentId } : { email }), mode });
       const until = data?.sessionExpiresAt
         ? new Date(data.sessionExpiresAt).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' }) : '';
-      const opened = `${name || 'The student'}'s LMS — read-only${until ? `, until ${until}` : ''}`;
+      // An LMS not yet updated opens read-only whatever was asked: say what it actually is.
+      const opened = `${name || 'The student'}'s LMS — ${data?.mode === 'write' ? 'read & write' : 'read-only'}${until ? `, until ${until}` : ''}`;
       if (tab && !tab.closed) {
         tab.opener = null;
         tab.location.replace(data.url);
@@ -69,10 +81,12 @@ export function ViewInLmsButton({ studentId, email, name, label = 'View as stude
       className={className}
       onClick={open}
       disabled={busy}
-      title="Their own LMS as they see it, in a new tab — read-only: nothing can be changed there"
+      title={write
+        ? 'Their own LMS in a new tab — read & write: you can act for them; every change is recorded under your name'
+        : 'Their own LMS as they see it, in a new tab — read-only: nothing can be changed there'}
     >
-      {busy ? <Loader2 className="animate-spin" /> : <LogIn />}
-      {label}
+      {busy ? <Loader2 className="animate-spin" /> : write ? <PenLine /> : <LogIn />}
+      {label ?? (write ? 'Act as student' : 'View as student')}
       <ExternalLink className="!size-3 opacity-50" />
     </Button>
   );

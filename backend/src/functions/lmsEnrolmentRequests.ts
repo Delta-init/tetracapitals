@@ -322,20 +322,48 @@ export async function rejectLmsEnrolmentRequest(req: Request, user: AuthUser): P
  * Common student — not their leaders; the Super Admin anyone's, by the LMS address too for a request from somebody
  * who isn't in the portal. → { url, expiresIn, sessionExpiresAt, from: "own" | "shared" }
  */
+/** "Act as student" — read & write (the user, 2026-10-09): the student's own CS, their CS Manager, a Super Admin. */
+const ACTS_AS_STUDENT = new Set(["super_admin", "cs", "cs_manager"]);
+
 export async function viewStudentInLms(req: Request, user: AuthUser): Promise<Response> {
   // The student's own CS — Common ones too — and the Super Admin anyone's (the user, 2026-10-06); their team's leaders
   // too — a Chief Mentor or CS Manager, for the students of the CSs under them (2026-10-08).
+  // { mode: "write" } — "Act as student", read & write (2026-10-09): the student's own CS (Common ones too), the CS
+  // Manager over them, a Super Admin; not a Chief Mentor. The LMS lets it change things except the student's security,
+  // payments and ID documents, and records every change as the person (its auth.middleware.ts denyImpersonatedWrite).
+  const body: any = await req.json().catch(() => ({}));
+  const write = body?.mode === "write";
+  if (write && !ACTS_AS_STUDENT.has(user.app_role)) return error("Act as student is for the student's own CS, their CS Manager and Super Admins", 403);
   const leads = user.app_role === "chief_mentor" || user.app_role === "cs_manager";
-  const found = await lmsStudentFor(await req.json().catch(() => ({})), user, { ownOnly: !leads });
+  const found = await lmsStudentFor(body, user, { ownOnly: write ? user.app_role !== "cs_manager" : !leads });
   if (found instanceof Response) return found;
   if (!lmsConfigured()) return error(NOT_LINKED, 503);
   try {
-    return json(await callLms<{ url: string; expiresIn: number; sessionExpiresAt: string; from: string }>("/students/view", {
-      method: "POST", body: { email: found.email, ...byOf(user) }, verb: "open the student's account",
-    }));
+    const answer = await callLms<{ url: string; expiresIn: number; sessionExpiresAt: string; from: string; mode?: string }>("/students/view", {
+      method: "POST", body: { email: found.email, ...byOf(user), mode: write ? "write" : "read" }, verb: "open the student's account",
+    });
+    if (write) await logActAsStudent(user, found);
+    // An LMS without read & write yet answers without `mode`: that session is read-only.
+    return json({ ...answer, mode: answer?.mode === "write" ? "write" : "read" });
   } catch (err) {
     if (lmsLacksRoute(err)) return error("The LMS can't open a student's account from here yet — it needs its update", 409);
     return lmsRefusal(err);
+  }
+}
+
+/** The portal's activity log: who acted as which student in the LMS (the LMS records each change itself). */
+async function logActAsStudent(user: AuthUser, found: { email: string; student: any | null }) {
+  const now = new Date().toISOString();
+  const person = byOf(user);
+  try {
+    await col("logs").insertOne({
+      timestamp: now, user_id: user.id, user_email: user.email, user_name: user.full_name, user_role: user.app_role,
+      action_type: "lms_act_as_student", entity_type: "Student", entity_id: found.student ? String(found.student._id) : null,
+      details: JSON.stringify({ message: `${person.byName} opened ${found.student?.full_name || found.email}'s LMS read & write`, email: found.email, by: person }),
+      old_value: null, new_value: null, ip_address: null, success: true, created_date: now, updated_date: now,
+    } as any);
+  } catch (err) {
+    console.error("[act as student] could not write the activity log", err);
   }
 }
 
