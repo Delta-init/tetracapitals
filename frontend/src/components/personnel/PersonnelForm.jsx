@@ -34,6 +34,7 @@ export default function PersonnelForm({ user, onSubmit, onClose, allUsers }) {
     commission_plan_id: '',  // commission plan applied when this staff submits
     extension: '',           // their 3CX extension — links their calls to them
     extension_source: '',    // "manual" once typed here: the 3CX sync then leaves it alone
+    no_auto_assign: false,   // CS left out of the turns new students go by (backend students/teams.ts)
     password: '',
   });
   const [showPassword, setShowPassword] = useState(false);
@@ -66,6 +67,7 @@ export default function PersonnelForm({ user, onSubmit, onClose, allUsers }) {
         commission_plan_id: user.commission_plan_id || '',
         extension: user.extension || '',
         extension_source: user.extension_source || '',
+        no_auto_assign: user.no_auto_assign === true,
       });
     }
   }, [user]);
@@ -287,6 +289,13 @@ export default function PersonnelForm({ user, onSubmit, onClose, allUsers }) {
             />
             <p className="text-xs text-gray-500 mt-1">Applied when this staff submits a transaction — pays each level up the chain per the plan.</p>
           </div>
+
+          {formData.app_role === 'cs' && (
+            <label className="flex items-start gap-2 text-sm">
+              <input type="checkbox" className="mt-1" checked={formData.no_auto_assign} onChange={(e) => setFormData({ ...formData, no_auto_assign: e.target.checked })} />
+              <span>No new students<span className="block text-xs text-gray-500">Left out when new students from sales are shared out in turn. Their own students stay with them.</span></span>
+            </label>
+          )}
 
           <div className="flex justify-end gap-3 pt-4">
             <Button type="button" variant="outline" onClick={onClose}>
