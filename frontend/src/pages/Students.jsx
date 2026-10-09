@@ -465,6 +465,8 @@ export default function Students() {
   const hasTeamView = getScope(currentUser) === 'downline';
   const isAssistance = currentUser.app_role === 'assistance';
   const isAdmin = ['super_admin', 'broker_admin', 'academic_head'].includes(currentUser.app_role);
+  // A CS Manager has every team's students under All Students too (2026-10-09) — to read.
+  const seesAllStudents = isAdmin || currentUser.app_role === 'cs_manager';
   const isSuperAdmin = currentUser.app_role === 'super_admin';
   const newForMe = counts.new_for_me || 0;
 
@@ -872,11 +874,11 @@ export default function Students() {
             co-management itself works as before. */}
         {isMentor || isAdmin ? (
           <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-            <TabsList className="flex h-auto w-full max-w-5xl justify-start overflow-x-auto sm:grid" style={{ gridTemplateColumns: isMentor ? (hasTeamView ? '1fr 1fr' : '1fr') : (['academic_head', 'broker_admin', 'super_admin'].includes(currentUser.app_role) ? '1fr 1fr' : '1fr') }}>
+            <TabsList className="flex h-auto w-full max-w-5xl justify-start overflow-x-auto sm:grid" style={{ gridTemplateColumns: isMentor ? `repeat(${1 + (hasTeamView ? 1 : 0) + (seesAllStudents ? 1 : 0)}, 1fr)` : (['academic_head', 'broker_admin', 'super_admin'].includes(currentUser.app_role) ? '1fr 1fr' : '1fr') }}>
               {isMentor && <TabsTrigger value="my">My Students</TabsTrigger>}
               {hasTeamView && <TabsTrigger value="team">Team Students</TabsTrigger>}
 
-              {isAdmin && <TabsTrigger value="all">All Students</TabsTrigger>}
+              {seesAllStudents && <TabsTrigger value="all">All Students</TabsTrigger>}
               {['academic_head', 'broker_admin', 'super_admin'].includes(currentUser.app_role) && (
                 <TabsTrigger value="open_pool">Delta Open Students</TabsTrigger>
               )}
@@ -1075,7 +1077,7 @@ export default function Students() {
           )}
 
           {/* All Students Tab (Admins Only) */}
-          {isAdmin && (
+          {seesAllStudents && (
             <TabsContent value="all">
               <div className="rounded-2xl border border-slate-200/70 bg-white overflow-hidden shadow-soft">
                 <div className="p-4 bg-slate-50/70 border-b border-gray-200">

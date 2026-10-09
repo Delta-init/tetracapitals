@@ -129,7 +129,8 @@ export const NAV_ITEMS = [
   { name: 'StudentTags', label: 'Student Tags', page: 'StudentTags', icon: Tags, roles: ['super_admin', 'admin', 'broker_admin', 'academic_head', 'finance_admin'] },
   { name: 'MT5Accounts', hidden: true, page: 'MT5Accounts', icon: CandlestickChart, roles: ['super_admin', 'admin', 'broker_admin', 'academic_head', 'junior_mentor', 'chief_mentor', 'senior_mentor'] },
   { name: 'FundingActivities', page: 'MyFundingRequests', icon: Wallet, roles: ['chief_mentor', 'senior_mentor', 'junior_mentor', 'assistance'] },
-  { name: 'FundingRequests', page: 'FundingRequests', icon: HandCoins, roles: ['super_admin', 'broker_admin', 'academic_head', 'finance_admin'] },
+  // CS Managers too, to read — every request, no actions (2026-10-09; Layout lets them past their role's page list).
+  { name: 'FundingRequests', page: 'FundingRequests', icon: HandCoins, roles: ['super_admin', 'broker_admin', 'academic_head', 'finance_admin', 'cs_manager'] },
   // MT5 bonuses waiting for a broker admin: sales-close bonuses (onboarding verification) and finance-approved bonus
   // requests. Only the people who decide a bonus (backend BONUS_APPROVERS) — `only`, so no role override opens it.
   { name: 'BonusApprovals', label: 'MT5 Bonus Approvals', page: 'BonusApprovals', icon: Gift, roles: ['super_admin', 'broker_admin'], only: ['super_admin', 'broker_admin'] },

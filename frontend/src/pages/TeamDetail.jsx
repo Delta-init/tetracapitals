@@ -69,7 +69,7 @@ export default function TeamDetail() {
   const isAdmin = !!currentUser && isAdminRole(currentUser.app_role);
   const isLeader = !!currentUser && currentUser.id === teamId;
   const isMember = !!currentUser && memberIds.has(currentUser.id);
-  const seesAll = isAdmin || isLeader;
+  const seesAll = isAdmin || isLeader || currentUser?.app_role === 'cs_manager';   // a CS Manager reads every team (2026-10-09)
   const canReassign = !!currentUser && (REASSIGNERS.includes(currentUser.app_role) || isLeader);
 
   const teamStudents = useMemo(() => {
@@ -195,8 +195,9 @@ export default function TeamDetail() {
             <CardContent className="p-0 divide-y">
               {members.map(m => {
                 const count = seesAll || m.id === currentUser.id ? (countByMentor[m.id] || 0) : null;
-                // The team's leader views as one of its CS (the server allows only their own team's, 2026-10-08).
-                const canViewAs = isLeader && !isImpersonating() && m.app_role === 'cs' && m.status !== 'inactive';
+                // The team's leader views as one of its CS (the server allows only their own team's, 2026-10-08);
+                // a CS Manager any team's CS (2026-10-09).
+                const canViewAs = (isLeader || currentUser.app_role === 'cs_manager') && !isImpersonating() && m.app_role === 'cs' && m.status !== 'inactive';
                 return (
                   <div key={m.id} className="flex items-center">
                   <button

@@ -50,7 +50,9 @@ export async function getAuthUser(req: Request): Promise<AuthUser | null> {
     const targetOid = toObjectId(impersonateId);
     if (targetOid) {
       const targetDoc = await col("users").findOne({ _id: targetOid });
-      const teamCs = leads && (targetDoc as any)?.app_role === "cs" && (await getDownlineIds(realUser.id)).includes(impersonateId);
+      // A CS Manager views as any active CS, in any team (the user, 2026-10-09); a Chief only their own team's.
+      const isCs = (targetDoc as any)?.app_role === "cs" && (targetDoc as any)?.status !== "inactive";
+      const teamCs = leads && isCs && (realUser.app_role === "cs_manager" || (await getDownlineIds(realUser.id)).includes(impersonateId));
       // Anybody but a Super Admin — the Personnel page never offers one, and the server doesn't take one either.
       if (targetDoc && (targetDoc as any).app_role !== "super_admin" && (!leads || teamCs)) {
         const { password_hash: _pw, ...targetSafe } = targetDoc as any;

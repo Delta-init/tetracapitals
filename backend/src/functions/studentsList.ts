@@ -43,6 +43,8 @@ async function tabsFor(user: AuthUser): Promise<Tab[]> {
   if (isMentorRole(user.app_role)) {
     const tabs: Tab[] = ["my"];
     if ((await getConfiguredScope(user)) === "downline") tabs.push("team");
+    // A CS Manager sees every team's students too (lib/scope.ts CS_MANAGER_READS_ALL).
+    if (user.app_role === "cs_manager") tabs.push("all");
     tabs.push("co_managed");
     return tabs;
   }

@@ -46,6 +46,9 @@ const COMMISSION_FIELDS: Record<string, string[]> = {
   PayoutTransaction: ["mentor_id"],
 };
 
+/** What a CS Manager sees of every team. */
+const CS_MANAGER_READS_ALL = new Set(["Student", "FundingTransaction"]);
+
 /**
  * "closed" is the Sales role's (custom roles only): the students they closed in a sales CRM (students.closed_by —
  * see students/closedBy.ts) with those students' deposits and MT5 accounts, the lists every page needs, their own
@@ -125,6 +128,9 @@ export async function buildScopeFilter(
   user: AuthUser,
   entityName: string,
 ): Promise<Record<string, any> | null> {
+  // Every CS Manager reads every student and every funding request, in all teams (the user, 2026-10-09) — to read:
+  // what they may change is decided by role, not by this.
+  if (user.app_role === "cs_manager" && CS_MANAGER_READS_ALL.has(entityName)) return null;
   const commission = COMMISSION_FIELDS[entityName];
   const general = OWN_FIELDS[entityName];
   const custom = isCustomRole(user.app_role);

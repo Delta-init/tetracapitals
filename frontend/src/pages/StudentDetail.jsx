@@ -226,6 +226,8 @@ export default function StudentDetail() {
 
   const ofMyTeam = leads && teamIds.some(id => isStudentOf(student, id));
   const hasAccess = isAdminRole ||
+    // Every CS Manager reads every student's page, in all teams (2026-10-09).
+    currentUser.app_role === 'cs_manager' ||
     isStudentOf(student, currentUser.id) ||
     ofMyTeam ||
     currentUser.id === student.senior_mentor_id ||

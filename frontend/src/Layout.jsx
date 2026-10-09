@@ -169,6 +169,8 @@ export default function Layout({ children, currentPageName }) {
     if (item.notForSales && readsClosedOnly(currentUser)) return false;
     if (item.everyone) return true;
     if (item.name === 'RolesManagement' && ['super_admin', 'admin'].includes(currentUser?.app_role)) return true;
+    // A CS Manager reads every funding request (2026-10-09), whatever their role's page list says.
+    if (item.name === 'FundingRequests' && currentUser?.app_role === 'cs_manager') return true;
     if (Array.isArray(allowedPages)) return allowedPages.includes(item.sameAccessAs || item.name);
     return item.roles.includes('all') || item.roles.includes(currentUser?.app_role);
   });
