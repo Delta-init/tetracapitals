@@ -67,6 +67,8 @@ type CourseFee = {
   balance_minor: number;
   bonus_given: boolean | null;
   bonus_minor: number;
+  /** The bonus's own currency — USD from the sales CRMs since 2026-10-09; absent, the fee's (`currency`). */
+  bonus_currency?: string;
   receipt_url: string;
   receipt_name: string;
   recorded_at: string;
@@ -104,6 +106,7 @@ function courseFee(raw: unknown, invoiceId: string, invoiceNumber: string, cours
     balance_minor: balance,
     bonus_given: bonus ? bonus.given === true : null,
     bonus_minor: bonus?.given === true ? minor(bonus.amountMinor) ?? 0 : 0,
+    ...(/^[A-Z]{3}$/.test(text(bonus?.currency, 3).toUpperCase()) ? { bonus_currency: text(bonus?.currency, 3).toUpperCase() } : {}),
     // Only a link a browser can open — anything else would be a dead or hostile one.
     receipt_url: /^https?:\/\//i.test(receiptUrl) ? receiptUrl : "",
     receipt_name: text(receipt?.name, 200),
