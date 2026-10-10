@@ -25,6 +25,7 @@ export type HistoryType =
   | "status_changed"
   | "pool_changed"
   | "enrolment_changed"
+  | "priority_changed"
   | "made_common"
   | "tag_changed"
   | "details_changed"

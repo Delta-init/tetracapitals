@@ -45,6 +45,25 @@ export const StatusBadge = ({ status }) => <Badge variant="outline" className={S
 export const StageBadge = ({ stage }) => <Badge variant="outline" className={`border-transparent ${STAGE_CLS[stage] || ''}`}>{stage}</Badge>;
 
 export const fmtDate = (d) => (d ? new Date(`${d.slice(0, 10)}T12:00:00Z`).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric', timeZone: 'UTC' }) : '—');
+/** "14:30" → "2:30 PM" (UAE time, as typed). */
+export const fmtTime = (t) => {
+  const m = /^(\d{2}):(\d{2})$/.exec(t || '');
+  if (!m) return '';
+  const h = Number(m[1]);
+  return `${h % 12 || 12}:${m[2]} ${h < 12 ? 'AM' : 'PM'}`;
+};
+/** A follow-up's next date, with its time when it has one — the CS is reminded 15 minutes before and at it. */
+export const fmtDue = (f) => `${fmtDate(f?.next_followup_date)}${f?.next_followup_date && f?.next_followup_time ? ` · ${fmtTime(f.next_followup_time)}` : ''}`;
+
+/** The next follow-up's date and optional time, side by side (the time can only go with a date). */
+export function NextFollowupInput({ date, time, onDate, onTime, min }) {
+  return (
+    <div className="flex gap-2">
+      <Input type="date" value={date || ''} min={min} onChange={(e) => { onDate(e.target.value); if (!e.target.value) onTime(''); }} className="min-w-0 flex-1" />
+      <Input type="time" value={time || ''} disabled={!date} onChange={(e) => onTime(e.target.value)} className="w-32" title="Optional — you are reminded 15 minutes before and at this time (UAE)" />
+    </div>
+  );
+}
 /* ── Reminder emails (10:00 UAE, one per person per day) ─────────────────── */
 
 const UAE_MS = 4 * 3600e3;
@@ -176,6 +195,7 @@ export function LogFollowupDialog({ followup, onClose, onSaved }) {
       stage: followup.stage === 'New' ? 'Contacted' : followup.stage,
       clientSaid: '',
       nextFollowupDate: '',
+      nextFollowupTime: '',
       objectionReason: followup.objection_reason || '',
       convertedDate: followup.converted_date || today,
       dealValue: followup.deal_value ?? '',
@@ -222,6 +242,7 @@ export function LogFollowupDialog({ followup, onClose, onSaved }) {
         // Only what was written now: the earlier entries are kept as they are.
         clientSaid: form.clientSaid,
         nextFollowupDate: closed ? '' : form.nextFollowupDate,
+        nextFollowupTime: closed || !form.nextFollowupDate ? '' : form.nextFollowupTime,
         // The reason applies to Objection / Lost only; earlier reasons stay in the log.
         objectionReason: form.stage === 'Lost' || form.stage === 'Objection Stage' ? form.objectionReason : '',
         convertedDate: form.convertedDate,
@@ -323,8 +344,8 @@ export function LogFollowupDialog({ followup, onClose, onSaved }) {
           </div>
           {!closed && (
             <div className="space-y-1.5">
-              <Label>Next follow-up</Label>
-              <Input type="date" value={form.nextFollowupDate} min={today} onChange={set('nextFollowupDate')} />
+              <Label>Next follow-up <span className="font-normal text-slate-400">· time optional</span></Label>
+              <NextFollowupInput date={form.nextFollowupDate} time={form.nextFollowupTime} min={today} onDate={set('nextFollowupDate')} onTime={set('nextFollowupTime')} />
             </div>
           )}
           <div className="space-y-1.5 sm:col-span-2">
@@ -383,6 +404,7 @@ export function NewFollowupDialog({ open, onClose, onCancel, onSaved, onLog, stu
   const [studentId, setStudentId] = useState('');
   const [outcome, setOutcome] = useState('');
   const [next, setNext] = useState('');
+  const [nextTime, setNextTime] = useState('');
   const [clientSaid, setClientSaid] = useState('');
   const [notes, setNotes] = useState('');
   const [busy, setBusy] = useState(false);
@@ -391,7 +413,7 @@ export function NewFollowupDialog({ open, onClose, onCancel, onSaved, onLog, stu
 
   useEffect(() => {
     if (!open) return;
-    setStudentId(student?.id || ''); setOutcome(defaultOutcome || ''); setNext(today); setClientSaid(''); setNotes(''); setError(null); setBusy(false);
+    setStudentId(student?.id || ''); setOutcome(defaultOutcome || ''); setNext(today); setNextTime(''); setClientSaid(''); setNotes(''); setError(null); setBusy(false);
   }, [open, student?.id]);
 
   // The picked student's follow-ups: one already open means log on it, not open another.
@@ -414,7 +436,7 @@ export function NewFollowupDialog({ open, onClose, onCancel, onSaved, onLog, stu
     if (!outcome) { setError('Pick a target outcome.'); return; }
     setBusy(true); setError(null);
     try {
-      const res = await base44.functions.invoke('createFollowup', { studentId, targetOutcome: outcome, nextFollowupDate: next, clientSaid, notes });
+      const res = await base44.functions.invoke('createFollowup', { studentId, targetOutcome: outcome, nextFollowupDate: next, nextFollowupTime: next ? nextTime : '', clientSaid, notes });
       toast.success('Follow-up opened');
       onSaved?.(res?.data?.id, { studentId, targetOutcome: outcome, nextFollowupDate: next, clientSaid, notes });
       onClose();
@@ -445,7 +467,7 @@ export function NewFollowupDialog({ open, onClose, onCancel, onSaved, onLog, stu
             <div className="flex flex-wrap items-center gap-2 text-amber-900/90">
               <span className="font-medium">{existing.target_outcome}</span>
               <StageBadge stage={existing.stage} />
-              {existing.next_followup_date && <span className="text-xs">Next follow-up {fmtDate(existing.next_followup_date)}</span>}
+              {existing.next_followup_date && <span className="text-xs">Next follow-up {fmtDue(existing)}</span>}
             </div>
             <p className="text-xs text-amber-800">One follow-up per student: log this call on it instead of opening another.</p>
           </div>
@@ -459,8 +481,8 @@ export function NewFollowupDialog({ open, onClose, onCancel, onSaved, onLog, stu
               </Select>
             </div>
             <div className="space-y-1.5">
-              <Label>Next follow-up</Label>
-              <Input type="date" value={next} min={today} onChange={e => setNext(e.target.value)} />
+              <Label>Next follow-up <span className="font-normal text-slate-400">· time optional</span></Label>
+              <NextFollowupInput date={next} time={nextTime} min={today} onDate={setNext} onTime={setNextTime} />
             </div>
             <div className="space-y-1.5 sm:col-span-2">
               <Label>What client said</Label>

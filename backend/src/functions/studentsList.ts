@@ -180,6 +180,9 @@ async function filters(user: AuthUser, tab: Tab, f: any): Promise<Record<string,
   if (tag && tag !== "all") out.push(tagFilter(tag));
   if (f?.enrolment === "enrolled") out.push({ enrolment_status: "closed" });
   if (f?.enrolment === "not_enrolled") out.push({ enrolment_status: { $ne: "closed" } });
+  // Priority (the user, 2026-10-10): Normal is also everyone with none set.
+  if (["high", "medium", "valli"].includes(f?.priority)) out.push({ priority: f.priority });
+  if (f?.priority === "normal") out.push({ priority: { $nin: ["high", "medium", "valli"] } });
   if (f?.onboarding === "onboarded") out.push({ onboarded: true });
   if (f?.onboarding === "not_onboarded") out.push({ onboarded: { $ne: true } });
   // LMS classes in their own courses (the hourly LMS check keeps the counts on the student).
@@ -224,7 +227,7 @@ async function filters(user: AuthUser, tab: Tab, f: any): Promise<Record<string,
 /**
  * POST /api/functions/listStudents
  * Body: { tab, page?, pageSize? (25 | 50 | 100), all? (every match, up to 10,000 — export, select all),
- *         filters?: { search, onlyNew, tag, enrolment, onboarding, classes, followup, course, balance, from, to, status, team, level, mentor, location } }
+ *         filters?: { search, onlyNew, tag, enrolment, priority, onboarding, classes, followup, course, balance, from, to, status, team, level, mentor, location } }
  *         (location: "dubai" | "bangalore" — by their team, or with none the location they arrived for)
  * → { tab, tabs, rows, total, page, page_size, truncated?, counts: { new_for_me, co_managed?, admin_co_managed? },
  *     followup_filter? (the follow-up filter applied — the page tells a server without it apart) }

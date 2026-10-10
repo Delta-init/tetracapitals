@@ -14,7 +14,7 @@ import { AlarmClock, CalendarCheck, CheckCircle2, DollarSign, Download, ListChec
 import { getEffectiveUser } from '@/components/utils/ImpersonationContext';
 import { createPageUrl } from '@/utils';
 import {
-  OUTCOMES, STAGES, StatusBadge, StageBadge, ReminderBadge, NewFollowupDialog, fmtDate, money,
+  OUTCOMES, STAGES, StatusBadge, StageBadge, ReminderBadge, NewFollowupDialog, fmtDate, fmtDue, money,
 } from '@/components/followups/followupUi';
 import { CallButton, useCallFlow } from '@/components/followups/CallFlow';
 import ReminderLog from '@/components/followups/ReminderLog';
@@ -223,7 +223,7 @@ export default function StudentFollowups() {
                       <td className="whitespace-nowrap px-3 py-2.5 text-slate-700">{f.target_outcome}</td>
                       <td className="px-3 py-2.5"><StageBadge stage={f.stage} /></td>
                       <td className="whitespace-nowrap px-3 py-2.5 text-slate-600">{fmtDate(f.last_contact_date)}<LastCallLine call={f.last_call} /></td>
-                      <td className="whitespace-nowrap px-3 py-2.5 text-slate-600">{fmtDate(f.next_followup_date)}</td>
+                      <td className="whitespace-nowrap px-3 py-2.5 text-slate-600">{fmtDue(f)}</td>
                       <td className="px-3 py-2.5"><StatusBadge status={f.followup_status} /></td>
                       <td className="px-3 py-2.5"><ReminderBadge reminder={f.reminder} status={f.followup_status} /></td>
                       <td className="tabular px-3 py-2.5 text-right text-slate-700">{f.followup_count}</td>

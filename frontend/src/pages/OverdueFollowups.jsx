@@ -12,7 +12,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { AlarmClock, BellRing, CalendarX2, Download, Search, Users } from 'lucide-react';
 import { getEffectiveUser } from '@/components/utils/ImpersonationContext';
 import { createPageUrl } from '@/utils';
-import { StageBadge, ReminderBadge, fmtDate, hhmm } from '@/components/followups/followupUi';
+import { StageBadge, ReminderBadge, fmtDate, fmtDue, hhmm } from '@/components/followups/followupUi';
 import { CallButton, useCallFlow } from '@/components/followups/CallFlow';
 import { LastCallLine } from '@/components/calls/callUi';
 import { TagChip, useStudentTagCatalog } from '@/components/students/tags';
@@ -117,7 +117,7 @@ export default function OverdueFollowups() {
               <td className="whitespace-nowrap px-3 py-2.5 text-slate-700">{f.target_outcome}</td>
               <td className="px-3 py-2.5"><StageBadge stage={f.stage} /></td>
               <td className="whitespace-nowrap px-3 py-2.5">
-                <div className="text-slate-600">{fmtDate(f.next_followup_date)}</div>
+                <div className="text-slate-600">{fmtDue(f)}</div>
                 <span className={`mt-0.5 inline-block rounded-full px-2 py-0.5 text-[11px] font-semibold ${f.late > 7 ? 'bg-rose-600 text-white' : 'bg-rose-50 text-rose-700'}`}>
                   {f.late} day{f.late === 1 ? '' : 's'} late
                 </span>

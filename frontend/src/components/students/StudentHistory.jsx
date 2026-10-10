@@ -35,6 +35,7 @@ const DOT = {
   level_changed: 'bg-amber-500',
   status_changed: 'bg-gray-500',
   enrolment_changed: 'bg-emerald-500',
+  priority_changed: 'bg-rose-500',
   made_common: 'bg-amber-400',
   tag_changed: 'bg-sky-500',
   details_changed: 'bg-indigo-400',

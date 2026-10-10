@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
+import { PriorityPicker } from '@/components/students/priority';
 import { PageTitle } from '@/components/common/PageHeader';
 import { base44 } from "@/api/base44Client";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
@@ -367,9 +368,13 @@ export default function StudentDetail() {
               <CardHeader className="border-b border-gray-100 bg-slate-50/70">
                 <div className="flex items-center justify-between">
                   <CardTitle className="text-xl font-semibold tracking-tight">Student Information</CardTitle>
-                  <Badge variant="outline" className={getStatusColor(displayStudent.status)}>
-                    {displayStudent.status}
-                  </Badge>
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs text-slate-500">Priority</span>
+                    <PriorityPicker student={displayStudent} currentUser={currentUser} />
+                    <Badge variant="outline" className={getStatusColor(displayStudent.status)}>
+                      {displayStudent.status}
+                    </Badge>
+                  </div>
                 </div>
               </CardHeader>
               <CardContent className="p-6">

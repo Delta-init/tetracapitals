@@ -5,7 +5,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { TablePagination, usePagination } from '@/components/common/TablePagination';
 import { PhoneCall, Plus } from 'lucide-react';
-import { StatusBadge, StageBadge, ReminderBadge, NewFollowupDialog, fmtDate, money, reminderKind, isOpenFollowup } from './followupUi';
+import { StatusBadge, StageBadge, ReminderBadge, NewFollowupDialog, fmtDate, fmtDue, money, reminderKind, isOpenFollowup } from './followupUi';
 import { CallButton, useCallFlow } from './CallFlow';
 import FollowupNotes from './FollowupNotes';
 
@@ -86,7 +86,7 @@ export default function StudentFollowupsSection({ student }) {
                       <td className="whitespace-nowrap px-3 py-2.5 font-medium text-slate-800">{f.target_outcome}</td>
                       <td className="px-3 py-2.5"><StageBadge stage={f.stage} /></td>
                       <td className="whitespace-nowrap px-3 py-2.5 text-slate-600">{fmtDate(f.last_contact_date)}</td>
-                      <td className="whitespace-nowrap px-3 py-2.5 text-slate-600">{fmtDate(f.next_followup_date)}</td>
+                      <td className="whitespace-nowrap px-3 py-2.5 text-slate-600">{fmtDue(f)}</td>
                       <td className="px-3 py-2.5"><StatusBadge status={f.followup_status} /></td>
                       <td className="px-3 py-2.5"><ReminderBadge reminder={f.reminder} status={f.followup_status} /></td>
                       <td className="tabular px-3 py-2.5 text-slate-700">{f.followup_count}</td>

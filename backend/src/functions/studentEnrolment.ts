@@ -48,6 +48,42 @@ export async function setEnrolment(req: Request, user: AuthUser): Promise<Respon
   return json(set);
 }
 
+/** A student's priority (the user, 2026-10-10): High, Medium, Normal (also when none is set) or Valli, the lowest. */
+export const PRIORITIES = ["high", "medium", "normal", "valli"] as const;
+const PRIORITY_LABEL: Record<string, string> = { high: "High", medium: "Medium", normal: "Normal", valli: "Valli" };
+
+/**
+ * POST /api/functions/setStudentPriority
+ * Body: { studentId, priority } — by whoever may change their enrolment: their CS (or a CS they are Common with),
+ * the people above them and admin roles. Each change goes in the student's history.
+ */
+export async function setStudentPriority(req: Request, user: AuthUser): Promise<Response> {
+  const body: any = await req.json().catch(() => ({}));
+  const oid = toObjectId(String(body?.studentId ?? ""));
+  if (!oid) return error("studentId is required", 400);
+  const priority = (PRIORITIES as readonly string[]).includes(body?.priority) ? (body.priority as string) : null;
+  if (!priority) return error('priority is "high", "medium", "normal" or "valli"', 400);
+
+  const s: any = await col("students").findOne({ _id: oid });
+  if (!s) return notFound();
+  const visible = await visibleMentorIds(user);
+  if (visible && !isStudentOf(s, visible)) {
+    return forbidden("Only this student's CS (or a CS they are Common with), the people above them and admins can change their priority");
+  }
+  const from = (PRIORITIES as readonly string[]).includes(s.priority) ? s.priority : "normal";
+  if (from === priority) return json({ priority, unchanged: true });
+  const now = new Date().toISOString();
+  const who = user.full_name || user.email || "somebody";
+  const set = { priority, priority_updated_at: now, priority_updated_by_name: who, updated_date: now };
+  await col("students").updateOne({ _id: oid }, { $set: set });
+  await recordHistory([{
+    student_id: String(oid), at: now, type: "priority_changed",
+    text: `Priority ${PRIORITY_LABEL[from]} → ${PRIORITY_LABEL[priority]}`,
+    by_id: user.id, by_name: who, from, to: priority,
+  }]);
+  return json(set);
+}
+
 /** POST /api/functions/getLmsEnrolment — the LMS check: set up, on, and its last run (for the Students page). */
 export async function getLmsEnrolment(_req: Request, user: AuthUser): Promise<Response> {
   const settings = await getLmsEnrolmentSettings();

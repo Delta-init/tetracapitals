@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { enrolmentOf, ENROLMENT, EnrolledSwitch } from '@/components/students/enrolment';
+import { PRIORITY, PRIORITY_KEYS, priorityOf, PriorityPicker } from '@/components/students/priority';
 import { OnboardedSwitch } from '@/components/students/onboarding';
 import { isStudentOf } from '@/components/students/common';
 import { StudentTagChips, tagNamesOf, useStudentTagCatalog } from '@/components/students/tags';
@@ -94,6 +95,7 @@ const EXPORT_COLUMNS = [
   { header: 'Course', value: s => courseLabel(s.lms_course) },
   { header: 'Status', value: s => s.status },
   { header: 'Enrolment', value: s => ENROLMENT[enrolmentOf(s)].label },
+  { header: 'Priority', value: s => PRIORITY[priorityOf(s)].label },
   { header: 'Classes Attended', type: 'number', value: s => s.lms_classes?.attended },
   { header: 'Classes Booked', type: 'number', value: s => s.lms_classes?.booked },
   { header: 'Classes Upcoming', type: 'number', value: s => s.lms_classes?.upcoming },
@@ -126,6 +128,7 @@ export default function Students() {
   const [filterMentor, setFilterMentor] = useUrlState('cs');
   const [filterStatus, setFilterStatus] = useUrlState('status');
   const [filterEnrolment, setFilterEnrolment] = useUrlState('enrolment');
+  const [filterPriority, setFilterPriority] = useUrlState('priority');
   const [filterOnboarding, setFilterOnboarding] = useUrlState('onboarding');
   const [filterClasses, setFilterClasses] = useUrlState('classes');
   const [filterFollowup, setFilterFollowup] = useUrlState('followup');
@@ -191,11 +194,11 @@ export default function Students() {
     return null;
   }, [filterDateRange, customDateFrom, customDateTo]);
   const listFilters = useMemo(() => ({
-    search: debouncedSearch, onlyNew, tag: filterTag, enrolment: filterEnrolment, onboarding: filterOnboarding, classes: filterClasses, followup: filterFollowup,
+    search: debouncedSearch, onlyNew, tag: filterTag, enrolment: filterEnrolment, priority: filterPriority, onboarding: filterOnboarding, classes: filterClasses, followup: filterFollowup,
     course: filterCourse, balance: filterBalance,
     from: dateRange ? new Date(dateRange.from).toISOString() : '', to: dateRange ? new Date(dateRange.to).toISOString() : '',
     status: filterStatus, team: filterTeam, level: filterLevel, mentor: filterMentor, location: filterLocation,
-  }), [debouncedSearch, onlyNew, filterTag, filterEnrolment, filterOnboarding, filterClasses, filterFollowup, filterCourse, filterBalance, dateRange, filterStatus, filterTeam, filterLevel, filterMentor, filterLocation]);
+  }), [debouncedSearch, onlyNew, filterTag, filterEnrolment, filterPriority, filterOnboarding, filterClasses, filterFollowup, filterCourse, filterBalance, dateRange, filterStatus, filterTeam, filterLevel, filterMentor, filterLocation]);
   const filtersKey = JSON.stringify(listFilters);
   // A new tab, search or filter starts at page 1 with nothing ticked — not the first time the list is known (the user
   // loading, or the address's own page coming back), which would throw away the page the address asked for.
@@ -723,6 +726,17 @@ export default function Students() {
                 </SelectContent>
               </Select>
 
+              {/* Priority Filter — everyone, on every tab */}
+              <Select value={filterPriority} onValueChange={(v) => v && setFilterPriority(v)}>
+                <SelectTrigger className="w-full md:w-40">
+                  <SelectValue placeholder="Priority" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">Any priority</SelectItem>
+                  {PRIORITY_KEYS.map(p => <SelectItem key={p} value={p}>{PRIORITY[p].label}</SelectItem>)}
+                </SelectContent>
+              </Select>
+
               {/* Onboarded Filter — everyone, on every tab */}
               <Select value={filterOnboarding} onValueChange={(v) => v && setFilterOnboarding(v)}>
                 <SelectTrigger className="w-full md:w-44">
@@ -931,6 +945,7 @@ export default function Students() {
                         <TableHead className="font-semibold">Student Code</TableHead>
                         <TableHead className="font-semibold">Student</TableHead>
                         <TableHead className="font-semibold">Phone</TableHead>
+                        <TableHead className="font-semibold">Priority</TableHead>
                         <TableHead className="font-semibold">CS</TableHead>
                         <TableHead className="font-semibold">Team</TableHead>
                       <TableHead className="font-semibold">Course</TableHead>
@@ -947,7 +962,7 @@ export default function Students() {
                     <TableBody>
                       {displayStudents.length === 0 ? (
                         <TableRow>
-                          <TableCell colSpan={14} className="text-center py-8 text-gray-500">
+                          <TableCell colSpan={15} className="text-center py-8 text-gray-500">
                             {emptyText('No students found')}
                           </TableCell>
                         </TableRow>
@@ -962,6 +977,7 @@ export default function Students() {
                               {student.email && <div className="text-xs text-slate-500">{student.email}</div>}
                             </TableCell>
                             <TableCell className="text-sm font-mono">{student.phone}</TableCell>
+                            <TableCell><PriorityPicker student={student} currentUser={currentUser} /></TableCell>
                             <TableCell className="text-sm">{student.primary_mentor_name}</TableCell>
                             <TableCell className="text-sm">{student.team_name || '-'}<BangaloreBadge location={studentLocationOf(student)} className="ml-1.5" /></TableCell>
                             <TableCell className="max-w-[220px] text-sm"><CourseCell student={student} /></TableCell>
@@ -1027,6 +1043,7 @@ export default function Students() {
                       <TableHead className="font-semibold">Student Code</TableHead>
                       <TableHead className="font-semibold">Student</TableHead>
                       <TableHead className="font-semibold">Phone</TableHead>
+                      <TableHead className="font-semibold">Priority</TableHead>
                       <TableHead className="font-semibold">CS</TableHead>
                       <TableHead className="font-semibold">Team</TableHead>
                       <TableHead className="font-semibold">Course</TableHead>
@@ -1043,7 +1060,7 @@ export default function Students() {
                   <TableBody>
                     {displayStudents.length === 0 ? (
                      <TableRow>
-                       <TableCell colSpan={14} className="text-center py-8 text-gray-500">
+                       <TableCell colSpan={15} className="text-center py-8 text-gray-500">
                          {emptyText('No team students found')}
                        </TableCell>
                      </TableRow>
@@ -1058,6 +1075,7 @@ export default function Students() {
                            {student.email && <div className="text-xs text-slate-500">{student.email}</div>}
                          </TableCell>
                          <TableCell className="text-sm font-mono">{student.phone}</TableCell>
+                         <TableCell><PriorityPicker student={student} currentUser={currentUser} /></TableCell>
                          <TableCell className="text-sm text-purple-600 font-medium">{student.primary_mentor_name}</TableCell>
                          <TableCell className="text-sm">{student.team_name || '-'}<BangaloreBadge location={studentLocationOf(student)} className="ml-1.5" /></TableCell>
                             <TableCell className="max-w-[220px] text-sm"><CourseCell student={student} /></TableCell>
@@ -1142,6 +1160,7 @@ export default function Students() {
                       <TableHead className="font-semibold">Student Code</TableHead>
                       <TableHead className="font-semibold">Student</TableHead>
                       <TableHead className="font-semibold">Phone</TableHead>
+                      <TableHead className="font-semibold">Priority</TableHead>
                       <TableHead className="font-semibold">CS</TableHead>
                       <TableHead className="font-semibold">Team</TableHead>
                       <TableHead className="font-semibold">Course</TableHead>
@@ -1158,7 +1177,7 @@ export default function Students() {
                   <TableBody>
                     {displayStudents.length === 0 ? (
                       <TableRow>
-                        <TableCell colSpan={canEdit ? 15 : 14} className="text-center py-8 text-gray-500">
+                        <TableCell colSpan={canEdit ? 16 : 15} className="text-center py-8 text-gray-500">
                           {emptyText('No students found')}
                         </TableCell>
                       </TableRow>
@@ -1181,6 +1200,7 @@ export default function Students() {
                             {student.email && <div className="text-xs text-slate-500">{student.email}</div>}
                           </TableCell>
                           <TableCell className="text-sm font-mono">{student.phone}</TableCell>
+                          <TableCell><PriorityPicker student={student} currentUser={currentUser} /></TableCell>
                           <TableCell className="text-sm">{student.primary_mentor_name}</TableCell>
                           <TableCell className="text-sm">{student.team_name || '-'}<BangaloreBadge location={studentLocationOf(student)} className="ml-1.5" /></TableCell>
                             <TableCell className="max-w-[220px] text-sm"><CourseCell student={student} /></TableCell>
@@ -1248,6 +1268,7 @@ export default function Students() {
                     <TableHead className="font-semibold">Student Code</TableHead>
                     <TableHead className="font-semibold">Student</TableHead>
                     <TableHead className="font-semibold">Phone</TableHead>
+                    <TableHead className="font-semibold">Priority</TableHead>
                       <TableHead className="font-semibold">Course</TableHead>
                       <TableHead className="font-semibold">Balance</TableHead>
                     <TableHead className="font-semibold">Status</TableHead>
@@ -1262,7 +1283,7 @@ export default function Students() {
                 <TableBody>
                   {displayStudents.length === 0 ? (
                     <TableRow>
-                      <TableCell colSpan={12} className="text-center py-8 text-gray-500">
+                      <TableCell colSpan={13} className="text-center py-8 text-gray-500">
                         {emptyText('No open pool students available')}
                       </TableCell>
                     </TableRow>
@@ -1277,6 +1298,7 @@ export default function Students() {
                           {student.email && <div className="text-xs text-slate-500">{student.email}</div>}
                         </TableCell>
                         <TableCell className="text-sm font-mono">{student.phone}</TableCell>
+                        <TableCell><PriorityPicker student={student} currentUser={currentUser} /></TableCell>
                             <TableCell className="max-w-[220px] text-sm"><CourseCell student={student} /></TableCell>
                             <TableCell><BalanceCell student={student} /></TableCell>
                         <TableCell>
@@ -1349,6 +1371,7 @@ export default function Students() {
                   <TableHead className="font-semibold">Student Code</TableHead>
                   <TableHead className="font-semibold">Student</TableHead>
                   <TableHead className="font-semibold">Phone</TableHead>
+                  <TableHead className="font-semibold">Priority</TableHead>
                   <TableHead className="font-semibold">CS</TableHead>
                   <TableHead className="font-semibold">Team</TableHead>
                       <TableHead className="font-semibold">Course</TableHead>
@@ -1365,7 +1388,7 @@ export default function Students() {
               <TableBody>
                 {displayStudents.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={14} className="text-center py-8 text-gray-500">
+                    <TableCell colSpan={15} className="text-center py-8 text-gray-500">
                       {emptyText('No students found')}
                     </TableCell>
                   </TableRow>
@@ -1380,6 +1403,7 @@ export default function Students() {
                         {student.email && <div className="text-xs text-slate-500">{student.email}</div>}
                       </TableCell>
                       <TableCell className="text-sm font-mono">{student.phone}</TableCell>
+                      <TableCell><PriorityPicker student={student} currentUser={currentUser} /></TableCell>
                       <TableCell className="text-sm">{student.primary_mentor_name}</TableCell>
                       <TableCell className="text-sm">{student.team_name || '-'}<BangaloreBadge location={studentLocationOf(student)} className="ml-1.5" /></TableCell>
                             <TableCell className="max-w-[220px] text-sm"><CourseCell student={student} /></TableCell>

@@ -25,7 +25,7 @@ import { getStudentMoves } from "./getStudentMoves";
 import { getFollowups, createFollowup, logFollowup, addFollowupNote, getFollowupTeams } from "./studentFollowups";
 import { getReminderLog, resendReminder, runRemindersNow, sendTestReminder } from "./followupReminders";
 import { getCalls, getCallRecording, syncCallsNow, testThreecx, getClickToCall, callStudent, getMyCallState, hangUpMyCall } from "./studentCalls";
-import { setEnrolment, getLmsEnrolment, syncLmsEnrolmentNow } from "./studentEnrolment";
+import { setEnrolment, setStudentPriority, getLmsEnrolment, syncLmsEnrolmentNow } from "./studentEnrolment";
 import { updateStudentDetails } from "./studentDetails";
 import { getOnboardingDraft, setOnboarding } from "./studentOnboarding";
 import { getNotOnboarded } from "./notOnboarded";
@@ -98,6 +98,7 @@ const AUTHED: Record<string, AuthedHandler> = {
   updateMentorMeeting,
   cancelMentorMeeting,
   setEnrolment,
+  setStudentPriority,
   updateStudentDetails,
   getOnboardingDraft,
   setOnboarding,

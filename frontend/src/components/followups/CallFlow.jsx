@@ -5,7 +5,7 @@ import { base44 } from '@/api/base44Client';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Loader2, Phone, PhoneCall, PhoneOff, Smartphone } from 'lucide-react';
-import { LogFollowupDialog, NewFollowupDialog, StageBadge, StatusBadge, fmtDate } from './followupUi';
+import { LogFollowupDialog, NewFollowupDialog, StageBadge, StatusBadge, fmtDate, fmtDue } from './followupUi';
 import { dialInfo } from './phone';
 import { useAuth } from '@/lib/AuthContext';
 import { readsClosedOnly } from '@/components/utils/roles';
@@ -148,7 +148,7 @@ export function CallFlowProvider({ children }) {
               >
                 <span>
                   <span className="block font-medium text-slate-900">{f.target_outcome}</span>
-                  <span className="text-xs text-slate-500">Next follow-up {fmtDate(f.next_followup_date)}</span>
+                  <span className="text-xs text-slate-500">Next follow-up {fmtDue(f)}</span>
                 </span>
                 <span className="flex items-center gap-1.5"><StageBadge stage={f.stage} /><StatusBadge status={f.followup_status} /></span>
               </button>

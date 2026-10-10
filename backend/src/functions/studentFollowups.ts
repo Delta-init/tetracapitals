@@ -12,6 +12,8 @@ import { theirStudents } from "../students/closedBy";
 import { MT5_LOGIN, mt5LoginOf, mt5Of, mt5Owner, keepMt5 } from "../students/mt5";
 
 const DATE = /^\d{4}-\d{2}-\d{2}$/;
+/** A follow-up's time, UAE: hours and minutes, 24-hour (the user, 2026-10-10 — a reminder goes before it and at it). */
+const TIME = /^([01]\d|2[0-3]):[0-5]\d$/;
 const str = (v: unknown, max = 2000) => String(v ?? "").trim().slice(0, max);
 const who = (u: AuthUser) => u.full_name || u.email || "somebody";
 
@@ -131,6 +133,7 @@ export async function getFollowups(req: Request, user: AuthUser): Promise<Respon
         stage: f.stage,
         last_contact_date: f.last_contact_date ?? "",
         next_followup_date: f.next_followup_date ?? "",
+        next_followup_time: f.next_followup_time ?? "",
         followup_status: followupStatus(f, today),
         followup_count: Number(f.followup_count) || 0,
         client_said: f.client_said ?? "",
@@ -220,6 +223,8 @@ export async function createFollowup(req: Request, user: AuthUser): Promise<Resp
   if (!(TARGET_OUTCOMES as readonly string[]).includes(outcome)) return error("Pick a target outcome", 400);
   const next = str(body?.nextFollowupDate, 10);
   if (next && !DATE.test(next)) return error("Next follow-up must be a date", 400);
+  const time = next ? str(body?.nextFollowupTime, 5) : "";
+  if (time && !TIME.test(time)) return error("The follow-up time is hours and minutes, e.g. 14:30", 400);
 
   const student: any = await col("students").findOne({ _id: oid });
   if (!student) return notFound();
@@ -239,6 +244,7 @@ export async function createFollowup(req: Request, user: AuthUser): Promise<Resp
     stage: "New",
     last_contact_date: "",
     next_followup_date: next,
+    next_followup_time: time,
     followup_count: 0,
     client_said: str(body?.clientSaid),
     objection_reason: "",
@@ -256,7 +262,7 @@ export async function createFollowup(req: Request, user: AuthUser): Promise<Resp
     kind: "created", stage_to: "New", next_followup_date: next,
     ...(doc.client_said ? { client_said: doc.client_said } : {}),
     ...(doc.notes ? { notes: doc.notes } : {}),
-    text: `Follow-up opened for ${outcome}${next ? `, next follow-up ${next}` : ""}`,
+    text: `Follow-up opened for ${outcome}${next ? `, next follow-up ${next}${time ? ` ${time}` : ""}` : ""}`,
   }]);
   return json({ id: String(res.insertedId) });
 }
@@ -371,6 +377,8 @@ export async function logFollowup(req: Request, user: AuthUser): Promise<Respons
   if (!(STAGES as readonly string[]).includes(stage)) return error("Pick a stage", 400);
   const next = str(body?.nextFollowupDate, 10);
   if (next && !DATE.test(next)) return error("Next follow-up must be a date", 400);
+  const time = next ? str(body?.nextFollowupTime, 5) : "";
+  if (time && !TIME.test(time)) return error("The follow-up time is hours and minutes, e.g. 14:30", 400);
   const reason = str(body?.objectionReason, 80);
   if (reason && !(LOST_REASONS as readonly string[]).includes(reason)) return error("Pick a reason from the list", 400);
   if (stage === "Lost" && !reason) return error("A lost follow-up needs a lost reason", 400);
@@ -394,6 +402,7 @@ export async function logFollowup(req: Request, user: AuthUser): Promise<Respons
     followup_count: (Number(f.followup_count) || 0) + 1,
     objection_reason: reason,
     next_followup_date: CLOSED_STAGES.has(stage) ? "" : next,
+    next_followup_time: CLOSED_STAGES.has(stage) ? "" : time,
     updated_date: new Date().toISOString(),
     ...(retarget ? { target_outcome: target } : {}),
   };
@@ -436,7 +445,7 @@ export async function logFollowup(req: Request, user: AuthUser): Promise<Respons
     kind: "logged", stage_from: f.stage, stage_to: stage, next_followup_date: patch.next_followup_date,
     ...(said ? { client_said: said } : {}),
     ...(noteText ? { notes: noteText } : {}),
-    text: `${retarget ? `Target: ${f.target_outcome || "—"} → ${target} · ` : ""}${moved ? `${f.stage} → ${stage}` : stage}${reason ? ` (${reason})` : ""}${stage === "Converted" ? ` — $${Number(patch.deal_value).toLocaleString("en-US")}` : ""}${patch.next_followup_date ? ` · next ${patch.next_followup_date}` : ""}`
+    text: `${retarget ? `Target: ${f.target_outcome || "—"} → ${target} · ` : ""}${moved ? `${f.stage} → ${stage}` : stage}${reason ? ` (${reason})` : ""}${stage === "Converted" ? ` — $${Number(patch.deal_value).toLocaleString("en-US")}` : ""}${patch.next_followup_date ? ` · next ${patch.next_followup_date}${patch.next_followup_time ? ` ${patch.next_followup_time}` : ""}` : ""}`
       + `${connected === false ? " · not connected" : connected ? " · connected" : ""}${mt5Saved ? ` · MT5 ${mt5} saved` : ""}${bonusCredits ? ` · sales-close bonus sent to be credited` : ""}`,
   }]);
   return json({ ok: true, followup_status: followupStatus({ ...f, ...patch }), mt5_saved: mt5Saved, bonus_credits: bonusCredits });
