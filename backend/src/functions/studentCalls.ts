@@ -17,19 +17,34 @@ const who = (u: AuthUser) => u.full_name || u.email || "somebody";
 const message = (err: unknown) => (err instanceof Error ? err.message : String(err));
 
 /**
- * Calls `user` may see — Follow-ups' rule: admin roles all; Chief Mentor and
- * CS Manager calls with their people's students; the Sales role the students
- * they closed; anyone else their own students' (Common ones too). Plus any
- * call they took themselves.
+ * A student's calls (their page's Calls section) — Follow-ups' rule: admin roles
+ * and CS Managers all; a Chief Mentor calls with their people's students; the
+ * Sales role the students they closed; anyone else their own students' (Common
+ * ones too) — whoever took the call. Plus any call they took themselves.
  */
-async function scopeFilter(user: AuthUser): Promise<Record<string, any> | null> {
+async function studentScopeFilter(user: AuthUser): Promise<Record<string, any> | null> {
+  if (user.app_role === "cs_manager") return null;
   const visible = await visibleMentorIds(user);
   if (!visible) return null;
   const students = await col("students").find(await theirStudents(user, studentsOf(visible)), { projection: { _id: 1 } }).toArray();
   return { $or: [{ student_id: { $in: students.map((s: any) => String(s._id)) } }, { user_id: user.id }] };
 }
 
+/**
+ * The Calls page goes by who took the call (the user, 2026-10-10): a CS only
+ * their own calls, a Chief Mentor theirs and their team members', every CS
+ * Manager and the admin roles everyone's. Calls nobody in the portal took
+ * (missed, an extension matched to no one) only for those who see everyone.
+ */
+async function takenByIds(user: AuthUser): Promise<Set<string> | null> {
+  if (user.app_role === "cs_manager") return null;
+  return visibleMentorIds(user);
+}
+
 async function canSeeCall(user: AuthUser, call: any): Promise<boolean> {
+  const takers = await takenByIds(user);
+  if (!takers || (call.user_id && takers.has(String(call.user_id)))) return true;
+  // Opened from a student's page: that student's calls, whoever took them.
   const visible = await visibleMentorIds(user);
   if (!visible || call.user_id === user.id) return true;
   const s: any = await col("students").findOne({ _id: toObjectId(String(call.student_id)) as any }, { projection: { primary_mentor_id: 1, common_cs: 1, closed_by: 1 } });
@@ -85,9 +100,14 @@ const count = (status: string) => ({ $sum: { $cond: [{ $eq: ["$status", status] 
 export async function getCalls(req: Request, user: AuthUser): Promise<Response> {
   const body: any = await req.json().catch(() => ({}));
   const and: any[] = [];
-  const scope = await scopeFilter(user);
-  if (scope) and.push(scope);
   const studentId = str(body?.studentId, 40);
+  if (studentId) {
+    const scope = await studentScopeFilter(user);
+    if (scope) and.push(scope);
+  } else {
+    const takers = await takenByIds(user);
+    if (takers) and.push({ user_id: { $in: [...takers] } });
+  }
   let range: string | null = null;
   if (studentId) {
     and.push({ student_id: studentId });
