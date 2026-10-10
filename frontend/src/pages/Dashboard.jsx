@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { base44 } from "@/api/base44Client";
 import { useQuery } from "@tanstack/react-query";
 import StatsCard from "../components/dashboard/StatsCard";
+import LocationTotals from "../components/dashboard/LocationTotals";
 import { Users, TrendingUp, DollarSign, Target, AlertCircle, Award, Wallet, Activity } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import TransactionTable from "../components/transactions/TransactionTable";
@@ -232,85 +233,89 @@ export default function Dashboard() {
           </div>
         </motion.section>
 
-        {/* Stats Grid */}
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-[repeat(auto-fit,minmax(220px,1fr))] lg:gap-6">
-          <StatsCard
-            title="Total Students"
-            value={filteredStudents.length}
-            icon={Users}
-            color="blue"
-            trend={`${filteredStudents.filter(s => s.status === 'ACTIVE').length} active`}
-            trendUp={true}
-            delay={0.1}
-          />
-          {isMentorRole(currentUser.app_role) ? (
-            <>
-              <StatsCard
-                title="Monthly Revenue"
-                value={`$${monthCommission?.netDepositUsd?.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) || '0.00'}`}
-                icon={DollarSign}
-                color="emerald"
-                trend="This month"
-                trendUp={monthCommission?.netDepositUsd > 0}
-                delay={0.17}
-              />
-              <StatsCard
-                title="Monthly Gross Commission"
-                value={`$${monthCommission?.grossCommissionUsd?.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) || '0.00'}`}
-                icon={Award}
-                color="cyan"
-                trend={``}
-                trendUp={monthCommission?.grossCommissionUsd > 0}
-                delay={0.24}
-              />
-              <StatsCard
-                title="Pending Requests"
-                value={pendingFundingRequests}
-                icon={Wallet}
-                color="amber"
-                trend="Awaiting approval"
-                delay={0.31}
-             
-              />
-            </>
-          ) : (
-            <>
-              <StatsCard
-                title="Net Deposits"
-                value={`$${totalNetDeposit.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
-                icon={DollarSign}
-                color="emerald"
-                trend="All students"
-                trendUp={totalNetDeposit > 0}
-                delay={0.17}
-              />
-              {canProcessFundingTransaction(currentUser.app_role) && (
+        {/* Stats Grid — the Super Admin's is Dubai and Bangalore side by side (the user, 2026-10-10) */}
+        {currentUser.app_role === 'super_admin' ? (
+          <LocationTotals />
+        ) : (
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-[repeat(auto-fit,minmax(220px,1fr))] lg:gap-6">
+            <StatsCard
+              title="Total Students"
+              value={filteredStudents.length}
+              icon={Users}
+              color="blue"
+              trend={`${filteredStudents.filter(s => s.status === 'ACTIVE').length} active`}
+              trendUp={true}
+              delay={0.1}
+            />
+            {isMentorRole(currentUser.app_role) ? (
+              <>
                 <StatsCard
-                  title="Pending Funding Requests"
-                  value={fundingTransactions.filter(t => t.status === 'PENDING').length}
-                  icon={Wallet}
-                  color="amber"
-                  trend="Needs review"
+                  title="Monthly Revenue"
+                  value={`$${monthCommission?.netDepositUsd?.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) || '0.00'}`}
+                  icon={DollarSign}
+                  color="emerald"
+                  trend="This month"
+                  trendUp={monthCommission?.netDepositUsd > 0}
+                  delay={0.17}
+                />
+                <StatsCard
+                  title="Monthly Gross Commission"
+                  value={`$${monthCommission?.grossCommissionUsd?.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) || '0.00'}`}
+                  icon={Award}
+                  color="cyan"
+                  trend={``}
+                  trendUp={monthCommission?.grossCommissionUsd > 0}
                   delay={0.24}
                 />
-              )}
-              {['academic_head', 'broker_admin'].includes(currentUser.app_role) && (
                 <StatsCard
-                  title="Student Requests"
-                  value={studentRequests.filter(r =>
-                    currentUser.app_role === 'academic_head'
-                      ? r.status === 'PENDING_ACADEMIC_APPROVAL'
-                      : ['PENDING_ACADEMIC_APPROVAL', 'PENDING_BROKER_APPROVAL'].includes(r.status)
-                  ).length}
-                  icon={Users}
-                  color="cyan"
-                  trend="Needs approval"
+                  title="Pending Requests"
+                  value={pendingFundingRequests}
+                  icon={Wallet}
+                  color="amber"
+                  trend="Awaiting approval"
                   delay={0.31}
+               
                 />
-              )}
-            </>
-          )}
-        </div>
+              </>
+            ) : (
+              <>
+                <StatsCard
+                  title="Net Deposits"
+                  value={`$${totalNetDeposit.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
+                  icon={DollarSign}
+                  color="emerald"
+                  trend="All students"
+                  trendUp={totalNetDeposit > 0}
+                  delay={0.17}
+                />
+                {canProcessFundingTransaction(currentUser.app_role) && (
+                  <StatsCard
+                    title="Pending Funding Requests"
+                    value={fundingTransactions.filter(t => t.status === 'PENDING').length}
+                    icon={Wallet}
+                    color="amber"
+                    trend="Needs review"
+                    delay={0.24}
+                  />
+                )}
+                {['academic_head', 'broker_admin'].includes(currentUser.app_role) && (
+                  <StatsCard
+                    title="Student Requests"
+                    value={studentRequests.filter(r =>
+                      currentUser.app_role === 'academic_head'
+                        ? r.status === 'PENDING_ACADEMIC_APPROVAL'
+                        : ['PENDING_ACADEMIC_APPROVAL', 'PENDING_BROKER_APPROVAL'].includes(r.status)
+                    ).length}
+                    icon={Users}
+                    color="cyan"
+                    trend="Needs approval"
+                    delay={0.31}
+                  />
+                )}
+              </>
+            )}
+          </div>
+        )}
 
         {/* Charts Section */}
         {myFundingTransactions.length > 0 && (
