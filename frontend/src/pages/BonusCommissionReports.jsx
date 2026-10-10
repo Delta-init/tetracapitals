@@ -1,4 +1,5 @@
 import React, { useState, useMemo } from 'react';
+import { LocationFilter, useUserLocations, inLocation } from '@/components/common/LocationFilter';
 import { PageTitle } from '@/components/common/PageHeader';
 import { TablePagination, usePagination } from '@/components/common/TablePagination';
 import { base44 } from '@/api/base44Client';
@@ -38,6 +39,9 @@ export default function BonusCommissionReports() {
   // row the backend returns (it already narrows commission to their team).
   const scope = getScope(currentUser) ?? myRole?.data_scope;
   const canSeeAll = !!currentUser && (ADMIN_ROLES.includes(currentUser.app_role) || scope === 'all' || scope === 'downline');
+  // Dubai / Bangalore — by the team each person is on (2026-10-10).
+  const [loc, setLoc] = useState('all');
+  const locOf = useUserLocations(!!canSeeAll);
 
   const { data: credits = [], isLoading } = useQuery({
     queryKey: ['commission-credits'],
@@ -70,6 +74,7 @@ export default function BonusCommissionReports() {
       if (c.is_pool) continue; // pool accruals are shown/distributed separately
       // Scope: non-admin staff only see credits where they are the recipient.
       if (!canSeeAll && c.recipient_id !== currentUser?.id) continue;
+      if (!inLocation(locOf, loc, c.recipient_id)) continue;
       const d = new Date(c.requested_at || c.created_date);
       if (isNaN(d.getTime()) || d < start || d >= end) continue;
       const key = c.recipient_id || c.recipient_name;
@@ -82,7 +87,7 @@ export default function BonusCommissionReports() {
     const rows = Object.values(map).map(r => ({ ...r, total: r.withB + r.withoutB })).sort((a, b) => b.total - a.total);
     const totals = rows.reduce((a, r) => ({ withB: a.withB + r.withB, withoutB: a.withoutB + r.withoutB, total: a.total + r.total, count: a.count + r.count }), { withB: 0, withoutB: 0, total: 0, count: 0 });
     return { rows, totals, byStaff };
-  }, [credits, month, year, canSeeAll, currentUser?.id]);
+  }, [credits, month, year, canSeeAll, currentUser?.id, loc, locOf]);
 
   const detailCredits = selected ? (byStaff[selected.key] || []) : [];
   // 25 rows to a page; the totals and the CSV still use the full lists.
@@ -101,6 +106,7 @@ export default function BonusCommissionReports() {
       if ((c.method !== 'bonus_with' && c.method !== 'bonus_without') || !c.is_pool) continue;
       const d = new Date(c.requested_at || c.created_date);
       if (isNaN(d.getTime()) || d < start || d >= end) continue;
+      if (!inLocation(locOf, loc, c.pool_group_id)) continue;
       const key = `${c.method}::${c.pool_group_id || c.pool_group_name || '—'}`;
       if (!g[key]) g[key] = { key, method: c.method, id: c.pool_group_id, name: c.pool_group_name || '—', total: 0, distributed: 0, pending: 0, members: new Map() };
       g[key].total += c.commission_usd || 0;
@@ -111,7 +117,7 @@ export default function BonusCommissionReports() {
       const memberList = [...x.members.values()];
       return { ...x, memberList, share: memberList.length ? x.total / memberList.length : 0, done: x.pending === 0 && x.distributed > 0 };
     }).sort((a, b) => b.total - a.total);
-  }, [credits, month, year, canApprove]);
+  }, [credits, month, year, canApprove, loc, locOf]);
 
   const distributeMutation = useMutation({
     mutationFn: ({ groupId, method }) => base44.functions.invoke('distributeDepositPool', { pool_group_id: groupId, period: periodKey, method }),
@@ -143,6 +149,7 @@ export default function BonusCommissionReports() {
             <p className="mt-2 max-w-3xl text-sm text-slate-500 sm:text-base">Bonus commission {canSeeAll ? 'per staff' : '— your earnings'} — released <strong>monthly</strong>. Split into With Bonus and Without Bonus.</p>
           </div>
           <div className="flex items-center gap-2">
+            {canSeeAll && <LocationFilter value={loc} onChange={setLoc} />}
             <select value={month} onChange={e => setMonth(Number(e.target.value))} className="h-9 rounded-md border border-input bg-white px-3 text-sm">
               {MONTHS.map((m, i) => <option key={m} value={i + 1}>{m}</option>)}
             </select>

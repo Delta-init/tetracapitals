@@ -5,6 +5,7 @@ import { nextStudentCode } from "../lib/studentCode";
 import { loadTeams, type Member, type Team } from "./teams";
 import { recordHistory } from "./history";
 import { notifyStudentsGiven } from "../lib/notify";
+import { LOCATION_LABELS, type Location } from "../lib/location";
 
 /* ────────────────────────────────────────────────────────────────────────────
    New Delta students arriving from another system — what the finance and LMS
@@ -19,6 +20,8 @@ import { notifyStudentsGiven } from "../lib/notify";
    take turns in the order their leaders' accounts were created, and a team's
    CS people in the order theirs were.
 
+   Only teams of the student's location take part — Dubai or Bangalore
+   (lib/location.ts; the user, 2026-10-10) — each location with its own round.
    A team whose leader was switched off, or that has no CS person who is not
    switched off, sits the round out and rejoins it in its place once it has
    one. With no such team at all the student waits in Delta Open Students
@@ -81,12 +84,14 @@ export async function takeNext<T extends Keyed>(recordId: string, inTurn: T[], e
 }
 
 /** Whose turn it is: the next team that can take a student, then that team's next CS person. */
-async function takeTurn(): Promise<{ team: Team; cs: Member } | null> {
+async function takeTurn(location: Location): Promise<{ team: Team; cs: Member } | null> {
+  // Dubai keeps the round it always had; Bangalore has its own.
+  const round = location === "dubai" ? TURN : `${TURN}:${location}`;
   for (let attempt = 0; attempt < 5; attempt++) {
     const { teams } = await loadTeams();
-    const open = teams.filter((t) => t.active && t.cs.length > 0);
+    const open = teams.filter((t) => t.active && t.cs.length > 0 && t.location === location);
     if (!open.length) return null;
-    const team = await takeNext(TURN, open, (t) => ({ last_team_id: t.id, last_team_name: t.name }));
+    const team = await takeNext(round, open, (t) => ({ last_team_id: t.id, last_team_name: t.name }));
     if (!team) continue;
     for (let tries = 0; tries < 5; tries++) {
       const cs = await takeNext(csTurn(team.id), team.cs, (m) => ({ last_cs_id: m.id, last_cs_name: m.name, team_id: team.id }));
@@ -145,9 +150,11 @@ export async function createStudent(input: {
   createdBy: string;
   createdByName: string;
   unique: { field: string; value: string; existing: Exclude<Existing, "email" | null>; detail: string };
+  /** Dubai or Bangalore (lib/location.ts studentLocationOf) — only that location's teams take them. */
+  location: Location;
 }) {
   const students = col("students");
-  const turn = await takeTurn();
+  const turn = await takeTurn(input.location);
   const team = turn?.team ?? null;
   const cs = turn?.cs ?? null;
   const now = new Date().toISOString();
@@ -165,6 +172,7 @@ export async function createStudent(input: {
     assignment_status: cs ? "assigned" : "open_pool",
     status: "ACTIVE",
     student_level: "LEVEL_1",
+    location: input.location,
     // The team they are with now — kept right when their mentor changes (students/history.ts).
     team_id: team?.id ?? "",
     team_name: team?.name ?? "",
@@ -198,7 +206,7 @@ export async function createStudent(input: {
 
   const where = team && cs
     ? `${cs.name} (CS) of team ${team.name}`
-    : "Delta Open Students — no team has a CS person to give them to";
+    : `Delta Open Students — no ${LOCATION_LABELS[input.location]} team has a CS person to give them to`;
   const base = { student_id: String(insertedId), at: now, by_id: null, by_name: input.createdByName };
   await recordHistory([
     { ...base, type: "arrived", text: input.arrived },

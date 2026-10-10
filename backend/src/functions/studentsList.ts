@@ -9,6 +9,8 @@ import { isMentorRole } from "../lib/roles";
 import { userCanListEntity } from "../entities/crud";
 import { courseLabel } from "../students/tags";
 import { businessToday } from "../students/followups";
+import { loadTeams } from "../students/teams";
+import { LOCATIONS } from "../lib/location";
 
 /* ────────────────────────────────────────────────────────────────────────────
    The Students page, one page at a time. Which students each tab holds and
@@ -203,6 +205,14 @@ async function filters(user: AuthUser, tab: Tab, f: any): Promise<Record<string,
   if (status && status !== "all") out.push({ status });
   const team = str(f?.team, 40);
   if (team && team !== "all") out.push(team === "none" ? { team_id: { $in: [null, ""] } } : { team_id: team });
+  // Dubai / Bangalore (lib/location.ts, 2026-10-10): the students of that location's teams — and, with no team yet,
+  // those who arrived for it.
+  const location = str(f?.location, 20);
+  if ((LOCATIONS as readonly string[]).includes(location)) {
+    const ids = (await loadTeams()).teams.filter((t) => t.location === location).map((t) => t.id);
+    const noTeam = { team_id: { $in: [null, ""] } };
+    out.push({ $or: [{ team_id: { $in: ids } }, location === "bangalore" ? { ...noTeam, location: "bangalore" } : { ...noTeam, location: { $ne: "bangalore" } }] });
+  }
   const level = str(f?.level, 20);
   if (level === "LEVEL_1") out.push({ student_level: { $in: ["LEVEL_1", null, ""] } });
   else if (level && level !== "all") out.push({ student_level: level });

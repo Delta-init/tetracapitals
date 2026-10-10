@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { LOCATIONS, locationByUser } from '@/components/utils/teams';
 import { PageTitle } from '@/components/common/PageHeader';
 import { Paged, TablePagination } from '@/components/common/TablePagination';
 import { base44 } from "@/api/base44Client";
@@ -27,6 +28,7 @@ import { logAction } from "../components/utils/AuditLogger";
 export default function CommissionReports() {
   const [currentUser, setCurrentUser] = useState(null);
   const [filterMentor, setFilterMentor] = useState('all');
+  const [filterLocation, setFilterLocation] = useState('all');   // Dubai / Bangalore — by the mentor's team (2026-10-10)
   const [filterQuarter, setFilterQuarter] = useState('all');
   const [filterYear, setFilterYear] = useState('all');
   const [filterStatus, setFilterStatus] = useState('all');
@@ -142,6 +144,10 @@ export default function CommissionReports() {
   if (filterMentor !== 'all') {
     filteredLedgers = filteredLedgers.filter(l => l.mentor_id === filterMentor);
   }
+  if (filterLocation !== 'all') {
+    const locOf = locationByUser(users);
+    filteredLedgers = filteredLedgers.filter(l => locOf[l.mentor_id] === filterLocation);
+  }
   if (filterQuarter !== 'all') {
     filteredLedgers = filteredLedgers.filter(l => l.quarter_number === parseInt(filterQuarter));
   }
@@ -159,7 +165,7 @@ export default function CommissionReports() {
   }
 
   // The table shows 25 to a page — back to page 1 whenever the search or a filter changes.
-  const pageResetKey = [searchTerm, filterMentor, filterYear, filterQuarter, filterStatus].join('|');
+  const pageResetKey = [searchTerm, filterMentor, filterLocation, filterYear, filterQuarter, filterStatus].join('|');
 
   // Get unique values for filters
   const mentorsWithLedgers = [...new Set(ledgers.map(l => l.mentor_id))]
@@ -263,7 +269,7 @@ export default function CommissionReports() {
         {/* Filters */}
         <Card className="border-gray-200">
           <CardContent className="p-4">
-            <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
+            <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-6 gap-4">
               <div className="relative">
                 <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
                 <Input
@@ -273,6 +279,16 @@ export default function CommissionReports() {
                   className="pl-10"
                 />
               </div>
+
+              <Select value={filterLocation} onValueChange={setFilterLocation}>
+                <SelectTrigger>
+                  <SelectValue placeholder="All locations" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All locations</SelectItem>
+                  {LOCATIONS.map(l => <SelectItem key={l.value} value={l.value}>{l.label}</SelectItem>)}
+                </SelectContent>
+              </Select>
 
               <Select value={filterMentor} onValueChange={setFilterMentor}>
                 <SelectTrigger>

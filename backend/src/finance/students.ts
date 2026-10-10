@@ -4,6 +4,7 @@ import { ok, refuse, secretMatches, text, isEmail, answer, studentWithEmail, cre
 import { lmsEnrolledFields } from "../students/lmsEnrolment";
 import { languageOf } from "../students/language";
 import { salesCrmOf, salesCrmName } from "../students/salesCrm";
+import { studentLocationOf } from "../lib/location";
 import { closedByEntry, type ClosedBy } from "../students/closedBy";
 import { recordHistory } from "../students/history";
 import { leadersOf } from "../students/followupReminders";
@@ -232,6 +233,7 @@ export async function handleFinanceStudents(req: Request): Promise<Response> {
   }
 
   const created = await createStudent({
+    location: studentLocationOf({ salesCrm: body.crm, academy: body.academy }),
     name,
     email,
     phone: text(body.phone, 40),

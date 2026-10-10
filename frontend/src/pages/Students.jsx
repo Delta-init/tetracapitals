@@ -26,7 +26,7 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigge
 import { downloadExcel } from "@/components/utils/excelExport";
 import TransferStudentsDialog from "../components/students/TransferStudentsDialog";
 import { CallButton } from "@/components/followups/CallFlow";
-import { listTeams } from "@/components/utils/teams";
+import { listTeams, LOCATIONS } from "@/components/utils/teams";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
@@ -129,6 +129,7 @@ export default function Students() {
   const [onlyNew, setOnlyNew] = useState(false);
   const [filterLevel, setFilterLevel] = useState('all');
   const [filterTeam, setFilterTeam] = useState('all');
+  const [filterLocation, setFilterLocation] = useState('all');   // Dubai / Bangalore — by their team (2026-10-10)
   const [filterCourse, setFilterCourse] = useState('all');
   const navigate = useNavigate();
   const [showTransferDialog, setShowTransferDialog] = useState(false);
@@ -182,8 +183,8 @@ export default function Students() {
     search: debouncedSearch, onlyNew, tag: filterTag, enrolment: filterEnrolment, onboarding: filterOnboarding, classes: filterClasses, followup: filterFollowup,
     course: filterCourse, balance: filterBalance,
     from: dateRange ? new Date(dateRange.from).toISOString() : '', to: dateRange ? new Date(dateRange.to).toISOString() : '',
-    status: filterStatus, team: filterTeam, level: filterLevel, mentor: filterMentor,
-  }), [debouncedSearch, onlyNew, filterTag, filterEnrolment, filterOnboarding, filterClasses, filterFollowup, filterCourse, filterBalance, dateRange, filterStatus, filterTeam, filterLevel, filterMentor]);
+    status: filterStatus, team: filterTeam, level: filterLevel, mentor: filterMentor, location: filterLocation,
+  }), [debouncedSearch, onlyNew, filterTag, filterEnrolment, filterOnboarding, filterClasses, filterFollowup, filterCourse, filterBalance, dateRange, filterStatus, filterTeam, filterLevel, filterMentor, filterLocation]);
   const filtersKey = JSON.stringify(listFilters);
   // A new tab, search or filter starts at page 1 with nothing ticked.
   useEffect(() => { setPage(1); setSelected({}); }, [serverTab, filtersKey]);
@@ -835,6 +836,16 @@ export default function Students() {
 
 
 
+                  {/* Location — Dubai / Bangalore, by the student's team */}
+                  <Select value={filterLocation} onValueChange={setFilterLocation}>
+                    <SelectTrigger className="w-36">
+                      <SelectValue placeholder="Location" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">All locations</SelectItem>
+                      {LOCATIONS.map(l => <SelectItem key={l.value} value={l.value}>{l.label}</SelectItem>)}
+                    </SelectContent>
+                  </Select>
                   {/* Team Filter */}
                   <Select value={filterTeam} onValueChange={setFilterTeam}>
                     <SelectTrigger className="w-44">

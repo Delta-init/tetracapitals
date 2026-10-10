@@ -1,4 +1,5 @@
 import { col } from "../db";
+import { teamLocationOf, type Location } from "../lib/location";
 import { isMentorRole } from "../lib/roles";
 
 /* ────────────────────────────────────────────────────────────────────────────
@@ -33,6 +34,8 @@ export interface Team {
   key: string;
   /** False when the leader's account was switched off from the portal. */
   active: boolean;
+  /** Dubai or Bangalore — the leader's `team_location` (lib/location.ts); unset is Dubai. */
+  location: Location;
   /** Its CS people not switched off and taking new students (not `no_auto_assign`), in the order their accounts were created. */
   cs: Member[];
 }
@@ -52,7 +55,7 @@ export interface TeamIndex {
 
 export async function loadTeams(): Promise<TeamIndex> {
   const users = (await col("users")
-    .find({}, { projection: { full_name: 1, email: 1, app_role: 1, up_head_id: 1, team_name: 1, status: 1, created_date: 1, all_teams_cs_manager: 1, no_auto_assign: 1 } })
+    .find({}, { projection: { full_name: 1, email: 1, app_role: 1, up_head_id: 1, team_name: 1, status: 1, created_date: 1, all_teams_cs_manager: 1, no_auto_assign: 1, team_location: 1 } })
     .toArray()) as any[];
   const userById = new Map(users.map((u) => [String(u._id), u]));
   const isStaff = (u: any) => isMentorRole(String(u?.app_role ?? ""));
@@ -89,6 +92,7 @@ export async function loadTeams(): Promise<TeamIndex> {
       leaderName,
       key: keyOf(leader),
       active: leader.status !== "inactive",
+      location: teamLocationOf(leader),
       cs: members
         // `no_auto_assign` (Personnel → "No new students"): left out of the turns new and moved students go by (the user, 2026-10-09).
         .filter((m) => m.app_role === "cs" && m.status !== "inactive" && m.no_auto_assign !== true)

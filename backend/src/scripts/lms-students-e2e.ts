@@ -108,10 +108,10 @@ check("...the trail back to the LMS, and nothing of finance's",
   s1?.source === "delta_lms" && s1?.lms_academy === "Delta Dubai" && s1?.created_by_name === "Delta LMS" && s1?.finance_invoice_id === undefined);
 const log = await db.collection("logs").findOne({ entity_id: String(s1?._id) }) as any;
 check("...and the activity log has it", log?.action_type === "create_student" && log?.user_name === "Delta LMS" && /→ CS 1 \(CS\) of team Lead One/.test(log?.details ?? ""));
-const noCourse = lmsStudent({ course: "", academy: "Delta Bangalore" });
+const noCourse = lmsStudent({ course: "", academy: "Delta Dubai" });   // Dubai: a Bangalore one waits for a Bangalore team (team-location-e2e.ts)
 r = await fromLms(noCourse);
 const s2 = await students.findOne({ lms_user_id: noCourse.lmsUserId }) as any;
-check("approved without a course yet: noted with just the academy — and team 2", s2?.notes === "From Delta LMS (Delta Bangalore)" && r.body?.data?.teamName === "Lead Two", s2?.notes);
+check("approved without a course yet: noted with just the academy — and team 2", s2?.notes === "From Delta LMS (Delta Dubai)" && r.body?.data?.teamName === "Lead Two", s2?.notes);
 
 step("One round with finance's students");
 const financeLmsId = new ObjectId().toString();

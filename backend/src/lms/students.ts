@@ -1,3 +1,4 @@
+import { studentLocationOf } from "../lib/location";
 import { col } from "../db";
 import { config } from "../config";
 import { ok, refuse, secretMatches, text, isEmail, answer, studentWithEmail, createStudent } from "../students/intake";
@@ -46,6 +47,7 @@ export async function handleLmsStudents(req: Request): Promise<Response> {
   if (existing) return ok(answer(existing, false, "email", `${email} is already a student here — left as they are`));
 
   return ok(await createStudent({
+    location: studentLocationOf({ academy }),
     name,
     email,
     phone: text(body.phone, 40),

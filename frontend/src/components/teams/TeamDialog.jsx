@@ -8,6 +8,7 @@ import { Label } from '@/components/ui/label';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import SearchableSelect from '@/components/common/SearchableSelect';
 import { isMentorRole } from '@/components/utils/roles';
+import { LOCATIONS, teamLocationOf } from '@/components/utils/teams';
 import { logAction } from '@/components/utils/AuditLogger';
 import { EASE } from '@/components/motion';
 
@@ -30,6 +31,7 @@ export default function TeamDialog({ open, onOpenChange, mode, team, users, unas
   const originalIds = useMemo(() => new Set((team?.members || []).map(m => m.id)), [team]);
 
   const [name, setName] = useState('');
+  const [location, setLocation] = useState('dubai');   // Dubai / Bangalore — on the leader as team_location
   const [leaderId, setLeaderId] = useState('');
   const [rows, setRows] = useState([]); // [{ id, reportsTo }]
   const [saving, setSaving] = useState(false);
@@ -43,12 +45,14 @@ export default function TeamDialog({ open, onOpenChange, mode, team, users, unas
     if (mode === 'edit' && team) {
       const ids = new Set(team.members.map(m => m.id));
       setName(team.root?.team_name || '');
+      setLocation(teamLocationOf(team.root));
       setLeaderId(team.root.id);
       setRows(team.members
         .filter(m => m.id !== team.root.id)
         .map(m => ({ id: m.id, reportsTo: ids.has(m.up_head_id) ? m.up_head_id : team.root.id })));
     } else {
       setName('');
+      setLocation('dubai');
       setLeaderId('');
       setRows([]);
     }
@@ -138,7 +142,7 @@ export default function TeamDialog({ open, onOpenChange, mode, team, users, unas
 
     // Leader: holds the team name, and must be the top of the chain.
     const leader = byId[leaderId];
-    const leaderPatch = { team_name: teamName };
+    const leaderPatch = { team_name: teamName, team_location: location };
     const parent = byId[leader?.up_head_id];
     if (parent && isMentorRole(parent.app_role) && leader.app_role !== 'chief_mentor') {
       leaderPatch.up_head_id = '';
@@ -147,7 +151,7 @@ export default function TeamDialog({ open, onOpenChange, mode, team, users, unas
     add(leaderId, leaderPatch);
 
     // Previous leader (edit + leader changed) gives up the team name.
-    if (mode === 'edit' && team && team.root.id !== leaderId) add(team.root.id, { team_name: '' });
+    if (mode === 'edit' && team && team.root.id !== leaderId) add(team.root.id, { team_name: '', team_location: '' });
 
     for (const r of rows) add(r.id, { up_head_id: r.reportsTo, up_head_name: byId[r.reportsTo]?.full_name || '' });
 
@@ -197,6 +201,15 @@ export default function TeamDialog({ open, onOpenChange, mode, team, users, unas
             <div>
               <Label htmlFor="team-name">Team name</Label>
               <Input id="team-name" value={name} onChange={e => setName(e.target.value)} placeholder="e.g. Falcon Team" className="mt-1.5" />
+            </div>
+            <div>
+              <Label>Location</Label>
+              <div className="mt-1.5 flex gap-2">
+                {LOCATIONS.map(l => (
+                  <Button key={l.value} type="button" size="sm" variant={location === l.value ? 'default' : 'outline'} className="flex-1" onClick={() => setLocation(l.value)}>{l.label}</Button>
+                ))}
+              </div>
+              <p className="mt-1 text-xs text-slate-500">New students of this location are shared among its teams only.</p>
             </div>
             <div>
               <Label>Team leader</Label>

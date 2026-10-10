@@ -11,6 +11,25 @@ import { isMentorRole } from './roles';
 /** A CS Manager over every team — every CS reports to them too (backend lib/scope isAllTeamsCsManager, 2026-10-07). */
 export const isAllTeamsCsManager = (u) => !!u && u.app_role === 'cs_manager' && u.all_teams_cs_manager === true && u.status !== 'inactive';
 
+/* Dubai or Bangalore (2026-10-10): a team's location is its leader's `team_location`; unset is Dubai
+   (backend lib/location.ts). New students go only to their location's teams. */
+export const LOCATIONS = [{ value: 'dubai', label: 'Dubai' }, { value: 'bangalore', label: 'Bangalore' }];
+export const locationLabel = (loc) => (loc === 'bangalore' ? 'Bangalore' : 'Dubai');
+export const teamLocationOf = (leader) => (/bangal|banglo|bengal/i.test(String(leader?.team_location ?? '')) ? 'bangalore' : 'dubai');
+
+/** userId → 'dubai' | 'bangalore' — the location of the team they are on; null for someone on no team. */
+export function locationByUser(users = []) {
+  const byId = {};
+  for (const u of users) byId[u.id] = u;
+  const out = {};
+  for (const u of users) {
+    if (!isMentorRole(u.app_role)) continue;
+    const root = byId[teamRootId(u, byId)];
+    if (root) out[u.id] = teamLocationOf(root);
+  }
+  return out;
+}
+
 export function teamRootId(user, byId) {
   let cur = user;
   const seen = new Set();
@@ -57,6 +76,7 @@ export function listTeams(users = []) {
     .map(t => ({
       ...t,
       name: t.leader.team_name || t.leader.full_name || '—',
+      location: teamLocationOf(t.leader),
       members: [...t.members].sort((a, b) =>
         (pickRank(a.app_role) - pickRank(b.app_role)) || String(a.full_name || '').localeCompare(String(b.full_name || ''))),
     }))

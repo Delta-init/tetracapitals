@@ -18,7 +18,7 @@ import TeamDialog from '@/components/teams/TeamDialog';
 import { logAction } from '@/components/utils/AuditLogger';
 import { getEffectiveUser } from '@/components/utils/ImpersonationContext';
 import { isMentorRole } from '@/components/utils/roles';
-import { teamRootId, isAllTeamsCsManager } from '@/components/utils/teams';
+import { teamRootId, isAllTeamsCsManager, LOCATIONS, teamLocationOf, locationLabel } from '@/components/utils/teams';
 
 // Admin roles that may see EVERY team (not just their own).
 const ADMIN_VIEWERS = ['super_admin', 'admin', 'broker_admin', 'academic_head', 'academic_admin', 'admin_supervisor', 'finance_admin'];
@@ -43,6 +43,7 @@ export default function Teams() {
     enabled: !!currentUser,
   });
   const [q, setQ] = useState('');
+  const [loc, setLoc] = useState('all');   // Dubai / Bangalore (2026-10-10)
   const queryClient = useQueryClient();
   const [dialog, setDialog] = useState({ open: false, mode: 'create', team: null });
   const [toDelete, setToDelete] = useState(null);
@@ -80,7 +81,7 @@ export default function Teams() {
       if (members.length === 1 && !root?.team_name) { unassigned.push(members[0]); continue; }
       members.push(...overAll);
       members.sort((a, b) => (tierIndex(a.app_role) - tierIndex(b.app_role)) || String(a.full_name || '').localeCompare(String(b.full_name || '')));
-      teams.push({ rootId: rid, name: root?.team_name || root?.full_name || '—', root, members });
+      teams.push({ rootId: rid, name: root?.team_name || root?.full_name || '—', root, members, location: teamLocationOf(root) });
     }
     teams.sort((a, b) => b.members.length - a.members.length);
     unassigned.sort((a, b) => String(a.full_name || '').localeCompare(String(b.full_name || '')));
@@ -98,9 +99,9 @@ export default function Teams() {
   // Search filters members within teams (and the team name).
   const needle = q.trim().toLowerCase();
   const match = (u) => !needle || String(u.full_name || '').toLowerCase().includes(needle) || String(u.email || '').toLowerCase().includes(needle) || String(u.app_role || '').toLowerCase().includes(needle);
-  const visibleTeams = needle
+  const visibleTeams = (needle
     ? teams.map(t => ({ ...t, members: t.members.filter(match) })).filter(t => t.members.length > 0 || t.name.toLowerCase().includes(needle))
-    : teams;
+    : teams).filter(t => loc === 'all' || t.location === loc);
   const visibleUnassigned = needle ? unassigned.filter(match) : unassigned;
 
   const totalMembers = teams.reduce((s, t) => s + t.members.length, 0);
@@ -154,6 +155,11 @@ export default function Teams() {
               <Search className="h-4 w-4 text-gray-400 absolute left-3 top-1/2 -translate-y-1/2" />
               <Input value={q} onChange={e => setQ(e.target.value)} placeholder="Search name, email, role…" className="pl-9 h-9" />
             </div>
+            <div className="flex rounded-md border bg-white p-0.5 text-xs">
+              {[{ value: 'all', label: 'All' }, ...LOCATIONS].map(l => (
+                <button key={l.value} type="button" onClick={() => setLoc(l.value)} className={`rounded px-2.5 py-1.5 font-medium ${loc === l.value ? 'bg-brand-navy text-white' : 'text-slate-600 hover:bg-slate-50'}`}>{l.label}</button>
+              ))}
+            </div>
             {canManage && (
               <Button onClick={() => setDialog({ open: true, mode: 'create', team: null })} className="whitespace-nowrap">
                 <Plus className="h-4 w-4" /> Create team
@@ -198,6 +204,7 @@ export default function Teams() {
                         <p className="mt-1 text-xs text-slate-500">
                           Led by <span className="font-semibold text-slate-700">{team.root?.full_name}</span>
                           {' · '}{team.members.length} member{team.members.length !== 1 ? 's' : ''}
+                          {' · '}<span className={`rounded-full px-1.5 py-0.5 text-[11px] font-semibold ${team.location === 'bangalore' ? 'bg-amber-100 text-amber-800' : 'bg-sky-100 text-sky-800'}`}>{locationLabel(team.location)}</span>
                         </p>
                       </div>
                       {canManage && (

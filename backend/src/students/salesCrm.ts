@@ -9,7 +9,7 @@
    CRM rather than a guess.
 ──────────────────────────────────────────────────────────────────────────── */
 
-export const SALES_CRMS = ["delta", "remote", "draw"] as const;
+export const SALES_CRMS = ["delta", "remote", "draw", "banglore"] as const;
 export type SalesCrm = (typeof SALES_CRMS)[number];
 
 /** The tag, as finance and the LMS show it. */
@@ -17,6 +17,8 @@ export const SALES_CRM_LABELS: Record<SalesCrm, string> = {
   delta: "Sales CRM",
   remote: "Remote CRM",
   draw: "Draw",
+  // The Banglore CRM (finance's code, spelt so) — its students are Bangalore students (lib/location.ts).
+  banglore: "Banglore CRM",
 };
 
 /** One of the three, or "" for anything else. */
@@ -33,5 +35,6 @@ export function salesCrmName(raw: unknown): string {
   const crm = salesCrmOf(raw);
   if (crm === "remote") return "Remote CRM";
   if (crm === "draw") return "Draw";
+  if (crm === "banglore") return "Banglore CRM";
   return "Delta sales CRM";
 }

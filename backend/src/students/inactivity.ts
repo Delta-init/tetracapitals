@@ -16,9 +16,10 @@ import { markNewFor, push } from "../lib/notify";
    - Only students whose current mentor is a CS, and who are ACTIVE.
    - The clock is the later of `assigned_at` and their last approved deposit,
      so a transfer (manual or by this rule) starts a fresh `days`.
-   - Where they go: the next team in this rule's own turn, skipping the team
-     they are on now, then that team's next CS (the same CS rotation new
-     students use). No other team with CS → left where they are, reported.
+   - Where they go: the next team of the SAME location (Dubai / Bangalore,
+     lib/location.ts) in this rule's own turn, skipping the team they are on
+     now, then that team's next CS (the same CS rotation new students use).
+     No other such team with CS → left where they are, reported.
    - Off until a Super Admin switches it on; runs once a day when on.
 ──────────────────────────────────────────────────────────────────────────── */
 
@@ -107,12 +108,14 @@ export async function findDue(days: number, index?: TeamIndex): Promise<{ watche
   return { watched: students.length, due, index: teams };
 }
 
-/** The next team (not `fromTeamId`) and that team's next CS. */
+/** The next team (not `fromTeamId`) of the same location — Dubai or Bangalore (the user, 2026-10-10) — and that team's next CS. */
 async function nextTeamCs(teams: Team[], fromTeamId: string) {
-  const open = teams.filter((t) => t.active && t.cs.length > 0 && t.id !== fromTeamId);
+  const location = teams.find((t) => t.id === fromTeamId)?.location ?? "dubai";
+  const open = teams.filter((t) => t.active && t.cs.length > 0 && t.id !== fromTeamId && t.location === location);
   if (!open.length) return null;
+  const round = location === "dubai" ? TEAM_TURN : `${TEAM_TURN}:${location}`;
   for (let attempt = 0; attempt < 5; attempt++) {
-    const team = await takeNext(TEAM_TURN, open, (t) => ({ last_team_id: t.id, last_team_name: t.name }));
+    const team = await takeNext(round, open, (t) => ({ last_team_id: t.id, last_team_name: t.name }));
     if (!team) continue;
     for (let tries = 0; tries < 5; tries++) {
       const cs = await takeNext(csTurn(team.id), team.cs, (m) => ({ last_cs_id: m.id, last_cs_name: m.name, team_id: team.id }));
@@ -137,7 +140,7 @@ export async function runInactivity(by: AuthUser = SYSTEM): Promise<{ moved: num
 
   for (const d of due) {
     const target = await nextTeamCs(index.teams, d.teamId);
-    if (!target) { left.push({ student: d.name, reason: "no other team with CS" }); continue; }
+    if (!target) { left.push({ student: d.name, reason: "no other team of the same location with CS" }); continue; }
     const existing: any = await col("students").findOne({ _id: toObjectId(d.id) as any });
     if (!existing || String(existing.primary_mentor_id) !== d.mentorId) continue; // changed meanwhile
     const data: Record<string, any> = {
