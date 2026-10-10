@@ -9,6 +9,7 @@ import { handleFinanceStudents } from "./finance/students";
 import { handleFinanceStudentLookup } from "./finance/studentLookup";
 import { handleFundingDecision } from "./finance/funding";
 import { handleLmsStudents } from "./lms/students";
+import { handleLmsStudentCs } from "./lms/studentCs";
 import {
   listEntity, filterEntity, getEntityById, createEntity,
   bulkCreateEntity, updateEntity, deleteEntity,
@@ -72,6 +73,8 @@ export async function route(req: Request): Promise<Response> {
   if (path === "/api/v1/integrations/finance/funding-decisions" && req.method === "POST") return handleFundingDecision(req);
   // ---- The Delta LMS sending every other new student (its own shared secret) ----
   if (path === "/api/v1/integrations/lms/students" && req.method === "POST") return handleLmsStudents(req);
+  // ---- …and asking, now, who looks after one of them (the same secret) ----
+  if (path === "/api/v1/integrations/lms/student-cs" && req.method === "POST") return handleLmsStudentCs(req);
 
   // ---- The button in a follow-up reminder email: noted as seen, then on to the portal ----
   const reminderOpen = path.match(/^\/api\/reminders\/open\/([A-Za-z0-9_-]{16,64})$/);

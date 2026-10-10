@@ -140,6 +140,22 @@ check("one LMS account delivered twice at the same moment: one student",
   (await students.countDocuments({ lms_user_id: twice.lmsUserId })) === 1 && [a, b].filter((x) => x.body?.data?.created === true).length === 1,
   `${JSON.stringify(a.body)} ${JSON.stringify(b.body)}`);
 
+step("Asked now: who looks after one student (the LMS's Recheck commission portal)");
+const askCs = (body: unknown, secret: string | null = LMS_SECRET) =>
+  post("/api/v1/integrations/lms/student-cs", body, secret ? { "x-lms-secret": secret } : {});
+r = await askCs({ lmsUserId: first.lmsUserId, email: "someone-else@e2e-lms.test" });
+check("found by their LMS id: their CS, team and student code", r.status === 200 && r.body?.data?.found === true
+  && r.body.data.cs === s1?.primary_mentor_name && r.body.data.team === s1?.team_name && r.body.data.code === s1?.student_code && r.body.data.open === false, JSON.stringify(r.body));
+check("...and noted as told, so the ten-minute push does not send it again",
+  ((await students.findOne({ _id: s1?._id })) as any)?.lms_cs_sent?.code === s1?.student_code);
+r = await askCs({ email: "TAKEN@e2e-lms.test" });
+check("found by email, whatever its case", r.body?.data?.found === true && r.body.data.cs === "Existing Mentor", JSON.stringify(r.body));
+r = await askCs({ email: "nobody@e2e-lms.test" });
+check("somebody not here: found false", r.status === 200 && r.body?.data?.found === false, JSON.stringify(r.body));
+r = await askCs({ email: "not-an-email" });
+check("no email and no LMS id: 400", r.status === 400, JSON.stringify(r.body));
+check("a wrong secret, or none: 401", (await askCs({ email: "taken@e2e-lms.test" }, "wrong")).status === 401 && (await askCs({ email: "taken@e2e-lms.test" }, null)).status === 401);
+
 await db.dropDatabase();
 await client.close();
 console.log(`\n${pass}/${pass + fail} checks passed`);
