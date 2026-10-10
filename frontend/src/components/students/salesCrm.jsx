@@ -2,8 +2,8 @@ import React from 'react';
 import { Badge } from '@/components/ui/badge';
 
 /* ────────────────────────────────────────────────────────────────────────────
-   Which sales CRM sold a student's course — Delta's Sales CRM, the Remote CRM
-   or Draw — as finance says (backend/src/students/salesCrm.ts). The same tag
+   Which sales CRM sold a student's course — Delta's Sales CRM, the Remote CRM,
+   Draw or the Banglore CRM — as finance says (backend/src/students/salesCrm.ts). The same tag
    finance and the Delta LMS show: on the student (the CRM they first came
    through) and on each course's fees.
 
@@ -15,6 +15,8 @@ export const SALES_CRMS = {
   // Not amber: that is "Old" beside it.
   remote: { label: 'Remote CRM', cls: 'border-orange-200 bg-orange-50 text-orange-700' },
   draw: { label: 'Draw', cls: 'border-violet-200 bg-violet-50 text-violet-700' },
+  // Finance's code, spelt so (2026-10-10) — without it a Banglore CRM student would read as the Sales CRM's.
+  banglore: { label: 'Banglore CRM', cls: 'border-teal-200 bg-teal-50 text-teal-700' },
 };
 
 /** The student's CRM: as finance said, or Delta's for one of finance's from before. */

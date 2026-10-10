@@ -3,6 +3,7 @@ import { Badge } from "@/components/ui/badge";
 import { GraduationCap, Receipt, Gift } from "lucide-react";
 import { format } from "date-fns";
 import { SalesCrmBadge, salesCrmOfFee } from "@/components/students/salesCrm";
+import { BangaloreBadge } from "@/components/common/LocationFilter";
 
 /* Amounts arrive in the smallest unit (cents / fils), the way finance keeps them; one the source did not give is a dash. */
 const money = (minor, currency) =>
@@ -73,6 +74,8 @@ export default function CourseFeesCard({ fees }) {
                         </span>
                         {/* Which sales CRM sold this course */}
                         <SalesCrmBadge crm={salesCrmOfFee(f)} />
+                        {/* The academy picked at the close — said only for Bangalore */}
+                        <BangaloreBadge location={f.academy} />
                       </div>
                     )}
                   </td>

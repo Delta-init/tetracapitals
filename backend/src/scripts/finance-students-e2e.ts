@@ -12,7 +12,8 @@
  *   - the same invoice twice is one student, even when both arrive at once;
  *   - an email already here is left exactly as it is and uses up no turn;
  *   - codes continue the Students page's own STU-NNNN sequence;
- *   - finance can ask who looks after the students it sent (CS and CS team, live).
+ *   - finance can ask who looks after the students it sent (CS and CS team, live);
+ *   - the academy picked at the close: Bangalore with no Bangalore team waits in Open Students, Dubai's round untouched.
  *
  * Run through ./test-finance-students.sh (throwaway mongod, the API — no .env).
  * Refuses anything but a scratch database on 127.0.0.1.
@@ -223,6 +224,19 @@ const [p, q] = await Promise.all([send(enrolment()), send(enrolment())]);
 check("two new students at the same moment take the next two turns, not the same one",
   JSON.stringify([p.body?.data?.teamName, q.body?.data?.teamName].sort()) === JSON.stringify(["Chief Four", "Chief Three"]),
   `${p.body?.data?.teamName} / ${q.body?.data?.teamName}`);
+// The academy picked at the close (2026-10-10; lib/location.ts): every team here is Dubai's, so a close for the
+// Bangalore academy waits in Open Students — through the live route — and Dubai's round is not touched.
+const dubaiTurn = async () => ((await db.collection("counters").findOne({ _id: "finance_student_team_turn" as any })) as any)?.last_key;
+const turnBefore = await dubaiTurn();
+r = await send(enrolment({ crm: "delta", academy: "bangalore" }));
+const blr = await db.collection("students").findOne({ student_code: r.body?.data?.studentCode }) as any;
+check("a close for the Bangalore academy with no Bangalore team: Delta Open Students, stored Bangalore, Dubai's round untouched",
+  r.body?.data?.created === true && r.body?.data?.assignment === "open_pool" && blr?.location === "bangalore" && !blr?.primary_mentor_id && (await dubaiTurn()) === turnBefore,
+  JSON.stringify(r.body));
+r = await send(enrolment({ crm: "banglore", academy: "dubai" }));
+check("…and one for Dubai (even from the Banglore CRM) takes Dubai's next turn, tagged Banglore CRM",
+  r.body?.data?.assignment === "assigned" && !!r.body?.data?.teamName && ((await db.collection("students").findOne({ student_code: r.body?.data?.studentCode })) as any)?.sales_crm === "banglore",
+  JSON.stringify(r.body));
 await db.collection("users").updateMany({ app_role: { $in: ["chief_mentor", "senior_mentor"] } }, { $set: { status: "inactive" } });
 r = await send(enrolment());
 const pooled = await db.collection("students").findOne({ student_code: r.body?.data?.studentCode }) as any;

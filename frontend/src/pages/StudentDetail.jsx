@@ -21,6 +21,7 @@ import CourseFeesCard from "../components/students/CourseFeesCard";
 import ZohoInvoicesCard from "../components/students/ZohoInvoicesCard";
 import StudentCoursesCard from "../components/students/StudentCoursesCard";
 import { SalesCrmBadge, salesCrmOfStudent } from "@/components/students/salesCrm";
+import { BangaloreBadge } from "@/components/common/LocationFilter";
 import StudentHistory, { useStudentHistory } from "../components/students/StudentHistory";
 import StudentFollowupsSection from "@/components/followups/StudentFollowupsSection";
 import StudentCallsSection from "@/components/calls/StudentCallsSection";
@@ -421,6 +422,8 @@ export default function StudentDetail() {
                     <label className="text-sm font-medium text-gray-500">Team</label>
                     <p className="mt-1 text-base font-semibold text-gray-900">
                       {history?.team?.name || displayStudent.team_name || '-'}
+                      {/* Dubai / Bangalore: their team's, or with no team the academy they arrived for */}
+                      <BangaloreBadge location={history?.location || (displayStudent.location === 'bangalore' ? 'bangalore' : 'dubai')} className="ml-1.5" />
                     </p>
                   </div>
 

@@ -16,6 +16,9 @@ export const isAllTeamsCsManager = (u) => !!u && u.app_role === 'cs_manager' && 
 export const LOCATIONS = [{ value: 'dubai', label: 'Dubai' }, { value: 'bangalore', label: 'Bangalore' }];
 export const locationLabel = (loc) => (loc === 'bangalore' ? 'Bangalore' : 'Dubai');
 export const teamLocationOf = (leader) => (/bangal|banglo|bengal/i.test(String(leader?.team_location ?? '')) ? 'bangalore' : 'dubai');
+/** A student's location as the Location filter counts it: the server's `current_location` (their team's, or with no
+ *  team the academy they arrived for — backend lib/location.ts currentLocationOf), else their own `location`. */
+export const studentLocationOf = (s) => s?.current_location || (s?.location === 'bangalore' ? 'bangalore' : 'dubai');
 
 /** userId → 'dubai' | 'bangalore' — the location of the team they are on; null for someone on no team. */
 export function locationByUser(users = []) {

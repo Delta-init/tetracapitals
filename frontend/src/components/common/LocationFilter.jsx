@@ -15,6 +15,14 @@ export function useUserLocations(enabled = true) {
 /** Whether someone (by id) belongs to the picked location; 'all' lets everyone through. */
 export const inLocation = (locOf, loc, userId) => loc === 'all' || locOf[userId] === loc;
 
+/** "Bangalore" beside a team or a student — nothing for Dubai, which every one was before (2026-10-10). */
+export function BangaloreBadge({ location, className = '' }) {
+  if (location !== 'bangalore') return null;
+  return (
+    <span title="Bangalore academy" className={`inline-block whitespace-nowrap rounded-full bg-amber-100 px-1.5 py-0.5 align-middle text-[11px] font-semibold text-amber-800 ${className}`}>Bangalore</span>
+  );
+}
+
 export function LocationFilter({ value, onChange, className = '' }) {
   return (
     <div className={`flex rounded-md border bg-white p-0.5 text-xs ${className}`} role="group" aria-label="Location">

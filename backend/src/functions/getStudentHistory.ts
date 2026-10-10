@@ -6,11 +6,13 @@ import { userCanReadDoc } from "../entities/crud";
 import { loadTeams } from "../students/teams";
 import { roleLabel } from "../students/history";
 import { salesCrmOf, salesCrmName } from "../students/salesCrm";
+import { currentLocationOf, locationOf } from "../lib/location";
 
 /**
  * POST /api/functions/getStudentHistory
  * Body: { studentId }
  * Returns: { team, firstReceivedBy, cameFrom, events: [{ at, type, text, by, kind }] }
+ *   team.location — Dubai or Bangalore: the team's, or with no team the student's own (lib/location.ts).
  *
  * Everything that happened to a student, oldest first, for their page. Only
  * for somebody who may see the student — the same test as opening them.
@@ -36,7 +38,9 @@ function cameFrom(s: any) {
     // The sales CRM that sold it, as finance said — or, for a student from
     // before it said, Delta's, which every one of those came through.
     const salesCrm = salesCrmOf(s.sales_crm) || "delta";
-    return { label: `${salesCrmName(salesCrm)}, via finance`, salesCrm, invoice: s.finance_invoice_number || null, course: s.lms_course || null, academy: null };
+    // The academy picked at the close, said only when it is Bangalore — Dubai is what every one before was.
+    const academy = locationOf(s.location) === "bangalore" ? "Bangalore academy" : null;
+    return { label: `${salesCrmName(salesCrm)}, via finance`, salesCrm, invoice: s.finance_invoice_number || null, course: s.lms_course || null, academy };
   }
   if (s.source === "delta_lms" && s.lms_user_id) {
     return { label: "Delta LMS", invoice: null, course: s.lms_course || null, academy: s.lms_academy || null };
@@ -114,10 +118,12 @@ export async function getStudentHistory(req: Request, user: AuthUser): Promise<R
   const team = s.team_id
     ? { id: String(s.team_id), name: String(s.team_name || liveTeam?.name || ""), stored: true }
     : liveTeam ? { id: liveTeam.id, name: liveTeam.name, stored: false } : null;
+  const teamLocation = (id: string) => index.teams.find((t) => t.id === id)?.location;
+  const location = currentLocationOf({ team_id: team?.id, location: s.location }, teamLocation);
 
   const firstReceivedBy = s.first_assignee_id
     ? { name: s.first_assignee_name || null, role: s.first_assignee_role ? roleLabel(s.first_assignee_role) : null, at: s.first_assigned_at || null, fromRecords: false }
     : (() => { const f = firstFromRecords(s, requests); return f ? { ...f, fromRecords: true } : null; })();
 
-  return json({ team, firstReceivedBy, cameFrom: cameFrom(s), events });
+  return json({ team: team ? { ...team, location } : null, location, firstReceivedBy, cameFrom: cameFrom(s), events });
 }

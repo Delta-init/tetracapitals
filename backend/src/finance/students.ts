@@ -4,7 +4,7 @@ import { ok, refuse, secretMatches, text, isEmail, answer, studentWithEmail, cre
 import { lmsEnrolledFields } from "../students/lmsEnrolment";
 import { languageOf } from "../students/language";
 import { salesCrmOf, salesCrmName } from "../students/salesCrm";
-import { studentLocationOf } from "../lib/location";
+import { studentLocationOf, locationOf, type Location } from "../lib/location";
 import { closedByEntry, type ClosedBy } from "../students/closedBy";
 import { recordHistory } from "../students/history";
 import { leadersOf } from "../students/followupReminders";
@@ -49,6 +49,12 @@ import { toObjectId } from "../lib/id";
    And who closed it — the sales person in that CRM (students/closedBy.ts): on
    the student's closed_by, once each; a later course can add another.
 
+   And the academy picked at the close — Dubai or Bangalore (`academy`, the
+   user 2026-10-10; lib/location.ts): a new student goes only to that
+   academy's teams and keeps it as `location`; each course's fees say which
+   academy sold it. A student already here stays on their team, whichever
+   academy the new course is from.
+
    A new student is told at once: their CS gets "New student" (intake.ts),
    their CS's leaders and the Super Admins a notice of their own (tellLeaders).
 ──────────────────────────────────────────────────────────────────────────── */
@@ -60,8 +66,10 @@ type CourseFee = {
   course: string;
   /** What this course is studied in, from the close; "" when the CRM did not say. */
   language: string;
-  /** Which sales CRM sold it ("delta", "remote", "draw"); "" when finance did not say. */
+  /** Which sales CRM sold it ("delta", "remote", "draw", "banglore"); "" when finance did not say. */
   sales_crm: string;
+  /** The academy picked at the close (lib/location.ts) — Dubai for a finance that did not say, unless the Banglore CRM sold it. */
+  academy: Location;
   currency: string;
   fee_minor: number;
   paid_minor: number;
@@ -83,7 +91,7 @@ const minor = (v: unknown): number | null => (typeof v === "number" && Number.is
  * than refused: refusing would cost the student their team, and the money is
  * the part that can be looked up in finance.
  */
-function courseFee(raw: unknown, invoiceId: string, invoiceNumber: string, course: string, language: string, salesCrm: string): CourseFee | null {
+function courseFee(raw: unknown, invoiceId: string, invoiceNumber: string, course: string, language: string, salesCrm: string, academy: Location): CourseFee | null {
   if (!raw || typeof raw !== "object" || Array.isArray(raw)) return null;
   const f = raw as Record<string, unknown>;
   const fee = minor(f.feeMinor), paid = minor(f.paidMinor), balance = minor(f.balanceMinor);
@@ -101,6 +109,7 @@ function courseFee(raw: unknown, invoiceId: string, invoiceNumber: string, cours
     course,
     language,
     sales_crm: salesCrm,
+    academy,
     currency,
     fee_minor: fee,
     paid_minor: paid,
@@ -211,8 +220,10 @@ export async function handleFinanceStudents(req: Request): Promise<Response> {
   const language = languageOf(body.language);
   const salesCrm = salesCrmOf(body.crm);
   const closer = closedByEntry(body.closedBy);
+  // Dubai or Bangalore — the academy picked at the close, or (an older finance) the CRM's.
+  const location = studentLocationOf({ salesCrm: body.crm, academy: body.academy });
 
-  const fee = courseFee(body.feeSummary, invoiceId, invoiceNumber, course, language, salesCrm);
+  const fee = courseFee(body.feeSummary, invoiceId, invoiceNumber, course, language, salesCrm, location);
 
   // The same invoice again — finance retrying, or asked twice. One student.
   const already = await col("students").findOne({ finance_invoice_id: invoiceId });
@@ -225,6 +236,10 @@ export async function handleFinanceStudents(req: Request): Promise<Response> {
 
   const existing = await studentWithEmail(email);
   if (existing) {
+    // Not moved: their team is theirs, whichever academy this course is from.
+    if (locationOf((existing as any).location) !== location) {
+      console.warn("[finance students] a close for the other academy — the student already here stays where they are", { invoiceId, academy: location });
+    }
     await recordCourseFee(existing, fee);
     await recordCloseLanguage(existing, language, invoiceNumber);
     await recordSalesCrm(existing, salesCrm);
@@ -233,7 +248,7 @@ export async function handleFinanceStudents(req: Request): Promise<Response> {
   }
 
   const created = await createStudent({
-    location: studentLocationOf({ salesCrm: body.crm, academy: body.academy }),
+    location,
     name,
     email,
     phone: text(body.phone, 40),
@@ -253,7 +268,7 @@ export async function handleFinanceStudents(req: Request): Promise<Response> {
       // With an LMS account: enrolled from the start (the hourly LMS check confirms it).
       ...(text(body.lmsUserId, 64) ? lmsEnrolledFields() : {}),
     },
-    arrived: `Arrived from ${salesCrm === "draw" ? "" : "the "}${salesCrmName(salesCrm)}, via finance — ${course || "a course"}${invoiceNumber ? `, invoice ${invoiceNumber}` : ""}`,
+    arrived: `Arrived from ${salesCrm === "draw" ? "" : "the "}${salesCrmName(salesCrm)}${location === "bangalore" && salesCrm !== "banglore" ? " for the Bangalore academy" : ""}, via finance — ${course || "a course"}${invoiceNumber ? `, invoice ${invoiceNumber}` : ""}`,
     createdBy: "delta-finance",
     createdByName: "Delta LMS (via finance)",
     unique: { field: "finance_invoice_id", value: invoiceId, existing: "invoice", detail: "This invoice's student is already here" },

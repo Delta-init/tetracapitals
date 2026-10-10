@@ -26,7 +26,8 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigge
 import { downloadExcel } from "@/components/utils/excelExport";
 import TransferStudentsDialog from "../components/students/TransferStudentsDialog";
 import { CallButton } from "@/components/followups/CallFlow";
-import { listTeams, LOCATIONS } from "@/components/utils/teams";
+import { listTeams, LOCATIONS, locationLabel, studentLocationOf } from "@/components/utils/teams";
+import { BangaloreBadge } from "@/components/common/LocationFilter";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
@@ -88,6 +89,7 @@ const EXPORT_COLUMNS = [
   { header: 'CS', value: s => s.primary_mentor_name },
   { header: 'Senior Mentor', value: s => s.senior_mentor_name },
   { header: 'Team', value: s => s.team_name },
+  { header: 'Location', value: s => locationLabel(studentLocationOf(s)) },
   { header: 'Course', value: s => courseLabel(s.lms_course) },
   { header: 'Status', value: s => s.status },
   { header: 'Enrolment', value: s => ENROLMENT[enrolmentOf(s)].label },
@@ -943,7 +945,7 @@ export default function Students() {
                             </TableCell>
                             <TableCell className="text-sm font-mono">{student.phone}</TableCell>
                             <TableCell className="text-sm">{student.primary_mentor_name}</TableCell>
-                            <TableCell className="text-sm">{student.team_name || '-'}</TableCell>
+                            <TableCell className="text-sm">{student.team_name || '-'}<BangaloreBadge location={studentLocationOf(student)} className="ml-1.5" /></TableCell>
                             <TableCell className="max-w-[220px] text-sm"><CourseCell student={student} /></TableCell>
                             <TableCell><BalanceCell student={student} /></TableCell>
                             <TableCell>
@@ -1039,7 +1041,7 @@ export default function Students() {
                          </TableCell>
                          <TableCell className="text-sm font-mono">{student.phone}</TableCell>
                          <TableCell className="text-sm text-purple-600 font-medium">{student.primary_mentor_name}</TableCell>
-                         <TableCell className="text-sm">{student.team_name || '-'}</TableCell>
+                         <TableCell className="text-sm">{student.team_name || '-'}<BangaloreBadge location={studentLocationOf(student)} className="ml-1.5" /></TableCell>
                             <TableCell className="max-w-[220px] text-sm"><CourseCell student={student} /></TableCell>
                             <TableCell><BalanceCell student={student} /></TableCell>
                          <TableCell>
@@ -1162,7 +1164,7 @@ export default function Students() {
                           </TableCell>
                           <TableCell className="text-sm font-mono">{student.phone}</TableCell>
                           <TableCell className="text-sm">{student.primary_mentor_name}</TableCell>
-                          <TableCell className="text-sm">{student.team_name || '-'}</TableCell>
+                          <TableCell className="text-sm">{student.team_name || '-'}<BangaloreBadge location={studentLocationOf(student)} className="ml-1.5" /></TableCell>
                             <TableCell className="max-w-[220px] text-sm"><CourseCell student={student} /></TableCell>
                             <TableCell><BalanceCell student={student} /></TableCell>
                           <TableCell>
@@ -1361,7 +1363,7 @@ export default function Students() {
                       </TableCell>
                       <TableCell className="text-sm font-mono">{student.phone}</TableCell>
                       <TableCell className="text-sm">{student.primary_mentor_name}</TableCell>
-                      <TableCell className="text-sm">{student.team_name || '-'}</TableCell>
+                      <TableCell className="text-sm">{student.team_name || '-'}<BangaloreBadge location={studentLocationOf(student)} className="ml-1.5" /></TableCell>
                             <TableCell className="max-w-[220px] text-sm"><CourseCell student={student} /></TableCell>
                             <TableCell><BalanceCell student={student} /></TableCell>
                       <TableCell>

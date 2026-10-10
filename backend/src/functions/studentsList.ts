@@ -10,7 +10,7 @@ import { userCanListEntity } from "../entities/crud";
 import { courseLabel } from "../students/tags";
 import { businessToday } from "../students/followups";
 import { loadTeams } from "../students/teams";
-import { LOCATIONS } from "../lib/location";
+import { LOCATIONS, currentLocationOf } from "../lib/location";
 
 /* ────────────────────────────────────────────────────────────────────────────
    The Students page, one page at a time. Which students each tab holds and
@@ -224,7 +224,8 @@ async function filters(user: AuthUser, tab: Tab, f: any): Promise<Record<string,
 /**
  * POST /api/functions/listStudents
  * Body: { tab, page?, pageSize? (25 | 50 | 100), all? (every match, up to 10,000 — export, select all),
- *         filters?: { search, onlyNew, tag, enrolment, onboarding, classes, followup, course, balance, from, to, status, team, level, mentor } }
+ *         filters?: { search, onlyNew, tag, enrolment, onboarding, classes, followup, course, balance, from, to, status, team, level, mentor, location } }
+ *         (location: "dubai" | "bangalore" — by their team, or with none the location they arrived for)
  * → { tab, tabs, rows, total, page, page_size, truncated?, counts: { new_for_me, co_managed?, admin_co_managed? },
  *     followup_filter? (the follow-up filter applied — the page tells a server without it apart) }
  */
@@ -242,6 +243,11 @@ export async function listStudents(req: Request, user: AuthUser): Promise<Respon
   const result = await pageOf("students", query, { created_date: -1, _id: -1 }, body);
   const balances = await courseBalancesOf(result.rows.map((r: any) => String(r.id)));
   for (const r of result.rows as any[]) r.course_balances = balances.get(String(r.id)) ?? [];
+  // Dubai / Bangalore for each row, the way the Location filter counts it — the page badges Bangalore by the team.
+  if (result.rows.length) {
+    const teamLocations = new Map((await loadTeams()).teams.map((t) => [t.id, t.location]));
+    for (const r of result.rows as any[]) r.current_location = currentLocationOf(r, (id) => teamLocations.get(id));
+  }
 
   const counts: Record<string, number> = {
     new_for_me: await col("students").countDocuments(and(scope, { new_for_id: user.id, primary_mentor_id: user.id })),
