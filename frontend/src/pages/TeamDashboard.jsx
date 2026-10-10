@@ -114,8 +114,8 @@ export default function TeamDashboard() {
 
   // Paging lives here, not in Team: Team is redefined on every render.
   const { pageItems: directoryRows, bar: directoryBar } = usePagination(directory);
-  const { pageItems: mentorRows, bar: mentorBar } = usePagination(mentor, { resetKey: `${start}|${end}` });
-  const { pageItems: paRows, bar: paBar } = usePagination(pa, { resetKey: `${start}|${end}` });
+  const { pageItems: mentorRows, bar: mentorBar } = usePagination(mentor, { resetKey: `${start}|${end}`, urlKey: 'mentors_page' });
+  const { pageItems: paRows, bar: paBar } = usePagination(pa, { resetKey: `${start}|${end}`, urlKey: 'pa_page' });
 
   const Team = ({ title, rows, pageRows, bar, cols, icon }) => (
     <Card>

@@ -170,7 +170,7 @@ function TicketsCard({ student, tickets, notice, none }) {
       </CardHeader>
       <CardContent className="p-0">
         {notice ? <Empty>{notice}</Empty> : tickets.length === 0 ? <Empty>{none}</Empty> : (
-          <Paged items={tickets} resetKey={student.id}>
+          <Paged items={tickets} resetKey={student.id} urlKey="tickets_page">
             {(rows, bar) => (
               <>
                 <div className="overflow-x-auto">
@@ -242,7 +242,7 @@ function AssignmentsCard({ student, assignments, notice, none }) {
       </CardHeader>
       <CardContent className="p-0">
         {notice ? <Empty>{notice}</Empty> : assignments.length === 0 ? <Empty>{none}</Empty> : (
-          <Paged items={assignments} resetKey={student.id}>
+          <Paged items={assignments} resetKey={student.id} urlKey="assignments_page">
             {(rows, bar) => (
               <>
                 <div className="overflow-x-auto">

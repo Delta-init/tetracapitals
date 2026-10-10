@@ -14,7 +14,7 @@ import StudentLogDetails from "../components/studentlogs/StudentLogDetails";
 import { isMentorRole as isMentorTier } from "@/components/utils/roles";
 import { getEffectiveUser } from "../components/utils/ImpersonationContext";
 import { detectChanges, getTabsFromChanges } from "../components/studentlogs/StudentLogHistoryUtils";
-import { TablePagination, DEFAULT_PAGE_SIZE } from "@/components/common/TablePagination";
+import { TablePagination, useUrlPage, useResetPage } from "@/components/common/TablePagination";
 
 export default function StudentLogs() {
   const [currentUser, setCurrentUser] = useState(null);
@@ -23,8 +23,8 @@ export default function StudentLogs() {
   const [showEditDialog, setShowEditDialog] = useState(false);
   const [showDetailsDialog, setShowDetailsDialog] = useState(false);
   const [selectedLog, setSelectedLog] = useState(null);
-  const [page, setPage] = useState(1);
-  const [pageSize, setPageSize] = useState(DEFAULT_PAGE_SIZE);
+  // The page and rows per page live in the address (?page=, ?limit=) — Back and a refresh land on the same page.
+  const { page, setPage, pageSize, setPageSize } = useUrlPage();
   const [debouncedSearch, setDebouncedSearch] = useState('');
 
   const queryClient = useQueryClient();
@@ -43,7 +43,7 @@ export default function StudentLogs() {
     const t = setTimeout(() => setDebouncedSearch(searchTerm.trim()), 300);
     return () => clearTimeout(t);
   }, [searchTerm]);
-  useEffect(() => { setPage(1); }, [debouncedSearch, pageSize]);
+  useResetPage(debouncedSearch, setPage);
   const { data: list, isLoading: logsLoading, isFetching: logsFetching } = useQuery({
     queryKey: ['student-logs', 'page', page, pageSize, debouncedSearch],
     queryFn: async () => (await base44.functions.invoke('listStudentLogs', { page, pageSize, filters: { search: debouncedSearch } })).data,

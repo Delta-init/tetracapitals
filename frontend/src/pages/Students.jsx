@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { enrolmentOf, ENROLMENT, EnrolledSwitch } from '@/components/students/enrolment';
 import { OnboardedSwitch } from '@/components/students/onboarding';
 import { isStudentOf } from '@/components/students/common';
@@ -6,7 +6,8 @@ import { StudentTagChips, tagNamesOf, useStudentTagCatalog } from '@/components/
 import PageHeader from '@/components/common/PageHeader';
 import { Link, useNavigate } from 'react-router-dom';
 import { courseLabel, studentCourses, studentBalance, balanceText, courseBalanceText } from '@/components/utils/studentProducts';
-import { TablePagination, DEFAULT_PAGE_SIZE } from '@/components/common/TablePagination';
+import { TablePagination, useUrlPage } from '@/components/common/TablePagination';
+import { useUrlState } from '@/components/utils/urlState';
 import { base44 } from "@/api/base44Client";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
@@ -118,31 +119,41 @@ export default function Students() {
   const [currentUser, setCurrentUser] = useState(null);
   const [showAddDialog, setShowAddDialog] = useState(false);
   const [showBulkImportDialog, setShowBulkImportDialog] = useState(false);
-  const [searchTerm, setSearchTerm] = useState('');
-  const [activeTab, setActiveTab] = useState('my');
-  const [filterMentor, setFilterMentor] = useState('all');
-  const [filterStatus, setFilterStatus] = useState('all');
-  const [filterEnrolment, setFilterEnrolment] = useState('all');
-  const [filterOnboarding, setFilterOnboarding] = useState('all');
-  const [filterClasses, setFilterClasses] = useState('all');
-  const [filterFollowup, setFilterFollowup] = useState('all');
-  const [filterBalance, setFilterBalance] = useState('all');
-  const [filterTag, setFilterTag] = useState('all');
-  const [onlyNew, setOnlyNew] = useState(false);
-  const [filterLevel, setFilterLevel] = useState('all');
-  const [filterTeam, setFilterTeam] = useState('all');
-  const [filterLocation, setFilterLocation] = useState('all');   // Dubai / Bangalore — by their team (2026-10-10)
-  const [filterCourse, setFilterCourse] = useState('all');
+  /* The tab, search and every filter live in the address (the user, 2026-10-10) — ?tab=all&q=ali&enrolment=open… —
+     so Back from a student, a refresh or a shared link lands on the same list. Each "all" is simply left out. */
+  const [searchTerm, setSearchTerm] = useUrlState('q', '');
+  const [tabParam, setActiveTab] = useUrlState('tab', '');
+  const [filterMentor, setFilterMentor] = useUrlState('cs');
+  const [filterStatus, setFilterStatus] = useUrlState('status');
+  const [filterEnrolment, setFilterEnrolment] = useUrlState('enrolment');
+  const [filterOnboarding, setFilterOnboarding] = useUrlState('onboarding');
+  const [filterClasses, setFilterClasses] = useUrlState('classes');
+  const [filterFollowup, setFilterFollowup] = useUrlState('followup');
+  const [filterBalance, setFilterBalance] = useUrlState('balance');
+  const [filterTag, setFilterTag] = useUrlState('tag');
+  const [newParam, setNewParam] = useUrlState('new', '');
+  const onlyNew = newParam === '1';
+  const setOnlyNew = (v) => setNewParam((prev) => ((typeof v === 'function' ? v(prev === '1') : v) ? '1' : ''));
+  const [filterLevel, setFilterLevel] = useUrlState('level');
+  const [filterTeam, setFilterTeam] = useUrlState('team');
+  const [filterLocation, setFilterLocation] = useUrlState('location');   // Dubai / Bangalore — by their team (2026-10-10)
+  const [filterCourse, setFilterCourse] = useUrlState('course');
   const navigate = useNavigate();
   const [showTransferDialog, setShowTransferDialog] = useState(false);
-  const [filterDateRange, setFilterDateRange] = useState('all');
-  const [customDateFrom, setCustomDateFrom] = useState(null);
-  const [customDateTo, setCustomDateTo] = useState(null);
+  const [filterDateRange, setFilterDateRange] = useUrlState('range');
+  // The custom dates as days (yyyy-mm-dd) in the address, Dates here.
+  const [fromParam, setFromParam] = useUrlState('from', '');
+  const [toParam, setToParam] = useUrlState('to', '');
+  const customDateFrom = useMemo(() => (fromParam ? new Date(`${fromParam}T00:00:00`) : null), [fromParam]);
+  const customDateTo = useMemo(() => (toParam ? new Date(`${toParam}T00:00:00`) : null), [toParam]);
+  const setCustomDateFrom = (d) => setFromParam(d ? format(d, 'yyyy-MM-dd') : '');
+  const setCustomDateTo = (d) => setToParam(d ? format(d, 'yyyy-MM-dd') : '');
   // Ticked rows, kept across pages: id → student.
   const [selected, setSelected] = useState({});
-  const [page, setPage] = useState(1);
-  const [pageSize, setPageSize] = useState(DEFAULT_PAGE_SIZE);
-  const [debouncedSearch, setDebouncedSearch] = useState('');
+  // The page and rows per page in the address too (?page=, ?limit=).
+  const { page, setPage, pageSize, setPageSize } = useUrlPage();
+  // Starts as the address's search, so a list opened (or come back to) mid-search is not reset when the debounce lands.
+  const [debouncedSearch, setDebouncedSearch] = useState(() => searchTerm.trim());
   const [showBulkUpgradeDialog, setShowBulkUpgradeDialog] = useState(false);
 
   const queryClient = useQueryClient();
@@ -152,10 +163,6 @@ export default function Students() {
       const realUser = await base44.auth.me();
       const user = getEffectiveUser(realUser);
       setCurrentUser(user);
-      // Set default tab based on user role
-      if (['super_admin', 'broker_admin', 'academic_head'].includes(user.app_role)) {
-        setActiveTab('all');
-      }
     };
     fetchUser();
   }, []);
@@ -168,6 +175,8 @@ export default function Students() {
   const salesOnly = !!currentUser && readsClosedOnly(currentUser);
   const isMentorUser = !!currentUser && isMentorTier(currentUser.app_role) && !salesOnly;
   const isAdminUser = !!currentUser && ['super_admin', 'broker_admin', 'academic_head'].includes(currentUser.app_role);
+  // The tab the address names, else the role's own first one: All for the admins, My Students for everybody else.
+  const activeTab = tabParam || (isAdminUser ? 'all' : 'my');
   const serverTab = !currentUser ? null : (isMentorUser || isAdminUser) ? activeTab : 'all';
   useEffect(() => {
     const t = setTimeout(() => setDebouncedSearch(searchTerm.trim()), 300);
@@ -188,9 +197,18 @@ export default function Students() {
     status: filterStatus, team: filterTeam, level: filterLevel, mentor: filterMentor, location: filterLocation,
   }), [debouncedSearch, onlyNew, filterTag, filterEnrolment, filterOnboarding, filterClasses, filterFollowup, filterCourse, filterBalance, dateRange, filterStatus, filterTeam, filterLevel, filterMentor, filterLocation]);
   const filtersKey = JSON.stringify(listFilters);
-  // A new tab, search or filter starts at page 1 with nothing ticked.
-  useEffect(() => { setPage(1); setSelected({}); }, [serverTab, filtersKey]);
-  useEffect(() => { setPage(1); }, [pageSize]);
+  // A new tab, search or filter starts at page 1 with nothing ticked — not the first time the list is known (the user
+  // loading, or the address's own page coming back), which would throw away the page the address asked for.
+  const listKey = `${serverTab}|${filtersKey}`;
+  const lastListKey = useRef(null);
+  useEffect(() => {
+    const before = lastListKey.current;
+    if (!serverTab) return;
+    lastListKey.current = listKey;
+    if (before === null || before === listKey) return;
+    setPage(1);
+    setSelected({});
+  }, [listKey]);
 
   const { data: list, isLoading: listLoading, isFetching: listFetching } = useQuery({
     queryKey: ['students', 'page', serverTab, page, pageSize, filtersKey],

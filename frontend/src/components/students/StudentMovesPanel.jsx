@@ -64,7 +64,7 @@ export default function StudentMovesPanel({ teamId = null, showMap = true, title
     (dir === 'all' || dirOf(m) === dir) &&
     (!needle || [m.studentName, m.studentCode, m.from?.name, m.to?.name].some(v => String(v || '').toLowerCase().includes(needle)))
   );
-  const { pageItems, bar } = usePagination(visible, { resetKey: `${teamId}|${days}|${kind}|${team}|${dir}|${needle}` });
+  const { pageItems, bar } = usePagination(visible, { resetKey: `${teamId}|${days}|${kind}|${team}|${dir}|${needle}`, urlKey: 'moves_page' });
 
   const counts = useMemo(() => {
     const c = {};

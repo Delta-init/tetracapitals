@@ -22,7 +22,7 @@ export default function StudentFollowupsSection({ student }) {
   const refresh = () => queryClient.invalidateQueries({ queryKey: ['followups'] });
 
   const followups = data?.followups || [];
-  const { pageItems, bar } = usePagination(followups, { resetKey: student?.id });
+  const { pageItems, bar } = usePagination(followups, { resetKey: student?.id, urlKey: 'followups_page' });
   const outcomeOf = Object.fromEntries(followups.map(f => [f.id, f.target_outcome]));
   // The follow-up log, with the reminder emails that listed this student in between.
   const reminderText = (r) => {

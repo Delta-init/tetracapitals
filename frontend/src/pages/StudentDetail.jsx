@@ -11,7 +11,7 @@ import {
   ArrowLeft, CalendarPlus, Edit, IdCard, ListChecks, Phone, MessageCircle, Wallet, GraduationCap,
   Presentation, LifeBuoy, Link2, CandlestickChart, History as HistoryIcon,
 } from "lucide-react";
-import { Link, useSearchParams } from "react-router-dom";
+import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { createPageUrl } from "../utils";
 import StudentForm from "../components/students/StudentForm";
 import { EditDetailsButton } from "@/components/students/EditDetails";
@@ -65,6 +65,9 @@ const TOP_BAR = 64;   // the app's top bar (Layout.jsx, h-16): the tab bar stick
 const EMPTY_NOTE = 'empty:py-12 empty:text-center empty:text-sm empty:text-slate-500 empty:before:content-[attr(data-empty)] empty:before:[animation:page-rise_0.4s_0.8s_both]';
 
 export default function StudentDetail() {
+  const navigate = useNavigate();
+  // A page of this app before this one: go back to it, as the browser would. None (a fresh tab): the link's own Students.
+  const backToList = (e) => { if ((window.history.state?.idx ?? 0) > 0) { e.preventDefault(); navigate(-1); } };
   const [currentUser, setCurrentUser] = useState(null);
   const [showEditDialog, setShowEditDialog] = useState(false);
   const urlParams = new URLSearchParams(window.location.search);
@@ -287,8 +290,10 @@ export default function StudentDetail() {
         {/* Header — stays above every tab */}
         <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
           <div className="flex min-w-0 items-start gap-3 sm:gap-4">
-            <Link to={createPageUrl('Students')} className="shrink-0">
-              <Button variant="ghost" size="icon">
+            {/* Back as the browser's Back (the user, 2026-10-10): to the list just left, its filters and page with it.
+                Opened on its own (a new tab, a link from elsewhere): Students. */}
+            <Link to={createPageUrl('Students')} className="shrink-0" onClick={backToList}>
+              <Button variant="ghost" size="icon" title="Back">
                 <ArrowLeft className="h-5 w-5" />
               </Button>
             </Link>

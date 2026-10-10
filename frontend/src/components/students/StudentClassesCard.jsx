@@ -61,7 +61,7 @@ export default function StudentClassesCard({ student }) {
             {data.message || (data.has_account ? 'No attended, booked or upcoming classes in their courses.' : 'No Delta LMS account with this email.')}
           </p>
         ) : (
-          <Paged items={classes} resetKey={student.id}>
+          <Paged items={classes} resetKey={student.id} urlKey="classes_page">
             {(rows, bar) => (
               <>
                 <div className="overflow-x-auto">

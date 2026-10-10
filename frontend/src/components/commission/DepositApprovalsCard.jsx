@@ -36,7 +36,7 @@ export default function DepositApprovalsCard({ credits, start, end, periodKey, p
     return { rows, total };
   }, [credits, start, end]);
   // 25 staff to a page; the total row still adds up every staff.
-  const { pageItems: pageRows, bar } = usePagination(rows, { resetKey: periodKey });
+  const { pageItems: pageRows, bar } = usePagination(rows, { resetKey: periodKey, urlKey: 'approvals_page' });
 
   return (
     <Card>

@@ -173,7 +173,7 @@ export default function MyStudentRequests() {
               </CardTitle>
             </CardHeader>
             <CardContent className="p-0">
-              <Paged items={pendingIncoming}>
+              <Paged items={pendingIncoming} urlKey="incoming_page">
                 {(pageRows, bar) => (<>
                   <Table>
                     <TableHeader>
@@ -234,7 +234,7 @@ export default function MyStudentRequests() {
               </CardTitle>
             </CardHeader>
             <CardContent className="p-0">
-              <Paged items={outgoingReferrals}>
+              <Paged items={outgoingReferrals} urlKey="outgoing_page">
                 {(pageRows, bar) => (<>
                   <div className="overflow-x-auto">
                     <Table>

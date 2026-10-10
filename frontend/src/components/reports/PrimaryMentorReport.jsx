@@ -50,7 +50,7 @@ export default function PrimaryMentorReport({ transactions, dateLabel, startDate
 
         return { rows, totals };
     }, [transactions]);
-    const { pageItems: pageRows, bar } = usePagination(rows, { resetKey: `${startDate}|${endDate}|${rows.length}` });
+    const { pageItems: pageRows, bar } = usePagination(rows, { resetKey: `${startDate}|${endDate}|${rows.length}`, urlKey: 'primary_mentor_page' });
 
     const handleExport = () => {
         const headers = ['CS', 'Senior Mentor', 'Students', 'Txns', 'Deposits (USD)', 'Withdrawals (USD)', 'Net (USD)'];

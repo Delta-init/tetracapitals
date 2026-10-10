@@ -14,7 +14,7 @@ import { Plus, Upload } from "lucide-react";
 import { canApproveTransactions } from "../components/utils/DataMasking";
 import { isMentorRole } from "@/components/utils/roles";
 import { toast } from "sonner";
-import { TablePagination, DEFAULT_PAGE_SIZE } from "@/components/common/TablePagination";
+import { TablePagination, useUrlPage, useResetPage } from "@/components/common/TablePagination";
 
 export default function Transactions() {
   const [currentUser, setCurrentUser] = useState(null);
@@ -36,8 +36,8 @@ export default function Transactions() {
     user_id: ''
   });
   const [rejectionReason, setRejectionReason] = useState('');
-  const [page, setPage] = useState(1);
-  const [pageSize, setPageSize] = useState(DEFAULT_PAGE_SIZE);
+  // The page and rows per page live in the address (?page=, ?limit=) — Back and a refresh land on the same page.
+  const { page, setPage, pageSize, setPageSize } = useUrlPage();
 
   const queryClient = useQueryClient();
 
@@ -50,7 +50,7 @@ export default function Transactions() {
   }, []);
 
   // Paged on the server (backend/src/functions/pagedLists.ts): a mentor's own students' transactions, and the status tab.
-  useEffect(() => { setPage(1); }, [filterStatus, pageSize]);
+  useResetPage(filterStatus, setPage);
   const { data: list, isFetching: listFetching } = useQuery({
     queryKey: ['transactions', 'page', page, pageSize, filterStatus],
     queryFn: async () => (await base44.functions.invoke('listTransactions', { page, pageSize, filters: { status: filterStatus } })).data,

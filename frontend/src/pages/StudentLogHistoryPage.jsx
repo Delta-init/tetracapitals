@@ -14,7 +14,7 @@ import { format, isWithinInterval, parseISO } from "date-fns";
 import { getEffectiveUser } from "../components/utils/ImpersonationContext";
 import { TAB_COLORS } from "../components/studentlogs/StudentLogHistoryUtils";
 import SearchableStudentSelect from "../components/common/SearchableStudentSelect";
-import { TablePagination, DEFAULT_PAGE_SIZE } from "@/components/common/TablePagination";
+import { TablePagination, useUrlPage, useResetPage } from "@/components/common/TablePagination";
 
 const ADMIN_ROLES = ['super_admin', 'academic_head', 'academic_admin', 'admin_supervisor'];
 const ALL_TABS = ['Contact', 'Basic Info', 'Payment', 'Induction', 'Academic', 'Upgrade', 'Convocation', 'Traders Day', 'Live Trade', 'SSF', 'Rejoining', 'Seminar', 'Practice Tracking', 'Feedback & Review', 'Pips Craft', 'Trading'];
@@ -153,8 +153,8 @@ export default function StudentLogHistoryPage() {
   const [filterDateFrom, setFilterDateFrom] = useState('');
   const [filterDateTo, setFilterDateTo] = useState('');
   const [expandedRow, setExpandedRow] = useState(null);
-  const [page, setPage] = useState(1);
-  const [pageSize, setPageSize] = useState(DEFAULT_PAGE_SIZE);
+  // The page and rows per page live in the address (?page=, ?limit=) — Back and a refresh land on the same page.
+  const { page, setPage, pageSize, setPageSize } = useUrlPage();
   const [debouncedSearch, setDebouncedSearch] = useState('');
 
   useEffect(() => {
@@ -178,7 +178,7 @@ export default function StudentLogHistoryPage() {
     to: filterDateTo ? new Date(filterDateTo + 'T23:59:59').toISOString() : '',
   }), [debouncedSearch, filterStudent, filterStaff, filterTab, filterRole, filterDateFrom, filterDateTo]);
   const filtersKey = JSON.stringify(filters);
-  useEffect(() => { setPage(1); }, [filtersKey, pageSize]);
+  useResetPage(filtersKey, setPage);
   const { data: list, isLoading: entriesLoading, isFetching: entriesFetching } = useQuery({
     queryKey: ['student-log-history', 'page', page, pageSize, filtersKey],
     queryFn: async () => (await base44.functions.invoke('listStudentLogHistory', { page, pageSize, filters, withStaff: true })).data,

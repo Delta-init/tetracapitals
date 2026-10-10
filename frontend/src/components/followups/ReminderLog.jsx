@@ -38,7 +38,7 @@ export default function ReminderLog({ currentUser }) {
   const day = date || today;
   const isToday = day === today;
   const rows = data?.rows || [];
-  const { pageItems, bar } = usePagination(rows, { resetKey: day });
+  const { pageItems, bar } = usePagination(rows, { resetKey: day, urlKey: 'reminders_page' });
   const c = data?.counts || {};
   const mail = data?.mail || {};
 

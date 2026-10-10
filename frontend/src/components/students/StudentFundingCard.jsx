@@ -112,7 +112,7 @@ export default function StudentFundingCard({ student, transactions = [], loading
               {loading ? 'Loading funding requests…' : transactions.length ? 'No requests match these filters.' : 'No funding requests for this student yet.'}
             </p>
           ) : (
-            <Paged items={rows} resetKey={`${student?.id}|${status}|${type}`}>
+            <Paged items={rows} resetKey={`${student?.id}|${status}|${type}`} urlKey="funding_page">
               {(pageRows, bar) => (<>
                 <div className="overflow-x-auto">
                   <table className="w-full">

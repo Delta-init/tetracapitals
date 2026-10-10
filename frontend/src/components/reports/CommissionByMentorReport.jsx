@@ -47,7 +47,7 @@ export default function CommissionByMentorReport({ startDate, endDate, dateLabel
         acc.buffer_25 += r.buffer_25 || 0;
         return acc;
     }, { total_deposit: 0, total_bonus: 0, total_withdrawal: 0, net_deposit: 0, commissionable_net: 0, gross_commission: 0, manual_adjustment: 0, adjusted_gross: 0, release_75: 0, buffer_25: 0 });
-    const { pageItems: pageRows, bar } = usePagination(rows, { resetKey: `${startDate}|${endDate}` });
+    const { pageItems: pageRows, bar } = usePagination(rows, { resetKey: `${startDate}|${endDate}`, urlKey: 'by_mentor_page' });
 
     const handleExport = () => {
         const headers = ['Mentor', 'Total Deposit', 'Total Bonus', 'Total Withdrawal', 'Net Deposit', 'Commissionable Net (capped)', 'Gross Commission (4%)', 'Manual Adjustments', 'Adjusted Gross', 'Release (75%)', 'Buffer (25%)', 'Txns'];

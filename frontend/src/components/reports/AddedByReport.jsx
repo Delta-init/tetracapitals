@@ -86,7 +86,7 @@ export default function AddedByReport({ transactions, dateLabel, startDate, endD
 
         return { rows, totals };
     }, [transactions, userMap, mentorFilter]);
-    const { pageItems: pageRows, bar } = usePagination(rows, { resetKey: `${startDate}|${endDate}|${mentorFilter}|${rows.length}` });
+    const { pageItems: pageRows, bar } = usePagination(rows, { resetKey: `${startDate}|${endDate}|${mentorFilter}|${rows.length}`, urlKey: 'added_by_page' });
 
     const handleExport = () => {
         const headers = ['Added By', 'Students', 'Txns', 'Deposits (USD)', 'Withdrawals (USD)', 'Net (USD)'];

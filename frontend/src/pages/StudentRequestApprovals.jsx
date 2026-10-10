@@ -336,7 +336,7 @@ export default function StudentRequestApprovals() {
                 </CardTitle>
               </CardHeader>
               <CardContent className="p-0">
-                <Paged items={pendingRequests} resetKey={searchTerm}>
+                <Paged items={pendingRequests} resetKey={searchTerm} urlKey="pending_page">
                   {(pageRows, bar) => (<>
                     <div className="overflow-x-auto">
                       <Table>
@@ -419,7 +419,7 @@ export default function StudentRequestApprovals() {
                 </CardTitle>
               </CardHeader>
               <CardContent className="p-0">
-                <Paged items={approvedRequests} resetKey={searchTerm}>
+                <Paged items={approvedRequests} resetKey={searchTerm} urlKey="approved_page">
                   {(pageRows, bar) => (<>
                     <div className="overflow-x-auto">
                       <Table>
@@ -490,7 +490,7 @@ export default function StudentRequestApprovals() {
                 </CardTitle>
               </CardHeader>
               <CardContent className="p-0">
-                <Paged items={rejectedRequests} resetKey={searchTerm}>
+                <Paged items={rejectedRequests} resetKey={searchTerm} urlKey="rejected_page">
                   {(pageRows, bar) => (<>
                     <div className="overflow-x-auto">
                       <Table>

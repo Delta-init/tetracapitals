@@ -5,7 +5,8 @@ import { toast } from 'sonner';
 import { base44 } from '@/api/base44Client';
 import { createPageUrl } from '@/utils';
 import { PageTitle } from '@/components/common/PageHeader';
-import { TablePagination } from '@/components/common/TablePagination';
+import { TablePagination, useUrlPage } from '@/components/common/TablePagination';
+import { useUrlParams } from '@/components/utils/urlState';
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -234,8 +235,11 @@ function RequestDialog({ request, canView, onClose, onDecide }) {
 
 export default function LmsRequests() {
   const queryClient = useQueryClient();
-  const [tab, setTab] = useState('pending');
-  const [page, setPage] = useState(1);
+  // The tab and the page live in the address (?tab=approved&page=2) — Back and a refresh land on the same list.
+  const [params, update] = useUrlParams();
+  const tab = TABS.some(t => t.key === params.get('tab')) ? params.get('tab') : 'pending';
+  const { page, setPage } = useUrlPage();
+  const setTabAndFirstPage = (key) => update(n => { if (key === 'pending') n.delete('tab'); else n.set('tab', key); n.delete('page'); });
   const [query, setQuery] = useState('');
   const [viewing, setViewing] = useState(null);
   const [decision, setDecision] = useState(null);   // { kind: 'approve' | 'reject', request }
@@ -300,7 +304,7 @@ export default function LmsRequests() {
               key={t.key}
               type="button"
               title={t.title}
-              onClick={() => { setTab(t.key); setPage(1); }}
+              onClick={() => setTabAndFirstPage(t.key)}
               className={cn(
                 'rounded-full border px-3 py-1 text-sm transition-colors',
                 tab === t.key ? 'border-brand-navy bg-brand-navy text-white' : 'border-slate-200 bg-white text-slate-600 hover:bg-slate-50',

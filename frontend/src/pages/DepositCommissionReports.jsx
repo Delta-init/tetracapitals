@@ -99,7 +99,7 @@ export default function DepositCommissionReports() {
   const detailCredits = selected ? (byStaff[selected.key] || []) : [];
   // 25 rows to a page; the totals and the CSV still use the full lists.
   const { pageItems: pageRows, bar: rowsBar } = usePagination(rows, { resetKey: periodKey });
-  const { pageItems: pageDetailCredits, bar: detailBar } = usePagination(detailCredits, { resetKey: `${periodKey}|${selected?.key}` });
+  const { pageItems: pageDetailCredits, bar: detailBar } = usePagination(detailCredits, { resetKey: `${periodKey}|${selected?.key}`, urlKey: 'detail_page' });
 
   // Deposit POOL groups (Junior+Senior 2% shared pool, anchored on the Chief).
   // Accrues over the quarter, split equally among members at closing. Only

@@ -878,7 +878,7 @@ export default function MyFundingRequests() {
                   <CardTitle className="text-lg font-semibold">Team Request History</CardTitle>
                 </CardHeader>
                 <CardContent className="p-0">
-                  <Paged items={teamTransactions}>{(pageTeamTransactions, bar) => (<>
+                  <Paged items={teamTransactions} urlKey="team_page">{(pageTeamTransactions, bar) => (<>
                   <div className="overflow-x-auto">
                     <Table>
                       <TableHeader>

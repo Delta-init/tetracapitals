@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { base44 } from '@/api/base44Client';
 import PageHeader from '@/components/common/PageHeader';
-import { TablePagination, DEFAULT_PAGE_SIZE } from '@/components/common/TablePagination';
+import { TablePagination, useUrlPage, useResetPage } from '@/components/common/TablePagination';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -41,14 +41,14 @@ export default function ZohoInvoices() {
   const [status, setStatus] = useState('all');
   const [course, setCourse] = useState('all');
   const [cs, setCs] = useState('all');
-  const [page, setPage] = useState(1);
-  const [pageSize, setPageSize] = useState(DEFAULT_PAGE_SIZE);
+  // The page and rows per page live in the address (?page=, ?limit=) — Back and a refresh land on the same page.
+  const { page, setPage, pageSize, setPageSize } = useUrlPage();
   const [linking, setLinking] = useState(null);
   const [exporting, setExporting] = useState(false);
   useEffect(() => { const t = setTimeout(() => setQ(search.trim()), 300); return () => clearTimeout(t); }, [search]);
   const filters = { tab, search: q, year, status, course, cs };
   const key = JSON.stringify(filters);
-  useEffect(() => { setPage(1); }, [key, pageSize]);
+  useResetPage(key, setPage);
 
   const { data: options } = useQuery({
     queryKey: ['zoho-invoices', 'options'],

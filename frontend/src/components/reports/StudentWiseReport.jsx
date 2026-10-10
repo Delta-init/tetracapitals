@@ -50,7 +50,7 @@ export default function StudentWiseReport({ transactions, dateLabel, startDate, 
         return { rows, totals };
     }, [transactions]);
     // The parent's mentor filter isn't passed in, so the row count stands in for it.
-    const { pageItems: pageRows, bar } = usePagination(rows, { resetKey: `${startDate}|${endDate}|${rows.length}` });
+    const { pageItems: pageRows, bar } = usePagination(rows, { resetKey: `${startDate}|${endDate}|${rows.length}`, urlKey: 'student_report_page' });
 
     const handleExport = () => {
         const headers = ['Code', 'Student', 'CS', 'Senior Mentor', 'Deposits (USD)', 'Bonus (USD)', 'Withdrawals (USD)', 'Net (USD)', 'Txns'];

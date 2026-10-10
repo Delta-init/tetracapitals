@@ -186,7 +186,7 @@ export default function MasterAdmin() {
   }, [transactions, txSearch, txTypeFilter, txStatusFilter]);
   // Only the rows on screen are paged; select-all and the counts use the whole list.
   const { pageItems: pageTxs, bar: txBar } = usePagination(visibleTxs, { resetKey: `${txSearch}|${txTypeFilter}|${txStatusFilter}` });
-  const { pageItems: pageUsers, bar: usersBar } = usePagination(users);
+  const { pageItems: pageUsers, bar: usersBar } = usePagination(users, { urlKey: 'users_page' });
 
   // ── Bulk selection ─────────────────────────────────────────────────────────
   const toggleSelect = (id) => setSelectedIds(prev => {

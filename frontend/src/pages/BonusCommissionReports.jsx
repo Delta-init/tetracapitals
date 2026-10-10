@@ -92,7 +92,7 @@ export default function BonusCommissionReports() {
   const detailCredits = selected ? (byStaff[selected.key] || []) : [];
   // 25 rows to a page; the totals and the CSV still use the full lists.
   const { pageItems: pageRows, bar: rowsBar } = usePagination(rows, { resetKey: periodKey });
-  const { pageItems: pageDetailCredits, bar: detailBar } = usePagination(detailCredits, { resetKey: `${periodKey}|${selected?.key}` });
+  const { pageItems: pageDetailCredits, bar: detailBar } = usePagination(detailCredits, { resetKey: `${periodKey}|${selected?.key}`, urlKey: 'detail_page' });
 
   // Bonus POOL groups (positions flagged Pool in the plan). Accrue over the month,
   // split equally among members at month close. Admin-only. One row per group per

@@ -1,4 +1,5 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef } from 'react';
+import { useUrlParams } from '@/components/utils/urlState';
 import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
@@ -8,6 +9,12 @@ import { ChevronLeft, ChevronRight } from 'lucide-react';
    Prev · 1 2 3 … 9 · Next), and usePagination() for a list already in memory.
    Pages whose lists are paged by the server (Students, the logs,
    Transactions) use the bar alone, with page / total from the server.
+
+   The page and the rows per page live in the address (the user, 2026-10-10):
+   `?page=3&limit=50`, or `?<name>=3&<name minus "page">limit=50` for a table
+   that is one of several on a screen (`urlKey`, e.g. "classes_page" →
+   `classes_page` and `classes_limit`). Kept by replacing the history entry, so
+   Back, a refresh or a shared link lands on the same page of the same list.
 ──────────────────────────────────────────────────────────────────────────── */
 
 export const PAGE_SIZES = [25, 50, 100];
@@ -71,6 +78,41 @@ export function TablePagination({ page, pageSize, total, onPageChange, onPageSiz
   );
 }
 
+/** The address names a table's page and rows per page go by: "page"/"limit", "classes_page"/"classes_limit". */
+const limitKeyOf = (urlKey) => (urlKey === 'page' ? 'limit' : `${urlKey.replace(/_?page$/, '')}_limit`);
+
+/**
+ * A table's page and rows per page, kept in the address. For a server-paged list (Students, the logs…) as much as one
+ * in memory. Changing the rows per page goes back to page 1.
+ */
+export function useUrlPage(urlKey = 'page', defaultSize = DEFAULT_PAGE_SIZE) {
+  const [params, update] = useUrlParams();
+  const limitKey = limitKeyOf(urlKey);
+  const page = Math.max(1, parseInt(params.get(urlKey) || '1', 10) || 1);
+  const asked = parseInt(params.get(limitKey) || '', 10);
+  const pageSize = PAGE_SIZES.includes(asked) ? asked : defaultSize;
+  const write = (nextPage, nextSize) => update((next) => {
+    if (nextPage <= 1) next.delete(urlKey); else next.set(urlKey, String(nextPage));
+    if (nextSize !== undefined) { if (nextSize === defaultSize) next.delete(limitKey); else next.set(limitKey, String(nextSize)); }
+  });
+  return {
+    page,
+    pageSize,
+    setPage: (p) => write(p),
+    setPageSize: (n) => write(1, n),
+  };
+}
+
+/** Back to page 1 when `key` (the search and filters) changes — never on the first render, which would throw away the page the address asked for. */
+export function useResetPage(key, setPage) {
+  const before = useRef(key);
+  useEffect(() => {
+    if (before.current === key) return;
+    before.current = key;
+    setPage(1);
+  }, [key, setPage]);
+}
+
 /**
  * Paging for a list already in memory: `pageItems` to render, `bar` to spread
  * onto <TablePagination />. Back to page 1 whenever `resetKey` changes — pass
@@ -78,15 +120,22 @@ export function TablePagination({ page, pageSize, total, onPageChange, onPageSiz
  *
  *   const { pageItems, bar } = usePagination(filtered, { resetKey: `${search}|${status}` });
  */
-export function usePagination(items, { pageSize: initialSize = DEFAULT_PAGE_SIZE, resetKey } = {}) {
+export function usePagination(items, { pageSize: initialSize = DEFAULT_PAGE_SIZE, resetKey, urlKey = 'page' } = {}) {
   const list = Array.isArray(items) ? items : [];
-  const [page, setPage] = useState(1);
-  const [pageSize, setPageSize] = useState(initialSize);
+  const { page, pageSize, setPage, setPageSize } = useUrlPage(urlKey, initialSize);
   const total = list.length;
   const pages = Math.max(1, Math.ceil(total / pageSize));
-  const key = resetKey === undefined ? total : resetKey;
-  useEffect(() => { setPage(1); }, [key, pageSize]);
-  const current = Math.min(page, pages);
+  /* Back to page 1 when the search or a filter changes — not on the first render, and not while the list is still
+     arriving (a key that counts the rows changes as they load): either would throw away the page the address asked for. */
+  const seen = useRef({ key: resetKey, total });
+  useEffect(() => {
+    const before = seen.current;
+    seen.current = { key: resetKey, total };
+    if (resetKey === undefined || before.key === resetKey || before.total === 0) return;
+    setPage(1);
+  }, [resetKey]);
+  // Showing: never past the last page, though the address is left as it is until the reader moves.
+  const current = total ? Math.min(page, pages) : page;
   const pageItems = useMemo(() => list.slice((current - 1) * pageSize, current * pageSize), [list, current, pageSize]);
   return {
     pageItems,
@@ -110,7 +159,7 @@ export function usePagination(items, { pageSize: initialSize = DEFAULT_PAGE_SIZE
  *     </>)}
  *   </Paged>
  */
-export function Paged({ items, resetKey, pageSize, children }) {
-  const { pageItems, bar } = usePagination(items, { resetKey, pageSize });
+export function Paged({ items, resetKey, pageSize, urlKey, children }) {
+  const { pageItems, bar } = usePagination(items, { resetKey, pageSize, urlKey });
   return children(pageItems, bar);
 }

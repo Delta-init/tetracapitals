@@ -340,7 +340,7 @@ export default function NotOnboarded() {
                     : 'No bonus approved this month yet.'}
                 </p>
               ) : (
-                <Paged items={vRows} resetKey={`${tab}|${needle}|${cs}`}>
+                <Paged items={vRows} resetKey={`${tab}|${needle}|${cs}`} urlKey="verify_page">
                   {(pageRows, bar) => (<>
                     <VerificationTable list={pageRows} kind={tab} onResubmit={setResubmit} />
                     <TablePagination {...bar} />

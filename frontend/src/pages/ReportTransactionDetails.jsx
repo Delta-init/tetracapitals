@@ -76,7 +76,7 @@ export default function ReportTransactionDetails() {
   // Both tables show 25 to a page; the totals, counts and the CSV use the full lists.
   const pageResetKey = `${filterType}|${filterId}|${startDate}|${endDate}|${reportType}`;
   const { pageItems: pageTransactions, bar: transactionsBar } = usePagination(transactions, { resetKey: pageResetKey });
-  const { pageItems: pageAdjustments, bar: adjustmentsBar } = usePagination(adjustments, { resetKey: pageResetKey });
+  const { pageItems: pageAdjustments, bar: adjustmentsBar } = usePagination(adjustments, { resetKey: pageResetKey, urlKey: 'adjustments_page' });
 
   const totals = useMemo(() => {
     // Group by student, apply $25K cap per student on net deposit
