@@ -27,6 +27,7 @@ import { getReminderLog, resendReminder, runRemindersNow, sendTestReminder } fro
 import { getCalls, getCallRecording, syncCallsNow, testThreecx, getClickToCall, callStudent, getMyCallState, hangUpMyCall } from "./studentCalls";
 import { getTransferPeople, transferStudent } from "./studentTransfer";
 import { getDashboardTotals } from "./dashboardTotals";
+import { getLmsExams, getStudentLmsExams } from "./lmsExams";
 import { setEnrolment, setStudentPriority, getLmsEnrolment, syncLmsEnrolmentNow } from "./studentEnrolment";
 import { updateStudentDetails } from "./studentDetails";
 import { getOnboardingDraft, setOnboarding } from "./studentOnboarding";
@@ -104,6 +105,8 @@ const AUTHED: Record<string, AuthedHandler> = {
   getTransferPeople,
   transferStudent,
   getDashboardTotals,
+  getLmsExams,
+  getStudentLmsExams,
   updateStudentDetails,
   getOnboardingDraft,
   setOnboarding,

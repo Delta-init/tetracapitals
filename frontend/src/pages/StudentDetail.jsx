@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { PriorityPicker } from '@/components/students/priority';
 import { LanguagePicker } from '@/components/students/languagePicker';
+import { StudentExamsCard } from '@/components/exams/exams';
 import { PageTitle } from '@/components/common/PageHeader';
 import { base44 } from "@/api/base44Client";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
@@ -12,6 +13,7 @@ import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import {
   ArrowLeft, CalendarPlus, Edit, IdCard, ListChecks, Phone, MessageCircle, Wallet, GraduationCap,
   Presentation, LifeBuoy, Link2, CandlestickChart, History as HistoryIcon,
+  FileCheck,
 } from "lucide-react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { createPageUrl } from "../utils";
@@ -57,6 +59,7 @@ const TABS = [
   { key: 'funding', label: 'Funding', icon: Wallet },
   { key: 'courses', label: 'Courses & fees', icon: GraduationCap, empty: 'No course fees, invoices or LMS courses for this student yet.' },
   { key: 'classes', label: 'Classes', icon: Presentation, empty: 'No LMS classes to show for this student.' },
+  { key: 'exams', label: 'Exams', icon: FileCheck },
   { key: 'support', label: 'Support & assignments', icon: LifeBuoy, empty: 'No support tickets or assignments to show.' },
   { key: 'payment-links', label: 'Payment links', icon: Link2, empty: 'No payment links for this student.' },
   { key: 'mt5', label: 'MT5 accounts', icon: CandlestickChart },
@@ -561,6 +564,11 @@ export default function StudentDetail() {
           {/* Their live classes in the Delta LMS: attended, missed, upcoming */}
           <TabsContent {...panel('classes')}>
             <StudentClassesCard student={displayStudent} />
+          </TabsContent>
+
+          {/* Their Delta LMS exams: where they stand, and a link that signs them straight in (the user, 2026-10-10) */}
+          <TabsContent {...panel('exams')}>
+            <StudentExamsCard student={displayStudent} />
           </TabsContent>
 
           {/* Their Delta LMS support tickets, with the conversation, and class assignments, with the reviews */}
