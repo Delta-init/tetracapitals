@@ -550,6 +550,8 @@ export default function Students() {
   };
   
   const canEdit = canEditStudent(currentUser.app_role);
+  // Ticking students to Transfer them: admins, and every CS Manager (the user, 2026-10-10 — the server checks).
+  const canTransfer = canEdit || currentUser.app_role === 'cs_manager';
   // Row click opens the student; clicks on buttons, links and checkboxes do their own thing.
   const openStudent = (e, id) => {
     if (e.target.closest('button, a, input, [role="checkbox"], [role="menuitem"]')) return;
@@ -625,7 +627,7 @@ export default function Students() {
           title="Students"
           description="Profiles, mentors, levels and funding activity for every student."
           actions={<>
-            {canEdit && selectedStudents.length > 0 && (
+            {canTransfer && selectedStudents.length > 0 && (
               <Button onClick={() => setShowTransferDialog(true)}>
                 <ArrowRightLeft className="h-4 w-4 mr-2" />
                 Transfer {selectedStudents.length}
@@ -1155,7 +1157,7 @@ export default function Students() {
                     All Students ({total.toLocaleString()})
                   </h3>
                 </div>
-                {canEdit && selectedStudents.length > 0 && (
+                {canTransfer && selectedStudents.length > 0 && (
                   <div className="flex flex-wrap items-center gap-3 border-b border-gray-200 bg-blue-50/60 px-4 py-2 text-sm text-slate-700">
                     <span className="font-medium">{selectedStudents.length.toLocaleString()} selected</span>
                     {pageAllSelected && selectedStudents.length < total && (
@@ -1169,7 +1171,7 @@ export default function Students() {
                 <Table>
                   <TableHeader>
                     <TableRow className="bg-gray-50">
-                      {canEdit && (
+                      {canTransfer && (
                         <TableHead className="w-12">
                           <Checkbox
                             checked={pageAllSelected}
@@ -1198,14 +1200,14 @@ export default function Students() {
                   <TableBody>
                     {displayStudents.length === 0 ? (
                       <TableRow>
-                        <TableCell colSpan={canEdit ? 17 : 16} className="text-center py-8 text-gray-500">
+                        <TableCell colSpan={canTransfer ? 17 : 16} className="text-center py-8 text-gray-500">
                           {emptyText('No students found')}
                         </TableCell>
                       </TableRow>
                     ) : (
                       displayStudents.map((student) => (
                         <TableRow key={student.id} className="cursor-pointer hover:bg-gray-50 transition-colors" onClick={(e) => openStudent(e, student.id)}>
-                          {canEdit && (
+                          {canTransfer && (
                             <TableCell>
                               <Checkbox
                                 checked={!!selected[student.id]}
@@ -1509,7 +1511,6 @@ export default function Students() {
           open={showTransferDialog}
           onOpenChange={setShowTransferDialog}
           students={selectedStudents}
-          users={users}
           onDone={() => {
             queryClient.invalidateQueries({ queryKey: ['students'] });
             setSelected({});

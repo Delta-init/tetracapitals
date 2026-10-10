@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
+import { useQuery } from '@tanstack/react-query';
 import { base44 } from '@/api/base44Client';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
@@ -16,9 +17,15 @@ const roleName = (r) => BUILTIN_ROLE_NAMES[r] || ({ cs: 'CS', cs_manager: 'CS Ma
  * Move the selected students to a team: to one person on it (anyone, CS first)
  * or spread evenly over the team's CS in turn. Only the primary mentor is
  * written; the server works out the student's team and records the move in
- * their history. Admin-only (the backend only lets admins update students).
+ * their history. By admins and every CS Manager (the user, 2026-10-10): the server's transferStudent checks, and
+ * the people come from getTransferPeople — names, roles and teams only.
  */
-export default function TransferStudentsDialog({ open, onOpenChange, students, users, onDone }) {
+export default function TransferStudentsDialog({ open, onOpenChange, students, onDone }) {
+  const { data: users = [] } = useQuery({
+    queryKey: ['transfer-people'],
+    enabled: open,
+    queryFn: async () => (await base44.functions.invoke('getTransferPeople', {})).data?.users || [],
+  });
   const teams = useMemo(() => listTeams(users), [users]);
   const [teamId, setTeamId] = useState('');
   const [target, setTarget] = useState('');
@@ -59,11 +66,7 @@ export default function TransferStudentsDialog({ open, onOpenChange, students, u
     let done = 0;
     for (const { student, to } of moves) {
       try {
-        await base44.entities.Student.update(student.id, {
-          primary_mentor_id: to.id,
-          primary_mentor_name: to.full_name,
-          assignment_status: 'assigned',
-        });
+        await base44.functions.invoke('transferStudent', { studentId: student.id, toId: to.id });
         await logAction('transfer_student', 'Student', student.id,
           `Transferred ${student.full_name} from ${student.primary_mentor_name || 'no mentor'} to ${to.full_name} (${team.name})`,
           { primary_mentor_id: student.primary_mentor_id || '', primary_mentor_name: student.primary_mentor_name || '' },
