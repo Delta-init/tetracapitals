@@ -5,18 +5,21 @@ import { base44 } from '@/api/base44Client';
 /* ────────────────────────────────────────────────────────────────────────────
    "Bonus pending" (the user, 2026-10-10; backend/src/students/bonusPending.ts): a student with a bonus not decided
    yet, its amount in USD, and where it waits —
+     Needs call + MT5           promised at the sales close, not sent yet: it goes to be credited once a call that
+                                connected is logged with their MT5;
      With finance               Delta finance is approving the payment;
      Waiting for broker admin   a broker admin or a Super Admin credits it in MT5 and approves it: finance approved
                                 it, or it is a sales-close / course-upgrade bonus credit, or finance doesn't have it.
-   Several: their count and total, and the earliest stage (with finance while any one is there); the tooltip says
+   Several: their count and total, and the earliest stage (needs a call, then with finance, then the broker admin); the tooltip says
    how many are where. On the Students tables, the student page and the export. Read-only.
 ──────────────────────────────────────────────────────────────────────────── */
 
 export const BONUS_STAGES = {
+  needs_call: { label: 'Needs call + MT5', cls: 'border-rose-200 bg-rose-50 text-rose-800', note: 'Promised at the sales close — it goes to be credited once a call that connected is logged with their MT5' },
   with_finance: { label: 'With finance', cls: 'border-sky-200 bg-sky-50 text-sky-800', note: 'Delta finance is approving the payment' },
   waiting_broker: { label: 'Waiting for broker admin', cls: 'border-amber-200 bg-amber-50 text-amber-800', note: 'A broker admin or a Super Admin credits it in MT5 and approves it' },
 };
-const STAGE_KEYS = ['with_finance', 'waiting_broker'];
+const STAGE_KEYS = ['needs_call', 'with_finance', 'waiting_broker'];
 
 const usd = (n) => `$${Number(n || 0).toLocaleString('en-US', { maximumFractionDigits: 2 })}`;
 
@@ -42,7 +45,7 @@ export function BonusPendingBadge({ info, className = '', onClick }) {
   const title = [
     `${info.count === 1 ? 'A bonus' : `${info.count} bonuses`} not decided yet — ${usd(info.total_usd)}`,
     info.count === 1 ? stage.note : breakdown(info),
-    since ? `${info.count === 1 ? 'requested' : 'the oldest requested'} ${since}` : '',
+    since ? `${info.count === 1 ? 'since' : 'the oldest since'} ${since}` : '',
   ].filter(Boolean).join(' · ');
   const cls = `inline-flex items-center gap-1 whitespace-nowrap rounded-full border px-2 py-0.5 align-middle text-[11px] font-semibold ${stage.cls} ${className}`;
   const body = (

@@ -7,7 +7,9 @@
  *   - several: the count, the total and the earliest stage; approved / rejected bonuses and pending deposits don't count;
  *   - the "Bonus pending" filter returns only those students, combines with another filter and with the tabs, and the
  *     total follows it; the export (all) carries it too;
- *   - scope: a CS sees only their own students, in the list and on the student page.
+ *   - scope: a CS sees only their own students, in the list and on the student page;
+ *   - a bonus promised at the sales close (course_fees) and not sent to be credited yet: "needs call + MT5" — in USD
+ *     at 3.67, never counted twice once sent, the earliest stage; the filter by each stage.
  * Read-only: nothing in funding_transactions or students changes.
  * Run through ./test-bonus-pending.sh. Refuses anything but a scratch database on 127.0.0.1.
  */
@@ -166,6 +168,45 @@ check("a queued one never reached finance: waiting for a broker admin; one sent 
 console.log("\n\x1b[1mRead-only\x1b[0m");
 const after = JSON.stringify(await db.collection("funding_transactions").find().sort({ _id: 1 }).toArray()) + JSON.stringify(await db.collection("students").find().sort({ _id: 1 }).toArray());
 check("no funding request or student changed", after === before);
+
+/* ── A bonus promised at the sales close, not sent to be credited yet (the user, 2026-10-10): "Needs call + MT5" ── */
+console.log("\n\x1b[1mPromised at the sales close, not sent yet\x1b[0m");
+const fee = (invoice_id: string, bonus_minor: number, extra: Record<string, unknown> = {}) => ({
+  invoice_id, invoice_number: `IN-${invoice_id}`, course: "DSLP", currency: "AED", fee_minor: 1000000, paid_minor: 1000000, balance_minor: 0,
+  bonus_given: bonus_minor > 0, bonus_minor, recorded_at: "2026-10-05T10:00:00.000Z", ...extra,
+});
+const sClose = student("Close Bonus", cs1, { course_fees: [fee("inv-9", 100000)] });                         // AED 1,000 — not sent
+const sCloseUsd = student("Close Usd", cs2, { course_fees: [fee("inv-10", 50000, { bonus_currency: "USD" })] }); // $500 — not sent
+const sCloseNone = student("Close No Bonus", cs1, { course_fees: [fee("inv-11", 0)] });                        // no bonus given
+await db.collection("students").insertMany([sClose, sCloseUsd, sCloseNone] as any[]);
+// Sales Credit's own close bonus (inv-1) already went as a credit — it stays waiting for a broker admin, not twice.
+await db.collection("students").updateOne({ _id: sCredit._id }, { $set: { course_fees: [fee("inv-1", 110100)] } });
+// Mixed Two: one close bonus sent, a second (inv-12) not — the earliest stage is now "needs call".
+await db.collection("students").updateOne({ _id: sMixed._id }, { $set: { course_fees: [fee("inv-12", 36700)] } });
+const before2 = JSON.stringify(await db.collection("funding_transactions").find().sort({ _id: 1 }).toArray()) + JSON.stringify(await db.collection("students").find().sort({ _id: 1 }).toArray());
+
+r = await list(BOSS, { tab: "all" });
+const bp2 = (s: any) => rowOf(r.body.rows, s)?.bonus_pending;
+check("AED 1,000 not sent: needs a call + MT5, in USD at 3.67", bp2(sClose)?.stage === "needs_call" && bp2(sClose)?.total_usd === 272.48 && bp2(sClose)?.needs_call?.count === 1, JSON.stringify(bp2(sClose)));
+check("…a USD one as it is", bp2(sCloseUsd)?.total_usd === 500 && bp2(sCloseUsd)?.stage === "needs_call", JSON.stringify(bp2(sCloseUsd)));
+check("no bonus given at the close: nothing", bp2(sCloseNone) === null, JSON.stringify(bp2(sCloseNone)));
+check("one already sent as a credit isn't counted again", bp2(sCredit)?.count === 1 && bp2(sCredit)?.stage === "waiting_broker" && bp2(sCredit)?.needs_call?.count === 0, JSON.stringify(bp2(sCredit)));
+check("sent and not sent together: three, the earliest stage first", bp2(sMixed)?.count === 3 && bp2(sMixed)?.stage === "needs_call" && bp2(sMixed)?.total_usd === 400.5, JSON.stringify(bp2(sMixed)));
+
+r = await list(BOSS, { tab: "all", filters: { bonus: "needs_call" } });
+check("filter Needs call + MT5: only those with one not sent", names(r.body.rows) === "Close Bonus, Close Usd, Mixed Two" && r.body.bonus_filter === "needs_call", names(r.body.rows));
+r = await list(BOSS, { tab: "all", filters: { bonus: "with_finance" } });
+check("filter With finance", names(r.body.rows) === "Mixed Two, Open Pool Bonus, Sent Finance", names(r.body.rows));
+r = await list(BOSS, { tab: "all", filters: { bonus: "waiting_broker" } });
+check("filter Waiting for broker admin", names(r.body.rows) === "Decided Here, Finance Approved, Mixed Two, Sales Credit", names(r.body.rows));
+r = await list(BOSS, { tab: "all", filters: { bonus: "pending" } });
+check("Bonus pending — any: the new ones too", ["Close Bonus", "Close Usd", "Sent Finance"].every((x) => names(r.body.rows).includes(x)) && !names(r.body.rows).includes("Close No Bonus"), names(r.body.rows));
+r = await list(CS2, { tab: "my", filters: { bonus: "needs_call" } });
+check("a CS: only their own", names(r.body.rows) === "Close Usd", names(r.body.rows));
+const closePage = await getStudentBonusPending(new Request("http://x", { method: "POST", body: JSON.stringify({ studentId: String(sClose._id) }) }), CS1);
+check("the student page says it too", (await closePage.json() as any).bonus_pending?.stage === "needs_call");
+const after2 = JSON.stringify(await db.collection("funding_transactions").find().sort({ _id: 1 }).toArray()) + JSON.stringify(await db.collection("students").find().sort({ _id: 1 }).toArray());
+check("still read-only", after2 === before2);
 
 console.log(`\n${pass} passed, ${fail} failed`);
 await closeDb();

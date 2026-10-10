@@ -822,14 +822,17 @@ export default function Students() {
                 </SelectContent>
               </Select>
 
-              {/* Bonus — everyone, on every tab: a bonus not decided yet, with finance or waiting for a broker admin */}
+              {/* Bonus — everyone, on every tab: a bonus not decided yet — any, or where it waits: a sales-close bonus that needs a connected call + MT5, with finance, or waiting for a broker admin */}
               <Select value={filterBonus} onValueChange={(v) => v && setFilterBonus(v)}>
-                <SelectTrigger className="w-full md:w-40">
+                <SelectTrigger className="w-full md:w-52">
                   <SelectValue placeholder="Bonus" />
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="all">Any bonus</SelectItem>
-                  <SelectItem value="pending">Bonus pending</SelectItem>
+                  <SelectItem value="pending">Bonus pending — any</SelectItem>
+                  <SelectItem value="needs_call">Needs a connected call + MT5</SelectItem>
+                  <SelectItem value="with_finance">With finance</SelectItem>
+                  <SelectItem value="waiting_broker">Waiting for broker admin</SelectItem>
                 </SelectContent>
               </Select>
 
@@ -945,7 +948,7 @@ export default function Students() {
             {filterFollowup !== 'all' && list && !listFetching && list.followup_filter !== filterFollowup && (
               <p className="mt-3 text-sm text-amber-700">The Follow-up today filter needs the server update — until then this list isn't filtered by it.</p>
             )}
-            {filterBonus === 'pending' && list && !listFetching && list.bonus_filter !== 'pending' && (
+            {filterBonus !== 'all' && list && !listFetching && list.bonus_filter !== filterBonus && (
               <p className="mt-3 text-sm text-amber-700">The Bonus filter needs the server update — until then this list isn't filtered by it.</p>
             )}
           </CardContent>

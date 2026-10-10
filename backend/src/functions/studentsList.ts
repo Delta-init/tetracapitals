@@ -13,6 +13,7 @@ import { businessToday } from "../students/followups";
 import { loadTeams } from "../students/teams";
 import { LOCATIONS, currentLocationOf } from "../lib/location";
 import { bonusPendingOf, idsWithBonusPending } from "../students/bonusPending";
+const BONUS_FILTERS = ["pending", "needs_call", "with_finance", "waiting_broker"];
 
 /* ────────────────────────────────────────────────────────────────────────────
    The Students page, one page at a time. Which students each tab holds and
@@ -208,7 +209,8 @@ async function filters(user: AuthUser, tab: Tab, f: any): Promise<Record<string,
     out.push({ course_fees: { $not: { $elemMatch: { balance_minor: { $gt: 0 } } } } });
   }
   // Bonus pending (the user, 2026-10-10): a BONUS funding request not decided yet, wherever it waits (students/bonusPending.ts).
-  if (f?.bonus === "pending") out.push({ _id: { $in: (await idsWithBonusPending()).map(toObjectId).filter(Boolean) } });
+  // "pending" any; or one stage — needs a connected call + MT5 (a sales-close bonus not sent yet), with finance, waiting for the broker admin.
+  if (BONUS_FILTERS.includes(f?.bonus)) out.push({ _id: { $in: (await idsWithBonusPending(f.bonus)).map(toObjectId).filter(Boolean) } });
   const from = str(f?.from, 40), to = str(f?.to, 40);
   if (from && to) out.push({ created_date: { $gte: from, $lte: to } });
   const status = str(f?.status);
@@ -272,7 +274,7 @@ export async function listStudents(req: Request, user: AuthUser): Promise<Respon
   if (tabs.includes("admin_co_managed")) counts.admin_co_managed = await col("students").countDocuments(and(scope, hasCoMentors));
 
   const followup = takesFilters && FOLLOWUP_FILTERS.has(body?.filters?.followup) ? body.filters.followup : undefined;
-  const bonus = takesFilters && body?.filters?.bonus === "pending" ? "pending" : undefined;
+  const bonus = takesFilters && BONUS_FILTERS.includes(body?.filters?.bonus) ? String(body.filters.bonus) : undefined;
   return json({ tab, tabs, ...result, counts, ...(followup ? { followup_filter: followup } : {}), ...(bonus ? { bonus_filter: bonus } : {}) });
 }
 
