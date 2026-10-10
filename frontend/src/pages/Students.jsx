@@ -4,6 +4,7 @@ import { PRIORITY, PRIORITY_KEYS, priorityOf, PriorityPicker } from '@/component
 import { LanguagePicker } from '@/components/students/languagePicker';
 import { LANGUAGES } from '@/components/students/languages';
 import { OnboardedSwitch } from '@/components/students/onboarding';
+import { BonusPendingBadge, bonusPendingText } from '@/components/students/bonusPending';
 import { isStudentOf } from '@/components/students/common';
 import { StudentTagChips, tagNamesOf, useStudentTagCatalog } from '@/components/students/tags';
 import PageHeader from '@/components/common/PageHeader';
@@ -99,6 +100,8 @@ const EXPORT_COLUMNS = [
   { header: 'Enrolment', value: s => ENROLMENT[enrolmentOf(s)].label },
   { header: 'Priority', value: s => PRIORITY[priorityOf(s)].label },
   { header: 'Language', value: s => s.language },
+  // A bonus not decided yet: its amount and where it waits (components/students/bonusPending.jsx).
+  { header: 'Bonus pending', width: 30, value: s => bonusPendingText(s.bonus_pending) },
   { header: 'Classes Attended', type: 'number', value: s => s.lms_classes?.attended },
   { header: 'Classes Booked', type: 'number', value: s => s.lms_classes?.booked },
   { header: 'Classes Upcoming', type: 'number', value: s => s.lms_classes?.upcoming },
@@ -137,6 +140,7 @@ export default function Students() {
   const [filterClasses, setFilterClasses] = useUrlState('classes');
   const [filterFollowup, setFilterFollowup] = useUrlState('followup');
   const [filterBalance, setFilterBalance] = useUrlState('balance');
+  const [filterBonus, setFilterBonus] = useUrlState('bonus');   // Bonus pending — a bonus not decided yet (2026-10-10)
   const [filterTag, setFilterTag] = useUrlState('tag');
   const [newParam, setNewParam] = useUrlState('new', '');
   const onlyNew = newParam === '1';
@@ -199,10 +203,10 @@ export default function Students() {
   }, [filterDateRange, customDateFrom, customDateTo]);
   const listFilters = useMemo(() => ({
     search: debouncedSearch, onlyNew, tag: filterTag, enrolment: filterEnrolment, priority: filterPriority, language: filterLanguage, onboarding: filterOnboarding, classes: filterClasses, followup: filterFollowup,
-    course: filterCourse, balance: filterBalance,
+    course: filterCourse, balance: filterBalance, bonus: filterBonus,
     from: dateRange ? new Date(dateRange.from).toISOString() : '', to: dateRange ? new Date(dateRange.to).toISOString() : '',
     status: filterStatus, team: filterTeam, level: filterLevel, mentor: filterMentor, location: filterLocation,
-  }), [debouncedSearch, onlyNew, filterTag, filterEnrolment, filterPriority, filterLanguage, filterOnboarding, filterClasses, filterFollowup, filterCourse, filterBalance, dateRange, filterStatus, filterTeam, filterLevel, filterMentor, filterLocation]);
+  }), [debouncedSearch, onlyNew, filterTag, filterEnrolment, filterPriority, filterLanguage, filterOnboarding, filterClasses, filterFollowup, filterCourse, filterBalance, filterBonus, dateRange, filterStatus, filterTeam, filterLevel, filterMentor, filterLocation]);
   const filtersKey = JSON.stringify(listFilters);
   // A new tab, search or filter starts at page 1 with nothing ticked — not the first time the list is known (the user
   // loading, or the address's own page coming back), which would throw away the page the address asked for.
@@ -818,6 +822,17 @@ export default function Students() {
                 </SelectContent>
               </Select>
 
+              {/* Bonus — everyone, on every tab: a bonus not decided yet, with finance or waiting for a broker admin */}
+              <Select value={filterBonus} onValueChange={(v) => v && setFilterBonus(v)}>
+                <SelectTrigger className="w-full md:w-40">
+                  <SelectValue placeholder="Bonus" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">Any bonus</SelectItem>
+                  <SelectItem value="pending">Bonus pending</SelectItem>
+                </SelectContent>
+              </Select>
+
               <Select value={filterDateRange} onValueChange={setFilterDateRange}>
                 <SelectTrigger className="w-full md:w-40">
                   <SelectValue placeholder="Date added" />
@@ -930,6 +945,9 @@ export default function Students() {
             {filterFollowup !== 'all' && list && !listFetching && list.followup_filter !== filterFollowup && (
               <p className="mt-3 text-sm text-amber-700">The Follow-up today filter needs the server update — until then this list isn't filtered by it.</p>
             )}
+            {filterBonus === 'pending' && list && !listFetching && list.bonus_filter !== 'pending' && (
+              <p className="mt-3 text-sm text-amber-700">The Bonus filter needs the server update — until then this list isn't filtered by it.</p>
+            )}
           </CardContent>
         </Card>
 
@@ -994,6 +1012,7 @@ export default function Students() {
                             <TableCell>
                               <div className="font-medium text-slate-900">{student.full_name}<NewForYou student={student} me={currentUser.id} /></div>
                               {student.email && <div className="text-xs text-slate-500">{student.email}</div>}
+                              <BonusPendingBadge info={student.bonus_pending} className="mt-1" />
                             </TableCell>
                             <TableCell className="text-sm font-mono">{student.phone}</TableCell>
                             <TableCell><PriorityPicker student={student} currentUser={currentUser} /></TableCell>
@@ -1094,6 +1113,7 @@ export default function Students() {
                          <TableCell>
                            <div className="font-medium text-slate-900">{student.full_name}<NewForYou student={student} me={currentUser.id} /></div>
                            {student.email && <div className="text-xs text-slate-500">{student.email}</div>}
+                           <BonusPendingBadge info={student.bonus_pending} className="mt-1" />
                          </TableCell>
                          <TableCell className="text-sm font-mono">{student.phone}</TableCell>
                          <TableCell><PriorityPicker student={student} currentUser={currentUser} /></TableCell>
@@ -1221,6 +1241,7 @@ export default function Students() {
                           <TableCell>
                             <div className="font-medium text-slate-900">{student.full_name}<NewForYou student={student} me={currentUser.id} /></div>
                             {student.email && <div className="text-xs text-slate-500">{student.email}</div>}
+                            <BonusPendingBadge info={student.bonus_pending} className="mt-1" />
                           </TableCell>
                           <TableCell className="text-sm font-mono">{student.phone}</TableCell>
                           <TableCell><PriorityPicker student={student} currentUser={currentUser} /></TableCell>
@@ -1321,6 +1342,7 @@ export default function Students() {
                         <TableCell>
                           <div className="font-medium text-slate-900">{student.full_name}<NewForYou student={student} me={currentUser.id} /></div>
                           {student.email && <div className="text-xs text-slate-500">{student.email}</div>}
+                          <BonusPendingBadge info={student.bonus_pending} className="mt-1" />
                         </TableCell>
                         <TableCell className="text-sm font-mono">{student.phone}</TableCell>
                         <TableCell><PriorityPicker student={student} currentUser={currentUser} /></TableCell>
@@ -1428,6 +1450,7 @@ export default function Students() {
                       <TableCell>
                         <div className="font-medium text-slate-900">{student.full_name}<NewForYou student={student} me={currentUser.id} /></div>
                         {student.email && <div className="text-xs text-slate-500">{student.email}</div>}
+                        <BonusPendingBadge info={student.bonus_pending} className="mt-1" />
                       </TableCell>
                       <TableCell className="text-sm font-mono">{student.phone}</TableCell>
                       <TableCell><PriorityPicker student={student} currentUser={currentUser} /></TableCell>

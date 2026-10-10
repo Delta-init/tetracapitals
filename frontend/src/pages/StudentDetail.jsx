@@ -23,6 +23,7 @@ import CourseFeesCard from "../components/students/CourseFeesCard";
 import ZohoInvoicesCard from "../components/students/ZohoInvoicesCard";
 import StudentCoursesCard from "../components/students/StudentCoursesCard";
 import { SalesCrmBadge, salesCrmOfStudent } from "@/components/students/salesCrm";
+import { BonusPendingBadge, useStudentBonusPending } from "@/components/students/bonusPending";
 import { BangaloreBadge } from "@/components/common/LocationFilter";
 import StudentHistory, { useStudentHistory } from "../components/students/StudentHistory";
 import StudentFollowupsSection from "@/components/followups/StudentFollowupsSection";
@@ -134,6 +135,9 @@ export default function StudentDetail() {
     queryFn: () => base44.entities.FundingTransaction.filter({ student_id: studentId }, '-requested_at'),
     enabled: !!studentId && !!currentUser && tab === 'funding'
   });
+
+  // A bonus not decided yet — with finance or waiting for a broker admin — beside their name on every tab.
+  const { data: bonusPending } = useStudentBonusPending(studentId, !!currentUser);
 
   // Team, who received them first, where they came from — for the Details tab (the History tab loads its own).
   const { data: history } = useStudentHistory(studentId, !!currentUser && tab === 'details');
@@ -309,6 +313,8 @@ export default function StudentDetail() {
                 </span>
                 {/* Which sales CRM they came through */}
                 <SalesCrmBadge crm={salesCrmOfStudent(displayStudent)} />
+                {/* A bonus not decided yet, and where it waits — opens their Funding tab */}
+                <BonusPendingBadge info={bonusPending} onClick={() => changeTab('funding')} />
               </p>
               {/* Open, or Closed = enrolled */}
               <div className="mt-2"><EnrolmentControl student={student} currentUser={currentUser} /></div>

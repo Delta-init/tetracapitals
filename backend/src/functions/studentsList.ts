@@ -1,17 +1,18 @@
 import { LANGUAGES } from "../students/language";
 import { courseBalancesOf, idsOwingOnCourses } from "../courses/courseBalance";
 import { col } from "../db";
-import { json, error, forbidden } from "../lib/response";
+import { json, error, forbidden, notFound } from "../lib/response";
 import { toObjectId } from "../lib/id";
 import { allOf as and, escapeRe, pageOf, textMatch } from "../lib/paging";
 import type { AuthUser } from "../auth/middleware";
 import { buildScopeFilter, getConfiguredScope, getDownlineIds } from "../lib/scope";
 import { isMentorRole } from "../lib/roles";
-import { userCanListEntity } from "../entities/crud";
+import { userCanListEntity, userCanReadDoc } from "../entities/crud";
 import { courseLabel } from "../students/tags";
 import { businessToday } from "../students/followups";
 import { loadTeams } from "../students/teams";
 import { LOCATIONS, currentLocationOf } from "../lib/location";
+import { bonusPendingOf, idsWithBonusPending } from "../students/bonusPending";
 
 /* ────────────────────────────────────────────────────────────────────────────
    The Students page, one page at a time. Which students each tab holds and
@@ -206,6 +207,8 @@ async function filters(user: AuthUser, tab: Tab, f: any): Promise<Record<string,
     out.push({ course_fees: { $elemMatch: { balance_minor: { $type: "number" } } } });
     out.push({ course_fees: { $not: { $elemMatch: { balance_minor: { $gt: 0 } } } } });
   }
+  // Bonus pending (the user, 2026-10-10): a BONUS funding request not decided yet, wherever it waits (students/bonusPending.ts).
+  if (f?.bonus === "pending") out.push({ _id: { $in: (await idsWithBonusPending()).map(toObjectId).filter(Boolean) } });
   const from = str(f?.from, 40), to = str(f?.to, 40);
   if (from && to) out.push({ created_date: { $gte: from, $lte: to } });
   const status = str(f?.status);
@@ -231,10 +234,13 @@ async function filters(user: AuthUser, tab: Tab, f: any): Promise<Record<string,
 /**
  * POST /api/functions/listStudents
  * Body: { tab, page?, pageSize? (25 | 50 | 100), all? (every match, up to 10,000 — export, select all),
- *         filters?: { search, onlyNew, tag, enrolment, priority, language, onboarding, classes, followup, course, balance, from, to, status, team, level, mentor, location } }
- *         (location: "dubai" | "bangalore" — by their team, or with none the location they arrived for)
+ *         filters?: { search, onlyNew, tag, enrolment, priority, language, onboarding, classes, followup, course, balance, bonus, from, to, status, team, level, mentor, location } }
+ *         (location: "dubai" | "bangalore" — by their team, or with none the location they arrived for;
+ *          bonus: "pending" — a bonus not decided yet)
  * → { tab, tabs, rows, total, page, page_size, truncated?, counts: { new_for_me, co_managed?, admin_co_managed? },
- *     followup_filter? (the follow-up filter applied — the page tells a server without it apart) }
+ *     followup_filter?, bonus_filter? (the follow-up / bonus filter applied — the page tells a server without it apart) }
+ *   Each row carries bonus_pending: { count, total_usd, stage, with_finance, waiting_broker, since } or null
+ *   (students/bonusPending.ts).
  */
 export async function listStudents(req: Request, user: AuthUser): Promise<Response> {
   if (!userCanListEntity(user, "Student")) return forbidden();
@@ -255,6 +261,9 @@ export async function listStudents(req: Request, user: AuthUser): Promise<Respon
     const teamLocations = new Map((await loadTeams()).teams.map((t) => [t.id, t.location]));
     for (const r of result.rows as any[]) r.current_location = currentLocationOf(r, (id) => teamLocations.get(id));
   }
+  // Their bonuses not decided yet, and where they wait — one query for the whole page.
+  const bonuses = await bonusPendingOf(result.rows.map((r: any) => String(r.id)));
+  for (const r of result.rows as any[]) r.bonus_pending = bonuses.get(String(r.id)) ?? null;
 
   const counts: Record<string, number> = {
     new_for_me: await col("students").countDocuments(and(scope, { new_for_id: user.id, primary_mentor_id: user.id })),
@@ -263,7 +272,23 @@ export async function listStudents(req: Request, user: AuthUser): Promise<Respon
   if (tabs.includes("admin_co_managed")) counts.admin_co_managed = await col("students").countDocuments(and(scope, hasCoMentors));
 
   const followup = takesFilters && FOLLOWUP_FILTERS.has(body?.filters?.followup) ? body.filters.followup : undefined;
-  return json({ tab, tabs, ...result, counts, ...(followup ? { followup_filter: followup } : {}) });
+  const bonus = takesFilters && body?.filters?.bonus === "pending" ? "pending" : undefined;
+  return json({ tab, tabs, ...result, counts, ...(followup ? { followup_filter: followup } : {}), ...(bonus ? { bonus_filter: bonus } : {}) });
+}
+
+/**
+ * POST /api/functions/getStudentBonusPending { studentId }
+ * → { bonus_pending: { count, total_usd, stage, with_finance, waiting_broker, since } | null } — the student page's
+ * "Bonus pending" (students/bonusPending.ts), for somebody who may see the student: the same test as opening them.
+ */
+export async function getStudentBonusPending(req: Request, user: AuthUser): Promise<Response> {
+  const body: any = await req.json().catch(() => ({}));
+  const oid = toObjectId(str(body?.studentId, 40));
+  if (!oid) return error("studentId is required", 400);
+  const s: any = await col("students").findOne({ _id: oid });
+  if (!s) return notFound("No such student");
+  if (!(await userCanReadDoc(user, "Student", s))) return forbidden();
+  return json({ bonus_pending: (await bonusPendingOf([String(s._id)])).get(String(s._id)) ?? null });
 }
 
 /**

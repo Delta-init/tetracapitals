@@ -49,7 +49,7 @@ import { getPushConfig, savePushSubscription, deletePushSubscription, sendTestPu
 import { getNavCounts, markStudentSeen } from "./navCounts";
 import { getTabbyLinks, createTabbyLink, cancelTabbyLink } from "./tabbyLinks";
 import { getPaymentLinks, requestPaymentLink, approvePaymentLink, rejectPaymentLink, cancelPaymentLinkRequest, retryPaymentLink } from "./paymentLinks";
-import { listStudents, getStudentListOptions, findStudentByEmail } from "./studentsList";
+import { listStudents, getStudentListOptions, findStudentByEmail, getStudentBonusPending } from "./studentsList";
 import { listStudentLogs, listStudentLogHistory, listTransactions } from "./pagedLists";
 import {
   getWhatsAppStatus, connectWhatsApp, disconnectWhatsApp, getWhatsAppChats, getWhatsAppMessages, markWhatsAppRead,
@@ -168,6 +168,7 @@ const AUTHED: Record<string, AuthedHandler> = {
   listStudents,
   getStudentListOptions,
   findStudentByEmail,
+  getStudentBonusPending,
   listStudentLogs,
   listStudentLogHistory,
   listTransactions,
