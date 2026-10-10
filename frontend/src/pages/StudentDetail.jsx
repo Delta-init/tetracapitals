@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { PriorityPicker } from '@/components/students/priority';
+import { LanguagePicker } from '@/components/students/languagePicker';
 import { PageTitle } from '@/components/common/PageHeader';
 import { base44 } from "@/api/base44Client";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
@@ -371,6 +372,8 @@ export default function StudentDetail() {
                   <div className="flex items-center gap-2">
                     <span className="text-xs text-slate-500">Priority</span>
                     <PriorityPicker student={displayStudent} currentUser={currentUser} />
+                    <span className="text-xs text-slate-500">Language</span>
+                    <LanguagePicker student={displayStudent} currentUser={currentUser} />
                     <Badge variant="outline" className={getStatusColor(displayStudent.status)}>
                       {displayStudent.status}
                     </Badge>
