@@ -1,9 +1,11 @@
 /**
- * Deposit requests approved in Delta finance, end to end, against a real API
- * process and a stand-in finance served here.
+ * Funding requests and Delta finance, end to end, against a real API process
+ * and a stand-in finance served here.
  *
- *   - a new DEPOSIT goes to finance at once, signed the way finance checks;
- *     withdrawals and requests from before the link do not;
+ *   - a new DEPOSIT or WITHDRAWAL no longer goes to finance (the user,
+ *     2026-10-10): only a broker admin or a Super Admin approves or rejects it
+ *     here; deposits finance already had are still decided there (below, a
+ *     deposit is put "with finance" as one sent before the switch was);
  *   - a new BONUS (a course payment) goes too, with its course payment, and
  *     needs its MT5 login and receipt; finance's approval is the first of two —
  *     it waits, PENDING, for a broker admin or a Super Admin, who are told and
@@ -17,7 +19,7 @@
  *     rejected with the accountant's reason;
  *   - the same decision twice is one decision, even at the same instant; a
  *     different one is refused, as is a transaction ID already used;
- *   - finance down is waited out; a request finance will not take is handed
+ *   - finance down is waited out; a bonus finance will not take is handed
  *     back and approved here;
  *   - the browser's own credit and co-mentor calls answer as they did.
  *
@@ -140,7 +142,10 @@ const login = async (u: any) => (await call("POST", "/api/auth/login", { email: 
 const as = (token: string) => ({ authorization: `Bearer ${token}` });
 const adminToken = await login(admin);
 const mentorToken = await login(mentor);
-check("an admin and a mentor can sign in", !!adminToken && !!mentorToken);
+const brokerToken = await login(broker);
+const plainToken = await login(plainAdmin);
+check("an admin and a mentor can sign in", !!adminToken && !!mentorToken && !!brokerToken && !!plainToken);
+const patchAs = (token: string, id: string, data: Record<string, unknown>) => call("PATCH", `/api/entities/FundingTransaction/${id}`, data, as(token));
 
 /** A funding request as the Funding Requests form raises it. */
 const raise = (over: Record<string, unknown> = {}) => call("POST", "/api/entities/FundingTransaction", {
@@ -152,6 +157,13 @@ const raise = (over: Record<string, unknown> = {}) => call("POST", "/api/entitie
   ...over,
 }, as(mentorToken));
 const stateOf = async (id: string) => (await txOf(id))?.finance_approval?.state;
+/** A deposit sent to finance before deposits stopped going there (2026-10-10): still finance's to decide. */
+let sentBefore = 0;
+const withFinanceAlready = async (id: string) => {
+  sentBefore++;
+  const at = new Date().toISOString();
+  await txs.updateOne({ _id: new ObjectId(id) }, { $set: { finance_approval: { state: "sent", queued_at: at, sent_at: at, attempts: 1, request_id: `fin-old-${sentBefore}` } } });
+};
 const decide = (body: Record<string, unknown>, secret: string | null = DECISION_SECRET) =>
   call("POST", "/api/v1/integrations/finance/funding-decisions", body, secret ? { "x-finance-secret": secret } : {});
 const approve = (fundingId: string, over: Record<string, unknown> = {}) => decide({
@@ -169,36 +181,50 @@ step("The server's switch");
 const link = await call("POST", "/api/functions/getFinanceLink", {}, as(mentorToken));
 check("the pages can ask whether deposits go to finance — they do", link.status === 200 && link.body?.depositsToFinance === true, show(link));
 
-step("A new deposit goes to Delta finance at once");
-const d1r = await raise();
-const d1 = String(d1r.body?.id ?? "");
-check("raised by the mentor as usual", d1r.status === 200 && !!d1, show(d1r));
-check("marked for finance on the way in", d1r.body?.finance_approval?.state === "queued", JSON.stringify(d1r.body?.finance_approval));
-check("sent within seconds, not on the next tick", await until(async () => (await stateOf(d1)) === "sent", 3000), String(await stateOf(d1)));
-const sent = received[0];
-check("to the organization configured, signed as finance checks it", sent?.org === ORG_ID && badSignatures === 0, `${sent?.org} / ${badSignatures} bad`);
-check("with the request: its id, the amount in cents, USD, the payment method",
-  sent?.body?.externalId === d1 && sent.body.amountMinor === 100000 && sent.body.currency === "USD" && sent.body.paymentMethod === "USDT",
-  JSON.stringify(sent?.body).slice(0, 300));
-check("the student as finance needs them — name, code, email, level, team",
-  sent?.body?.student?.name === "Student Sam" && sent.body.student.code === "STU-0100" && sent.body.student.email === "sam@e2e-funding.test"
-    && sent.body.student.level === "LEVEL_1" && sent.body.team === "Team Cara", JSON.stringify(sent?.body?.student));
-check("the proof, the MT5 login and the student's MT5 accounts, and who raised it",
-  sent?.body?.screenshotUrl === "http://127.0.0.1/uploads/proof.png" && sent.body.mt5Login === "5550001"
-    && sent.body.mt5Accounts?.[0]?.login === "5550001" && sent.body.requestedBy === "Mentor Meera" && sent.body.initiatingMentor === "Mentor Meera",
-  JSON.stringify(sent?.body).slice(0, 400));
-check("finance's own id for it is kept", (await txOf(d1))?.finance_approval?.request_id === "fin-1");
+step("A new deposit stays here, for a broker admin or a Super Admin (2026-10-10)");
+const onOther = { student_id: String(other._id), student_name: other.full_name, student_code: other.student_code };
+const n1r = await raise(onOther);
+const n1 = String(n1r.body?.id ?? "");
+await Bun.sleep(800);
+check("raised by the mentor as usual, and not marked for finance", n1r.status === 200 && !!n1 && !n1r.body?.finance_approval, show(n1r));
+check("nothing sent to finance", received.length === 0, String(received.length));
+let r = await patchAs(plainToken, n1, { status: "APPROVED", approved_by_name: "Plain Admin" });
+check("an admin who is not a broker admin cannot approve it", r.status === 403 && /broker admin/.test(JSON.stringify(r.body)), show(r));
+r = await patchAs(plainToken, n1, { status: "REJECTED" });
+check("nor reject it", r.status === 403, show(r));
+r = await patchAs(mentorToken, n1, { status: "APPROVED" });
+check("nor a mentor", r.status === 403, show(r));
+r = await patchAs(plainToken, n1, { notes: "Checked the screenshot" });
+check("an admin can still edit its other details", r.status === 200 && r.body?.notes === "Checked the screenshot" && r.body?.status === "PENDING", show(r));
+r = await patchAs(brokerToken, n1, { status: "APPROVED", approved_by_name: "Broker Bo", transaction_id: "TXN-N1" });
+check("a broker admin approves it", r.status === 200 && r.body?.status === "APPROVED", show(r));
+const n2 = String((await raise(onOther)).body?.id ?? "");
+r = await patchAs(adminToken, n2, { status: "REJECTED", rejection_reason: "Wrong amount" });
+check("a Super Admin can decide one too", r.status === 200 && r.body?.status === "REJECTED", show(r));
+r = await patchAs(plainToken, n2, { status: "PENDING" });
+check("an admin cannot reopen a decided one either", r.status === 403, show(r));
 
 step("Withdrawals, and whatever a caller claims, stay here");
 const w = await raise({ type: "WITHDRAWAL", finance_approval: { state: "decided", decision: "approved" } });
 await Bun.sleep(800);
 check("a withdrawal is not sent, and the finance_approval it arrived with is dropped", w.status === 200 && !w.body?.finance_approval, show(w));
-check("finance received only the deposit", received.length === 1, String(received.length));
+check("finance received nothing", received.length === 0, String(received.length));
+const wid = String(w.body?.id ?? "");
+r = await patchAs(plainToken, wid, { status: "APPROVED" });
+check("an admin who is not a broker admin cannot approve a withdrawal", r.status === 403 && /withdrawal/.test(JSON.stringify(r.body)), show(r));
+r = await patchAs(brokerToken, wid, { status: "REJECTED", rejection_reason: "Not enough equity" });
+check("a broker admin decides it", r.status === 200 && r.body?.status === "REJECTED", show(r));
+
+step("A deposit finance already had (sent before 2026-10-10)");
+const d1r = await raise();
+const d1 = String(d1r.body?.id ?? "");
+await withFinanceAlready(d1);
+check("with finance", (await stateOf(d1)) === "sent");
 
 step("While finance has it, nobody here decides it");
 const patch = (id: string, data: Record<string, unknown>) => call("PATCH", `/api/entities/FundingTransaction/${id}`, data, as(adminToken));
 const fn = (name: string, body: unknown) => call("POST", `/api/functions/${name}`, body, as(adminToken));
-let r = await patch(d1, { status: "APPROVED", approved_by_name: "Super Admin" });
+r = await patch(d1, { status: "APPROVED", approved_by_name: "Super Admin" });
 check("an admin cannot approve it here", r.status === 409 && /Delta Finance/.test(JSON.stringify(r.body)), show(r));
 r = await patch(d1, { status: "REJECTED" });
 check("nor reject it", r.status === 409, show(r));
@@ -286,7 +312,7 @@ check("a different decision now: refused", r.status === 409 && r.body?.error?.co
 
 step("A second deposit, both deliveries of its approval at once");
 const d2 = String((await raise({ amount_usd: 500 })).body?.id ?? "");
-check("sent", await until(async () => (await stateOf(d2)) === "sent", 3000));
+await withFinanceAlready(d2);
 const both = await Promise.all([
   approve(d2, { amountMinor: 50000, transactionId: "TXN-1002" }),
   approve(d2, { amountMinor: 50000, transactionId: "TXN-1002" }),
@@ -303,7 +329,7 @@ check("no second level change", (await db.collection("student_history").countDoc
 
 step("Rejected in finance");
 const d3 = String((await raise({ amount_usd: 700 })).body?.id ?? "");
-await until(async () => (await stateOf(d3)) === "sent", 3000);
+await withFinanceAlready(d3);
 r = await reject(d3);
 t = await txOf(d3);
 check("rejected here, with the accountant's reason", r.status === 200 && t.status === "REJECTED" && t.rejection_reason === "No such payment on the statement"
@@ -312,22 +338,23 @@ check("nothing credited, one audit line", (await credits(d3)).length === 0 && (a
 r = await approve(d3, { transactionId: "TXN-1003" });
 check("approving it after all: refused", r.status === 409, show(r));
 
-step("Finance down: waited out, then sent");
+step("Finance down: waited out, then sent (a bonus — deposits no longer go)");
 mode = "down";
-const d4 = String((await raise({ amount_usd: 400 })).body?.id ?? "");
+const toFinance = (over: Record<string, unknown>) => raise({ type: "BONUS", tags: ["Course"], ...over });
+const d4 = String((await toFinance({ amount_usd: 400 })).body?.id ?? "");
 check("tried at once, and kept to try again", await until(async () => ((await txOf(d4))?.finance_approval?.attempts ?? 0) >= 1, 3000)
   && (await stateOf(d4)) === "queued" && /moment/.test(String((await txOf(d4))?.finance_approval?.last_error)), JSON.stringify((await txOf(d4))?.finance_approval));
 r = await patch(d4, { status: "APPROVED" });
 check("still finance's while it waits to go", r.status === 409, show(r));
 mode = "up";
 await Bun.sleep(2200);
-const d5 = String((await raise({ amount_usd: 300 })).body?.id ?? "");
+const d5 = String((await toFinance({ amount_usd: 300 })).body?.id ?? "");
 check("once finance is back, the waiting one goes with the next", await until(async () => (await stateOf(d4)) === "sent" && (await stateOf(d5)) === "sent", 4000),
   `${await stateOf(d4)} / ${await stateOf(d5)}`);
 
-step("A request finance will not take is handed back");
+step("A bonus finance will not take is handed back");
 mode = "refuse";
-const d6 = String((await raise({ amount_usd: 250 })).body?.id ?? "");
+const d6 = String((await toFinance({ amount_usd: 250 })).body?.id ?? "");
 check("marked as handed back, with finance's reason", await until(async () => (await stateOf(d6)) === "refused", 3000)
   && /student\.name/.test(String((await txOf(d6))?.finance_approval?.reason)), JSON.stringify((await txOf(d6))?.finance_approval));
 r = await approve(d6, { transactionId: "TXN-1006" });
@@ -337,9 +364,6 @@ check("it is approved here instead", r.status === 200 && r.body?.status === "APP
 mode = "up";
 
 step("A bonus: Delta Finance first, then a broker admin");
-const brokerToken = await login(broker);
-const plainToken = await login(plainAdmin);
-const patchAs = (token: string, id: string, data: Record<string, unknown>) => call("PATCH", `/api/entities/FundingTransaction/${id}`, data, as(token));
 const coursePayment = {
   product: "DWT", kind: "partial", with_bonus: true, bonus_usd: 500, hold_aed: 0, balance_aed: 1250,
   paid_today_aed: 2000, paid_before_aed: 0, paid_total_aed: 2000, price: 3250, price_currency: "AED", instalments: 2,
@@ -419,9 +443,9 @@ r = await call("POST", "/api/functions/createReferralRequest", {
 check("a co-management bonus without the MT5 login: refused too", r.status === 400 && /MT5/.test(JSON.stringify(r.body)), show(r));
 
 step("The browser's own calls answer as before");
-r = await fn("creditCommission", { transaction_id: d6 });
-check("creditCommission credits an approval made here", r.status === 200 && r.body?.ok === true && r.body?.credited === 2, show(r));
-r = await fn("creditCommission", { transaction_id: d6 });
+r = await fn("creditCommission", { transaction_id: n1 });
+check("creditCommission credits a deposit a broker admin approved here", r.status === 200 && r.body?.ok === true && r.body?.credited === 2, show(r));
+r = await fn("creditCommission", { transaction_id: n1 });
 check("and not twice", r.status === 200 && r.body?.skipped === true && r.body?.reason === "Already credited", show(r));
 r = await fn("creditCommission", { transaction_id: new ObjectId().toString() });
 check("an unknown transaction: 404", r.status === 404, show(r));

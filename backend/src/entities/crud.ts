@@ -9,7 +9,7 @@ import { buildScopeFilter, applyScope, docMatchesScope } from "../lib/scope";
 import { stampNewStudents, recordCreated, prepareStudentUpdate, recordHistory, type HistoryEntry } from "../students/history";
 import { notifyStudentsGiven } from "../lib/notify";
 import type { TeamIndex } from "../students/teams";
-import { stampFundingForFinance, kickFinanceFunding, financeLock, withFinance, WITH_FINANCE_MESSAGE, bonusRefusal, bonusMissing, dropServerFields, claimResubmit, releaseResubmit } from "../finance/funding";
+import { stampFundingForFinance, kickFinanceFunding, financeLock, withFinance, WITH_FINANCE_MESSAGE, decisionRefusal, bonusMissing, dropServerFields, claimResubmit, releaseResubmit } from "../finance/funding";
 import { seesClosedOnly, SALES_READ_ONLY } from "../students/closedBy";
 import { keepRequestMt5 } from "../students/mt5";
 
@@ -318,15 +318,15 @@ export async function updateEntity(req: Request, entityName: string, id: string)
     if (!existing) return notFound();
     history = await prepareStudentUpdate(existing, data, ctx.user);
   }
-  // A deposit Delta finance is deciding is decided there, not here.
+  // A request Delta finance is deciding is decided there, not here.
   if (entityName === "FundingTransaction") {
     const existing = await col(ctx.cfg.collection).findOne({ _id: oid });
     if (!existing) return notFound();
     dropServerFields(data);
     const locked = financeLock(existing, data);
     if (locked) return error(locked, 409);
-    // A bonus: decided by a broker admin or a Super Admin, after finance (finance/funding.ts).
-    const refused = bonusRefusal(existing, data, ctx.user.app_role);
+    // A deposit, a withdrawal or a bonus: decided by a broker admin or a Super Admin (finance/funding.ts).
+    const refused = decisionRefusal(existing, data, ctx.user.app_role);
     if (refused) return error(refused.message, refused.status);
   }
   await col(ctx.cfg.collection).updateOne({ _id: oid }, { $set: data });

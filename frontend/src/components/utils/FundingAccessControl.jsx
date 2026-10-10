@@ -12,12 +12,13 @@ export const canProcessFundingTransaction = (role) => {
 };
 
 /**
- * A deposit request Delta Finance's accountants are deciding. New deposits go
- * there for approval (backend/src/finance/funding.ts); until the decision
- * comes back, nobody here approves, rejects or deletes them — the server
- * refuses, and the pages show "With accounts" instead of the actions. One
- * still waiting to be sent counts only while the link is on (`linkOn`, from
- * useFinanceLink): switched off, it never reached finance and is approved here.
+ * A request Delta Finance's accountants are deciding: a new bonus, or a deposit
+ * sent there before deposits stopped going (2026-10-10 — a broker admin or a
+ * Super Admin approves them here now; backend/src/finance/funding.ts). Until
+ * the decision comes back, nobody here approves, rejects or deletes it — the
+ * server refuses, and the pages show "With accounts" instead of the actions.
+ * One still waiting to be sent counts only while the link is on (`linkOn`,
+ * from useFinanceLink): switched off, it never reached finance.
  */
 export const isWithAccounts = (t, linkOn = true) =>
   t?.status === 'PENDING' &&
@@ -36,8 +37,11 @@ export const isAwaitingBroker = (t) =>
 /** Who approves or rejects a bonus here: a broker admin or a Super Admin (the server refuses anyone else). */
 export const canDecideBonus = (role) => ['broker_admin', 'super_admin'].includes(role);
 
+/** A deposit, a withdrawal or a bonus is approved or rejected only by a broker admin or a Super Admin (the server refuses anyone else; deposits and withdrawals since 2026-10-10). */
+const DECIDED_BY_BROKER = ['DEPOSIT', 'WITHDRAWAL', 'BONUS'];
+
 /** Whether this person may approve or reject this request. */
-export const canDecideFunding = (t, role) => (t?.type === 'BONUS' ? canDecideBonus(role) : canProcessFundingTransaction(role));
+export const canDecideFunding = (t, role) => (DECIDED_BY_BROKER.includes(t?.type) ? canDecideBonus(role) : canProcessFundingTransaction(role));
 
 export const canViewAllFundingTransactions = (role) => {
   return ['super_admin', 'admin', 'broker_admin', 'academic_head', 'academic_admin', 'finance_admin'].includes(role);

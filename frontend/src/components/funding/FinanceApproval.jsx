@@ -3,9 +3,10 @@ import { base44 } from "@/api/base44Client";
 import { Badge } from "@/components/ui/badge";
 
 /**
- * Whether new deposit requests go to Delta Finance for approval right now —
- * the server's own switch (its FINANCE_* settings), so the pages and the
- * server agree about which deposits are waiting on the accountants.
+ * Whether the link to Delta Finance is on — the server's own switch (its
+ * FINANCE_* settings), so the pages and the server agree about which requests
+ * are waiting on the accountants: new bonuses, and deposits sent before
+ * 2026-10-10 (new deposits are approved here).
  */
 export function useFinanceLink() {
   const { data } = useQuery({

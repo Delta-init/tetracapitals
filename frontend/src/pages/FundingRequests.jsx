@@ -56,8 +56,9 @@ export default function FundingRequests() {
   const [creditsTx, setCreditsTx] = useState(null); // transaction whose commission breakdown is open
 
   const queryClient = useQueryClient();
-  // New deposits are approved by Delta Finance's accountants: while they have
-  // one it shows "With accounts" here, and cannot be approved or rejected.
+  // New bonuses are approved by Delta Finance's accountants first (deposits sent
+  // there before 2026-10-10 too): while they have one it shows "With accounts"
+  // here, and cannot be approved or rejected.
   const financeOn = useFinanceLink();
   const withAccounts = (t) => isWithAccounts(t, financeOn);
 

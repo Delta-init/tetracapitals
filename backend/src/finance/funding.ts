@@ -10,15 +10,19 @@ import { recomputeCoMentorContribution } from "../functions/referrals";
 import { notify } from "../lib/notify";
 
 /* ────────────────────────────────────────────────────────────────────────────
-   Deposit and bonus requests are approved in Delta finance.
+   Bonus requests are approved in Delta finance first.
 
-   Every new DEPOSIT request is sent to finance's approvals the moment it is
-   raised — signed, through the same door the sales CRM and Media ERP use —
-   and the accountants approve or reject it there. So is every new BONUS (a
-   course payment), but for a bonus finance's approval is the first of two
-   (the user, 2026-10-04): it confirms the money, and the bonus then waits for
-   a broker admin or a Super Admin here to credit it and approve
-   (awaitingBroker, bonusRefusal below). A sales-close bonus credit
+   Every new BONUS (a course payment) is sent to finance's approvals the moment
+   it is raised — signed, through the same door the sales CRM and Media ERP
+   use — and the accountants approve or reject it there. Finance's approval is
+   the first of two (the user, 2026-10-04): it confirms the money, and the
+   bonus then waits for a broker admin or a Super Admin here to credit it and
+   approve (awaitingBroker, decisionRefusal below).
+
+   Deposits and withdrawals no longer go to finance (the user, 2026-10-10):
+   a broker admin or a Super Admin approves them here, straight away. Deposits
+   finance already had are still decided there, and their decisions still
+   come back. A sales-close bonus credit
    (`bonus_credit`) skips finance — finance approved it with the enrolment —
    and waits for them straight away. Finance sends the decision
    back to POST /api/v1/integrations/finance/funding-decisions
@@ -29,7 +33,7 @@ import { notify } from "../lib/notify";
    accountant's reason.
 
    New requests only. A request raised before the link was configured carries
-   no `finance_approval` and is approved here, as before; so are withdrawals.
+   no `finance_approval` and is approved here, as before.
    While finance has a request, nobody here can approve, reject, delete or
    change what is being approved (crud.ts and the master editor refuse). One
    finance will not take at all — malformed — is handed back and approved here
@@ -53,8 +57,8 @@ export function financeFundingConfigured(): boolean {
   return Boolean(config.financeApiUrl && config.financeClientId && config.financeIntegrationSecret && config.financeOrgId);
 }
 
-/** The requests finance approves: deposits, and bonuses — but not a sales-close bonus credit (see above). */
-export const goesToFinance = (doc: any): boolean => doc?.type === "DEPOSIT" || (doc?.type === "BONUS" && !doc?.bonus_credit);
+/** The requests finance approves: bonuses — but not a sales-close bonus credit (see above). Deposits stopped going on 2026-10-10. */
+export const goesToFinance = (doc: any): boolean => doc?.type === "BONUS" && !doc?.bonus_credit;
 
 /**
  * Mark a new funding request for finance, if it is one that goes there (goesToFinance), raised PENDING, while the
@@ -128,24 +132,35 @@ export async function releaseResubmit(data: Record<string, any>): Promise<void> 
   }
 }
 
-/* ── A bonus's second approval ─────────────────────────────────────────────── */
+/* ── Who decides: a bonus's second approval, deposits and withdrawals ─────── */
 
-/** Who approves a bonus here: a broker admin or a Super Admin (the user, 2026-10-04). */
+/**
+ * Who approves a bonus here — a broker admin or a Super Admin (the user, 2026-10-04) — and, since 2026-10-10, a
+ * deposit or a withdrawal too.
+ */
 export const BONUS_APPROVERS = ["broker_admin", "super_admin"];
 export const BONUS_APPROVERS_MESSAGE = "A bonus is approved or rejected by a broker admin or a Super Admin";
+const FUNDING_APPROVERS_MESSAGE = "A deposit or a withdrawal is approved or rejected by a broker admin or a Super Admin";
+/** The requests only a broker admin or a Super Admin decides. */
+const DECIDED_BY_APPROVERS = ["DEPOSIT", "WITHDRAWAL", "BONUS"];
 
 /** A bonus finance approved, waiting for a broker admin or a Super Admin. */
 export const awaitingBroker = (tx: any): boolean =>
   tx?.type === "BONUS" && tx?.status === "PENDING" && tx?.finance_approval?.state === "decided" && tx?.finance_approval?.decision === "approved";
 
 /**
- * For a change to a bonus's status (approve or reject) here: the refusal, or null to go ahead. Only a broker admin
- * or a Super Admin decides a bonus. One finance still has is refused before this, as every request finance has is
- * (financeLock) — so a bonus is decided here once finance approved it, or straight away when it never went there.
+ * For a change to a deposit's, a withdrawal's or a bonus's status (approve or reject) here: the refusal, or null to
+ * go ahead. Only a broker admin or a Super Admin decides them. One finance still has is refused before this, as
+ * every request finance has is (financeLock) — so a bonus is decided here once finance approved it, or straight away
+ * when it never went there.
  */
-export function bonusRefusal(existing: any, data: Record<string, any>, role: string): { status: 403; message: string } | null {
-  if (existing?.type !== "BONUS" || !("status" in data) || String(data.status) === String(existing.status)) return null;
-  return BONUS_APPROVERS.includes(role) ? null : { status: 403, message: BONUS_APPROVERS_MESSAGE };
+export function decisionRefusal(existing: any, data: Record<string, any>, role: string): { status: 403; message: string } | null {
+  const type = String(existing?.type ?? "");
+  const becomes = "type" in data ? String(data.type) : type;
+  if (!DECIDED_BY_APPROVERS.includes(type) && !DECIDED_BY_APPROVERS.includes(becomes)) return null;
+  if (!("status" in data) || String(data.status) === String(existing.status)) return null;
+  if (BONUS_APPROVERS.includes(role)) return null;
+  return { status: 403, message: type === "BONUS" ? BONUS_APPROVERS_MESSAGE : FUNDING_APPROVERS_MESSAGE };
 }
 
 /**
