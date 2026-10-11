@@ -4,13 +4,13 @@ import { useQuery } from '@tanstack/react-query';
 import { motion, AnimatePresence } from 'framer-motion';
 import { createPageUrl } from './utils';
 import { base44 } from '@/api/base44Client';
-import { Menu, X, LogOut, PanelLeftClose, PanelLeftOpen, ShieldAlert } from 'lucide-react';
+import { Menu, X, LogOut, PanelLeftClose, PanelLeftOpen, ShieldAlert, ChevronDown } from 'lucide-react';
 import { Card, CardContent } from '@/components/ui/card';
 import ImpersonationBanner from './components/utils/ImpersonationBanner';
 import NotificationBell from './components/utils/NotificationBell';
 import { getEffectiveUser } from './components/utils/ImpersonationContext';
 import { EASE } from '@/components/motion';
-import { NAV_ITEMS, NAV_GROUPS, GROUP_OF, humanize, pageBlockedFor } from '@/components/utils/navigation';
+import { NAV_ITEMS, NAV_GROUPS, NESTED_GROUPS, GROUP_OF, humanize, pageBlockedFor } from '@/components/utils/navigation';
 import { readsClosedOnly } from '@/components/utils/roles';
 import { CallFlowProvider } from '@/components/followups/CallFlow';
 import { forgetThisDevice } from '@/components/utils/usePushNotifications';
@@ -28,6 +28,15 @@ export default function Layout({ children, currentPageName }) {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [collapsed, setCollapsed] = useState(() => {
     try { return localStorage.getItem(SIDEBAR_KEY) === '1'; } catch { return false; }
+  });
+  // Nested sidebar groups (Reports) the person closed — remembered on this device; the open page's group stays open.
+  const [closedGroups, setClosedGroups] = useState(() => {
+    try { return JSON.parse(localStorage.getItem('nav_closed_groups') || '[]'); } catch { return []; }
+  });
+  const toggleGroup = (g) => setClosedGroups(prev => {
+    const next = prev.includes(g) ? prev.filter(x => x !== g) : [...prev, g];
+    try { localStorage.setItem('nav_closed_groups', JSON.stringify(next)); } catch { /* private window */ }
+    return next;
   });
   const [waUnread, setWaUnread] = useState(0);   // a CS's unread WhatsApp (NotificationBell keeps it)
   const [pendingCounts, setPendingCounts] = useState({
@@ -179,7 +188,12 @@ export default function Layout({ children, currentPageName }) {
 
   // Group the visible nav items into labelled sections for the sidebar.
   const groupedNav = NAV_GROUPS
-    .map(group => ({ group, items: filteredNavigation.filter(i => (GROUP_OF[i.name] || 'More') === group) }))
+    .map(group => {
+      const items = filteredNavigation.filter(i => (GROUP_OF[i.name] || 'More') === group);
+      const order = NESTED_GROUPS[group]?.order;
+      const rank = (i) => { const k = order ? order.indexOf(i.name) : -1; return k === -1 ? 999 : k; };
+      return { group, items: order ? [...items].sort((a, b) => rank(a) - rank(b)) : items };
+    })
     .filter(section => section.items.length > 0);
 
   // Support tickets waiting for an answer and waiting on the student (the Support Tickets page's Open and
@@ -276,6 +290,56 @@ export default function Layout({ children, currentPageName }) {
 
   const roleLabel = currentUser.app_role?.replace(/_/g, ' ');
 
+  const renderItem = (item, compact, layoutKey, nested = false) => {
+    const isActive = isActiveItem(item);
+    const label = item.label || humanize(item.name);
+    const pills = pillsOf(item.name, compact);
+    return (
+      <Link
+        key={item.name}
+        to={item.href}
+        title={compact ? label : undefined}
+        className={`group relative flex items-center rounded-xl py-2 text-[13.5px] font-medium transition-colors duration-200
+          ${compact ? 'justify-center px-0' : nested ? 'pl-3 pr-3 text-[13px]' : 'px-3'}
+          ${isActive ? 'text-white' : 'text-white/60 hover:bg-white/[0.04] hover:text-white'}`}
+      >
+        {isActive && (
+          <motion.span
+            layoutId={`nav-active-${layoutKey}`}
+            className="absolute inset-0 rounded-xl bg-white/[0.09] ring-1 ring-inset ring-white/10"
+            transition={{ type: 'spring', stiffness: 380, damping: 32 }}
+          >
+            <span className="absolute left-0 top-1/2 h-5 w-[3px] -translate-y-1/2 rounded-r-full bg-brand-gradient" />
+          </motion.span>
+        )}
+        <span className={`relative flex min-w-0 items-center ${compact ? '' : 'gap-3'}`}>
+          <item.icon
+            className={`h-[18px] w-[18px] flex-shrink-0 transition-colors ${isActive ? 'text-brand-cyan' : 'text-white/45 group-hover:text-white/80'}`}
+          />
+          {!compact && <span className="truncate">{label}</span>}
+        </span>
+        {pills.length > 0 ? (
+          <span className={compact ? '' : 'relative ml-auto flex items-center gap-1'}>
+            {pills.map(p => (
+              <span
+                key={p.title}
+                title={`${p.n} ${p.title}`}
+                className={`${compact ? 'absolute right-1 top-0.5 h-4 min-w-[16px] px-1 text-[10px]' : 'h-5 min-w-[20px] px-1.5 text-[11px]'} flex items-center justify-center rounded-full font-semibold tabular-nums leading-none ${p.cls}`}
+              >
+                {p.n > 99 ? '99+' : p.n}
+              </span>
+            ))}
+          </span>
+        ) : hasBadge(item.name) && (
+          <span className={`${compact ? 'absolute right-2 top-1.5' : 'relative ml-auto'} flex h-2 w-2`}>
+            <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-brand-mint opacity-75" />
+            <span className="relative inline-flex h-2 w-2 rounded-full bg-brand-mint" />
+          </span>
+        )}
+      </Link>
+    );
+  };
+
   // Render helpers (plain functions, not components, so the nav isn't
   // remounted on every re-render — keeps scroll position and the active pill).
   const renderNav = (compact, layoutKey) => (
@@ -284,60 +348,34 @@ export default function Layout({ children, currentPageName }) {
         <div key={section.group}>
           {compact ? (
             <div className="mx-auto mb-2 h-px w-6 bg-white/10" />
-          ) : (
+          ) : NESTED_GROUPS[section.group] ? (() => {
+            // One entry with its pages under it (the user, 2026-10-11) — open while one of them is the page.
+            const GroupIcon = NESTED_GROUPS[section.group].icon;
+            const hasActive = section.items.some(isActiveItem);
+            const open = hasActive || !closedGroups.includes(section.group);
+            return (
+              <>
+                <button type="button" onClick={() => toggleGroup(section.group)} aria-expanded={open}
+                  className={`group flex w-full items-center gap-3 rounded-xl px-3 py-2 text-[13.5px] font-medium transition-colors ${hasActive ? 'text-white' : 'text-white/60 hover:bg-white/[0.04] hover:text-white'}`}>
+                  <GroupIcon className={`h-[18px] w-[18px] flex-shrink-0 ${hasActive ? 'text-brand-cyan' : 'text-white/45 group-hover:text-white/80'}`} />
+                  <span className="truncate">{section.group}</span>
+                  <ChevronDown className={`ml-auto h-4 w-4 text-white/40 transition-transform ${open ? '' : '-rotate-90'}`} />
+                </button>
+                {open && (
+                  <div className="ml-5 mt-0.5 space-y-0.5 border-l border-white/10 pl-2">
+                    {section.items.map((item) => renderItem(item, compact, layoutKey, true))}
+                  </div>
+                )}
+              </>
+            );
+          })() : (
             <p className="px-3 pb-2 text-[10px] font-semibold uppercase tracking-[0.2em] text-white/35">{section.group}</p>
           )}
-          <div className="space-y-0.5">
-            {section.items.map((item) => {
-              const isActive = isActiveItem(item);
-              const label = item.label || humanize(item.name);
-              const pills = pillsOf(item.name, compact);
-              return (
-                <Link
-                  key={item.name}
-                  to={item.href}
-                  title={compact ? label : undefined}
-                  className={`group relative flex items-center rounded-xl py-2 text-[13.5px] font-medium transition-colors duration-200
-                    ${compact ? 'justify-center px-0' : 'px-3'}
-                    ${isActive ? 'text-white' : 'text-white/60 hover:bg-white/[0.04] hover:text-white'}`}
-                >
-                  {isActive && (
-                    <motion.span
-                      layoutId={`nav-active-${layoutKey}`}
-                      className="absolute inset-0 rounded-xl bg-white/[0.09] ring-1 ring-inset ring-white/10"
-                      transition={{ type: 'spring', stiffness: 380, damping: 32 }}
-                    >
-                      <span className="absolute left-0 top-1/2 h-5 w-[3px] -translate-y-1/2 rounded-r-full bg-brand-gradient" />
-                    </motion.span>
-                  )}
-                  <span className={`relative flex min-w-0 items-center ${compact ? '' : 'gap-3'}`}>
-                    <item.icon
-                      className={`h-[18px] w-[18px] flex-shrink-0 transition-colors ${isActive ? 'text-brand-cyan' : 'text-white/45 group-hover:text-white/80'}`}
-                    />
-                    {!compact && <span className="truncate">{label}</span>}
-                  </span>
-                  {pills.length > 0 ? (
-                    <span className={compact ? '' : 'relative ml-auto flex items-center gap-1'}>
-                      {pills.map(p => (
-                        <span
-                          key={p.title}
-                          title={`${p.n} ${p.title}`}
-                          className={`${compact ? 'absolute right-1 top-0.5 h-4 min-w-[16px] px-1 text-[10px]' : 'h-5 min-w-[20px] px-1.5 text-[11px]'} flex items-center justify-center rounded-full font-semibold tabular-nums leading-none ${p.cls}`}
-                        >
-                          {p.n > 99 ? '99+' : p.n}
-                        </span>
-                      ))}
-                    </span>
-                  ) : hasBadge(item.name) && (
-                    <span className={`${compact ? 'absolute right-2 top-1.5' : 'relative ml-auto'} flex h-2 w-2`}>
-                      <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-brand-mint opacity-75" />
-                      <span className="relative inline-flex h-2 w-2 rounded-full bg-brand-mint" />
-                    </span>
-                  )}
-                </Link>
-              );
-            })}
-          </div>
+          {(compact || !NESTED_GROUPS[section.group]) && (
+            <div className="space-y-0.5">
+              {section.items.map((item) => renderItem(item, compact, layoutKey))}
+            </div>
+          )}
         </div>
       ))}
     </nav>

@@ -28,6 +28,7 @@ import { getCalls, getCallRecording, syncCallsNow, testThreecx, getClickToCall, 
 import { getTransferPeople, transferStudent } from "./studentTransfer";
 import { getDashboardTotals } from "./dashboardTotals";
 import { getLmsExams, getStudentLmsExams } from "./lmsExams";
+import { getMoneyReport, getFundingRequestReport, getBonusReport, getReportFilters } from "./reports";
 import { setEnrolment, setStudentPriority, getLmsEnrolment, syncLmsEnrolmentNow } from "./studentEnrolment";
 import { updateStudentDetails } from "./studentDetails";
 import { getOnboardingDraft, setOnboarding } from "./studentOnboarding";
@@ -108,6 +109,10 @@ const AUTHED: Record<string, AuthedHandler> = {
   getDashboardTotals,
   getLmsExams,
   getStudentLmsExams,
+  getMoneyReport,
+  getFundingRequestReport,
+  getBonusReport,
+  getReportFilters,
   updateStudentDetails,
   getOnboardingDraft,
   setOnboarding,

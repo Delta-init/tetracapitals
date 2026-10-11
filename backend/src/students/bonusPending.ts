@@ -60,7 +60,7 @@ const salesUsd = (b: { amount: number; currency: string }) => (b.currency === "U
 const GIVEN_AT_CLOSE = { course_fees: { $elemMatch: { bonus_given: true, bonus_minor: { $gt: 0 } } } };
 
 /** Each one's sales-close bonuses not sent to be credited yet: [{ usd, since }] per student id. */
-async function notSentOf(match: Record<string, any>): Promise<Map<string, { usd: number; since: string }[]>> {
+export async function notSentOf(match: Record<string, any>): Promise<Map<string, { usd: number; since: string }[]>> {
   const students = (await col("students").find({ ...match, ...GIVEN_AT_CLOSE }, { projection: { course_fees: 1, created_date: 1 } }).toArray()) as any[];
   const out = new Map<string, { usd: number; since: string }[]>();
   if (!students.length) return out;

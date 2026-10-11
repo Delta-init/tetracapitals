@@ -1,0 +1,31 @@
+import ReportShell, { usd, num } from '@/components/reports/ReportShell';
+
+/* Bonus report (the user, 2026-10-11): bonuses by where they stand — needs a connected call + MT5 (promised at a sales
+   close, not sent yet), with finance, waiting for a broker admin, approved, rejected (backend functions/reports.ts
+   getBonusReport). */
+const both = (n, u) => `${num(n)} · ${usd(u)}`;
+
+export default function BonusReport() {
+  return (
+    <ReportShell
+      title="Bonus report" fn="getBonusReport"
+      description="Bonuses raised in the period, by where they stand — and those promised at a sales close still waiting for a connected call + MT5."
+      cards={d => [
+        { label: 'Bonuses', value: usd(d.total.usd), sub: `${num(d.total.count)} in all` },
+        { label: 'Approved', value: usd(d.total.approved_usd), sub: `${num(d.total.approved)} bonuses` },
+        { label: 'Still pending', value: usd((d.total.needs_call_usd || 0) + (d.total.with_finance_usd || 0) + (d.total.waiting_broker_usd || 0)),
+          sub: `${num(d.total.needs_call)} need call + MT5 · ${num(d.total.with_finance)} with finance · ${num(d.total.waiting_broker)} broker admin` },
+        { label: 'Rejected', value: usd(d.total.rejected_usd), sub: `${num(d.total.rejected)} bonuses` },
+      ]}
+      columns={[
+        { key: 'usd', label: 'All (USD)', type: 'money' },
+        { key: 'count', label: 'Bonuses', type: 'number' },
+        { label: 'Needs call + MT5', get: r => r.needs_call, fmt: (v, r) => both(r.needs_call, r.needs_call_usd) },
+        { label: 'With finance', get: r => r.with_finance, fmt: (v, r) => both(r.with_finance, r.with_finance_usd) },
+        { label: 'Broker admin', get: r => r.waiting_broker, fmt: (v, r) => both(r.waiting_broker, r.waiting_broker_usd) },
+        { label: 'Approved', get: r => r.approved, fmt: (v, r) => both(r.approved, r.approved_usd) },
+        { label: 'Rejected', get: r => r.rejected, fmt: (v, r) => both(r.rejected, r.rejected_usd) },
+      ]}
+    />
+  );
+}

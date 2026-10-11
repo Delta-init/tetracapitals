@@ -87,7 +87,8 @@ export const NAV_ITEMS = [
   { name: 'Dashboard', page: 'Dashboard', icon: LayoutDashboard, roles: ['super_admin', 'admin', 'broker_admin', 'academic_head', 'admin_supervisor', 'junior_mentor', 'chief_mentor', 'senior_mentor', 'finance_admin'] },
   { name: 'TeamDashboard', page: 'TeamDashboard', icon: LayoutGrid, roles: ['super_admin', 'admin', 'broker_admin', 'academic_head', 'chief_mentor'] },
   { name: 'Teams', page: 'Teams', icon: UsersRound, roles: ['all'] },
-  { name: 'ActivityTracker', page: 'ActivityTracker', icon: Activity, roles: ['all'], notFor: ['cs'] },
+  // Hidden for everyone (the user, 2026-10-11) — the page still opens by its address.
+  { name: 'ActivityTracker', hidden: true, page: 'ActivityTracker', icon: Activity, roles: ['all'], notFor: ['cs'] },
   { name: 'AIInsights', hidden: true, page: 'AIInsights', icon: Sparkles, roles: ['super_admin', 'broker_admin', 'academic_head'] },
   { name: 'MentorTraining', page: 'MentorTraining', icon: GraduationCap, roles: ['junior_mentor', 'chief_mentor', 'senior_mentor'], notFor: ['cs'] },
   // CSs and CS Managers see it too (the user, 2026-10-11) — whatever their role's page list says (Layout.jsx).
@@ -161,19 +162,30 @@ export const NAV_ITEMS = [
   { name: 'TransactionTags', label: 'Products', page: 'TransactionTags', icon: Package, roles: ['super_admin', 'admin', 'broker_admin', 'academic_head', 'finance_admin'] },
   { name: 'Commissions', hidden: true, page: 'Commissions', icon: Percent, roles: ['super_admin', 'broker_admin', 'academic_head'] },
   { name: 'Tickets', page: 'Tickets', icon: Ticket, roles: ['super_admin', 'broker_admin', 'academic_head', 'chief_mentor', 'senior_mentor', 'junior_mentor'] },
-  { name: 'Reports', page: 'Reports', icon: BarChart3, roles: ['super_admin', 'broker_admin', 'academic_head', 'junior_mentor', 'chief_mentor', 'senior_mentor'] },
+  { name: 'Reports', label: 'Student & commission reports', page: 'Reports', icon: BarChart3, roles: ['super_admin', 'broker_admin', 'academic_head', 'junior_mentor', 'chief_mentor', 'senior_mentor'] },
+  // The Reports section (the user, 2026-10-11): each report its own page, under one "Reports" entry in the sidebar.
+  // For everyone but the Sales role; the server decides whose figures each person sees (functions/reports.ts).
+  { name: 'DepositReport', label: 'Deposit report', page: 'DepositReport', icon: PiggyBank, roles: ['all'], everyone: true, notForSales: true },
+  { name: 'WithdrawalReport', label: 'Withdrawal report', page: 'WithdrawalReport', icon: Wallet, roles: ['all'], everyone: true, notForSales: true },
+  { name: 'FundingRequestReport', label: 'Funding request report', page: 'FundingRequestReport', icon: HandCoins, roles: ['all'], everyone: true, notForSales: true },
+  { name: 'BonusReport', label: 'Bonus report', page: 'BonusReport', icon: Gift, roles: ['all'], everyone: true, notForSales: true },
   { name: 'AuditLogs', page: 'AuditLogs', icon: ScrollText, roles: ['super_admin', 'admin_supervisor', 'academic_head'] }
 ];
 
 // Sidebar section grouping (page name -> group). Rendered as labelled groups.
-export const NAV_GROUPS = ['Overview', 'People & Access', 'Students', 'Funding', 'Commission', 'More'];
+export const NAV_GROUPS = ['Overview', 'People & Access', 'Students', 'Funding', 'Commission', 'Reports', 'More'];
+/** Groups drawn as one entry with its pages under it, opened and closed (the user, 2026-10-11). */
+export const NESTED_GROUPS = {
+  Reports: { icon: BarChart3, order: ['DepositReport', 'WithdrawalReport', 'FundingRequestReport', 'BonusReport', 'CommissionReports', 'Reports'] },
+};
 export const GROUP_OF = {
   Dashboard: 'Overview', TeamDashboard: 'Overview', Teams: 'Overview', ActivityTracker: 'Overview', AIInsights: 'Overview', Leaderboard: 'Overview', MentorPerformance: 'Overview', MentorTraining: 'Overview',
   Personnel: 'People & Access', RolesManagement: 'People & Access', Hierarchy: 'People & Access', AcademicCounselors: 'People & Access', MasterAdmin: 'People & Access',
   Students: 'Students', CourseUpgrades: 'Students', NotOnboarded: 'Students', BalancePayments: 'Students', StudentFollowups: 'Students', OverdueFollowups: 'Students', StudentCalls: 'Students', ClassCompletions: 'Students', WhatsApp: 'Students', MentorCalendar: 'Students', Programs: 'Students', SupportTickets: 'Students', LmsRequests: 'Students', Exams: 'Students', ZohoInvoices: 'Students', StudentLogs: 'Students', StudentLogHistoryPage: 'Students', MyStudentRequests: 'Students', StudentRequestApprovals: 'Students', RetentionManagement: 'Students', DrawAdminStudents: 'Students', MT5Accounts: 'Students', InactivityTransfers: 'Students', StudentTags: 'Students',
   FundingActivities: 'Funding', FundingRequests: 'Funding', BonusApprovals: 'Funding', PaymentLinks: 'Funding', Transactions: 'Funding', TransactionTags: 'Funding',
-  CommissionPlans: 'Commission', BonusCommissionReports: 'Commission', DepositCommissionReports: 'Commission', CommissionReports: 'Commission', CommissionTools: 'Commission', Commissions: 'Commission', QuarterClosing: 'Commission', MonthlyClosing: 'Commission', DailyPayouts: 'Commission', MyCommissionHistory: 'Commission', MyTargets: 'Commission', TargetsManagement: 'Commission',
-  Tickets: 'More', Reports: 'More', AuditLogs: 'More', GamificationSettings: 'More',
+  CommissionPlans: 'Commission', BonusCommissionReports: 'Commission', DepositCommissionReports: 'Commission', CommissionTools: 'Commission', Commissions: 'Commission', QuarterClosing: 'Commission', MonthlyClosing: 'Commission', DailyPayouts: 'Commission', MyCommissionHistory: 'Commission', MyTargets: 'Commission', TargetsManagement: 'Commission',
+  DepositReport: 'Reports', WithdrawalReport: 'Reports', FundingRequestReport: 'Reports', BonusReport: 'Reports', Reports: 'Reports', CommissionReports: 'Reports',
+  Tickets: 'More', AuditLogs: 'More', GamificationSettings: 'More',
 };
 
 /** A page (by item name or page) this role never gets — see `notFor` and `only`. */

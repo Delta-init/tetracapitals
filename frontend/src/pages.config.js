@@ -105,6 +105,10 @@ import ClassCompletions from './pages/ClassCompletions';
 import SupportTickets from './pages/SupportTickets';
 import LmsRequests from './pages/LmsRequests';
 import Exams from './pages/Exams';
+import DepositReport from './pages/DepositReport';
+import WithdrawalReport from './pages/WithdrawalReport';
+import FundingRequestReport from './pages/FundingRequestReport';
+import BonusReport from './pages/BonusReport';
 import ZohoInvoices from './pages/ZohoInvoices';
 import NotOnboarded from './pages/NotOnboarded';
 import BalancePayments from './pages/BalancePayments';
@@ -174,6 +178,10 @@ export const PAGES = {
     "SupportTickets": SupportTickets,
     "LmsRequests": LmsRequests,
     "Exams": Exams,
+    "DepositReport": DepositReport,
+    "WithdrawalReport": WithdrawalReport,
+    "FundingRequestReport": FundingRequestReport,
+    "BonusReport": BonusReport,
     "ZohoInvoices": ZohoInvoices,
 }
 
