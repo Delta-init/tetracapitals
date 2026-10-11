@@ -5,6 +5,7 @@ import { config } from "../config";
 import { json } from "../lib/response";
 import { BUILTIN_ROLES, isAdminRole } from "../lib/roles";
 import { pendingOverview } from "./pending";
+import { csOverview, csDetail, type Period } from "./csOverview";
 
 /* ────────────────────────────────────────────────────────────────────────────
    /api/v1/service/*   — the Root portal asking about roles and people.
@@ -112,6 +113,24 @@ export async function handlePortalService(req: Request, path: string): Promise<R
   /* GET /pending — the sidebar's numbers for the whole organisation, and whom each waits on (portal/pending.ts). */
   if (path === "/pending" && req.method === "GET") {
     return ok(await pendingOverview());
+  }
+
+  /* GET /cs-overview[?from&to] and /cs-overview/:userId — each CS's students, deposits, commission and what waits
+     on them (portal/csOverview.ts). from/to are instants bounding deposits and commission. */
+  const csMatch = path.match(/^\/cs-overview(?:\/([0-9a-f]{24}))?$/i);
+  if (csMatch && req.method === "GET") {
+    const period: Period = {};
+    for (const k of ["from", "to"] as const) {
+      const v = url.searchParams.get(k);
+      if (!v) continue;
+      const t = Date.parse(v);
+      if (!Number.isFinite(t)) return refuse(400, "VALIDATION_ERROR", `'${k}' is not a date`);
+      period[k] = new Date(t).toISOString();
+    }
+    if (period.from && period.to && period.from > period.to) return refuse(400, "VALIDATION_ERROR", "'from' is after 'to'");
+    if (!csMatch[1]) return ok(await csOverview(period));
+    const detail = await csDetail(csMatch[1], period);
+    return detail ? ok(detail) : refuse(404, "NOT_FOUND", "No such person here");
   }
 
   /* POST /accounts { emails } — the same, for a page of people at once. */
