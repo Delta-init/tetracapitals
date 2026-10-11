@@ -171,6 +171,8 @@ export default function Layout({ children, currentPageName }) {
     if (item.name === 'RolesManagement' && ['super_admin', 'admin'].includes(currentUser?.app_role)) return true;
     // A CS Manager reads every funding request (2026-10-09), whatever their role's page list says.
     if (item.name === 'FundingRequests' && currentUser?.app_role === 'cs_manager') return true;
+    // Every CS and CS Manager sees the Leaderboard (2026-10-11), whatever their role's page list says.
+    if (item.name === 'Leaderboard' && ['cs', 'cs_manager'].includes(currentUser?.app_role)) return true;
     if (Array.isArray(allowedPages)) return allowedPages.includes(item.sameAccessAs || item.name);
     return item.roles.includes('all') || item.roles.includes(currentUser?.app_role);
   });
