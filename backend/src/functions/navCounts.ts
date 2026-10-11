@@ -8,6 +8,25 @@ import { countCallNeeded } from "../students/classCompletions";
 import { decidableBonusFilter } from "./bonusApprovals";
 import { BONUS_APPROVERS } from "../finance/funding";
 
+/* The filters behind each number — shared with the Root portal's Pending page (portal/pending.ts), so the two never
+   drift apart. A `forId` narrows one to that person, as their own sidebar has it. */
+
+/** Students given to someone and not opened by them yet — while they are still that student's CS. */
+export const newStudentsFilter = (forId?: string): Record<string, any> =>
+  forId
+    ? { new_for_id: forId, primary_mentor_id: forId }
+    : { new_for_id: { $type: "string", $ne: "" }, $expr: { $eq: ["$new_for_id", "$primary_mentor_id"] } };
+/** Follow-ups still open (not Converted / Lost). */
+export const openFollowupsFilter = (): Record<string, any> => ({ stage: { $nin: [...CLOSED_STAGES] } });
+export const followupsDueTodayFilter = (today: string): Record<string, any> => ({ next_followup_date: today });
+export const followupsOverdueFilter = (today: string): Record<string, any> => ({ next_followup_date: { $gt: "", $lt: today } });
+/** Payment link requests waiting for a Super Admin. */
+export const paymentLinksPendingFilter = (): Record<string, any> => ({ status: "pending" });
+/** A CS's payment link requests, answered (approved / rejected), that they haven't seen yet. */
+export const paymentLinksUnseenFilter = (status: "approved" | "rejected", forId?: string): Record<string, any> => ({
+  ...(forId ? { requested_by_id: forId } : {}), status, cs_seen_at: { $exists: false },
+});
+
 /**
  * POST /api/functions/getNavCounts
  * Returns: { new_students, followups_today, followups_overdue, payment_links_pending, payment_links_ready, payment_links_turned_down,
@@ -29,7 +48,7 @@ import { BONUS_APPROVERS } from "../finance/funding";
 export async function getNavCounts(_req: Request, user: AuthUser): Promise<Response> {
   const today = businessToday();
   const visible = await visibleMentorIds(user);
-  const open: Record<string, any> = { stage: { $nin: [...CLOSED_STAGES] } };
+  const open: Record<string, any> = openFollowupsFilter();
   let ids: string[] | null = null;
   if (visible) {
     ids = (await col("students").find(studentsOf(visible), { projection: { _id: 1 } }).toArray()).map((s) => String(s._id));
@@ -37,12 +56,12 @@ export async function getNavCounts(_req: Request, user: AuthUser): Promise<Respo
   }
   const cs = user.app_role === "cs";
   const mine = (filter: Record<string, any>) => (visible ? { $and: [filter, studentsOf(visible)] } : filter);
-  const unseen = (status: string) => col("payment_link_requests").countDocuments({ requested_by_id: user.id, status, cs_seen_at: { $exists: false } });
+  const unseen = (status: "approved" | "rejected") => col("payment_link_requests").countDocuments(paymentLinksUnseenFilter(status, user.id));
   const [newStudents, dueToday, overdue, linksWaiting, linksReady, linksTurnedDown, notOnboarded, notOnboardedLate, classesToCall, bonusesWaiting] = await Promise.all([
-    col("students").countDocuments({ new_for_id: user.id, primary_mentor_id: user.id }),
-    col("student_followups").countDocuments({ ...open, next_followup_date: today }),
-    col("student_followups").countDocuments({ ...open, next_followup_date: { $gt: "", $lt: today } }),
-    user.app_role === "super_admin" ? col("payment_link_requests").countDocuments({ status: "pending" }) : 0,
+    col("students").countDocuments(newStudentsFilter(user.id)),
+    col("student_followups").countDocuments({ ...open, ...followupsDueTodayFilter(today) }),
+    col("student_followups").countDocuments({ ...open, ...followupsOverdueFilter(today) }),
+    user.app_role === "super_admin" ? col("payment_link_requests").countDocuments(paymentLinksPendingFilter()) : 0,
     cs ? unseen("approved") : 0,
     cs ? unseen("rejected") : 0,
     col("students").countDocuments(mine(notOnboardedFilter())),

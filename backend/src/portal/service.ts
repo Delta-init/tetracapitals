@@ -4,6 +4,7 @@ import { col } from "../db";
 import { config } from "../config";
 import { json } from "../lib/response";
 import { BUILTIN_ROLES, isAdminRole } from "../lib/roles";
+import { pendingOverview } from "./pending";
 
 /* ────────────────────────────────────────────────────────────────────────────
    /api/v1/service/*   — the Root portal asking about roles and people.
@@ -106,6 +107,11 @@ export async function handlePortalService(req: Request, path: string): Promise<R
     const email = emailOf(url.searchParams.get("email"));
     if (!email) return refuse(400, "VALIDATION_ERROR", "email is required");
     return ok(await accountOf(email));
+  }
+
+  /* GET /pending — the sidebar's numbers for the whole organisation, and whom each waits on (portal/pending.ts). */
+  if (path === "/pending" && req.method === "GET") {
+    return ok(await pendingOverview());
   }
 
   /* POST /accounts { emails } — the same, for a page of people at once. */

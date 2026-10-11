@@ -135,12 +135,17 @@ export async function settleCalls(docs: any[]): Promise<any[]> {
   return docs;
 }
 
-/** How many of these students' completions — told, and not called yet — wait for a call (null: everyone's). */
-export async function countCallNeeded(studentIds: string[] | null): Promise<number> {
+/** These students' completions — told, and not called yet — that wait for a call (null: everyone's). */
+export async function callNeeded(studentIds: string[] | null): Promise<any[]> {
   const docs = (await col(COMPLETIONS).find({
     notified_at: { $exists: true }, called_at: { $exists: false },
     ...(studentIds ? { student_id: { $in: studentIds } } : {}),
   } as any).limit(2000).toArray()) as any[];
-  if (!docs.length) return 0;
-  return (await settleCalls(docs)).filter((d) => !d.called_at).length;
+  if (!docs.length) return [];
+  return (await settleCalls(docs)).filter((d) => !d.called_at);
+}
+
+/** How many of them there are — the sidebar's number. */
+export async function countCallNeeded(studentIds: string[] | null): Promise<number> {
+  return (await callNeeded(studentIds)).length;
 }
