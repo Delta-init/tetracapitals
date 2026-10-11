@@ -8,6 +8,7 @@ import { handlePortalService } from "./portal/service";
 import { handleFinanceStudents } from "./finance/students";
 import { handleFinanceStudentLookup } from "./finance/studentLookup";
 import { handleFundingDecision } from "./finance/funding";
+import { handleFeeUpdate } from "./finance/feeUpdates";
 import { handleLmsStudents } from "./lms/students";
 import { handleLmsStudentCs } from "./lms/studentCs";
 import {
@@ -71,6 +72,8 @@ export async function route(req: Request): Promise<Response> {
   if (path === "/api/v1/integrations/finance/students/lookup" && req.method === "POST") return handleFinanceStudentLookup(req);
   // ---- Delta finance's decision on a deposit request it was sent (the same secret) ----
   if (path === "/api/v1/integrations/finance/funding-decisions" && req.method === "POST") return handleFundingDecision(req);
+  // ---- Delta finance: an enrolment's money changed — paid, balance, next due date (the same secret) ----
+  if (path === "/api/v1/integrations/finance/fee-updates" && req.method === "POST") return handleFeeUpdate(req);
   // ---- The Delta LMS sending every other new student (its own shared secret) ----
   if (path === "/api/v1/integrations/lms/students" && req.method === "POST") return handleLmsStudents(req);
   // ---- …and asking, now, who looks after one of them (the same secret) ----

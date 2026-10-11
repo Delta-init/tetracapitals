@@ -107,6 +107,7 @@ import LmsRequests from './pages/LmsRequests';
 import Exams from './pages/Exams';
 import ZohoInvoices from './pages/ZohoInvoices';
 import NotOnboarded from './pages/NotOnboarded';
+import BalancePayments from './pages/BalancePayments';
 import BonusApprovals from './pages/BonusApprovals';
 import __Layout from './Layout.jsx';
 
@@ -158,6 +159,7 @@ export const PAGES = {
     "StudentFollowups": StudentFollowups,
     "OverdueFollowups": OverdueFollowups,
     "NotOnboarded": NotOnboarded,
+    "BalancePayments": BalancePayments,
     "BonusApprovals": BonusApprovals,
     "StudentCalls": StudentCalls,
     "MentorCalendar": MentorCalendar,

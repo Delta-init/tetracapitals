@@ -32,6 +32,7 @@ import { setEnrolment, setStudentPriority, getLmsEnrolment, syncLmsEnrolmentNow 
 import { updateStudentDetails } from "./studentDetails";
 import { getOnboardingDraft, setOnboarding } from "./studentOnboarding";
 import { getNotOnboarded } from "./notOnboarded";
+import { getBalancePayments, recordBalancePayment } from "./balancePayments";
 import { resubmitSalesBonus } from "./salesBonus";
 import { getBonusApprovals } from "./bonusApprovals";
 import { getCoursePriceList, saveCoursePriceList, getStudentCourses, setStudentCourses, startCourseUpgrade, cancelCourseUpgrade, listCourseUpgrades, recordCoursePayment, getUpgradeLmsPlan, applyUpgradeLms } from "./courseUpgrades";
@@ -111,6 +112,9 @@ const AUTHED: Record<string, AuthedHandler> = {
   getOnboardingDraft,
   setOnboarding,
   getNotOnboarded,
+  // Balance payments: what students still owe on finance's courses, and the next payment recorded (balancePayments.ts)
+  getBalancePayments,
+  recordBalancePayment,
   resubmitSalesBonus,
   getBonusApprovals,
   // CSE course upgrades: the price list, a student's courses, starting one (courseUpgrades.ts)

@@ -45,6 +45,7 @@ const DOT = {
   lms_enrolment: 'bg-violet-500',
   lms_access: 'bg-indigo-500',
   course_upgrade: 'bg-emerald-500',
+  course_fees: 'bg-amber-500',
   pool_changed: 'bg-cyan-500',
   request: 'bg-slate-400',
 };

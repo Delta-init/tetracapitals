@@ -4,9 +4,11 @@ import { toObjectId } from "../lib/id";
 import type { AuthUser } from "../auth/middleware";
 import { CLOSED_STAGES, businessToday, visibleMentorIds, studentsOf } from "../students/followups";
 import { notOnboardedFilter, newFromFinanceFilter } from "../students/onboardingAlerts";
+import { theirStudents } from "../students/closedBy";
 import { countCallNeeded } from "../students/classCompletions";
 import { decidableBonusFilter } from "./bonusApprovals";
 import { BONUS_APPROVERS } from "../finance/funding";
+import { dueSoonFilter, uaeDay } from "../finance/balanceDue";
 
 /* The filters behind each number — shared with the Root portal's Pending page (portal/pending.ts), so the two never
    drift apart. A `forId` narrows one to that person, as their own sidebar has it. */
@@ -30,7 +32,7 @@ export const paymentLinksUnseenFilter = (status: "approved" | "rejected", forId?
 /**
  * POST /api/functions/getNavCounts
  * Returns: { new_students, followups_today, followups_overdue, payment_links_pending, payment_links_ready, payment_links_turned_down,
- *            not_onboarded, not_onboarded_late, class_completions_open, bonus_approvals_pending }
+ *            not_onboarded, not_onboarded_late, class_completions_open, bonus_approvals_pending, balance_due }
  *
  * The numbers on the sidebar. New students: given to you and not opened yet
  * (students.new_for_id — see notifyStudentsGiven). Follow-ups: what the
@@ -43,7 +45,9 @@ export const paymentLinksUnseenFilter = (status: "approved" | "rejected", forId?
  * waited 6 hours or more (students/onboardingAlerts.ts) — whose, as the follow-ups. Class completions:
  * classes students attended, told to their CS, with no call logged since the
  * class ended (students/classCompletions.ts) — whose, as the follow-ups. MT5 bonuses: for a broker admin or a Super
- * Admin, the bonuses waiting for their approval (functions/bonusApprovals.ts).
+ * Admin, the bonuses waiting for their approval (functions/bonusApprovals.ts). Balance payments: students owing on a
+ * course finance sold them whose next instalment is due within 3 days or overdue (finance/balanceDue.ts) — whose, as
+ * the Not onboarded page.
  */
 export async function getNavCounts(_req: Request, user: AuthUser): Promise<Response> {
   const today = businessToday();
@@ -56,8 +60,10 @@ export async function getNavCounts(_req: Request, user: AuthUser): Promise<Respo
   }
   const cs = user.app_role === "cs";
   const mine = (filter: Record<string, any>) => (visible ? { $and: [filter, studentsOf(visible)] } : filter);
+  // As the Not onboarded and Balance payments pages: the Sales role the students they closed.
+  const theirs = async (filter: Record<string, any>) => (visible ? { $and: [filter, await theirStudents(user, studentsOf(visible))] } : filter);
   const unseen = (status: "approved" | "rejected") => col("payment_link_requests").countDocuments(paymentLinksUnseenFilter(status, user.id));
-  const [newStudents, dueToday, overdue, linksWaiting, linksReady, linksTurnedDown, notOnboarded, notOnboardedLate, classesToCall, bonusesWaiting] = await Promise.all([
+  const [newStudents, dueToday, overdue, linksWaiting, linksReady, linksTurnedDown, notOnboarded, notOnboardedLate, classesToCall, bonusesWaiting, balanceDue] = await Promise.all([
     col("students").countDocuments(newStudentsFilter(user.id)),
     col("student_followups").countDocuments({ ...open, ...followupsDueTodayFilter(today) }),
     col("student_followups").countDocuments({ ...open, ...followupsOverdueFilter(today) }),
@@ -68,12 +74,13 @@ export async function getNavCounts(_req: Request, user: AuthUser): Promise<Respo
     col("students").countDocuments(mine(newFromFinanceFilter(Date.now()))),
     countCallNeeded(ids),
     BONUS_APPROVERS.includes(user.app_role) ? col("funding_transactions").countDocuments(decidableBonusFilter()) : 0,
+    col("students").countDocuments(await theirs(dueSoonFilter(uaeDay()))),
   ]);
   return json({
     today, new_students: newStudents, followups_today: dueToday, followups_overdue: overdue,
     payment_links_pending: linksWaiting, payment_links_ready: linksReady, payment_links_turned_down: linksTurnedDown,
     not_onboarded: notOnboarded, not_onboarded_late: notOnboardedLate, class_completions_open: classesToCall,
-    bonus_approvals_pending: bonusesWaiting,
+    bonus_approvals_pending: bonusesWaiting, balance_due: balanceDue,
   });
 }
 

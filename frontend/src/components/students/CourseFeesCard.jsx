@@ -12,6 +12,32 @@ const money = (minor, currency) =>
     : `${currency || ""} ${(Number(minor) / 100).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`.trim();
 
 const fromTracker = (f) => f?.source === "cs_tracker";
+const fmtDay = (d) => (d ? new Date(`${d}T12:00:00Z`).toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric", timeZone: "UTC" }) : "");
+const uaeToday = () => new Date(Date.now() + 4 * 3_600_000).toISOString().slice(0, 10);
+const daysFrom = (from, to) => Math.round((Date.parse(`${to}T00:00:00Z`) - Date.parse(`${from}T00:00:00Z`)) / 86_400_000);
+const CLOSED = { void: "Voided", deleted: "Deleted" };
+
+/** Finance's live figures under the balance: the next instalment's due date and how near it is — or why nothing is owed. */
+function NextDue({ f }) {
+  if (CLOSED[f.status]) return <div className="mt-0.5 text-xs font-normal text-gray-500">{CLOSED[f.status]} in finance</div>;
+  if (!(f.balance_minor > 0)) return f.status === "paid" ? <div className="mt-0.5 text-xs font-normal text-emerald-600">Paid in full</div> : null;
+  if (!f.next_due_on) return null;
+  const d = daysFrom(uaeToday(), f.next_due_on);
+  const cls = d < 0 ? "text-rose-600" : d <= 3 ? "text-amber-700" : "text-gray-500";
+  return (
+    <div className={`mt-0.5 text-xs font-normal ${cls}`}>
+      Next due {fmtDay(f.next_due_on)} · {d < 0 ? `${-d} day${d === -1 ? "" : "s"} overdue` : d === 0 ? "today" : `${d} day${d === 1 ? "" : "s"} left`}
+    </div>
+  );
+}
+
+/** Under what was paid: how many payments finance has, and the latest one's date. */
+function PaymentsLine({ f }) {
+  const list = Array.isArray(f.payments) ? f.payments : [];
+  if (!list.length) return null;
+  const last = list.map(p => p?.paid_on).filter(Boolean).sort().pop();
+  return <div className="mt-0.5 text-xs font-normal text-gray-500">{list.length} payment{list.length === 1 ? "" : "s"}{last ? ` · last ${fmtDay(last)}` : ""}</div>;
+}
 
 /**
  * What each of the student's courses cost and what was paid — one row per
@@ -19,13 +45,17 @@ const fromTracker = (f) => f?.source === "cs_tracker";
  * backend/src/finance/students.ts), and one per row of the CS enrolment tracker
  * (scripts/import-enrolment-tracker.ts), marked with the CS tab it came from.
  *
- * For information. Finance is the record of payments, so this is the picture
- * at approval rather than a running balance; and the bonus is what the
- * counsellor promised at the close, not a BONUS request — it credits nobody.
+ * Finance is the record of payments. Since 2026-10-11 it sends every change to
+ * an enrolment's money here (backend/src/finance/feeUpdates.ts): what was paid,
+ * the balance, the next instalment's due date — 29 days after the latest
+ * payment — and the payments, so a finance row is live; one from before it
+ * shows the picture at approval. The bonus is what the counsellor promised at
+ * the close, not a BONUS request — it credits nobody.
  */
 export default function CourseFeesCard({ fees }) {
   if (!Array.isArray(fees) || fees.length === 0) return null;
   const tracker = fees.some(fromTracker), finance = fees.some(f => !fromTracker(f));
+  const live = fees.some(f => !fromTracker(f) && f.updated_at);
   return (
     <Card className="border-gray-200">
       <CardHeader className="border-b border-gray-100 bg-gradient-to-r from-amber-50 to-orange-50">
@@ -34,7 +64,7 @@ export default function CourseFeesCard({ fees }) {
           Course fees ({fees.length})
         </CardTitle>
         <p className="text-xs text-gray-500">
-          {finance && tracker ? "From Delta finance and the CS enrolment tracker" : tracker ? "From the CS enrolment tracker" : "From Delta finance, as approved"} — for information.
+          {finance && tracker ? "From Delta finance and the CS enrolment tracker" : tracker ? "From the CS enrolment tracker" : live ? "From Delta finance — updated as payments are recorded" : "From Delta finance, as approved"} — for information.
         </p>
       </CardHeader>
       <CardContent className="p-0">
@@ -82,9 +112,13 @@ export default function CourseFeesCard({ fees }) {
                   {/* What this course is studied in, from the close in the sales CRM */}
                   <td className="p-3 text-sm whitespace-nowrap text-gray-700">{f.language || <span className="text-gray-400">—</span>}</td>
                   <td className="p-3 text-sm text-right whitespace-nowrap">{money(f.fee_minor, f.currency)}</td>
-                  <td className="p-3 text-sm text-right whitespace-nowrap text-emerald-700">{money(f.paid_minor, f.currency)}</td>
-                  <td className={`p-3 text-sm text-right whitespace-nowrap font-semibold ${f.balance_minor > 0 ? "text-amber-700" : f.balance_minor === null || f.balance_minor === undefined ? "text-gray-400" : "text-emerald-700"}`}>
+                  <td className="p-3 text-sm text-right whitespace-nowrap text-emerald-700">
+                    {money(f.paid_minor, f.currency)}
+                    {!fromTracker(f) && <PaymentsLine f={f} />}
+                  </td>
+                  <td className={`p-3 text-sm text-right whitespace-nowrap font-semibold ${CLOSED[f.status] ? "text-gray-400 line-through" : f.balance_minor > 0 ? "text-amber-700" : f.balance_minor === null || f.balance_minor === undefined ? "text-gray-400" : "text-emerald-700"}`}>
                     {money(f.balance_minor, f.currency)}
+                    {!fromTracker(f) && <NextDue f={f} />}
                   </td>
                   <td className="p-3 text-sm whitespace-nowrap">
                     {f.bonus_given === true ? (

@@ -458,6 +458,8 @@ async function runPass(): Promise<void> {
       await sendDueDeposits();
       // Course upgrade payments, on the same beat (courses/coursePayments.ts).
       await (await import("../courses/coursePayments")).sendDueCoursePayments();
+      // Balance payments on finance's enrolments, the same way (finance/enrolmentPayments.ts).
+      await (await import("./enrolmentPayments")).sendDueEnrolmentPayments();
     } while (again);
   } catch (err) {
     console.error("[finance funding] pass failed", err);
@@ -714,6 +716,11 @@ export async function handleFundingDecision(req: Request): Promise<Response> {
       decision, byName, byEmail, at, note, reason, transactionId, amountMinor,
     });
     if (answer) return answer;
+    // Nor that: a balance payment on one of finance's enrolments (finance/enrolmentPayments.ts).
+    const balance = await (await import("./enrolmentPayments")).decideEnrolmentPayment(oid, {
+      decision, byName, byEmail, at, note, reason, transactionId, amountMinor,
+    });
+    if (balance) return balance;
     return refuse(410, "GONE", "This funding request is no longer in Tetra Commission");
   }
   const settled = await settledAnswer(tx, decision, byName, byEmail);

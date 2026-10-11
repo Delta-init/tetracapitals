@@ -5,6 +5,7 @@ import { error as errorResponse } from "./lib/response";
 import { startFinanceFundingWorker } from "./finance/funding";
 import { startInactivityWorker } from "./students/inactivity";
 import { startReminderWorker } from "./students/followupReminders";
+import { startBalanceReminderWorker } from "./students/balanceReminders";
 import { startTimeReminderWorker } from "./students/followupTimeReminders";
 import { startOnboardingAlertWorker } from "./students/onboardingAlerts";
 import { startBonusVerifyAlertWorker } from "./students/bonusVerifyAlerts";
@@ -42,6 +43,8 @@ async function main() {
   startInactivityWorker();
   // Follow-up reminder emails, 10:00 UAE each day (FOLLOWUP_REMINDERS=off to keep a server out of it).
   startReminderWorker();
+  // Each CS told at 10:00 UAE of their students' course instalments due in 3, 2, 1 days, today or overdue (BALANCE_REMINDERS=off to keep a server out of it).
+  startBalanceReminderWorker();
   // A follow-up with a time: its CS reminded 15 minutes before and at it, every minute (also off with FOLLOWUP_REMINDERS=off).
   startTimeReminderWorker();
   // New students from finance not onboarded 6 hours on: their leaders and the Super Admins told (ONBOARDING_ALERTS=off to keep a server out of it).

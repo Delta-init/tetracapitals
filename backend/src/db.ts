@@ -115,6 +115,11 @@ export async function ensureIndexes(): Promise<void> {
     d.collection("retention_assignments").createIndex({ student_id: 1 }),
     d.collection("mentor_targets").createIndex({ mentor_id: 1, period: 1 }),
     d.collection("mentor_points").createIndex({ total_points: -1 }),
+    // Balance payments (finance/feeUpdates.ts, finance/enrolmentPayments.ts, students/balanceReminders.ts).
+    d.collection("students").createIndex({ "course_fees.invoice_id": 1 }, { sparse: true }),
+    d.collection("enrolment_payments").createIndex({ invoice_id: 1, status: 1 }),
+    d.collection("enrolment_payments").createIndex({ "finance_approval.state": 1, "finance_approval.next_attempt_at": 1 }),
+    d.collection("balance_reminders").createIndex({ date: -1, cs_id: 1 }),
   ]);
 
   // One student per LMS account, even if two deliveries of it arrive at once.
