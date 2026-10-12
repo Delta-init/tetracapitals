@@ -184,6 +184,22 @@ export function bonusMissing(doc: any): string | null {
   return null;
 }
 
+/**
+ * A deposit asked for needs its receipt — on every payment when paid in several (the user, 2026-10-12): the funding
+ * form has asked for it since 2026-10-04, and now the server does too, so no request comes without one whatever sends
+ * it. A withdrawal's stays optional; a deposit recorded as already decided (an admin's record) and the bulk import are
+ * left as they were.
+ */
+export function depositReceiptMissing(doc: any): string | null {
+  if (doc?.type !== "DEPOSIT") return null;
+  if (doc?.status && doc.status !== "PENDING") return null;
+  const payments = Array.isArray(doc.payments) ? doc.payments : [];
+  if (payments.length) {
+    return payments.some((p: any) => !String(p?.receipt_url ?? "").trim()) ? "Every payment of a deposit needs its receipt" : null;
+  }
+  return String(doc.screenshot_url ?? "").trim() ? null : "A deposit needs the payment receipt";
+}
+
 /** What finance is deciding: nothing here may change these while it has the request. */
 const LOCKED = ["status", "amount_usd", "type", "student_id"] as const;
 

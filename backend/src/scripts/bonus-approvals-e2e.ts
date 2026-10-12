@@ -122,6 +122,21 @@ check("a broker admin: what waits for them — the bonus and the deposit", r.sta
 r = await call("POST", "/api/functions/getNavCounts", {}, tCs);
 check("a CS: none", r.status === 200 && r.body.bonus_approvals_pending === 0);
 
+step("A deposit asked for needs its receipt (2026-10-12)");
+{
+  const base = { type: "DEPOSIT", status: "PENDING", student_id: String(s1._id), student_name: s1.full_name, amount_usd: 100, amount_original: 100, amount_currency: "USD", mt5_login: "7001009" };
+  r = await call("POST", "/api/entities/FundingTransaction", base, tCs);
+  check("a deposit with no receipt: refused", r.status === 400 && /receipt/i.test(JSON.stringify(r.body)), JSON.stringify(r.body));
+  r = await call("POST", "/api/entities/FundingTransaction", { ...base, payments: [{ method: "Cash", amount: 60, receipt_url: "https://files.test/a.pdf" }, { method: "Card", amount: 40, receipt_url: "" }] }, tCs);
+  check("…paid in two, one without its receipt: refused", r.status === 400, `${r.status}`);
+  r = await call("POST", "/api/entities/FundingTransaction", { ...base, screenshot_url: "https://files.test/a.pdf" }, tCs);
+  check("…with its receipt: taken", r.status === 200 || r.status === 201, `${r.status} ${JSON.stringify(r.body).slice(0, 120)}`);
+  r = await call("POST", "/api/entities/FundingTransaction", { ...base, type: "WITHDRAWAL" }, tCs);
+  check("a withdrawal without one: still taken", r.status === 200 || r.status === 201, `${r.status} ${JSON.stringify(r.body).slice(0, 120)}`);
+  if (r.body?.id) await db.collection("funding_transactions").deleteMany({ student_id: String(s1._id), mt5_login: "7001009" });
+  await db.collection("funding_transactions").deleteMany({ mt5_login: "7001009" });
+}
+
 step("A date range (2026-10-12)");
 r = await call("POST", "/api/functions/getBonusApprovals", { from: "2000-01-01" }, tBroker);
 check("from long ago: last month's approved one too", r.body.approved?.some((t: any) => t.id === String(approvedLastMonth._id)), JSON.stringify(r.body.counts));

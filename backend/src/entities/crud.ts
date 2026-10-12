@@ -9,7 +9,7 @@ import { buildScopeFilter, applyScope, docMatchesScope } from "../lib/scope";
 import { stampNewStudents, recordCreated, prepareStudentUpdate, recordHistory, type HistoryEntry } from "../students/history";
 import { notifyStudentsGiven } from "../lib/notify";
 import type { TeamIndex } from "../students/teams";
-import { stampFundingForFinance, kickFinanceFunding, financeLock, withFinance, WITH_FINANCE_MESSAGE, decisionRefusal, bonusMissing, dropServerFields, claimResubmit, releaseResubmit } from "../finance/funding";
+import { stampFundingForFinance, kickFinanceFunding, financeLock, withFinance, WITH_FINANCE_MESSAGE, decisionRefusal, bonusMissing, depositReceiptMissing, dropServerFields, claimResubmit, releaseResubmit } from "../finance/funding";
 import { seesClosedOnly, SALES_READ_ONLY } from "../students/closedBy";
 import { keepRequestMt5 } from "../students/mt5";
 
@@ -192,7 +192,7 @@ export async function createEntity(req: Request, entityName: string): Promise<Re
   // A bonus names the MT5 login and carries the receipt; a sales-close credit is the server's to make.
   if (entityName === "FundingTransaction") {
     dropServerFields(data);
-    const missing = bonusMissing(data);
+    const missing = bonusMissing(data) ?? depositReceiptMissing(data);
     if (missing) return error(missing, 400);
     // A rejected request, corrected and sent again: that one claimed, once (finance/funding.ts).
     const refused = await claimResubmit(data, ctx.user);
