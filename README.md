@@ -1,4 +1,4 @@
-# Student Tracker
+ # Student Tracker
 
 A full-stack CRM for tracking trading-mentorship students, mentor commissions,
 funding transactions, tickets, and quarterly ledgers.
