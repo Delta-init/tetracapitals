@@ -68,6 +68,9 @@ export default function BonusApprovals() {
   const queryClient = useQueryClient();
   const { data: currentUser } = useQuery({ queryKey: ['me-effective'], queryFn: async () => getEffectiveUser(await base44.auth.me()) });
   const allowed = APPROVERS.includes(currentUser?.app_role);
+  // The date range is asked of the server (decided ones before this month), so it is read before the list.
+  const [from, setFrom] = useUrlState('from', '');
+  const [to, setTo] = useUrlState('to', '');
   const { data, isLoading, error } = useQuery({
     queryKey: ['bonus-approvals', from, to],
     queryFn: async () => (await base44.functions.invoke('getBonusApprovals', { ...(from ? { from } : {}), ...(to ? { to } : {}) })).data,
@@ -79,8 +82,6 @@ export default function BonusApprovals() {
   const [type, setType] = useUrlState('type', 'all');
   // Filters and sorting, kept in the address (2026-10-12): the date range (requested — and, for Approved / Rejected,
   // decided — UAE days), the CS, where it came from, MT5 and email there or missing, the welcome, and the order.
-  const [from, setFrom] = useUrlState('from', '');
-  const [to, setTo] = useUrlState('to', '');
   const [csF, setCsF] = useUrlState('cs', 'all');
   const [source, setSource] = useUrlState('source', 'all');
   const [mt5F, setMt5F] = useUrlState('mt5', 'all');
