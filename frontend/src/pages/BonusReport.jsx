@@ -13,10 +13,10 @@ export default function BonusReport() {
       title="Bonus report" fn="getBonusReport"
       description="Bonuses raised in the period, by where they stand — and those promised at a sales close still waiting for a connected call + MT5."
       cards={d => [
+        // What the students paid for the approved bonuses — AED only, the first card (the user, 2026-10-12).
+        { label: 'Collected (approved)', tone: 'approved', value: aedOnly(d.total.approved_collected_aed), sub: `paid for ${num(d.total.approved)} approved bonuses` },
         { label: 'Bonuses', usd: d.total.usd, sub: `${num(d.total.count)} in all` },
         { label: 'Approved', tone: 'approved', usd: d.total.approved_usd, sub: `${num(d.total.approved)} bonuses` },
-        // What the students paid for the approved bonuses — AED only (the user, 2026-10-12).
-        { label: 'Collected (approved)', tone: 'approved', value: aedOnly(d.total.approved_collected_aed), sub: `paid for ${num(d.total.approved)} approved bonuses` },
         { label: 'Still pending', tone: 'pending', usd: (d.total.needs_call_usd || 0) + (d.total.with_finance_usd || 0) + (d.total.waiting_broker_usd || 0),
           sub: `${num(d.total.needs_call)} need call + MT5 · ${num(d.total.with_finance)} with finance · ${num(d.total.waiting_broker)} broker admin` },
         { label: 'Rejected', tone: 'rejected', usd: d.total.rejected_usd, sub: `${num(d.total.rejected)} bonuses` },
