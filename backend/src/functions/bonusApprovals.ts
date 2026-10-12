@@ -96,6 +96,13 @@ export async function getBonusApprovals(req: Request, user: AuthUser): Promise<R
               fee: (Number(f.fee_minor) || 0) / 100, paid: (Number(f.paid_minor) || 0) / 100, balance: (Number(f.balance_minor) || 0) / 100,
               // Finance's receipt for that invoice — the one a sales-close bonus has (it has none of its own).
               receipt_url: /^https?:\/\//i.test(String(f.receipt_url ?? "")) ? String(f.receipt_url) : "", receipt_name: String(f.receipt_name ?? ""),
+              // What the counsellor declared collected (and how), what accounts recorded, and each payment's receipt.
+              collected: f.collected_minor != null ? (Number(f.collected_minor) || 0) / 100 : null, collected_method: String(f.collected_method ?? ""),
+              recorded: f.recorded_minor != null ? (Number(f.recorded_minor) || 0) / 100 : null,
+              payments: (Array.isArray(f.declared_payments) ? f.declared_payments : []).map((p: any) => ({
+                method: String(p.method ?? ""), amount: (Number(p.amount_minor) || 0) / 100, paid_on: String(p.paid_on ?? ""),
+                receipt_url: String(p.receipt_url ?? ""), receipt_name: String(p.receipt_name ?? ""),
+              })),
             })),
             finance_invoice_number: String(s.finance_invoice_number ?? ""),
             closed_by: (Array.isArray(s.closed_by) ? s.closed_by : []).map((c: any) => ({ name: String(c.name ?? c.email ?? ""), crm: String(c.crm ?? "") })),

@@ -379,6 +379,49 @@ step("Who looks after them — finance asking, for the sales CRMs' My Enrolments
   check("Bonus — one typed in finance (no CRM) gets no label: the fee's currency, as before", f && !("bonus_currency" in f), JSON.stringify(f));
 }
 
+step("Collected by counsellor, recorded, and each payment's receipt (2026-10-12)");
+{
+  const feeOf = async (e: { invoiceId: string }) => ((await db.collection("students").findOne({ finance_invoice_id: e.invoiceId })) as any)?.course_fees?.[0];
+  const paidFees = {
+    currency: "AED", feeMinor: 225_000, paidMinor: 225_000, balanceMinor: 0,
+    declaredPaidMinor: 225_000, declaredPaymentMethod: "tabby", recordedPaidMinor: 0,
+    declaredPayments: [
+      { method: "tabby", amountMinor: 200_000, paidOn: "2026-10-09", receipt: { url: "https://files.test/r1.pdf", name: "tabby.pdf" } },
+      { method: "cash", amountMinor: 25_000, paidOn: "2026-10-09", receipt: { url: "javascript:alert(1)", name: "bad" } },
+    ],
+  };
+  const m = enrolment({ crm: "delta", feeSummary: paidFees });
+  await send(m);
+  let f: any = await feeOf(m);
+  check("collected by counsellor and how, recorded, kept", f?.collected_minor === 225_000 && f?.collected_method === "tabby" && f?.recorded_minor === 0, JSON.stringify(f));
+  check("each payment with its receipt — a link that isn't a web address dropped", f?.declared_payments?.length === 2 && f.declared_payments[0].receipt_url === "https://files.test/r1.pdf" && f.declared_payments[1].receipt_url === "", JSON.stringify(f?.declared_payments));
+  check("the receipt: the first payment's, when finance sent no single one", f?.receipt_url === "https://files.test/r1.pdf" && f?.receipt_name === "tabby.pdf");
+  // The same invoice sent again (a retry): the receipts and collection brought up to date — never the money, which
+  // finance's fee updates keep current; once.
+  await send({ ...m, feeSummary: { ...paidFees, paidMinor: 1, balanceMinor: 1, declaredPayments: [{ method: "tabby", amountMinor: 225_000, paidOn: "2026-10-09", receipt: { url: "https://files.test/r2.pdf", name: "r2.pdf" } }] } });
+  f = await feeOf(m);
+  const s: any = await db.collection("students").findOne({ email: m.email });
+  check("sent again: the declared payments updated, the money left as it was, one fee for the invoice", f?.declared_payments?.[0]?.receipt_url === "https://files.test/r2.pdf"
+    && f?.paid_minor === 225_000 && f?.receipt_url === "https://files.test/r1.pdf" && s.course_fees.filter((x: any) => x.invoice_id === m.invoiceId).length === 1, JSON.stringify(f));
+  // Finance's fee update with the same picture (its backfill): recorded, collected and the receipts.
+  const upd = (over: Record<string, unknown>) => call("POST", "/api/v1/integrations/finance/fee-updates", {
+    invoiceId: m.invoiceId, invoiceNumber: m.invoiceNumber, email: m.email, course: "x", currency: "AED", totalMinor: 225_000, paidMinor: 225_000, balanceMinor: 0,
+    status: "paid", nextDueOn: null, payments: [{ amountMinor: 225_000, paidOn: "2026-10-10", method: "Tabby" }], updatedAt: new Date().toISOString(), ...over,
+  }, { "x-finance-secret": SECRET });
+  let r: any = await upd({ declaredPaidMinor: 225_000, declaredPaymentMethod: "tabby", declaredPayments: [{ method: "tabby", amountMinor: 225_000, paidOn: "2026-10-09", receipt: { url: "https://files.test/r3.pdf", name: "r3.pdf" } }] });
+  f = await feeOf(m);
+  check("a fee update with the declared side: recorded = what accounts recorded, collected and receipts kept", r.status === 200 && f?.recorded_minor === 225_000 && f?.collected_minor === 225_000
+    && f?.declared_payments?.[0]?.receipt_url === "https://files.test/r3.pdf" && f?.payments?.[0]?.method === "Tabby", JSON.stringify(f));
+  r = await upd({ updatedAt: new Date(Date.now() + 1000).toISOString() });
+  f = await feeOf(m);
+  check("an older finance's fee update (no declared side): collected and receipts left as they are", r.status === 200 && f?.collected_minor === 225_000 && f?.declared_payments?.[0]?.receipt_url === "https://files.test/r3.pdf", JSON.stringify(f));
+  // An older finance — none of it: as before.
+  const old = enrolment({ feeSummary: fees });
+  await send(old);
+  f = await feeOf(old);
+  check("an older finance: none of the new fields", f && !("collected_minor" in f) && !("declared_payments" in f), JSON.stringify(f));
+}
+
 await db.dropDatabase();
 await client.close();
 console.log(`\n${pass}/${pass + fail} checks passed`);

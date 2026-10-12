@@ -1,3 +1,4 @@
+import { declaredPaymentsOf, link } from "./students";
 import { col } from "../db";
 import { config } from "../config";
 import { ok, refuse, secretMatches, text } from "../students/intake";
@@ -40,6 +41,12 @@ export interface FeeUpdate {
   nextDueOn: string | null;
   payments: { amount_minor: number; paid_on: string; method: string }[];
   updatedAt: string;
+  /**
+   * What the counsellor declared collected at the close, and how, with each declared payment and its receipt, and the
+   * close's receipt (the user, 2026-10-12 — finance sends them from then on, and its backfill for the rest). Absent
+   * from an older finance: left as they are here.
+   */
+  declared?: { paidMinor: number | null; method: string; payments: ReturnType<typeof declaredPaymentsOf>; receiptUrl: string; receiptName: string };
 }
 
 const minor = (v: unknown): number | null => (typeof v === "number" && Number.isSafeInteger(v) && v >= 0 ? v : null);
@@ -65,11 +72,17 @@ export function readFeeUpdate(body: unknown): { update: FeeUpdate } | { error: s
     const on = String(p?.paidOn ?? "").slice(0, 10);
     return amount !== null && isDay(on) ? [{ amount_minor: amount, paid_on: on, method: text(p?.method, 60) }] : [];
   });
+  const hasDeclared = "declaredPaidMinor" in b || "declaredPayments" in b || "receipt" in b;
+  const receipt = b.receipt && typeof b.receipt === "object" ? (b.receipt as Record<string, unknown>) : null;
   return {
     update: {
       invoiceId, invoiceNumber: text(b.invoiceNumber, 64), email: text(b.email).toLowerCase(), course: text(b.course),
       currency, totalMinor: total, paidMinor: paid, balanceMinor: balance, status, nextDueOn, payments,
       updatedAt: new Date(at).toISOString(),
+      ...(hasDeclared ? { declared: {
+        paidMinor: minor(b.declaredPaidMinor), method: text(b.declaredPaymentMethod, 60),
+        payments: declaredPaymentsOf(b.declaredPayments), receiptUrl: link(receipt?.url), receiptName: text(receipt?.name, 200),
+      } } : {}),
     },
   };
 }
@@ -100,6 +113,16 @@ async function applyTo(studentId: unknown, u: FeeUpdate): Promise<Outcome> {
           "course_fees.$.updated_at": u.updatedAt,
           "course_fees.$.received_at": new Date().toISOString(),
           ...(u.invoiceNumber && !entry.invoice_number ? { "course_fees.$.invoice_number": u.invoiceNumber } : {}),
+          // What accounts recorded is this update's paid; the counsellor's own figure and receipts when finance sent them.
+          "course_fees.$.recorded_minor": u.paidMinor,
+          ...(u.declared?.paidMinor != null ? { "course_fees.$.collected_minor": u.declared.paidMinor } : {}),
+          ...(u.declared?.method ? { "course_fees.$.collected_method": u.declared.method } : {}),
+          ...(u.declared?.payments.length ? { "course_fees.$.declared_payments": u.declared.payments } : {}),
+          ...(u.declared && (u.declared.receiptUrl || u.declared.payments.find((p) => p.receipt_url))
+            ? (entry.receipt_url ? {} : {
+              "course_fees.$.receipt_url": u.declared.receiptUrl || u.declared.payments.find((p) => p.receipt_url)!.receipt_url,
+              "course_fees.$.receipt_name": u.declared.receiptName || u.declared.payments.find((p) => p.receipt_url)!.receipt_name,
+            }) : {}),
         },
       },
     );

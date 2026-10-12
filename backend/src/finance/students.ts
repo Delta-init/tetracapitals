@@ -80,8 +80,30 @@ type CourseFee = {
   bonus_currency?: string;
   receipt_url: string;
   receipt_name: string;
+  /**
+   * What the counsellor declared collected at the close, and how, and what accounts recorded against the invoice
+   * (the user, 2026-10-12) — `paid_minor` is the larger of the two. Absent from an older finance.
+   */
+  collected_minor?: number;
+  collected_method?: string;
+  recorded_minor?: number;
+  /** Each payment declared at the close, with its own receipt (the salesperson's upload) — not `payments`, which are
+   *  what accounts recorded (finance/feeUpdates.ts). */
+  declared_payments?: { method: string; amount_minor: number; paid_on: string; receipt_url: string; receipt_name: string }[];
   recorded_at: string;
 };
+
+export const link = (v: unknown) => { const u = text(v, 2048); return /^https?:\/\//i.test(u) ? u : ""; };
+/** Finance's declared payments, each with its receipt — only what is well formed. */
+export function declaredPaymentsOf(raw: unknown): NonNullable<CourseFee["declared_payments"]> {
+  if (!Array.isArray(raw)) return [];
+  return raw.slice(0, 20).flatMap((p: any) => {
+    if (!p || typeof p !== "object") return [];
+    const amount = minor(p.amountMinor) ?? 0;
+    const receipt = p.receipt && typeof p.receipt === "object" ? p.receipt : null;
+    return [{ method: text(p.method, 60), amount_minor: amount, paid_on: text(p.paidOn, 20), receipt_url: link(receipt?.url), receipt_name: text(receipt?.name, 200) }];
+  });
+}
 
 const minor = (v: unknown): number | null => (typeof v === "number" && Number.isInteger(v) && v >= 0 ? v : null);
 
@@ -102,7 +124,10 @@ function courseFee(raw: unknown, invoiceId: string, invoiceNumber: string, cours
   }
   const bonus = f.bonus && typeof f.bonus === "object" ? (f.bonus as Record<string, unknown>) : null;
   const receipt = f.receipt && typeof f.receipt === "object" ? (f.receipt as Record<string, unknown>) : null;
-  const receiptUrl = text(receipt?.url, 2048);
+  const payments = declaredPaymentsOf(f.declaredPayments);
+  // The close's receipt — or, from a finance that sends one per payment, the first payment's.
+  const receiptUrl = text(receipt?.url, 2048) || payments.find((p) => p.receipt_url)?.receipt_url || "";
+  const receiptName = text(receipt?.name, 200) || payments.find((p) => p.receipt_url)?.receipt_name || "";
   return {
     invoice_id: invoiceId,
     invoice_number: invoiceNumber,
@@ -122,18 +147,41 @@ function courseFee(raw: unknown, invoiceId: string, invoiceNumber: string, cours
       : bonus && salesCrmOf(salesCrm) ? { bonus_currency: CRM_BONUS_CURRENCY } : {}),
     // Only a link a browser can open — anything else would be a dead or hostile one.
     receipt_url: /^https?:\/\//i.test(receiptUrl) ? receiptUrl : "",
-    receipt_name: text(receipt?.name, 200),
+    receipt_name: receiptName,
+    ...(minor(f.declaredPaidMinor) !== null ? { collected_minor: minor(f.declaredPaidMinor)! } : {}),
+    ...(text(f.declaredPaymentMethod, 60) ? { collected_method: text(f.declaredPaymentMethod, 60) } : {}),
+    ...(minor(f.recordedPaidMinor) !== null ? { recorded_minor: minor(f.recordedPaidMinor)! } : {}),
+    ...(payments.length ? { declared_payments: payments } : {}),
     recorded_at: new Date().toISOString(),
   };
 }
 
-/** Adds the course's fees to a student already here, once per invoice: a retry finds it there. */
+/**
+ * Adds the course's fees to a student already here, once per invoice: a retry finds it there. Sent again: only what
+ * this summary adds that the entry lacks — what the counsellor collected and each declared payment's receipt (the user,
+ * 2026-10-12). Never the fee, paid or balance: finance's fee updates keep those current (finance/feeUpdates.ts), and
+ * this summary is as it was at approval.
+ */
 async function recordCourseFee(student: { _id: unknown }, fee: CourseFee | null): Promise<void> {
   if (!fee) return;
-  await col("students").updateOne(
+  const pushed = await col("students").updateOne(
     { _id: student._id as never, "course_fees.invoice_id": { $ne: fee.invoice_id } },
     { $push: { course_fees: fee } } as never,
   );
+  if (pushed.modifiedCount) return;
+  const set: Record<string, unknown> = {
+    ...(fee.collected_minor !== undefined ? { "course_fees.$[f].collected_minor": fee.collected_minor } : {}),
+    ...(fee.collected_method ? { "course_fees.$[f].collected_method": fee.collected_method } : {}),
+    ...(fee.declared_payments?.length ? { "course_fees.$[f].declared_payments": fee.declared_payments } : {}),
+  };
+  if (Object.keys(set).length) {
+    await col("students").updateOne({ _id: student._id as never }, { $set: set } as never, { arrayFilters: [{ "f.invoice_id": fee.invoice_id }] } as never);
+  }
+  // A receipt only where there was none.
+  if (fee.receipt_url) {
+    await col("students").updateOne({ _id: student._id as never }, { $set: { "course_fees.$[f].receipt_url": fee.receipt_url, "course_fees.$[f].receipt_name": fee.receipt_name } } as never,
+      { arrayFilters: [{ "f.invoice_id": fee.invoice_id, "f.receipt_url": { $in: ["", null] } }] } as never);
+  }
 }
 
 /** The language of their latest close, on a student already here — in their history when it changes. */

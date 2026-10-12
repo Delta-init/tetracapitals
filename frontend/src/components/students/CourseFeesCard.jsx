@@ -115,6 +115,9 @@ export default function CourseFeesCard({ fees }) {
                   <td className="p-3 text-sm text-right whitespace-nowrap text-emerald-700">
                     {money(f.paid_minor, f.currency)}
                     {!fromTracker(f) && <PaymentsLine f={f} />}
+                    {/* What the counsellor declared collected, and what accounts recorded (finance, 2026-10-12) */}
+                    {f.collected_minor != null && <div className="text-[11px] font-normal text-slate-500">Collected by counsellor {money(f.collected_minor, f.currency)}{f.collected_method ? ` · ${f.collected_method}` : ''}</div>}
+                    {f.recorded_minor != null && <div className="text-[11px] font-normal text-slate-400">Recorded {money(f.recorded_minor, f.currency)}</div>}
                   </td>
                   <td className={`p-3 text-sm text-right whitespace-nowrap font-semibold ${CLOSED[f.status] ? "text-gray-400 line-through" : f.balance_minor > 0 ? "text-amber-700" : f.balance_minor === null || f.balance_minor === undefined ? "text-gray-400" : "text-emerald-700"}`}>
                     {money(f.balance_minor, f.currency)}
@@ -133,7 +136,16 @@ export default function CourseFeesCard({ fees }) {
                     )}
                   </td>
                   <td className="p-3 text-sm">
-                    {f.receipt_url ? (
+                    {/* Each payment's receipt, as the salesperson uploaded it (finance, 2026-10-12) */}
+                    {f.declared_payments?.some(p => p.receipt_url) ? (
+                      <div className="space-y-0.5">
+                        {f.declared_payments.filter(p => p.receipt_url).map((p, i) => (
+                          <a key={i} href={p.receipt_url} target="_blank" rel="noopener noreferrer" className="flex items-center gap-1 whitespace-nowrap text-blue-600 hover:underline">
+                            <Receipt className="h-3.5 w-3.5" />{p.method || 'Receipt'}{p.amount_minor ? ` · ${money(p.amount_minor, f.currency)}` : ''}
+                          </a>
+                        ))}
+                      </div>
+                    ) : f.receipt_url ? (
                       <a
                         href={f.receipt_url}
                         target="_blank"

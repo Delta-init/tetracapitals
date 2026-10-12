@@ -54,12 +54,27 @@ const typeOf = (t) => TYPES[t.type] || TYPES.BONUS;
  * What the Receipt column and the approval box open (2026-10-12): the request's own receipts — or, when it has none (a
  * sales-close bonus), finance's receipt for its invoice (the student's other invoices' if it names none).
  */
-const financeReceiptsOf = (t) => {
-  const all = (t.student?.invoices || []).filter(f => f.receipt_url);
+/** The invoices a request is about: a sales-close bonus its own, anything else all of the student's. */
+const invoicesOf = (t) => {
+  const all = t.student?.invoices || [];
   const mine = t.sales_close?.invoice_number ? all.filter(f => f.invoice_number === t.sales_close.invoice_number) : [];
-  const list = mine.length ? mine : all;
-  return list.length ? { payments: list.map(f => ({ method: `Finance receipt · ${f.invoice_number}`, receipt_url: f.receipt_url, receipt_name: f.receipt_name })) } : null;
+  return mine.length ? mine : all;
 };
+const financeReceiptsOf = (t) => {
+  // Each payment the salesperson declared, with its own receipt (2026-10-12); else the invoice's one receipt.
+  const list = invoicesOf(t).flatMap(f => (f.payments?.some(p => p.receipt_url)
+    ? f.payments.filter(p => p.receipt_url).map(p => ({ method: `${f.invoice_number} · ${p.method || 'payment'}`, amount: p.amount, currency: f.currency, collected_on: p.paid_on, receipt_url: p.receipt_url, receipt_name: p.receipt_name }))
+    : f.receipt_url ? [{ method: `Finance receipt · ${f.invoice_number}`, receipt_url: f.receipt_url, receipt_name: f.receipt_name }] : []));
+  return list.length ? { payments: list } : null;
+};
+const money = (n, cur) => `${cur || 'AED'} ${Number(n || 0).toLocaleString('en-US', { maximumFractionDigits: 2 })}`;
+/** "Collected AED 2,250 · tabby · recorded AED 2,250" for each invoice the request is about. */
+const paidLines = (t) => invoicesOf(t).map(f => ({
+  key: f.invoice_number,
+  collected: f.collected != null ? money(f.collected, f.currency) + (f.collected_method ? ` · ${f.collected_method}` : '') : null,
+  recorded: f.recorded != null ? money(f.recorded, f.currency) : null,
+  paid: money(f.paid, f.currency), fee: money(f.fee, f.currency), balance: f.balance > 0 ? money(f.balance, f.currency) : null,
+}));
 const receiptTxOf = (t) => (paymentsOf(t).some(p => p.receipt_url) ? t : financeReceiptsOf(t) || t);
 /** A small select for the filter bar. */
 function FilterSelect({ value, onChange, options }) {
@@ -85,8 +100,10 @@ const EXPORT_COLUMNS = [
   { header: 'Team', value: t => t.student?.team },
   { header: 'Meeting by', value: t => t.meeting_mentor_name },
   { header: 'MT5 login', value: t => t.mt5_login },
-  { header: 'Amount USD', type: 'number', value: t => Number(t.amount_usd) || 0 },
+  { header: 'Amount to credit USD', type: 'number', value: t => Number(t.amount_usd) || 0 },
   { header: 'Original amount', value: t => original(t) },
+  { header: 'Collected by counsellor', value: t => paidLines(t).map(l => l.collected || `Paid ${l.paid}`).join('; ') },
+  { header: 'Recorded against invoice', value: t => paidLines(t).map(l => l.recorded || '').filter(Boolean).join('; ') },
   { header: 'Payment', value: t => methodsText(t) },
   { header: 'Product', value: t => [...(t.tags || []), ...(t.course && !(t.tags || []).includes(t.course) ? [t.course] : [])].join('; ') },
   { header: 'LMS courses now', width: 40, value: t => (t.student?.lms_courses || []).map(c => `${c.title} (${c.status === 'active' ? `${Math.round(c.progress)}%` : c.status})`).join('; ') },
@@ -319,7 +336,7 @@ export default function BonusApprovals() {
                         <tr className="border-b bg-slate-50/80">
                           {/* The Funding Requests page's columns (but Added by), and what matters for an MT5 credit (2026-10-12) */}
                           <TH>Requested</TH><TH>Type</TH><TH>Status</TH><TH>Student</TH><TH>CS</TH><TH>Meeting by</TH><TH>MT5 login</TH>
-                          <TH>Amount</TH><TH>Payment</TH><TH>Product</TH><TH>LMS courses now</TH><TH>Finance invoice</TH><TH>From · sold by</TH>
+                          <TH>Amount to credit</TH><TH>Paid by the student</TH><TH>Payment</TH><TH>Product</TH><TH>LMS courses now</TH><TH>Finance invoice</TH><TH>From · sold by</TH>
                           <TH>User ID</TH><TH>Txn ID</TH><TH>Receipt</TH><TH>Welcome</TH>
                           <th className={`${STICKY_END} whitespace-nowrap bg-slate-50 px-3 py-3 text-left text-[11px] font-semibold uppercase tracking-wider text-slate-500`}>
                             {tab === 'pending' ? '' : tab === 'returned' ? 'Sent back' : 'Decided'}
@@ -364,6 +381,17 @@ export default function BonusApprovals() {
                               <div className="font-semibold text-slate-800">{usd(t)}</div>
                               {original(t) && <div className="text-xs text-slate-400">{original(t)}</div>}
                               <PaymentDetails tx={t} />
+                            </td>
+                            {/* What the student paid — the counsellor's collection and what accounts recorded — beside the bonus, never mixed */}
+                            <td className="min-w-[180px] px-3 py-2.5 text-xs">
+                              {paidLines(t).length ? paidLines(t).map(l => (
+                                <div key={l.key} className="mb-1 last:mb-0">
+                                  {paidLines(t).length > 1 && <div className="font-mono text-[11px] text-slate-400">{l.key}</div>}
+                                  {l.collected ? <div className="text-slate-800">Collected by counsellor <b>{l.collected}</b></div> : <div className="text-slate-800">Paid <b>{l.paid}</b></div>}
+                                  {l.recorded && <div className="text-slate-500">Recorded {l.recorded}</div>}
+                                  <div className="text-slate-400">of {l.fee}{l.balance ? <span className="text-amber-700"> · owes {l.balance}</span> : ''}</div>
+                                </div>
+                              )) : <span className="text-slate-300">—</span>}
                             </td>
                             <td className="whitespace-nowrap px-3 py-2.5 text-sm text-slate-600">{methodsText(t) || '—'}</td>
                             <td className="min-w-[140px] px-3 py-2.5">
