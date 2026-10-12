@@ -17,7 +17,9 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { ViewInLmsButton } from '@/components/students/ViewInLms';
 import { CourseAccessButton, CoursesToGive, picksToCourses } from '@/components/students/LmsCourseAccess';
-import { CheckCircle2, ClipboardCheck, ExternalLink, Eye, FileText, Loader2, RefreshCw, Search, XCircle } from 'lucide-react';
+import { CheckCircle2, ClipboardCheck, ExternalLink, Eye, FileText, Loader2, RefreshCw, Search, UserPlus, XCircle } from 'lucide-react';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { listTeams } from '@/components/utils/teams';
 import { cn } from '@/lib/utils';
 
 /* ────────────────────────────────────────────────────────────────────────────
@@ -32,7 +34,10 @@ import { cn } from '@/lib/utils';
    read-only, in a new tab (components/students/ViewInLms.jsx). Approving can
    put them on Forex courses at once, each module open or locked as you pick,
    and "Courses" does that for an approved student any time after
-   (components/students/LmsCourseAccess.jsx).
+   (components/students/LmsCourseAccess.jsx). CS Managers see every Forex
+   applicant too, and they and the Super Admin "Assign" one who is nobody's yet —
+   not in the portal (made a student from the LMS details) or in Delta Open
+   Students — to a CS (the user, 2026-10-12; assignLmsApplicant).
 ──────────────────────────────────────────────────────────────────────────── */
 
 const TABS = [
@@ -275,6 +280,9 @@ export default function LmsRequests() {
   const whose = data?.reach === 'all' ? 'every Forex applicant' : 'your students';
   // "As student": the Super Admin anyone's, otherwise only the student's own CS — not their leaders.
   const viewable = (r) => data?.reach === 'all' || !!r.student?.yours;
+  // "Assign": nobody's yet — not in the portal, or in Delta Open Students.
+  const assignable = (r) => !!data?.canAssign && (!r.student || r.student.unassigned);
+  const [assigning, setAssigning] = useState(null);
 
   return (
     <div className="min-h-screen p-6">
@@ -366,6 +374,7 @@ export default function LmsRequests() {
                                   <div className="text-xs text-slate-500">{[r.student.cs, r.student.team].filter(Boolean).join(' · ')}</div>
                                 </Link>
                               ) : <span className="text-xs text-slate-400">Not in the portal</span>}
+                              {r.student?.unassigned && <div className="text-[11px] font-medium text-amber-700">No CS yet</div>}
                             </td>
                             <td className="px-4 py-2.5">
                               <Badge variant="outline" className={s.cls}>{s.label}</Badge>
@@ -377,6 +386,11 @@ export default function LmsRequests() {
                                 <Button size="sm" variant="outline" className="h-8 gap-1 px-2 text-xs" onClick={() => setViewing(r)}>
                                   <Eye className="h-3.5 w-3.5" /> View
                                 </Button>
+                                {assignable(r) && (
+                                  <Button size="sm" variant="outline" className="h-8 gap-1 border-blue-300 px-2 text-xs text-blue-700 hover:bg-blue-50" onClick={() => setAssigning(r)}>
+                                    <UserPlus className="h-3.5 w-3.5" /> Assign
+                                  </Button>
+                                )}
                                 {viewable(r) && <ViewInLmsButton email={r.email} name={r.name} label="As student" size="sm" className="h-8 gap-1 px-2 text-xs" />}
                                 {r.status === 'approved' && (
                                   <CourseAccessButton email={r.email} name={r.name} label="Courses" size="sm" className="h-8 gap-1 px-2 text-xs" />
@@ -407,7 +421,74 @@ export default function LmsRequests() {
       </div>
       {/* Each opens fresh for its request — a reason half-typed for one never reaches another */}
       {viewing && <RequestDialog key={viewing.id} request={viewing} canView={viewable(viewing)} onClose={() => setViewing(null)} onDecide={decide} />}
+      {assigning && <AssignDialog key={assigning.id} request={assigning} onClose={() => setAssigning(null)} onDone={refresh} />}
       {decision && <DecisionDialog key={`${decision.kind}-${decision.request.id}`} decision={decision} onClose={() => setDecision(null)} onDone={refresh} />}
     </div>
+  );
+}
+
+/** Give an applicant who is nobody's yet to a CS: a team, then one of its people (the CS first). */
+function AssignDialog({ request, onClose, onDone }) {
+  const { data: users = [], isLoading } = useQuery({
+    queryKey: ['transfer-people'],
+    queryFn: async () => (await base44.functions.invoke('getTransferPeople', {})).data?.users || [],
+  });
+  const teams = useMemo(() => listTeams(users.filter(u => u.status !== 'inactive')), [users]);
+  const [teamId, setTeamId] = useState('');
+  const [toId, setToId] = useState('');
+  const [busy, setBusy] = useState(false);
+  const team = teams.find(t => t.id === teamId);
+  const people = team ? [...team.members].sort((a, b) => (a.app_role === 'cs' ? 0 : 1) - (b.app_role === 'cs' ? 0 : 1)) : [];
+  const person = people.find(p => p.id === toId);
+  const inPortal = !!request.student;
+  const save = async () => {
+    setBusy(true);
+    try {
+      const r = (await base44.functions.invoke('assignLmsApplicant', { userId: request.id, email: request.email, toId })).data;
+      toast.success(`${r?.created ? `${r.student?.code} added and given` : 'Given'} to ${person?.full_name}`);
+      onDone?.(); onClose();
+    } catch (e) {
+      toast.error(/unknown function|not found|404/i.test(String(e?.message)) ? 'This needs the server update (the API deploy)' : (e?.message || "Couldn't assign them"));
+      setBusy(false);
+    }
+  };
+  return (
+    <Dialog open onOpenChange={(o) => !o && !busy && onClose()}>
+      <DialogContent className="max-w-md">
+        <DialogHeader>
+          <DialogTitle>Assign {request.name || request.email}</DialogTitle>
+          <DialogDescription>
+            {inPortal
+              ? `${request.student.code} is in the portal with no CS — they go to the person you pick.`
+              : 'Not in the portal yet — they are added as a student from their LMS details (name, email, phone, country) and given to the person you pick.'}
+          </DialogDescription>
+        </DialogHeader>
+        <div className="space-y-4 text-sm">
+          <div className="rounded-lg bg-slate-50 px-3 py-2 text-xs text-slate-600">
+            {request.email}{request.phone ? ` · ${request.phone}` : ''}{request.country ? ` · ${request.country}` : ''}{request.academy ? ` · ${request.academy}` : ''}
+          </div>
+          <div className="space-y-2">
+            <Label>Team</Label>
+            <Select value={teamId || undefined} onValueChange={(v) => { if (v) { setTeamId(v); setToId(''); } }}>
+              <SelectTrigger><SelectValue placeholder={isLoading ? 'Loading…' : 'Select team'} /></SelectTrigger>
+              <SelectContent>{teams.map(t => <SelectItem key={t.id} value={t.id}>{t.name} · {t.members.length}</SelectItem>)}</SelectContent>
+            </Select>
+          </div>
+          {team && (
+            <div className="space-y-2">
+              <Label>Give to</Label>
+              <Select value={toId || undefined} onValueChange={(v) => v && setToId(v)}>
+                <SelectTrigger><SelectValue placeholder="Select person" /></SelectTrigger>
+                <SelectContent>{people.map(m => <SelectItem key={m.id} value={m.id}>{m.full_name}{m.app_role === 'cs' ? ' (CS)' : ` (${String(m.app_role || '').replace(/_/g, ' ')})`}</SelectItem>)}</SelectContent>
+              </Select>
+            </div>
+          )}
+        </div>
+        <DialogFooter>
+          <Button variant="ghost" onClick={onClose} disabled={busy}>Cancel</Button>
+          <Button onClick={save} disabled={!toId || busy}>{busy ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <UserPlus className="mr-2 h-4 w-4" />}Assign</Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }

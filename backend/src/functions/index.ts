@@ -43,7 +43,7 @@ import { getStudentClasses } from "./lmsClasses";
 import { getStudentLmsSupport, getLmsSupportTickets, getLmsSupportTicketCount, answerLmsTicket, resolveLmsTicket } from "./lmsSupport";
 import {
   getLmsEnrolmentRequests, getLmsEnrolmentRequestCount, getLmsEnrolmentRequest, getLmsEnrolmentDocument,
-  approveLmsEnrolmentRequest, rejectLmsEnrolmentRequest, viewStudentInLms,
+  approveLmsEnrolmentRequest, rejectLmsEnrolmentRequest, viewStudentInLms, assignLmsApplicant,
 } from "./lmsEnrolmentRequests";
 import { getLmsCourseAccess, giveLmsCourses, setLmsModuleAccess } from "./lmsCourseAccess";
 import { getClassCompletions } from "./classCompletions";
@@ -160,6 +160,8 @@ const AUTHED: Record<string, AuthedHandler> = {
   getLmsEnrolmentDocument,
   approveLmsEnrolmentRequest,
   rejectLmsEnrolmentRequest,
+  // …and given to a CS when nobody's yet (CS Manager, Super Admin)
+  assignLmsApplicant,
   // A student's own LMS, read-only — from LMS Requests and the student page
   viewStudentInLms,
   // Their LMS courses: put on Forex courses, modules opened or locked (lmsCourseAccess.ts)

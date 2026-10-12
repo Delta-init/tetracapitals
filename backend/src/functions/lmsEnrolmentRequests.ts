@@ -5,8 +5,14 @@ import type { AuthUser } from "../auth/middleware";
 import { isMentorRole } from "../lib/roles";
 import { visibleMentorIds, studentsOf, isStudentOf } from "../students/followups";
 import { seesClosedOnly } from "../students/closedBy";
-import { recordHistory } from "../students/history";
+import { recordHistory, prepareStudentUpdate } from "../students/history";
 import { callLms, lmsConfigured, LmsError } from "../lib/lms";
+import { ObjectId } from "mongodb";
+import { notifyStudentsGiven } from "../lib/notify";
+import { nextStudentCode } from "../lib/studentCode";
+import { locationOf } from "../lib/location";
+import { lmsEnrolledFields } from "../students/lmsEnrolment";
+import { mayTransfer } from "./studentTransfer";
 
 /* ────────────────────────────────────────────────────────────────────────────
    LMS enrolment requests (the user, 2026-10-06): the LMS admin's Requests page —
@@ -18,6 +24,12 @@ import { callLms, lmsConfigured, LmsError } from "../lib/lms";
    (lms services/portalEnrolmentRequests.service.ts), recorded there under the
    deciding person's own LMS account, else the shared support one with their
    name. Not the Sales role's. The LMS deploys first.
+
+   CS Managers see every Forex applicant too, and decide them (the user,
+   2026-10-12) — and they and the Super Admin assign one who isn't anybody's
+   yet: not in the portal (the student is made from the LMS details, given to
+   the CS picked) or in Delta Open Students (given to them) —
+   assignLmsApplicant.
 
    The same people can open a student's own LMS as the student sees it,
    read-only (viewStudentInLms) — from this page and from the student's page.
@@ -36,9 +48,9 @@ const emailOf = (v: unknown) => {
 };
 const escapeRe = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 
-/** Whose requests somebody sees: every Forex applicant's (the Super Admin), their own students' (CSs and their leaders), or none. */
+/** Whose requests somebody sees: every Forex applicant's (the Super Admin, a CS Manager), their own students' (CSs and their leaders), or none. */
 async function reachOf(user: AuthUser): Promise<"all" | "own" | null> {
-  if (user.app_role === "super_admin") return "all";
+  if (user.app_role === "super_admin" || user.app_role === "cs_manager") return "all";
   if (isMentorRole(user.app_role) && !(await seesClosedOnly(user))) return "own";
   return null;
 }
@@ -53,12 +65,14 @@ async function theirStudents(user: AuthUser): Promise<Record<string, any>> {
   return ids ? studentsOf(ids) : {};
 }
 
-const STUDENT_FIELDS = { full_name: 1, student_code: 1, email: 1, primary_mentor_name: 1, team_name: 1, primary_mentor_id: 1, common_cs: 1 };
+const STUDENT_FIELDS = { full_name: 1, student_code: 1, email: 1, primary_mentor_name: 1, team_name: 1, primary_mentor_id: 1, common_cs: 1, assignment_status: 1 };
+/** Nobody's yet: no CS, or in Delta Open Students. */
+const unassigned = (s: any) => !String(s?.primary_mentor_id ?? "") || s?.assignment_status === "open_pool";
 /** A request's student here, as the page links them: who they are, whose they are — and whether they're the asker's own (their CS, or Common with them). */
 const studentCard = (s: any, user?: AuthUser) =>
   s ? {
     id: String(s._id), name: str(s.full_name), code: str(s.student_code, 40), cs: str(s.primary_mentor_name), team: str(s.team_name),
-    yours: !!user && isStudentOf(s, new Set([user.id])),
+    yours: !!user && isStudentOf(s, new Set([user.id])), unassigned: unassigned(s),
   } : null;
 
 /** The students in `scope` with an email, one an address. */
@@ -124,7 +138,8 @@ export async function getLmsEnrolmentRequests(req: Request, user: AuthUser): Pro
   const body: any = await req.json().catch(() => ({}));
   const status = STATUSES.has(String(body?.status)) ? String(body.status) : "pending";
   const page = Math.max(1, Math.floor(Number(body?.page) || 1));
-  const empty = { reach, requests: [], total: 0, page, perPage: PAGE };
+  // canAssign: may give one who is nobody's yet to a CS (assignLmsApplicant).
+  const empty = { reach, canAssign: mayTransfer(user), requests: [], total: 0, page, perPage: PAGE };
   if (!lmsConfigured()) return json({ configured: false, available: false, ...empty });
   try {
     if (reach === "all") {
@@ -132,7 +147,7 @@ export async function getLmsEnrolmentRequests(req: Request, user: AuthUser): Pro
       const requests = r?.requests ?? [];
       const here = await studentsWithEmails(requests.map((q) => emailOf(q.email)).filter(Boolean));
       return json({
-        configured: true, available: true, reach, page, perPage: PAGE, total: Number(r?.total ?? 0),
+        configured: true, available: true, reach, canAssign: empty.canAssign, page, perPage: PAGE, total: Number(r?.total ?? 0),
         requests: requests.map((q) => ({ ...q, student: studentCard(here.get(emailOf(q.email)), user) })),
       });
     }
@@ -140,7 +155,7 @@ export async function getLmsEnrolmentRequests(req: Request, user: AuthUser): Pro
     const found = (await requestsOf([...byEmail.keys()], status))
       .sort((a, b) => String(b.appliedAt ?? "").localeCompare(String(a.appliedAt ?? "")));
     return json({
-      configured: true, available: true, reach, page, perPage: PAGE, total: found.length,
+      configured: true, available: true, reach, canAssign: empty.canAssign, page, perPage: PAGE, total: found.length,
       requests: found.slice((page - 1) * PAGE, page * PAGE).map((q) => ({ ...q, student: studentCard(byEmail.get(emailOf(q.email)), user) })),
     });
   } catch (err) {
@@ -404,4 +419,105 @@ export async function lmsStudentFor(body: any, user: AuthUser, opts: { ownOnly?:
   const student: any = await col("students").findOne(within(match), { projection: STUDENT_FIELDS });
   if (scope && !student) return forbidden();
   return { email, student: student ?? null };
+}
+
+/**
+ * POST /api/functions/assignLmsApplicant { userId, email, toId } (the user, 2026-10-12) — a Super Admin, an Admin or a
+ * CS Manager gives an LMS applicant who is nobody's yet to a CS (anyone on a team, as Transfer does):
+ *   - not in the portal: the student is made from the LMS's details (name, phone, country, academy), with the picked
+ *     person as their CS from the start;
+ *   - here but in Delta Open Students / with no CS: given to them.
+ * Somebody's already: refused — Transfer on the student's page moves them. → { ok, created, student }
+ */
+export async function assignLmsApplicant(req: Request, user: AuthUser): Promise<Response> {
+  if (!mayTransfer(user)) return forbidden("Only a Super Admin, an Admin or a CS Manager assigns LMS applicants");
+  const body: any = await req.json().catch(() => ({}));
+  const found = await requestFor(body, user);
+  if (found instanceof Response) return found;
+  const tid = toObjectId(String(body?.toId ?? ""));
+  if (!tid) return error("Pick the CS to give them to", 400);
+  const to: any = await col("users").findOne({ _id: tid }, { projection: { full_name: 1, app_role: 1, status: 1, team_location: 1 } });
+  if (!to || !isMentorRole(to.app_role)) return error("Pick someone on a team", 400);
+  if (to.status === "inactive") return error(`${to.full_name || "That person"} is switched off — pick someone else`, 400);
+  const now = new Date().toISOString();
+  const data: Record<string, any> = { primary_mentor_id: String(to._id), primary_mentor_name: to.full_name ?? "", assignment_status: "assigned", updated_date: now };
+
+  if (found.student) {
+    const student: any = await col("students").findOne({ _id: found.student._id });
+    if (!student) return notFound();
+    if (!unassigned(student)) return error(`Already with ${student.primary_mentor_name || "a CS"} — Transfer on the student's page moves them`, 409);
+    const history = await prepareStudentUpdate(student, data, user);
+    const res = await col("students").updateOne({ _id: student._id, primary_mentor_id: student.primary_mentor_id ?? "" } as any, { $set: data });
+    if (!res.modifiedCount) return error("Somebody changed this student meanwhile — open the page again", 409);
+    await recordHistory(history);
+    const doc = await col("students").findOne({ _id: student._id }, { projection: STUDENT_FIELDS });
+    if (doc) void notifyStudentsGiven([doc], user.id);
+    pendingCounts.clear();
+    return json({ ok: true, created: false, student: studentCard(doc, user) });
+  }
+
+  let request: any;
+  try {
+    request = (await callLms<{ request: any }>(`/enrolment-requests/${found.userId}`, { method: "POST", body: { email: found.email }, verb: "share the request" })).request;
+  } catch (err) {
+    return lmsRefusal(err);
+  }
+  // Their LMS account may be here already under another address.
+  const sameAccount: any = await col("students").findOne({ lms_user_id: found.userId }, { projection: STUDENT_FIELDS });
+  if (sameAccount) return error(`This LMS account is already ${sameAccount.student_code} ${sameAccount.full_name} (${sameAccount.email || "no email"}) — ${unassigned(sameAccount) ? "assign them from the Students page" : `with ${sameAccount.primary_mentor_name}`}`, 409);
+
+  const academy = str(request?.academy, 80);
+  const programs = (Array.isArray(request?.programs) ? request.programs : []).map((p: unknown) => str(p, 80)).filter(Boolean).join(", ");
+  const doc: any = {
+    _id: new ObjectId(),
+    student_code: await nextStudentCode(),
+    full_name: str(request?.name) || found.email,
+    email: found.email,
+    phone: str(request?.phone, 40),
+    country: str(request?.country, 80),
+    notes: `From Delta LMS${programs ? ` — ${programs}` : ""}${academy ? ` (${academy})` : ""}`,
+    primary_mentor_id: "", primary_mentor_name: "", senior_mentor_id: "", senior_mentor_name: "",
+    assignment_status: "open_pool",
+    status: "ACTIVE",
+    student_level: "LEVEL_1",
+    location: locationOf(to.team_location),
+    team_id: "", team_name: "",
+    first_assignee_id: "", first_assignee_name: "", first_assignee_role: "", first_assigned_at: "", assigned_at: "",
+    source: "delta_lms",
+    lms_user_id: found.userId,
+    lms_course: programs,
+    lms_academy: academy,
+    ...lmsEnrolledFields(),
+    created_by: user.id,
+    created_by_name: who(user),
+    created_date: now,
+    updated_date: now,
+  };
+  // As if given from Delta Open Students: the team, first assignee and "assigned" history, the way Transfer fills them.
+  const history = await prepareStudentUpdate(doc, data, user);
+  Object.assign(doc, data);
+  try {
+    await col("students").insertOne(doc);
+  } catch (err) {
+    if ((err as { code?: number }).code === 11000) return error("This applicant was just added — open the page again", 409);
+    throw err;
+  }
+  await recordHistory([
+    { student_id: String(doc._id), at: now, type: "arrived", by_id: user.id, by_name: who(user),
+      text: `Added from the LMS Requests page by ${who(user)}${programs ? ` — ${programs}` : ""}${academy ? ` (${academy})` : ""}` } as any,
+    ...history,
+  ]);
+  try {
+    await col("logs").insertOne({
+      timestamp: now, user_id: user.id, user_email: user.email ?? "", user_name: who(user), user_role: user.app_role,
+      action_type: "create_student", entity_type: "Student", entity_id: String(doc._id),
+      details: JSON.stringify({ message: `Created student from the LMS Requests page: ${doc.full_name} → ${doc.primary_mentor_name}` }),
+      old_value: null, new_value: JSON.stringify(doc), ip_address: null, success: true, created_date: now, updated_date: now,
+    } as any);
+  } catch (err) {
+    console.error("[lms requests] could not write the activity log", err);
+  }
+  void notifyStudentsGiven([doc], user.id);
+  pendingCounts.clear();
+  return json({ ok: true, created: true, student: studentCard(doc, user) });
 }
