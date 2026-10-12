@@ -17,13 +17,28 @@ import { BONUS_APPROVERS, BONUS_APPROVERS_MESSAGE, withFinance, financeFundingCo
  * `source` (sales_close / request), its course, and the student's CS and whether their welcome went.
  *
  * Broker admins and Super Admins only: the people who decide a bonus.
+ *
+ * MT5 Approvals (the user, 2026-10-12): deposits and withdrawals waiting for a broker admin or a Super Admin are here
+ * too — each row says its `type` (DEPOSIT / WITHDRAWAL / BONUS) — so everything that goes into MT5 is decided in one
+ * place; the Funding Requests page still decides them as well. `counts.by_type` per type and tab.
  */
 function uaeMonthStart(now = Date.now()): string {
   const uae = new Date(now + 4 * 3_600_000);
   return new Date(Date.UTC(uae.getUTCFullYear(), uae.getUTCMonth(), 1) - 4 * 3_600_000).toISOString();
 }
 
-/** Pending bonuses a broker admin may decide now — the filter the sidebar's count uses too. */
+const MT5_TYPES = ["DEPOSIT", "WITHDRAWAL", "BONUS"];
+
+/** Pending deposits, withdrawals and bonuses a broker admin may decide now — the MT5 Approvals sidebar count. */
+export function decidableMt5Filter(): Record<string, any> {
+  return {
+    type: { $in: MT5_TYPES },
+    status: "PENDING",
+    "finance_approval.state": { $nin: financeFundingConfigured() ? ["sent", "queued"] : ["sent"] },
+  };
+}
+
+/** Pending bonuses a broker admin may decide now (the Root portal's pending list counts these). */
 export function decidableBonusFilter(): Record<string, any> {
   return {
     type: "BONUS",
@@ -37,7 +52,7 @@ export async function getBonusApprovals(_req: Request, user: AuthUser): Promise<
   const monthStart = uaeMonthStart();
   const bonuses = (await col("funding_transactions")
     .find({
-      type: "BONUS",
+      type: { $in: MT5_TYPES },
       $or: [{ status: "PENDING" }, { status: { $in: ["APPROVED", "REJECTED"] }, approved_at: { $gte: monthStart } }],
     })
     .limit(3000)
@@ -55,7 +70,7 @@ export async function getBonusApprovals(_req: Request, user: AuthUser): Promise<
     const s = studentOf.get(String(t.student_id ?? ""));
     return {
       ...serialize(t),
-      source: t.bonus_credit === "sales_close" ? "sales_close" : t.bonus_credit === "course_upgrade" ? "course_upgrade" : "request",
+      source: t.type !== "BONUS" ? "request" : t.bonus_credit === "sales_close" ? "sales_close" : t.bonus_credit === "course_upgrade" ? "course_upgrade" : "request",
       course: String(t.sales_close?.course || t.course_upgrade?.course || (Array.isArray(t.tags) ? t.tags[0] ?? "" : "") || s?.lms_course || ""),
       student: s
         ? {
@@ -81,6 +96,12 @@ export async function getBonusApprovals(_req: Request, user: AuthUser): Promise<
       approved: approved.length,
       rejected: rejected.length,
       with_finance: bonuses.filter((t) => t.status === "PENDING" && withFinance(t)).length,
+      // Each type's pending / approved / rejected, for the Type filter.
+      by_type: Object.fromEntries(MT5_TYPES.map((ty) => [ty, {
+        pending: pending.filter((t) => t.type === ty).length,
+        approved: approved.filter((t) => t.type === ty).length,
+        rejected: rejected.filter((t) => t.type === ty).length,
+      }])),
     },
     pending: pending.map(row),
     approved: approved.map(row),

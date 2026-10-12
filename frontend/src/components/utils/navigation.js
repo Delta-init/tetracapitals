@@ -142,7 +142,7 @@ export const NAV_ITEMS = [
   { name: 'FundingRequests', page: 'FundingRequests', icon: HandCoins, roles: ['super_admin', 'broker_admin', 'academic_head', 'finance_admin', 'cs_manager'] },
   // MT5 bonuses waiting for a broker admin: sales-close bonuses (onboarding verification) and finance-approved bonus
   // requests. Only the people who decide a bonus (backend BONUS_APPROVERS) — `only`, so no role override opens it.
-  { name: 'BonusApprovals', label: 'MT5 Bonus Approvals', page: 'BonusApprovals', icon: Gift, roles: ['super_admin', 'broker_admin'], only: ['super_admin', 'broker_admin'] },
+  { name: 'BonusApprovals', label: 'MT5 Approvals', page: 'BonusApprovals', icon: Gift, roles: ['super_admin', 'broker_admin'], only: ['super_admin', 'broker_admin'] },
   // CSs ask on the student's page; a Super Admin pastes the link in (backend/src/functions/paymentLinks.ts). A CS
   // sees what they asked for here, along with their Students page; no other role gets it.
   { name: 'PaymentLinks', label: 'Payment Links', page: 'PaymentLinks', icon: CreditCard, roles: ['super_admin', 'cs'], only: ['super_admin', 'cs'], sameAccessAs: 'Students' },

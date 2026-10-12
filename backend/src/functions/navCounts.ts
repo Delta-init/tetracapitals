@@ -6,7 +6,7 @@ import { CLOSED_STAGES, businessToday, visibleMentorIds, studentsOf } from "../s
 import { notOnboardedFilter, newFromFinanceFilter } from "../students/onboardingAlerts";
 import { theirStudents } from "../students/closedBy";
 import { countCallNeeded } from "../students/classCompletions";
-import { decidableBonusFilter } from "./bonusApprovals";
+import { decidableMt5Filter } from "./bonusApprovals";
 import { BONUS_APPROVERS } from "../finance/funding";
 import { dueSoonFilter, uaeDay } from "../finance/balanceDue";
 
@@ -73,7 +73,7 @@ export async function getNavCounts(_req: Request, user: AuthUser): Promise<Respo
     col("students").countDocuments(mine(notOnboardedFilter())),
     col("students").countDocuments(mine(newFromFinanceFilter(Date.now()))),
     countCallNeeded(ids),
-    BONUS_APPROVERS.includes(user.app_role) ? col("funding_transactions").countDocuments(decidableBonusFilter()) : 0,
+    BONUS_APPROVERS.includes(user.app_role) ? col("funding_transactions").countDocuments(decidableMt5Filter()) : 0,
     col("students").countDocuments(await theirs(dueSoonFilter(uaeDay()))),
   ]);
   return json({

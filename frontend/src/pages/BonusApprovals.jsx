@@ -14,6 +14,7 @@ import { getEffectiveUser } from '@/components/utils/ImpersonationContext';
 import { createPageUrl } from '@/utils';
 import { logAction } from '@/components/utils/AuditLogger';
 import ProcessFundingDialog from '@/components/funding/ProcessFundingDialog';
+import { useUrlState } from '@/components/utils/urlState';
 
 /*
  * MT5 Bonus Approvals (the user, 2026-10-04): every MT5 bonus waiting for a broker admin or a Super Admin, in one place —
@@ -22,6 +23,10 @@ import ProcessFundingDialog from '@/components/funding/ProcessFundingDialog';
  * Requests page uses, and the same steps after it: the audit log, then the commission credit (a sales-close bonus
  * credits nobody). A rejected sales-close bonus goes back to the student's CS, who can submit it again from Not
  * onboarded. Broker admins and Super Admins only (backend/src/functions/bonusApprovals.ts).
+ *
+ * MT5 Approvals (the user, 2026-10-12): pending deposits and withdrawals are here too, each row with its Type
+ * (Deposit / Withdrawal / Bonus) and a Type filter, so everything going into MT5 is approved in one place — with the
+ * same box and steps as Funding Requests (the commission credit for each type).
  */
 const APPROVERS = ['broker_admin', 'super_admin'];
 const TABS = [
@@ -33,6 +38,12 @@ const TABS = [
 const STICKY_END = 'sticky right-0 shadow-[-8px_0_8px_-8px_rgba(15,23,42,0.15)]';
 const when = (iso) => (iso ? new Date(iso).toLocaleString('en-GB', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' }) : '');
 const usd = (t) => `$${Number(t.amount_usd || 0).toLocaleString('en-US', { maximumFractionDigits: 2 })}`;
+const TYPES = {
+  DEPOSIT: { label: 'Deposit', cls: 'bg-emerald-50 text-emerald-700 ring-emerald-200' },
+  WITHDRAWAL: { label: 'Withdrawal', cls: 'bg-rose-50 text-rose-700 ring-rose-200' },
+  BONUS: { label: 'Bonus', cls: 'bg-violet-50 text-violet-700 ring-violet-200' },
+};
+const typeOf = (t) => TYPES[t.type] || TYPES.BONUS;
 const original = (t) => (t.amount_currency && t.amount_currency !== 'USD' && t.amount_original
   ? `${t.amount_currency} ${Number(t.amount_original).toLocaleString('en-US')}` : '');
 
@@ -48,6 +59,7 @@ export default function BonusApprovals() {
   });
   const [tab, setTab] = useState('pending');
   const [q, setQ] = useState('');
+  const [type, setType] = useUrlState('type', 'all');
   const [deciding, setDeciding] = useState(null);
 
   // The same as the Funding Requests page: the decision, the audit log, then the commission credit.
@@ -56,19 +68,20 @@ export default function BonusApprovals() {
       const result = await base44.entities.FundingTransaction.update(id, change);
       const action = change.status === 'APPROVED' ? 'approve_funding_transaction' : 'reject_funding_transaction';
       await logAction(action, 'FundingTransaction', id, `${change.status} transaction for ${change.student_name}`, null, change);
-      if (change.status === 'APPROVED' && result?.type === 'BONUS') {
+      if (change.status === 'APPROVED' && ['BONUS', 'DEPOSIT', 'WITHDRAWAL'].includes(result?.type)) {
         try { await base44.functions.invoke('creditCommission', { transaction_id: id }); }
         catch (e) { console.error('commission credit failed', e); }
       }
       return result;
     },
-    onSuccess: (_r, { data: change }) => {
+    onSuccess: (result, { data: change }) => {
       queryClient.invalidateQueries({ queryKey: ['bonus-approvals'] });
       queryClient.invalidateQueries({ queryKey: ['nav-counts'] });
       queryClient.invalidateQueries({ queryKey: ['funding-transactions'] });
       queryClient.invalidateQueries({ queryKey: ['students'] });
       setDeciding(null);
-      toast.success(change.status === 'APPROVED' ? 'Bonus approved' : 'Bonus rejected — their CS can submit it again');
+      const what = (TYPES[result?.type] || TYPES.BONUS).label;
+      toast.success(change.status === 'APPROVED' ? `${what} approved` : result?.type === 'BONUS' ? 'Bonus rejected — their CS can submit it again' : `${what} rejected`);
     },
     onError: (e) => toast.error(e?.message || 'Could not save the decision'),
   });
@@ -79,16 +92,16 @@ export default function BonusApprovals() {
 
   const needle = q.trim().toLowerCase();
   const rows = useMemo(
-    () => (data?.[tab] || []).filter(t => !needle || [t.student?.full_name, t.student?.student_code, t.student?.cs, t.mt5_login, t.course, t.student_name]
-      .some(v => String(v || '').toLowerCase().includes(needle))),
-    [data, tab, needle],
+    () => (data?.[tab] || []).filter(t => (type === 'all' || t.type === type) && (!needle || [t.student?.full_name, t.student?.student_code, t.student?.cs, t.mt5_login, t.course, t.student_name]
+      .some(v => String(v || '').toLowerCase().includes(needle)))),
+    [data, tab, needle, type],
   );
 
   if (currentUser && !allowed) {
     return (
       <div className="min-h-screen p-6">
         <p className="mx-auto max-w-xl rounded-xl border border-slate-200 bg-white p-6 text-center text-sm text-slate-500">
-          MT5 bonuses are approved by broker admins and Super Admins.
+          MT5 deposits, withdrawals and bonuses are approved by broker admins and Super Admins.
         </p>
       </div>
     );
@@ -100,9 +113,9 @@ export default function BonusApprovals() {
     <div className="min-h-screen p-6">
       <div className="mx-auto max-w-[1600px] space-y-6">
         <div>
-          <PageTitle eyebrow="Funding" icon={Gift}>MT5 Bonus Approvals</PageTitle>
+          <PageTitle eyebrow="Funding" icon={Gift}>MT5 Approvals</PageTitle>
           <p className="mt-2 max-w-3xl text-sm text-slate-500 sm:text-base">
-            Every MT5 bonus waiting for a broker admin: the bonus promised at a sales close — the student is onboarded, and the salesperson's commission counts, only once it's approved — and other bonus requests once finance has approved their payment. Credit the bonus in MT5, then approve it with the transaction ID. A rejected sales-close bonus goes back to the student's CS to submit again.
+            Every deposit, withdrawal and bonus waiting for a broker admin, in one place — the Type column says which. Bonuses: the bonus promised at a sales close — the student is onboarded, and the salesperson's commission counts, only once it's approved — and other bonus requests once finance has approved their payment. Credit the bonus in MT5, then approve it with the transaction ID. A rejected sales-close bonus goes back to the student's CS to submit again.
           </p>
         </div>
 
@@ -118,13 +131,21 @@ export default function BonusApprovals() {
             <button key={key} type="button" onClick={() => setTab(key)}
               className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-sm font-medium transition-colors ${tab === key ? on : 'border-slate-200 bg-white text-slate-600 hover:bg-slate-50'}`}>
               <Icon className="h-4 w-4" />{label}
-              <span className="rounded-full bg-white/70 px-1.5 text-xs font-semibold">{data?.counts?.[key] ?? 0}</span>
+              <span className="rounded-full bg-white/70 px-1.5 text-xs font-semibold">{type === 'all' ? (data?.counts?.[key] ?? 0) : (data?.counts?.by_type?.[type]?.[key] ?? 0)}</span>
             </button>
           ))}
         </div>
 
         <Card className="overflow-hidden">
-          <CardHeader className="border-b">
+          <CardHeader className="flex flex-row flex-wrap items-center gap-3 space-y-0 border-b">
+            <div className="flex rounded-md border bg-white p-0.5 text-xs" role="group" aria-label="Type">
+              {[['all', 'All types'], ...Object.entries(TYPES).map(([k, v]) => [k, v.label])].map(([k, l]) => (
+                <button key={k} type="button" onClick={() => setType(k)}
+                  className={`rounded px-2.5 py-1.5 font-medium ${type === k ? 'bg-brand-navy text-white' : 'text-slate-600 hover:bg-slate-50'}`}>
+                  {l}{k !== 'all' && data?.counts?.by_type?.[k]?.[tab] ? <span className="ml-1 opacity-70">{data.counts.by_type[k][tab]}</span> : null}
+                </button>
+              ))}
+            </div>
             <div className="relative w-fit">
               <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
               <Input value={q} onChange={e => setQ(e.target.value)} placeholder="Student, code, CS, MT5, course…" className="h-9 w-72 pl-9" />
@@ -132,22 +153,22 @@ export default function BonusApprovals() {
           </CardHeader>
           <CardContent className="p-0">
             {isLoading || !currentUser ? (
-              <p className="py-12 text-center text-sm text-slate-400">Loading bonuses…</p>
+              <p className="py-12 text-center text-sm text-slate-400">Loading…</p>
             ) : error ? (
-              <p className="py-12 text-center text-sm text-rose-600">{error.message || 'Could not load the bonuses'}</p>
+              <p className="py-12 text-center text-sm text-rose-600">{error.message || 'Could not load the approvals'}</p>
             ) : rows.length === 0 ? (
               <p className="py-12 text-center text-sm text-slate-400">
                 {(data?.[tab] || []).length ? 'Nothing matches the search.'
-                  : tab === 'pending' ? 'No MT5 bonus is waiting for approval.' : tab === 'approved' ? 'No bonus approved this month yet.' : 'No bonus rejected this month.'}
+                  : tab === 'pending' ? 'Nothing is waiting for approval.' : tab === 'approved' ? 'Nothing approved this month yet.' : 'Nothing rejected this month.'}
               </p>
             ) : (
-              <Paged items={rows} resetKey={`${tab}|${needle}`}>
+              <Paged items={rows} resetKey={`${tab}|${needle}|${type}`}>
                 {(pageRows, bar) => (<>
                   <div className="overflow-x-auto">
                     <table className="w-full text-sm">
                       <thead>
                         <tr className="border-b bg-slate-50/80">
-                          <TH>Student</TH><TH>CS</TH><TH>Bonus · MT5</TH><TH>From</TH><TH>Welcome</TH>
+                          <TH>Type</TH><TH>Student</TH><TH>CS</TH><TH>Amount · MT5</TH><TH>From</TH><TH>Welcome</TH>
                           <th className={`${STICKY_END} whitespace-nowrap bg-slate-50 px-3 py-3 text-left text-[11px] font-semibold uppercase tracking-wider text-slate-500`}>
                             {tab === 'pending' ? '' : 'Decided'}
                           </th>
@@ -156,6 +177,9 @@ export default function BonusApprovals() {
                       <tbody>
                         {pageRows.map(t => (
                           <tr key={t.id} className="group border-b border-slate-100 align-top hover:bg-slate-50">
+                            <td className="whitespace-nowrap px-3 py-2.5">
+                              <span className={`inline-block rounded-full px-2 py-0.5 text-[11px] font-semibold ring-1 ring-inset ${typeOf(t).cls}`}>{typeOf(t).label}</span>
+                            </td>
                             <td className="min-w-[180px] px-3 py-2.5">
                               {t.student
                                 ? <Link to={`${createPageUrl('StudentDetail')}?id=${t.student.id}`} className="font-medium text-slate-900 hover:text-blue-600">{t.student.full_name || t.student_name || 'Student'}</Link>
@@ -174,7 +198,7 @@ export default function BonusApprovals() {
                             </td>
                             <td className="whitespace-nowrap px-3 py-2.5">
                               <span className={`inline-block rounded-full px-2 py-0.5 text-[11px] font-semibold ${t.source === 'sales_close' ? 'bg-violet-50 text-violet-700' : t.source === 'course_upgrade' ? 'bg-amber-50 text-amber-700' : 'bg-sky-50 text-sky-700'}`}>
-                                {t.source === 'sales_close' ? 'Sales close' : t.source === 'course_upgrade' ? 'Course upgrade' : 'Bonus request'}
+                                {t.source === 'sales_close' ? 'Sales close' : t.source === 'course_upgrade' ? 'Course upgrade' : `${typeOf(t).label} request`}
                               </span>
                               {t.source === 'course_upgrade' && <div className="mt-0.5 text-[11px] text-slate-400">Payment approved by finance</div>}
                               {t.source === 'request' && t.finance_approval?.decision === 'approved' && (

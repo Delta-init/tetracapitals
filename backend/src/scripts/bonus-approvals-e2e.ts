@@ -80,16 +80,17 @@ const ids = (rows: any[] | undefined) => (rows ?? []).map((r) => r.id).sort().jo
 step("Case 1 — what a broker admin is asked to decide");
 let r = await list(tBroker);
 check("the list answers", r.status === 200, JSON.stringify(r.body).slice(0, 200));
-check("pending: the sales-close bonus, the one finance approved, and one that never went to finance",
-  ids(r.body.pending) === [salesClose, financeApproved, neverWentToFinance].map((t) => String(t._id)).sort().join(","), ids(r.body.pending));
+check("pending: the sales-close bonus, the one finance approved, one that never went to finance — and the deposit (MT5 Approvals, 2026-10-12)",
+  ids(r.body.pending) === [salesClose, financeApproved, neverWentToFinance, deposit].map((t) => String(t._id)).sort().join(","), ids(r.body.pending));
 check("…not the one finance still has — that one is only counted", !r.body.pending.some((t: any) => t.id === String(withFinance._id)) && r.body.counts?.with_finance === 1);
-check("…nor a deposit", !r.body.pending.some((t: any) => t.id === String(deposit._id)));
+check("…the deposit says so: type DEPOSIT, a request", r.body.pending.find((t: any) => t.id === String(deposit._id))?.type === "DEPOSIT" && r.body.pending.find((t: any) => t.id === String(deposit._id))?.source === "request");
+check("…each type counted", r.body.counts?.by_type?.DEPOSIT?.pending === 1 && r.body.counts?.by_type?.BONUS?.pending === 3 && r.body.counts?.by_type?.WITHDRAWAL?.pending === 0, JSON.stringify(r.body.counts?.by_type));
 check("this month's approved and rejected; last month's not", ids(r.body.approved) === String(approvedNow._id) && ids(r.body.rejected) === String(rejectedNow._id));
 const sc = r.body.pending.find((t: any) => t.id === String(salesClose._id));
 check("a row: where it came from, its course, the student's CS and welcome", sc?.source === "sales_close" && sc?.course === "COURSE 1 (WITH CREDIT)"
   && sc?.student?.cs === cs.full_name && sc?.student?.onboarded === true && sc?.student?.team === "Team Asha", JSON.stringify(sc));
 check("…a bonus request reads as one", r.body.pending.find((t: any) => t.id === String(financeApproved._id))?.source === "request");
-check("counts", r.body.counts?.pending === 3 && r.body.counts?.approved === 1 && r.body.counts?.rejected === 1, JSON.stringify(r.body.counts));
+check("counts", r.body.counts?.pending === 4 && r.body.counts?.approved === 1 && r.body.counts?.rejected === 1, JSON.stringify(r.body.counts));
 
 step("Case 1 — deciding, as the page does");
 r = await call("PATCH", `/api/entities/FundingTransaction/${salesClose._id}`, { status: "APPROVED", transaction_id: "TX-SC-1", approved_by_name: broker.full_name, approved_at: new Date().toISOString() }, tBroker);
@@ -105,7 +106,7 @@ check("Case 3 — one finance still has can't be decided here: 409", r.status ==
 
 step("Case 4 — who may see it");
 r = await list(tAdmin);
-check("a Super Admin may", r.status === 200 && r.body.counts?.pending === 1);
+check("a Super Admin may", r.status === 200 && r.body.counts?.pending === 2, JSON.stringify(r.body.counts));
 r = await list(tFinance);
 check("a finance admin may not: 403", r.status === 403, `${r.status}`);
 r = await list(tCs);
@@ -117,7 +118,7 @@ check("a finance admin can't decide a bonus either: 403", r.status === 403, `${r
 
 step("The sidebar's count");
 r = await call("POST", "/api/functions/getNavCounts", {}, tBroker);
-check("a broker admin: the bonuses waiting for them", r.status === 200 && r.body.bonus_approvals_pending === 1, JSON.stringify(r.body));
+check("a broker admin: what waits for them — the bonus and the deposit", r.status === 200 && r.body.bonus_approvals_pending === 2, JSON.stringify(r.body));
 r = await call("POST", "/api/functions/getNavCounts", {}, tCs);
 check("a CS: none", r.status === 200 && r.body.bonus_approvals_pending === 0);
 
