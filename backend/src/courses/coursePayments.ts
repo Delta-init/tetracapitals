@@ -177,6 +177,12 @@ export async function decideCoursePayment(
       done = true;
     }
   }
+  // Approved: the upgrade's LMS modules open as far as it is paid now (courses/upgradeLms.ts) — after the history line
+  // below, and without holding finance's answer; a refusal is tried again by the worker.
+  if (u && approved) {
+    setTimeout(() => void import("./upgradeLms").then(({ upgradeLmsOn, syncUpgradeLms }) => (upgradeLmsOn() ? syncUpgradeLms(String(p.upgrade_id)) : null))
+      .catch((err) => console.error("[upgrade-lms] after approval", err)), 0);
+  }
   const aed = (n: number) => `AED ${Number(n).toLocaleString("en-US")}`;
   await recordHistory([{
     student_id: p.student_id, at: d.at, type: "course_upgrade", by_id: null, by_name: `${d.byName} (Delta Finance)`,

@@ -8,6 +8,7 @@ import { DEFAULT_PRICE_LIST, type CourseCode, type CoursePrice } from "../course
 import { quoteUpgrade, progressOf, UpgradeError, type OwnedCourse, type PlanType, type UpgradeQuote } from "../courses/upgradeCalc";
 import { approvedAmounts, queueCoursePayment, PAYMENT_METHODS } from "../courses/coursePayments";
 import { lmsTargetsOf, sameTitle } from "../courses/lmsMapping";
+import { modulesFor, paidShareOf } from "../courses/upgradeLms";
 import { courseBalancesOf } from "../courses/courseBalance";
 import { callLms, lmsConfigured } from "../lib/lms";
 import { lmsStudentFor, lmsRefusal, lmsLacksRoute, byOf, NOT_LINKED } from "./lmsEnrolmentRequests";
@@ -108,6 +109,8 @@ function upgradeView(u: any, list: CoursePrice[]) {
     nextPaymentAed: progress.done ? 0 : Math.min(progress.balanceAed, quote.schedule[paidCount] ?? quote.schedule[quote.schedule.length - 1] ?? progress.balanceAed),
     lms: u.lms ? { doneAt: u.lms.done_at, doneBy: u.lms.done_by_name, courses: u.lms.courses ?? [] } : null,
     lmsDue: !u.lms && u.status !== "cancelled" && (u.payments ?? []).some((p: any) => p.status === "approved"),
+    // The automatic opening (courses/upgradeLms.ts): how much of it was paid when it last opened, and why it failed.
+    lmsSync: u.lms_sync ? { share: u.lms_sync.share ?? null, at: u.lms_sync.at ?? null, error: u.lms_sync.error ?? null } : null,
     pendingAed: (u.payments ?? []).filter((p: any) => p.status === "pending").reduce((a: number, p: any) => a + (Number(p.amount_aed) || 0), 0),
     payments: (u.payments ?? []).map(paymentView),
     createdAt: u.created_at,
@@ -400,6 +403,7 @@ export async function getUpgradeLmsPlan(req: Request, user: AuthUser): Promise<R
     return lmsLacksRoute(err) ? error("The LMS can't share course access yet", 409) : lmsRefusal(err);
   }
   const { targets, ownMapped } = lmsTargetsOf(g.u.course);
+  const share = await paidShareOf(g.u);
   const courses: any[] = [];
   const missing: string[] = [];
   for (const t of targets) {
@@ -407,13 +411,14 @@ export async function getUpgradeLmsPlan(req: Request, user: AuthUser): Promise<R
     const offered = on ? null : access.offered.find((c) => sameTitle(c.title, t.title));
     const course = on ?? offered;
     if (!course) { missing.push(t.title); continue; }
-    const n = t.firstModules ?? course.modules.length;
+    // What the paid share opens (courses/upgradeLms.ts) — the same as it opens by itself.
+    const n = modulesFor(share, t.firstModules ?? course.modules.length);
     courses.push({
       title: course.title, courseId: course.courseId, enrolmentId: on?.enrolmentId ?? null,
       modules: course.modules.map((m, i) => ({ id: m.id, title: m.title, locked: on ? !!m.locked : true, suggested: i < n })),
     });
   }
-  return json({ courses, missing, noLmsCourse: !ownMapped, done: g.u.lms ?? null });
+  return json({ courses, missing, noLmsCourse: !ownMapped, done: g.u.lms ?? null, paidShare: share });
 }
 
 /**

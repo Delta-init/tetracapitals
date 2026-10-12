@@ -163,20 +163,27 @@ export default function StudentCoursesCard({ student }) {
   );
 }
 
-/** Where the upgrade's LMS modules stand, and the button to open them once finance approved a payment. */
+/**
+ * Where the upgrade's LMS modules stand. They open by themselves as finance approves payments — in proportion to what
+ * is paid, all once paid in full (backend courses/upgradeLms.ts); the button opens more, or opens them when the LMS
+ * refused (it is also tried again by itself).
+ */
 function LmsLine({ upgrade, canWork, onOpen, compact }) {
-  if (upgrade.lms) {
+  const sync = upgrade.lmsSync;
+  const failed = sync?.error;
+  if (upgrade.lms && !failed) {
     return (
-      <span className={`${compact ? '' : 'mt-3 flex'} items-center gap-1.5 text-xs text-emerald-700`}>
+      <span className={`${compact ? '' : 'mt-3 flex'} flex-wrap items-center gap-1.5 text-xs text-emerald-700`}>
         <CheckCircle2 className="inline h-3.5 w-3.5" />LMS modules opened{upgrade.lms.doneBy ? ` by ${upgrade.lms.doneBy}` : ''}
+        {sync?.share != null && sync.share < 1 && <span className="text-slate-500">· as far as {Math.round(sync.share * 100)}% paid — more open with each approved payment</span>}
         {canWork && <button type="button" onClick={onOpen} className="ml-1 text-brand-navy underline">change</button>}
       </span>
     );
   }
-  if (!upgrade.lmsDue) return null;
+  if (!upgrade.lmsDue && !failed) return null;
   return (
-    <div className={compact ? 'inline-flex' : 'mt-3 flex flex-wrap items-center gap-2 rounded-md border border-sky-200 bg-sky-50 px-3 py-2 text-xs text-sky-800'}>
-      {!compact && <span>Payment approved — open their LMS modules.</span>}
+    <div className={compact ? 'inline-flex' : `mt-3 flex flex-wrap items-center gap-2 rounded-md border px-3 py-2 text-xs ${failed ? 'border-amber-200 bg-amber-50 text-amber-800' : 'border-sky-200 bg-sky-50 text-sky-800'}`}>
+      {!compact && <span>{failed ? `The LMS modules couldn't be opened by themselves: ${failed} — tried again every 15 minutes, or open them now.` : 'Payment approved — the LMS modules are opening by themselves.'}</span>}
       {canWork && <Button size="sm" variant="outline" className="h-7" onClick={onOpen}><BookOpen className="mr-1.5 h-3.5 w-3.5" />Update LMS modules</Button>}
     </div>
   );
