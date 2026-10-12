@@ -50,6 +50,8 @@ const TYPES = {
   BONUS: { label: 'Bonus', cls: 'bg-violet-50 text-violet-700 ring-violet-200' },
 };
 const typeOf = (t) => TYPES[t.type] || TYPES.BONUS;
+/** Where it came from (2026-10-12): the bonus promised at a sales close, a course upgrade, or raised by a CS here. */
+const sourceLabel = (t) => (t.source === 'sales_close' ? 'Sales close' : t.source === 'course_upgrade' ? 'Course upgrade' : 'Direct from CS portal');
 /**
  * What the Receipt column and the approval box open (2026-10-12): the request's own receipts — or, when it has none (a
  * sales-close bonus), finance's receipt for its invoice (the student's other invoices' if it names none).
@@ -108,7 +110,8 @@ const EXPORT_COLUMNS = [
   { header: 'Product', value: t => [...(t.tags || []), ...(t.course && !(t.tags || []).includes(t.course) ? [t.course] : [])].join('; ') },
   { header: 'LMS courses now', width: 40, value: t => (t.student?.lms_courses || []).map(c => `${c.title} (${c.status === 'active' ? `${Math.round(c.progress)}%` : c.status})`).join('; ') },
   { header: 'Finance invoices', width: 40, value: t => [t.sales_close?.invoice_number, ...(t.student?.invoices || []).filter(f => f.invoice_number !== t.sales_close?.invoice_number).map(f => `${f.invoice_number} ${f.currency} ${f.fee}${f.balance > 0 ? ` owes ${f.balance}` : ''}`)].filter(Boolean).join('; ') },
-  { header: 'Source', value: t => (t.source === 'sales_close' ? 'Sales close' : t.source === 'course_upgrade' ? 'Course upgrade' : 'Request') },
+  { header: 'Source', value: t => sourceLabel(t) },
+  { header: 'Raised by', value: t => t.resubmitted_by_name || t.requested_by_name || '' },
   { header: 'Sold by', value: t => (t.source === 'sales_close' ? (t.student?.closed_by || []).map(c => c.name).join('; ') : '') },
   { header: 'User ID', value: t => t.user_id },
   { header: 'Txn ID', value: t => t.transaction_id },
@@ -308,7 +311,7 @@ export default function BonusApprovals() {
               <span className="text-slate-400">to</span>
               <Input type="date" value={to} min={from || undefined} onChange={e => setTo(e.target.value)} className="h-8 w-36 text-xs" aria-label="To" />
               <FilterSelect value={csF} onChange={setCsF} options={[['all', 'All CSs'], ...csOptions.map(c => [c, c])]} />
-              <FilterSelect value={source} onChange={setSource} options={[['all', 'Any source'], ['sales_close', 'Sales close'], ['course_upgrade', 'Course upgrade'], ['request', 'Request']]} />
+              <FilterSelect value={source} onChange={setSource} options={[['all', 'Any source'], ['sales_close', 'Sales close'], ['course_upgrade', 'Course upgrade'], ['request', 'Direct from CS portal']]} />
               <FilterSelect value={mt5F} onChange={setMt5F} options={[['all', 'MT5: any'], ['has', 'MT5 given'], ['none', 'No MT5 login']]} />
               <FilterSelect value={emailF} onChange={setEmailF} options={[['all', 'Email: any'], ['has', 'Has an email'], ['none', 'No email']]} />
               <FilterSelect value={welcomeF} onChange={setWelcomeF} options={[['all', 'Welcome: any'], ['sent', 'Welcome sent'], ['not', 'Welcome not sent']]} />
@@ -336,7 +339,7 @@ export default function BonusApprovals() {
                         <tr className="border-b bg-slate-50/80">
                           {/* The Funding Requests page's columns (but Added by), and what matters for an MT5 credit (2026-10-12) */}
                           <TH>Requested</TH><TH>Type</TH><TH>Status</TH><TH>Student</TH><TH>CS</TH><TH>Meeting by</TH><TH>MT5 login</TH>
-                          <TH>Amount to credit</TH><TH>Paid by the student</TH><TH>Payment</TH><TH>Product</TH><TH>LMS courses now</TH><TH>Finance invoice</TH><TH>From · sold by</TH>
+                          <TH>Amount to credit</TH><TH>Paid by the student</TH><TH>Product</TH><TH>LMS courses now</TH><TH>Finance invoice</TH><TH>From · sold by</TH>
                           <TH>User ID</TH><TH>Txn ID</TH><TH>Receipt</TH><TH>Welcome</TH>
                           <th className={`${STICKY_END} whitespace-nowrap bg-slate-50 px-3 py-3 text-left text-[11px] font-semibold uppercase tracking-wider text-slate-500`}>
                             {tab === 'pending' ? '' : tab === 'returned' ? 'Sent back' : 'Decided'}
@@ -393,7 +396,6 @@ export default function BonusApprovals() {
                                 </div>
                               )) : <span className="text-slate-300">—</span>}
                             </td>
-                            <td className="whitespace-nowrap px-3 py-2.5 text-sm text-slate-600">{methodsText(t) || '—'}</td>
                             <td className="min-w-[140px] px-3 py-2.5">
                               {t.tags?.length ? <TagChips tags={t.tags} /> : null}
                               {t.course && (!t.tags?.length || !t.tags.includes(t.course)) && <div className="mt-0.5 max-w-[220px] text-xs text-slate-500">{t.course}</div>}
@@ -413,14 +415,18 @@ export default function BonusApprovals() {
                             </td>
                             <td className="whitespace-nowrap px-3 py-2.5">
                               <span className={`inline-block rounded-full px-2 py-0.5 text-[11px] font-semibold ${t.source === 'sales_close' ? 'bg-violet-50 text-violet-700' : t.source === 'course_upgrade' ? 'bg-amber-50 text-amber-700' : 'bg-sky-50 text-sky-700'}`}>
-                                {t.source === 'sales_close' ? 'Sales close' : t.source === 'course_upgrade' ? 'Course upgrade' : `${typeOf(t).label} request`}
+                                {sourceLabel(t)}
                               </span>
                               {/* Who sold it — for a sales-close bonus (the student's closer in the sales CRM) */}
                               {t.source === 'sales_close' && t.student?.closed_by?.length > 0 && (
                                 <div className="mt-0.5 text-xs text-slate-700">Sold by {t.student.closed_by.map(c => c.name).join(', ')}</div>
                               )}
                               {t.source === 'course_upgrade' && <div className="mt-0.5 text-[11px] text-slate-400">Payment approved by finance</div>}
-                              {(t.resubmitted_by_name || t.requested_by_name) && <div className="mt-0.5 text-[11px] text-slate-400">{t.resubmitted_by_name || t.requested_by_name}</div>}
+                              {(t.resubmitted_by_name || t.requested_by_name) && (
+                                <div className="mt-0.5 text-[11px] text-slate-400">
+                                  {t.source === 'sales_close' ? `Raised by ${t.resubmitted_by_name || t.requested_by_name} on the call` : `by ${t.resubmitted_by_name || t.requested_by_name}`}
+                                </div>
+                              )}
                             </td>
                             <td className="whitespace-nowrap px-3 py-2.5 text-sm text-slate-600">{t.user_id || '—'}</td>
                             <td className="whitespace-nowrap px-3 py-2.5 font-mono text-sm text-slate-600">{t.transaction_id || '—'}</td>
