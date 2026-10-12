@@ -10,7 +10,7 @@ import ImpersonationBanner from './components/utils/ImpersonationBanner';
 import NotificationBell from './components/utils/NotificationBell';
 import { getEffectiveUser } from './components/utils/ImpersonationContext';
 import { EASE } from '@/components/motion';
-import { NAV_ITEMS, NAV_GROUPS, NESTED_GROUPS, GROUP_OF, humanize, pageBlockedFor } from '@/components/utils/navigation';
+import { NAV_ITEMS, NAV_GROUPS, NESTED_GROUPS, GROUP_OF, ROLE_HOME, ROLE_ONLY_PAGES, humanize, pageBlockedFor } from '@/components/utils/navigation';
 import { readsClosedOnly } from '@/components/utils/roles';
 import { CallFlowProvider } from '@/components/followups/CallFlow';
 import { forgetThisDevice } from '@/components/utils/usePushNotifications';
@@ -81,6 +81,9 @@ export default function Layout({ children, currentPageName }) {
   const navigate = useNavigate();
   useEffect(() => {
     if (readsClosedOnly(currentUser) && currentPageName === 'Dashboard') navigate(createPageUrl('Students'), { replace: true });
+    // A role with a home of its own (a broker admin: MT5 Approvals) starts there.
+    const home = ROLE_HOME[currentUser?.app_role];
+    if (home && currentPageName === 'Dashboard') navigate(createPageUrl(home), { replace: true });
   }, [currentUser, currentPageName]);
 
   // Load the current user's role so the sidebar can respect its page permissions.
@@ -174,6 +177,8 @@ export default function Layout({ children, currentPageName }) {
   const filteredNavigation = navigation.filter(item => {
     if (item.hidden) return false;
     if (pageBlockedFor(currentUser?.app_role, item.name)) return false;
+    // A role that sees only certain pages sees exactly those, whatever its page list says (navigation.js ROLE_ONLY_PAGES).
+    if (ROLE_ONLY_PAGES[currentUser?.app_role]) return ROLE_ONLY_PAGES[currentUser.app_role].includes(item.name);
     // Not the Sales role's, whatever pages its role has (the server refuses them too).
     if (item.notForSales && readsClosedOnly(currentUser)) return false;
     if (item.everyone) return true;

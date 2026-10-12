@@ -189,8 +189,25 @@ export const GROUP_OF = {
 };
 
 /** A page (by item name or page) this role never gets — see `notFor` and `only`. */
+/**
+ * Roles that see only these pages (the user, 2026-10-12): a broker admin — MT5 Approvals, Tickets and the Reports
+ * section — whatever their role's page list says; anything else, opened by its address, says it isn't available. A
+ * student's page stays open to them (MT5 Approvals links to it), and the report details the Reports open.
+ */
+export const ROLE_ONLY_PAGES = {
+  broker_admin: ['BonusApprovals', 'Tickets', 'DepositReport', 'WithdrawalReport', 'FundingRequestReport', 'BonusReport', 'Reports', 'CommissionReports', 'StudentDetail', 'ReportTransactionDetails'],
+};
+/** Where such a role starts instead of the Dashboard. */
+export const ROLE_HOME = { broker_admin: 'BonusApprovals' };
+const roleOnlyBlocks = (role, name) => {
+  const only = ROLE_ONLY_PAGES[role];
+  if (!only || !name) return false;
+  const item = NAV_ITEMS.find(i => i.name === name || i.page === name);
+  return !only.includes(item ? item.name : name) && !only.includes(name);
+};
+
 export const pageBlockedFor = (role, name) =>
-  !!role && NAV_ITEMS.some(i => (i.name === name || i.page === name) && (i.notFor?.includes(role) || (i.only && !i.only.includes(role))));
+  !!role && (roleOnlyBlocks(role, name) || NAV_ITEMS.some(i => (i.name === name || i.page === name) && (i.notFor?.includes(role) || (i.only && !i.only.includes(role)))));
 
 /** Page names a built-in role sees when it has no override. */
 export const defaultPagesFor = (role) =>
