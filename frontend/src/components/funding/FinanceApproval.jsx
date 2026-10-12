@@ -32,9 +32,31 @@ export function WithAccountsBadge({ transaction }) {
 }
 
 /** A line under the status: handed back by finance, or a note the accountants left. */
+/** The invoice Delta Finance recorded a bonus's course payment on, and its receipt (the user, 2026-10-12). */
+export function CourseInvoiceNote({ transaction }) {
+  const ci = transaction?.course_invoice;
+  if (!ci?.invoice_number) return null;
+  const aed = (minor) => `AED ${((Number(minor) || 0) / 100).toLocaleString('en-US')}`;
+  return (
+    <span className="block text-[11px] text-slate-600 mt-0.5" title="Recorded by Delta Finance on this invoice; the client was emailed the receipt">
+      Invoice {ci.invoice_number}{ci.receipt_number ? ` · receipt ${ci.receipt_number}` : ''} · {aed(ci.balance_minor)} left
+    </span>
+  );
+}
+
 export function FinanceApprovalNote({ transaction }) {
   const fa = transaction?.finance_approval;
   if (!fa) return null;
+  return (
+    <>
+      <FinanceApprovalLine transaction={transaction} />
+      <CourseInvoiceNote transaction={transaction} />
+    </>
+  );
+}
+
+function FinanceApprovalLine({ transaction }) {
+  const fa = transaction.finance_approval;
   if (transaction.status === 'PENDING' && fa.state === 'refused') {
     return (
       <span className="block text-[11px] text-amber-700 mt-1" title={fa.reason || ''}>

@@ -244,6 +244,13 @@ export default function ProcessFundingDialog({ transaction, open, onClose, onPro
             {transaction.course_payment?.bonus_usd ? ` Credit the $${transaction.course_payment.bonus_usd} MT5 bonus` : ' Credit the bonus'}
             {transaction.mt5_login ? ` in ${transaction.mt5_login}` : ''}, then approve.
             {transaction.finance_approval.note && <span className="block text-xs text-emerald-800">Accounts: {transaction.finance_approval.note}</span>}
+            {transaction.course_invoice?.invoice_number && (
+              <span className="block text-xs text-emerald-800">
+                Recorded on invoice {transaction.course_invoice.invoice_number}
+                {transaction.course_invoice.receipt_number ? ` · receipt ${transaction.course_invoice.receipt_number}` : ''}
+                {' · '}{`AED ${((transaction.course_invoice.balance_minor || 0) / 100).toLocaleString('en-US')}`} left on it
+              </span>
+            )}
           </div>
         )}
 

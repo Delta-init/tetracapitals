@@ -40,7 +40,7 @@ export async function paymentsOfUpgrade(upgradeId: string): Promise<any[]> {
 async function payload(p: any) {
   const u: any = await col("course_upgrades").findOne({ _id: new ObjectId(p.upgrade_id) });
   const s: any = await col("students").findOne({ _id: new ObjectId(p.student_id) }, {
-    projection: { full_name: 1, student_code: 1, email: 1, level: 1, team_name: 1, primary_mentor_name: 1 },
+    projection: { full_name: 1, student_code: 1, email: 1, phone: 1, level: 1, team_name: 1, primary_mentor_name: 1 },
   });
   const quote: UpgradeQuote | undefined = u?.quote;
   const before = approvedAmounts(await paymentsOfUpgrade(p.upgrade_id)).reduce((a, b) => a + b, 0);
@@ -62,10 +62,15 @@ async function payload(p: any) {
       paidBeforeAed: before,
       price: quote?.dueAed ?? 0,
       priceCurrency: "AED",
+      // Every payment of one upgrade goes on one invoice in finance (the user, 2026-10-12).
+      upgradeId: String(p.upgrade_id),
+      ...(/^\d{4}-\d{2}-\d{2}$/.test(String(p.paid_on ?? "")) ? { paidOn: String(p.paid_on) } : {}),
     },
     student: {
       id: p.student_id, code: String(s?.student_code ?? ""), name: String(s?.full_name || "Student"),
       email: String(s?.email ?? ""), level: String(s?.level ?? ""),
+      // For the client finance invoices the payment to (the user, 2026-10-12).
+      ...(String(s?.phone ?? "").trim() ? { phone: String(s.phone).trim().slice(0, 40) } : {}),
     },
     team: String(s?.team_name ?? ""),
     paymentMethod: p.method,

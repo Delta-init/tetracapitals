@@ -69,6 +69,14 @@ const paymentView = (p: any) => ({
   id: String(p._id), amountAed: p.amount_aed, approvedAed: p.approved_amount_aed ?? null, method: p.method,
   receiptUrl: p.receipt_url ?? "", receiptName: p.receipt_name ?? "", paidOn: p.paid_on ?? "", note: p.note ?? "",
   status: p.status, reason: p.reason ?? "", transactionId: p.transaction_id ?? "",
+  // The invoice finance recorded it on, and its receipt (the user, 2026-10-12).
+  invoice: p.course_invoice?.invoice_number
+    ? {
+        number: String(p.course_invoice.invoice_number), receipt: String(p.course_invoice.receipt_number ?? ""),
+        totalAed: (Number(p.course_invoice.total_minor) || 0) / 100, paidAed: (Number(p.course_invoice.paid_minor) || 0) / 100,
+        balanceAed: (Number(p.course_invoice.balance_minor) || 0) / 100,
+      }
+    : null,
   sent: p.finance_approval?.state === "sent" || p.finance_approval?.state === "decided",
   lastError: p.status === "pending" ? p.finance_approval?.last_error ?? null : null,
   bonus: p.bonus ? { usd: Number(p.bonus.amount_usd) || 0, status: String(p.bonus.status ?? "").toLowerCase(), mt5Login: String(p.bonus.mt5_login ?? "") } : null,

@@ -258,6 +258,39 @@ export async function postToFinance(path: string, payload: unknown): Promise<any
   throw new Error(message);
 }
 
+/** The day a bonus's course payment was collected (its first payment's), YYYY-MM-DD — "" when not asked. */
+function paidOnOf(tx: any): string {
+  const list: any[] = Array.isArray(tx?.payments) ? tx.payments : [];
+  const day = String(list[0]?.collected_on ?? tx?.collected_on ?? "");
+  return collectedOn({ collected_on: day }) ? day : "";
+}
+
+/*
+ * The invoice finance recorded an approved course payment on, and its receipt (the user, 2026-10-12):
+ * kept on the bonus (funding_transactions.course_invoice) or the upgrade payment (course_payments.course_invoice)
+ * — from every decision that carries it, a repeat too (finance's backfill sends the old ones again).
+ */
+export function courseInvoiceOf(raw: unknown): Record<string, unknown> | null {
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return null;
+  const r = raw as Record<string, unknown>;
+  const minor = (v: unknown) => (Number.isSafeInteger(Number(v)) && Number(v) >= 0 ? Number(v) : 0);
+  const number = text(r.invoiceNumber, 40);
+  if (!number) return null;
+  return {
+    invoice_id: text(r.invoiceId, 40),
+    invoice_number: number,
+    payment_id: text(r.paymentId, 40),
+    receipt_number: text(r.receiptNumber, 40),
+    amount_minor: minor(r.amountMinor),
+    currency: /^[A-Z]{3}$/.test(text(r.currency, 3)) ? text(r.currency, 3) : "AED",
+    total_minor: minor(r.totalMinor),
+    paid_minor: minor(r.paidMinor),
+    balance_minor: minor(r.balanceMinor),
+    created: r.created === true,
+    at: new Date().toISOString(),
+  };
+}
+
 /** A bonus's course payment, as the accountants see it (FundingRequestForm's course_payment). */
 function coursePaymentOf(cp: any) {
   if (!cp || typeof cp !== "object") return undefined;
@@ -348,7 +381,7 @@ export function paymentsForFinance(tx: any): Array<{ method: string; amountMinor
 async function depositPayload(tx: any) {
   const sid = tx.student_id ? toObjectId(String(tx.student_id)) : null;
   const student: any = sid
-    ? await col("students").findOne({ _id: sid }, { projection: { email: 1, full_name: 1, student_code: 1, student_level: 1, team_name: 1 } })
+    ? await col("students").findOne({ _id: sid }, { projection: { email: 1, phone: 1, full_name: 1, student_code: 1, student_level: 1, team_name: 1 } })
     : null;
   const accounts = tx.student_id
     ? await col("mt5_accounts").find({ student_id: String(tx.student_id) }).project({ mt5_login: 1, platform: 1 }).limit(20).toArray()
@@ -362,13 +395,17 @@ async function depositPayload(tx: any) {
     ...(Number(tx.amount_original) > 0 && /^[A-Z]{3}$/.test(String(tx.amount_currency ?? ""))
       ? { amountOriginal: Number(tx.amount_original), amountCurrency: String(tx.amount_currency) }
       : {}),
-    ...(tx.type === "BONUS" && coursePaymentOf(tx.course_payment) ? { coursePayment: coursePaymentOf(tx.course_payment) } : {}),
+    ...(tx.type === "BONUS" && coursePaymentOf(tx.course_payment)
+      ? { coursePayment: { ...coursePaymentOf(tx.course_payment), ...(paidOnOf(tx) ? { paidOn: paidOnOf(tx) } : {}) } }
+      : {}),
     student: {
       id: String(tx.student_id ?? ""),
       code: String(tx.student_code || student?.student_code || ""),
       name: String(tx.student_name || student?.full_name || ""),
       email: String(student?.email ?? ""),
       level: String(student?.student_level ?? ""),
+      // For the client finance invoices a bonus's course payment to (the user, 2026-10-12).
+      ...(String(student?.phone ?? "").trim() ? { phone: String(student.phone).trim().slice(0, 40) } : {}),
     },
     team: String(student?.team_name ?? ""),
     // Paid in several payments: the first one's method and receipt here, and all of them in the notes.
@@ -725,6 +762,12 @@ export async function handleFundingDecision(req: Request): Promise<Response> {
   }
 
   const txs = col("funding_transactions");
+  const courseInvoice = decision === "approved" ? courseInvoiceOf(body.courseInvoice) : null;
+  if (courseInvoice) {
+    // Kept whatever else this decision turns out to be — a repeat too, which is how an old one gets its invoice.
+    const onTx = await txs.updateOne({ _id: oid, type: "BONUS" }, { $set: { course_invoice: courseInvoice } });
+    if (!onTx.matchedCount) await col("course_payments").updateOne({ _id: oid }, { $set: { course_invoice: courseInvoice } });
+  }
   const tx: any = await txs.findOne({ _id: oid });
   if (!tx) {
     // Not a funding request: a course upgrade payment, decided the same way (courses/coursePayments.ts).

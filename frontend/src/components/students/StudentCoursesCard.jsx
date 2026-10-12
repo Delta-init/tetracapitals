@@ -273,6 +273,11 @@ function PaymentsList({ payments }) {
             {p.status === 'rejected' && p.reason && <span className="w-full text-xs text-rose-600">{p.reason}</span>}
             {p.status === 'approved' && p.transactionId && <span className="text-xs text-muted-foreground">{p.transactionId}</span>}
             {p.bonus && <span className="text-xs text-amber-700">MT5 bonus {usd(p.bonus.usd)} · {p.bonus.status === 'approved' ? 'credited' : p.bonus.status === 'rejected' ? 'rejected' : 'waiting for MT5 Bonus Approvals'}</span>}
+            {p.invoice && (
+              <span className="w-full text-xs text-slate-600" title="Recorded by Delta Finance on this invoice; the client was emailed the receipt">
+                Invoice {p.invoice.number}{p.invoice.receipt ? ` · receipt ${p.invoice.receipt}` : ''} · {aed(p.invoice.paidAed)} of {aed(p.invoice.totalAed)} paid, {aed(p.invoice.balanceAed)} left
+              </span>
+            )}
           </li>
         );
       })}
