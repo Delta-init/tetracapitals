@@ -8,9 +8,9 @@ export default function WithdrawalReport() {
       title="Withdrawal report" fn="getMoneyReport" body={{ kind: 'withdrawal' }}
       description="Approved withdrawals, when they were approved — for whoever raised each request, their team and its location."
       cards={d => [
-        { label: 'Withdrawals approved', value: usd(d.total.usd) },
+        { label: 'Withdrawals approved', usd: d.total.usd },
         { label: 'Requests', value: num(d.total.count) },
-        { label: 'Average withdrawal', value: usd(d.total.count ? d.total.usd / d.total.count : 0) },
+        { label: 'Average withdrawal', usd: d.total.count ? d.total.usd / d.total.count : 0 },
         { label: 'People withdrawing for', value: num(d.people.length), sub: 'with at least one approved withdrawal' },
       ]}
       columns={[

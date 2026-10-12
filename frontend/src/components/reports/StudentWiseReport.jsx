@@ -1,3 +1,4 @@
+import Usd from '@/components/common/Usd';
 import React, { useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Badge } from '@/components/ui/badge';
@@ -75,19 +76,19 @@ export default function StudentWiseReport({ transactions, dateLabel, startDate, 
             <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-4">
                 <div className="bg-green-50 border border-green-200 rounded-xl p-4">
                     <p className="text-xs text-green-600 font-medium uppercase">Total Deposits</p>
-                    <p className="text-2xl font-bold text-green-700 mt-1">${totals.total_deposit.toLocaleString('en-US', { minimumFractionDigits: 2 })}</p>
+                    <p className="text-2xl font-bold text-green-700 mt-1"><Usd v={totals.total_deposit} className="items-end" /></p>
                 </div>
                 <div className="bg-purple-50 border border-purple-200 rounded-xl p-4">
                     <p className="text-xs text-purple-600 font-medium uppercase">Total Bonus</p>
-                    <p className="text-2xl font-bold text-purple-700 mt-1">${totals.total_bonus.toLocaleString('en-US', { minimumFractionDigits: 2 })}</p>
+                    <p className="text-2xl font-bold text-purple-700 mt-1"><Usd v={totals.total_bonus} className="items-end" /></p>
                 </div>
                 <div className="bg-red-50 border border-red-200 rounded-xl p-4">
                     <p className="text-xs text-red-600 font-medium uppercase">Total Withdrawals</p>
-                    <p className="text-2xl font-bold text-red-700 mt-1">${totals.total_withdrawal.toLocaleString('en-US', { minimumFractionDigits: 2 })}</p>
+                    <p className="text-2xl font-bold text-red-700 mt-1"><Usd v={totals.total_withdrawal} className="items-end" /></p>
                 </div>
                 <div className={`border rounded-xl p-4 ${totals.net >= 0 ? 'bg-blue-50 border-blue-200' : 'bg-orange-50 border-orange-200'}`}>
                     <p className={`text-xs font-medium uppercase ${totals.net >= 0 ? 'text-blue-600' : 'text-orange-600'}`}>Net</p>
-                    <p className={`text-2xl font-bold mt-1 ${totals.net >= 0 ? 'text-blue-700' : 'text-orange-700'}`}>${totals.net.toLocaleString('en-US', { minimumFractionDigits: 2 })}</p>
+                    <p className={`text-2xl font-bold mt-1 ${totals.net >= 0 ? 'text-blue-700' : 'text-orange-700'}`}><Usd v={totals.net} className="items-end" /></p>
                 </div>
             </div>
 
@@ -116,10 +117,10 @@ export default function StudentWiseReport({ transactions, dateLabel, startDate, 
                                     <td className="px-4 py-3 font-medium text-gray-900">{row.student_name}</td>
                                     <td className="px-4 py-3 text-gray-600">{row.primary_mentor_name}</td>
                                     <td className="px-4 py-3 text-gray-600">{row.senior_mentor_name}</td>
-                                    <td className="px-4 py-3 text-right font-medium text-green-700">{row.total_deposit > 0 ? `$${row.total_deposit.toLocaleString('en-US', { minimumFractionDigits: 2 })}` : '—'}</td>
-                                    <td className="px-4 py-3 text-right font-medium text-purple-700">{row.total_bonus > 0 ? `$${row.total_bonus.toLocaleString('en-US', { minimumFractionDigits: 2 })}` : '—'}</td>
-                                    <td className="px-4 py-3 text-right font-medium text-red-600">{row.total_withdrawal > 0 ? `$${row.total_withdrawal.toLocaleString('en-US', { minimumFractionDigits: 2 })}` : '—'}</td>
-                                    <td className={`px-4 py-3 text-right font-bold ${row.net >= 0 ? 'text-blue-700' : 'text-orange-600'}`}>${row.net.toLocaleString('en-US', { minimumFractionDigits: 2 })}</td>
+                                    <td className="px-4 py-3 text-right font-medium text-green-700">{row.total_deposit > 0 ? <Usd v={row.total_deposit} className="items-end" /> : '—'}</td>
+                                    <td className="px-4 py-3 text-right font-medium text-purple-700">{row.total_bonus > 0 ? <Usd v={row.total_bonus} className="items-end" /> : '—'}</td>
+                                    <td className="px-4 py-3 text-right font-medium text-red-600">{row.total_withdrawal > 0 ? <Usd v={row.total_withdrawal} className="items-end" /> : '—'}</td>
+                                    <td className={`px-4 py-3 text-right font-bold ${row.net >= 0 ? 'text-blue-700' : 'text-orange-600'}`}><Usd v={row.net} className="items-end" /></td>
                                     <td className="px-4 py-3 text-center"><Badge variant="secondary">{row.transaction_count}</Badge></td>
                                 </tr>
                             ))}
@@ -127,10 +128,10 @@ export default function StudentWiseReport({ transactions, dateLabel, startDate, 
                         <tfoot>
                             <tr className="bg-gray-100 border-t-2 border-gray-300 font-bold">
                                 <td colSpan={4} className="px-4 py-3 text-gray-700">Total ({rows.length} students)</td>
-                                <td className="px-4 py-3 text-right text-green-700">${totals.total_deposit.toLocaleString('en-US', { minimumFractionDigits: 2 })}</td>
-                                <td className="px-4 py-3 text-right text-purple-700">${totals.total_bonus.toLocaleString('en-US', { minimumFractionDigits: 2 })}</td>
-                                <td className="px-4 py-3 text-right text-red-600">${totals.total_withdrawal.toLocaleString('en-US', { minimumFractionDigits: 2 })}</td>
-                                <td className={`px-4 py-3 text-right ${totals.net >= 0 ? 'text-blue-700' : 'text-orange-600'}`}>${totals.net.toLocaleString('en-US', { minimumFractionDigits: 2 })}</td>
+                                <td className="px-4 py-3 text-right text-green-700"><Usd v={totals.total_deposit} className="items-end" /></td>
+                                <td className="px-4 py-3 text-right text-purple-700"><Usd v={totals.total_bonus} className="items-end" /></td>
+                                <td className="px-4 py-3 text-right text-red-600"><Usd v={totals.total_withdrawal} className="items-end" /></td>
+                                <td className={`px-4 py-3 text-right ${totals.net >= 0 ? 'text-blue-700' : 'text-orange-600'}`}><Usd v={totals.net} className="items-end" /></td>
                                 <td></td>
                             </tr>
                         </tfoot>

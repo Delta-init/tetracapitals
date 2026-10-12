@@ -1,3 +1,4 @@
+import Usd from '@/components/common/Usd';
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { base44 } from '@/api/base44Client';
@@ -90,20 +91,20 @@ export default function CommissionByMentorReport({ startDate, endDate, dateLabel
             <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4">
                 <div className="bg-green-50 border border-green-200 rounded-xl p-3">
                     <p className="text-xs text-green-600 font-medium uppercase">Commissionable Net</p>
-                    <p className="text-xl font-bold text-green-700 mt-1">${totals.commissionable_net.toLocaleString('en-US', { minimumFractionDigits: 2 })}</p>
+                    <p className="text-xl font-bold text-green-700 mt-1"><Usd v={totals.commissionable_net} className="items-end" /></p>
                     <p className="text-xs text-gray-400 mt-1">After $25K cap per student</p>
                 </div>
                 <div className="bg-blue-50 border border-blue-200 rounded-xl p-3">
                     <p className="text-xs text-blue-600 font-medium uppercase">Gross Commission (4%)</p>
-                    <p className="text-xl font-bold text-blue-700 mt-1">${totals.gross_commission.toLocaleString('en-US', { minimumFractionDigits: 2 })}</p>
+                    <p className="text-xl font-bold text-blue-700 mt-1"><Usd v={totals.gross_commission} className="items-end" /></p>
                 </div>
                 <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-3">
                     <p className="text-xs text-emerald-600 font-medium uppercase">Total Release (75%)</p>
-                    <p className="text-xl font-bold text-emerald-700 mt-1">${totals.release_75.toLocaleString('en-US', { minimumFractionDigits: 2 })}</p>
+                    <p className="text-xl font-bold text-emerald-700 mt-1"><Usd v={totals.release_75} className="items-end" /></p>
                 </div>
                 <div className="bg-amber-50 border border-amber-200 rounded-xl p-3">
                     <p className="text-xs text-amber-600 font-medium uppercase">Total Buffer (25%)</p>
-                    <p className="text-xl font-bold text-amber-700 mt-1">${totals.buffer_25.toLocaleString('en-US', { minimumFractionDigits: 2 })}</p>
+                    <p className="text-xl font-bold text-amber-700 mt-1"><Usd v={totals.buffer_25} className="items-end" /></p>
                 </div>
             </div>
 
@@ -133,34 +134,34 @@ export default function CommissionByMentorReport({ startDate, endDate, dateLabel
                                 <tr key={row.mentor_id} onClick={() => navigate(`/ReportTransactionDetails?filterType=mentor&filterId=${row.mentor_id}&filterName=${encodeURIComponent(row.mentor_name)}&startDate=${startDate}&endDate=${endDate}&dateLabel=${encodeURIComponent(dateLabel)}`)} className={`border-b border-gray-100 hover:bg-blue-50 cursor-pointer ${idx % 2 !== 0 ? 'bg-gray-50/40' : ''}`}>
                                     <td className="px-4 py-3 font-medium text-gray-900">{row.mentor_name}</td>
                                     <td className="px-4 py-3 text-center"><Badge variant="outline">{row.transaction_count}</Badge></td>
-                                    <td className="px-4 py-3 text-right font-medium text-green-700">${row.total_deposit?.toLocaleString('en-US', { minimumFractionDigits: 2 })}</td>
-                                    <td className="px-4 py-3 text-right font-medium text-purple-700">${(row.total_bonus || 0).toLocaleString('en-US', { minimumFractionDigits: 2 })}</td>
-                                    <td className="px-4 py-3 text-right font-medium text-red-600">${row.total_withdrawal?.toLocaleString('en-US', { minimumFractionDigits: 2 })}</td>
-                                    <td className={`px-4 py-3 text-right font-medium ${row.net_deposit >= 0 ? 'text-gray-700' : 'text-orange-600'}`}>${row.net_deposit?.toLocaleString('en-US', { minimumFractionDigits: 2 })}</td>
-                                    <td className="px-4 py-3 text-right font-medium text-green-700">${row.commissionable_net?.toLocaleString('en-US', { minimumFractionDigits: 2 })}</td>
-                                    <td className="px-4 py-3 text-right font-medium text-blue-700">${row.gross_commission?.toLocaleString('en-US', { minimumFractionDigits: 2 })}<br/><span className="text-xs text-gray-400">{row.commission_rate}%</span></td>
+                                    <td className="px-4 py-3 text-right font-medium text-green-700"><Usd v={row.total_deposit} className="items-end" /></td>
+                                    <td className="px-4 py-3 text-right font-medium text-purple-700"><Usd v={(row.total_bonus || 0)} className="items-end" /></td>
+                                    <td className="px-4 py-3 text-right font-medium text-red-600"><Usd v={row.total_withdrawal} className="items-end" /></td>
+                                    <td className={`px-4 py-3 text-right font-medium ${row.net_deposit >= 0 ? 'text-gray-700' : 'text-orange-600'}`}><Usd v={row.net_deposit} className="items-end" /></td>
+                                    <td className="px-4 py-3 text-right font-medium text-green-700"><Usd v={row.commissionable_net} className="items-end" /></td>
+                                    <td className="px-4 py-3 text-right font-medium text-blue-700"><Usd v={row.gross_commission} className="items-end" /><br/><span className="text-xs text-gray-400">{row.commission_rate}%</span></td>
                                     <td className={`px-4 py-3 text-right font-medium ${(row.manual_adjustment || 0) >= 0 ? 'text-green-600' : 'text-red-600'}`}>
                                         {row.adjustment_count > 0 ? `${row.manual_adjustment >= 0 ? '+' : ''}$${row.manual_adjustment?.toLocaleString('en-US', { minimumFractionDigits: 2 })}` : '—'}
                                     </td>
-                                    <td className="px-4 py-3 text-right font-bold text-indigo-700">${row.adjusted_gross?.toLocaleString('en-US', { minimumFractionDigits: 2 })}</td>
-                                    <td className="px-4 py-3 text-right font-bold text-emerald-700">${row.release_75?.toLocaleString('en-US', { minimumFractionDigits: 2 })}</td>
-                                    <td className="px-4 py-3 text-right font-bold text-amber-600">${row.buffer_25?.toLocaleString('en-US', { minimumFractionDigits: 2 })}</td>
+                                    <td className="px-4 py-3 text-right font-bold text-indigo-700"><Usd v={row.adjusted_gross} className="items-end" /></td>
+                                    <td className="px-4 py-3 text-right font-bold text-emerald-700"><Usd v={row.release_75} className="items-end" /></td>
+                                    <td className="px-4 py-3 text-right font-bold text-amber-600"><Usd v={row.buffer_25} className="items-end" /></td>
                                 </tr>
                             ))}
                         </tbody>
                         <tfoot>
                             <tr className="bg-gray-100 border-t-2 border-gray-300 font-bold">
                                 <td colSpan={2} className="px-4 py-3 text-gray-700">Total ({rows.length} mentors)</td>
-                                <td className="px-4 py-3 text-right text-green-700">${totals.total_deposit.toLocaleString('en-US', { minimumFractionDigits: 2 })}</td>
-                                <td className="px-4 py-3 text-right text-purple-700">${totals.total_bonus.toLocaleString('en-US', { minimumFractionDigits: 2 })}</td>
-                                <td className="px-4 py-3 text-right text-red-600">${totals.total_withdrawal.toLocaleString('en-US', { minimumFractionDigits: 2 })}</td>
-                                <td className="px-4 py-3 text-right text-gray-700">${totals.net_deposit.toLocaleString('en-US', { minimumFractionDigits: 2 })}</td>
-                                <td className="px-4 py-3 text-right text-green-700">${totals.commissionable_net.toLocaleString('en-US', { minimumFractionDigits: 2 })}</td>
-                                <td className="px-4 py-3 text-right text-blue-700">${totals.gross_commission.toLocaleString('en-US', { minimumFractionDigits: 2 })}</td>
-                                <td className="px-4 py-3 text-right">${totals.manual_adjustment.toLocaleString('en-US', { minimumFractionDigits: 2 })}</td>
-                                <td className="px-4 py-3 text-right text-indigo-700">${totals.adjusted_gross.toLocaleString('en-US', { minimumFractionDigits: 2 })}</td>
-                                <td className="px-4 py-3 text-right text-emerald-700">${totals.release_75.toLocaleString('en-US', { minimumFractionDigits: 2 })}</td>
-                                <td className="px-4 py-3 text-right text-amber-600">${totals.buffer_25.toLocaleString('en-US', { minimumFractionDigits: 2 })}</td>
+                                <td className="px-4 py-3 text-right text-green-700"><Usd v={totals.total_deposit} className="items-end" /></td>
+                                <td className="px-4 py-3 text-right text-purple-700"><Usd v={totals.total_bonus} className="items-end" /></td>
+                                <td className="px-4 py-3 text-right text-red-600"><Usd v={totals.total_withdrawal} className="items-end" /></td>
+                                <td className="px-4 py-3 text-right text-gray-700"><Usd v={totals.net_deposit} className="items-end" /></td>
+                                <td className="px-4 py-3 text-right text-green-700"><Usd v={totals.commissionable_net} className="items-end" /></td>
+                                <td className="px-4 py-3 text-right text-blue-700"><Usd v={totals.gross_commission} className="items-end" /></td>
+                                <td className="px-4 py-3 text-right"><Usd v={totals.manual_adjustment} className="items-end" /></td>
+                                <td className="px-4 py-3 text-right text-indigo-700"><Usd v={totals.adjusted_gross} className="items-end" /></td>
+                                <td className="px-4 py-3 text-right text-emerald-700"><Usd v={totals.release_75} className="items-end" /></td>
+                                <td className="px-4 py-3 text-right text-amber-600"><Usd v={totals.buffer_25} className="items-end" /></td>
                             </tr>
                         </tfoot>
                     </table>

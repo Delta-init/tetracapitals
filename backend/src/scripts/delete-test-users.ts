@@ -5,12 +5,17 @@
  *   - the test students: those a test user added (created_by), and TEST_STUDENTS (code and email must both match,
  *     or nothing is done) — with their deposits, the commission credits from those deposits, their history,
  *     follow-ups, requests and everything else filed under the student.
+ *   - (2026-10-12) students whose name says test — "test" as a word, "abshar" (the developer's own test records), a
+ *     name of one letter repeated — each listed with why, for review first; --keep=STU-1,STU-2 leaves those out,
+ *     --also=STU-3 adds others; and every funding request a test user raised, whatever student it is on.
  * Kept: real students a test CS received first (their "First received by" still names the test CS, by choice), and
  * the audit log (`logs`), which records what was done.
  *
  *   cd backend
  *   bun src/scripts/delete-test-users.ts                       shows what it would delete
  *   bun src/scripts/delete-test-users.ts --apply               deletes; saves a full copy in an undo file first
+ *   bun src/scripts/delete-test-users.ts --keep=STU-4131       …but not these students (codes, comma-separated)
+ *   bun src/scripts/delete-test-users.ts --also=STU-4952       …and these too
  *   bun src/scripts/delete-test-users.ts --undo=<file> [--apply]   puts back everything that file holds
  *
  * Uses the same database as the API (MONGO_URI / MONGO_DB, from this folder's .env). Running it again finds nothing.
@@ -34,10 +39,22 @@ const TEST_STUDENTS = [
   { code: "STU-4127", email: "info@xellaqqqqrfx.com" },
   { code: "STU-4157", email: "absharameen61111125@gmail.com" },
 ];
+/** A test student by their name (2026-10-12): why, or null. */
+const testByName = (name: unknown): string | null => {
+  const n = String(name ?? "").trim();
+  if (/\btest/i.test(n)) return "name says test";
+  if (/abshar/i.test(n)) return "abshar (developer's test)";
+  if (/^(.)\1{4,}$/i.test(n.replace(/\s+/g, ""))) return "one letter repeated";
+  return null;
+};
+const codes = (v: string | undefined) => new Set((v ?? "").split(",").map((c) => c.trim().toUpperCase()).filter(Boolean));
+const KEEP = codes(option("keep"));
+const ALSO = codes(option("also"));
+
 /** Everything filed under a student by `student_id`. */
 const BY_STUDENT = ["funding_transactions", "commission_credits", "student_history", "student_followups", "student_followup_events",
   "student_calls", "student_requests", "tickets", "mentor_referrals", "mentor_deductions", "retention_assignments", "student_logs",
-  "student_log_history"];
+  "student_log_history", "mt5_accounts", "course_upgrades", "course_payments", "payment_link_requests", "notifications"];
 
 type Found = Map<string, Map<string, any>>;   // collection → _id → doc
 
@@ -59,11 +76,22 @@ async function findAll(): Promise<{ found: Found; users: any[]; students: any[] 
     if (match.length > 1) throw new Error(`${t.code} <${t.email}> matches ${match.length} students — nothing done`);
     if (match.length === 1 && !students.some((s) => String(s._id) === String(match[0]!._id))) students.push(match[0]);
   }
+  // By name, and any added by code — less any kept (2026-10-12).
+  for (const s of await col("students").find({ $or: [{ full_name: { $regex: "\\btest|abshar", $options: "i" } }, ...[...ALSO].map((c) => ({ student_code: { $regex: `^${c.replace(/[^A-Z0-9-]/g, "")}$`, $options: "i" } }))] }).toArray() as any[]) {
+    const why = ALSO.has(String(s.student_code ?? "").toUpperCase()) ? "added by --also" : testByName(s.full_name);
+    if (why && !students.some((x) => String(x._id) === String(s._id))) students.push({ ...s, _why: why });
+  }
+  for (const s of await col("students").find({ full_name: { $regex: "^\\s*(\\w)\\1{4,}\\s*$", $options: "i" } }).toArray() as any[]) {
+    if (!students.some((x) => String(x._id) === String(s._id))) students.push({ ...s, _why: "one letter repeated" });
+  }
+  for (let i = students.length - 1; i >= 0; i--) if (KEEP.has(String(students[i].student_code ?? "").toUpperCase())) students.splice(i, 1);
   const studentIds = students.map((s) => String(s._id));
-  add("students", students);
+  add("students", students.map(({ _why, ...s }) => s));
 
   for (const c of BY_STUDENT) add(c, studentIds.length ? await col(c).find({ student_id: { $in: studentIds } }).toArray() : []);
   if (studentIds.length) add("student_requests", await col("student_requests").find({ created_student_id: { $in: studentIds } }).toArray());
+  // Every funding request a test user raised, whatever student it is on (2026-10-12).
+  if (userIds.length) add("funding_transactions", await col("funding_transactions").find({ $or: [{ requested_by_id: { $in: userIds } }, { initiating_mentor_id: { $in: userIds } }, { created_by: { $in: userIds } }] }).toArray());
   const txIds = [...(found.get("funding_transactions")?.keys() ?? [])];
   if (txIds.length) add("commission_credits", await col("commission_credits").find({ transaction_id: { $in: txIds } }).toArray());
   if (userIds.length) {
@@ -81,7 +109,11 @@ async function remove() {
   console.log(`\nTest users (@deltatest.dev): ${users.length}`);
   for (const u of users) console.log(`  ${u.full_name} <${u.email}> · ${u.app_role}${u.status === "inactive" ? " · switched off" : ""}${u.up_head_id ? ` · still in a team (Up Head ${u.up_head_name || u.up_head_id})` : ""}`);
   console.log(`\nTest students: ${students.length}`);
-  for (const s of students) console.log(`  ${s.student_code} ${s.full_name} <${s.email}> · CS ${s.primary_mentor_name || "none"} · ${s.created_by_name || ""}`);
+  for (const s of students) console.log(`  ${s.student_code} ${s.full_name} <${s.email}> · CS ${s.primary_mentor_name || "none"} · ${s._why || (s.created_by_name ? `added by test user ${s.created_by_name}` : "listed")}`);
+  const txs = [...(found.get("funding_transactions")?.values() ?? [])];
+  console.log(`\nTheir funding requests: ${txs.length}`);
+  for (const t of txs) console.log(`  ${t.type} ${t.status} $${t.amount_usd} · ${t.student_name || ""} · by ${t.requested_by_name || t.initiating_mentor_name || "?"} · ${String(t.requested_at || "").slice(0, 10)}`);
+  if (KEEP.size) console.log(`\nKept (--keep): ${[...KEEP].join(", ")}`);
   console.log(`\nWith them (${[...found.values()].reduce((n, m) => n + m.size, 0)} records in all):`);
   for (const [c, m] of found) console.log(`  ${c}: ${m.size}`);
   // Anything that would take money from a real person is shown, not hidden in a count.

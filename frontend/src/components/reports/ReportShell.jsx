@@ -21,7 +21,15 @@ import { downloadExcel } from '@/components/utils/excelExport';
 ──────────────────────────────────────────────────────────────────────────── */
 
 export const usd = (n) => `$${(Number(n) || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+/** The portal's fixed rate (2026-10-12: every USD figure on the reports also in AED). */
+export const AED_PER_USD = 3.67;
+export const aed = (n) => `AED ${((Number(n) || 0) * AED_PER_USD).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+/** "$4,750.00 · AED 17,432.50" — for a line of text. */
+export const usdAed = (n) => `${usd(n)} · ${aed(n)}`;
 export const num = (n) => (Number(n) || 0).toLocaleString('en-US');
+/** Approved green, pending amber, rejected red (2026-10-12) — for a column or a card that says `tone`. */
+const TONE = { approved: 'text-emerald-700', pending: 'text-amber-700', rejected: 'text-rose-700' };
+const CARD_TONE = { approved: 'border-emerald-200 bg-emerald-50/50', pending: 'border-amber-200 bg-amber-50/50', rejected: 'border-rose-200 bg-rose-50/50' };
 const PERIODS = [['month', 'This month'], ['quarter', 'This quarter'], ['year', 'This year'], ['all', 'All time'], ['custom', 'From … to']];
 const VIEWS = [['people', 'By person'], ['teams', 'By team'], ['months', 'By month']];
 const monthName = (m) => { const [y, mm] = String(m).split('-').map(Number); return new Date(Date.UTC(y, mm - 1, 1)).toLocaleDateString('en-GB', { month: 'short', year: 'numeric', timeZone: 'UTC' }); };
@@ -67,7 +75,7 @@ export default function ReportShell({ title, description, fn, body = {}, cards, 
   const cell = (c, r) => {
     const v = c.get ? c.get(r) : r[c.key];
     if (c.fmt) return c.fmt(v, r);
-    if (c.type === 'money') return usd(v);
+    if (c.type === 'money') return <span className="inline-flex flex-col items-end leading-tight">{usd(v)}<span className="text-[11px] font-normal text-slate-400">{aed(v)}</span></span>;
     if (c.type === 'number') return num(v);
     return v ?? '—';
   };
@@ -75,11 +83,17 @@ export default function ReportShell({ title, description, fn, body = {}, cards, 
   const exportIt = async () => {
     setExporting(true);
     try {
-      const cols = [{ header: first.label }, ...(view === 'people' ? [{ header: 'Team' }] : []), ...columns.map(c => ({ header: c.label, type: c.type ? 'number' : undefined }))];
+      // Each money column twice: USD, then AED at 3.67.
+      const cols = [{ header: first.label }, ...(view === 'people' ? [{ header: 'Team' }] : []),
+        ...columns.flatMap(c => (c.type === 'money' ? [{ header: c.label, type: 'number' }, { header: `${c.label.replace(/\s*\(USD\)/, '')} (AED)`, type: 'number' }] : [{ header: c.label, type: c.type ? 'number' : undefined }]))];
       const out = rows.map(r => [
         first.fmt ? first.fmt(r[first.key]) : r[first.key],
         ...(view === 'people' ? [r.team] : []),
-        ...columns.map(c => { const v = c.get ? c.get(r) : r[c.key]; return c.type ? (v ?? null) : (c.fmt ? c.fmt(v, r) : v); }),
+        ...columns.flatMap(c => {
+          const v = c.get ? c.get(r) : r[c.key];
+          if (c.type === 'money') return [v ?? null, v == null ? null : Math.round((Number(v) || 0) * AED_PER_USD * 100) / 100];
+          return [c.type ? (v ?? null) : (c.fmt ? c.fmt(v, r) : v)];
+        }),
       ]);
       await downloadExcel({ fileName: `${title} - ${VIEWS.find(v => v[0] === view)[1]}.xlsx`, sheet: title, columns: cols, rows: out });
     } catch (err) {
@@ -146,9 +160,10 @@ export default function ReportShell({ title, description, fn, body = {}, cards, 
               <>
                 <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
                   {cards(d).map(c => (
-                    <div key={c.label} className="rounded-2xl border border-slate-200/70 bg-white p-4 shadow-soft">
+                    <div key={c.label} className={`rounded-2xl border p-4 shadow-soft ${CARD_TONE[c.tone] || 'border-slate-200/70 bg-white'}`}>
                       <p className="text-[13px] font-medium text-slate-500">{c.label}</p>
-                      <p className="mt-2 break-words text-2xl font-bold text-brand-navy">{c.value}</p>
+                      <p className={`mt-2 break-words text-2xl font-bold ${TONE[c.tone] || 'text-brand-navy'}`}>{c.usd != null ? usd(c.usd) : c.value}</p>
+                      {c.usd != null && <p className="text-sm font-medium text-slate-500">{aed(c.usd)}</p>}
                       {c.sub && <p className="mt-1 text-xs text-slate-500">{c.sub}</p>}
                     </div>
                   ))}
@@ -170,7 +185,7 @@ export default function ReportShell({ title, description, fn, body = {}, cards, 
                         <thead className="bg-slate-50 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">
                           <tr>
                             <th className="px-4 py-2.5">{first.label}</th>
-                            {columns.map(c => <th key={c.label} className={`whitespace-nowrap px-4 py-2.5 ${c.type ? 'text-right' : ''}`}>{c.label}</th>)}
+                            {columns.map(c => <th key={c.label} className={`whitespace-nowrap px-4 py-2.5 ${c.type ? 'text-right' : ''} ${TONE[c.tone] || ''}`}>{c.label}</th>)}
                           </tr>
                         </thead>
                         <tbody className="divide-y divide-slate-100">
@@ -180,14 +195,14 @@ export default function ReportShell({ title, description, fn, body = {}, cards, 
                                 <div className="font-medium text-slate-900">{first.fmt ? first.fmt(r[first.key]) : r[first.key]}</div>
                                 {first.sub && first.sub(r) && <div className="text-xs text-slate-500">{first.sub(r)}</div>}
                               </td>
-                              {columns.map(c => <td key={c.label} className={`whitespace-nowrap px-4 py-2.5 ${c.type ? 'text-right tabular-nums' : ''}`}>{cell(c, r)}</td>)}
+                              {columns.map(c => <td key={c.label} className={`whitespace-nowrap px-4 py-2.5 ${c.type ? 'text-right tabular-nums' : ''} ${TONE[c.tone] || ''}`}>{cell(c, r)}</td>)}
                             </tr>
                           ))}
                         </tbody>
                         <tfoot className="border-t border-slate-200 bg-slate-50 font-semibold">
                           <tr>
                             <td className="px-4 py-2.5">Total</td>
-                            {columns.map(c => <td key={c.label} className={`whitespace-nowrap px-4 py-2.5 ${c.type ? 'text-right tabular-nums' : ''}`}>{cell(c, d.total)}</td>)}
+                            {columns.map(c => <td key={c.label} className={`whitespace-nowrap px-4 py-2.5 ${c.type ? 'text-right tabular-nums' : ''} ${TONE[c.tone] || ''}`}>{cell(c, d.total)}</td>)}
                           </tr>
                         </tfoot>
                       </table>
