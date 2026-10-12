@@ -1,0 +1,115 @@
+{
+  "request": {
+    "_id": "6accb2eaa1a8708a35d102b1",
+    "updated_date": "2026-10-12T10:15:09.642Z",
+    "created_date": "2026-10-12T10:14:02.797Z",
+    "type": "BONUS",
+    "student_id": "6abebd87c1a739ea2e91aa58",
+    "payment_method": "Cash",
+    "mt5_login": "110000",
+    "screenshot_url": "https://api-commission-v2.tetracapitals.com/uploads/1791800038889-7f0ae433-f1d8-41ad-8196-17e38b2d15c4.pdf",
+    "tags": [
+      "DSLP"
+    ],
+    "meeting_mentor_id": null,
+    "payments": [
+      {
+        "method": "Cash",
+        "amount": 1000,
+        "currency": "USD",
+        "collected_on": "2026-10-12",
+        "receipt_url": "https://api-commission-v2.tetracapitals.com/uploads/1791800038889-7f0ae433-f1d8-41ad-8196-17e38b2d15c4.pdf",
+        "receipt_name": "Abzer API Document_Payment Link_BillXPro.pdf"
+      }
+    ],
+    "meeting_mentor_name": null,
+    "amount_currency": "USD",
+    "amount_original": 1000,
+    "amount_aed": 3670,
+    "amount_usd": 1000,
+    "fx_rate_aed_per_usd": 3.67,
+    "course_payment": {
+      "product": "DSLP",
+      "price": 18370,
+      "price_currency": "AED",
+      "bonus_full_usd": 5000,
+      "instalments": 10,
+      "plan_aed": 20000,
+      "with_bonus": true,
+      "kind": "partial",
+      "paid_before_aed": 0,
+      "paid_today_aed": 3670,
+      "paid_total_aed": 3670,
+      "bonus_usd": 500,
+      "hold_aed": 1670,
+      "balance_aed": 16330,
+      "short_aed": 0,
+      "over_aed": 0
+    },
+    "status": "APPROVED",
+    "student_name": "test",
+    "student_code": "STU-4267",
+    "primary_mentor_id": "699892925eb72b1b8cac763d",
+    "primary_mentor_name": "Megha Menon",
+    "senior_mentor_id": "",
+    "senior_mentor_name": "",
+    "requested_by_id": "699892925eb72b1b8cac763d",
+    "requested_by_name": "Megha Menon",
+    "requested_at": "2026-10-12T10:14:02.263Z",
+    "initiating_mentor_id": "699892925eb72b1b8cac763d",
+    "initiating_mentor_name": "Megha Menon",
+    "upline_commission_percentage": 0,
+    "created_by": "699892925eb72b1b8cac763d",
+    "created_by_name": "Megha Menon",
+    "finance_approval": {
+      "state": "decided",
+      "queued_at": "2026-10-12T10:14:02.798Z",
+      "attempts": 1,
+      "next_attempt_at": "2026-10-12T10:14:02.798Z",
+      "last_error": null,
+      "request_id": "6accb2eae90e0165b6867a7c",
+      "sent_at": "2026-10-12T10:14:02.819Z",
+      "decided_at": "2026-10-12T10:14:26.832Z",
+      "decided_by_email": "admin@delta.com",
+      "decided_by_name": "Super Admin",
+      "decision": "approved",
+      "note": "",
+      "logged_at": "2026-10-12T10:14:26.870Z"
+    },
+    "mt5_account_id": "6accb2eaa1a8708a35d102b2",
+    "transaction_id": "qijiqnqq",
+    "approved_at": "2026-10-12T10:15:09.296Z",
+    "approved_by_id": "691f00c269c13a1daf73da2a",
+    "approved_by_name": "shafeel",
+    "notes": "",
+    "rejection_reason": ""
+  },
+  "credits": [],
+  "mt5": {
+    "_id": "6accb2eaa1a8708a35d102b2",
+    "student_id": "6abebd87c1a739ea2e91aa58",
+    "student_name": "test",
+    "student_code": "STU-4267",
+    "mt5_login": "110000",
+    "platform": "MT5",
+    "account_type": "LIVE",
+    "base_currency": "USD",
+    "is_primary": true,
+    "created_by": "megha@deltainstitutions.com",
+    "created_by_name": "Megha Menon",
+    "source": "funding request",
+    "created_date": "2026-10-12T10:14:02.827Z",
+    "updated_date": "2026-10-12T10:14:02.827Z"
+  },
+  "lmsSync": {
+    "key": "DSLP",
+    "value": {
+      "product": "DSLP",
+      "share": 0.1835,
+      "at": "2026-10-12T10:29:04.607Z",
+      "courses": [
+        "DSLP - Delta Structure & Liquidity Programme — given, 3 of 14 open"
+      ]
+    }
+  }
+}
