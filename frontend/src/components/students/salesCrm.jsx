@@ -25,6 +25,9 @@ export const salesCrmOfStudent = (s) => (SALES_CRMS[s?.sales_crm] ? s.sales_crm 
 /** A course's fees: as finance said, or Delta's for a finance row from before. Tracker rows have none. */
 export const salesCrmOfFee = (f) => (SALES_CRMS[f?.sales_crm] ? f.sales_crm : f?.source === 'cs_tracker' ? '' : 'delta');
 
+/** A course's bonus currency: its own; a sales CRM's with none is USD (the user, 2026-10-12); else the fee's — as the backend's bonusCurrencyOf. */
+export const bonusCurrencyOfFee = (f) => f?.bonus_currency || (SALES_CRMS[f?.sales_crm] ? 'USD' : f?.currency || 'AED');
+
 export function SalesCrmBadge({ crm, className = '' }) {
   const m = SALES_CRMS[crm];
   if (!m) return null;

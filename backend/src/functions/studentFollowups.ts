@@ -10,6 +10,7 @@ import {
 } from "../students/followups";
 import { theirStudents } from "../students/closedBy";
 import { MT5_LOGIN, mt5LoginOf, mt5Of, mt5Owner, keepMt5 } from "../students/mt5";
+import { bonusCurrencyOf } from "../students/salesCrm";
 
 const DATE = /^\d{4}-\d{2}-\d{2}$/;
 /** A follow-up's time, UAE: hours and minutes, 24-hour (the user, 2026-10-10 — a reminder goes before it and at it). */
@@ -35,7 +36,8 @@ export function salesBonusOf(student: any) {
       course: String(f.course ?? ""),
       given: f.bonus_given === true,
       amount: f.bonus_given === true ? Math.round(Number(f.bonus_minor) || 0) / 100 : 0,
-      currency: String(f.bonus_currency || f.currency || "AED").toUpperCase(),
+      // Its own; a sales CRM's with none is USD (the user, 2026-10-12); else the fee's.
+      currency: bonusCurrencyOf(f),
     }));
 }
 

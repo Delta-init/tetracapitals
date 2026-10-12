@@ -3,7 +3,7 @@ import { config } from "../config";
 import { ok, refuse, secretMatches, text, isEmail, answer, studentWithEmail, createStudent } from "../students/intake";
 import { lmsEnrolledFields } from "../students/lmsEnrolment";
 import { languageOf } from "../students/language";
-import { salesCrmOf, salesCrmName } from "../students/salesCrm";
+import { salesCrmOf, salesCrmName, CRM_BONUS_CURRENCY } from "../students/salesCrm";
 import { studentLocationOf, locationOf, type Location } from "../lib/location";
 import { closedByEntry, type ClosedBy } from "../students/closedBy";
 import { recordHistory } from "../students/history";
@@ -76,7 +76,7 @@ type CourseFee = {
   balance_minor: number;
   bonus_given: boolean | null;
   bonus_minor: number;
-  /** The bonus's own currency — USD from the sales CRMs since 2026-10-09; absent, the fee's (`currency`). */
+  /** The bonus's own currency — USD from the sales CRMs since 2026-10-09; a sales CRM's sent with none, USD too (the user, 2026-10-12); absent, the fee's (`currency`). */
   bonus_currency?: string;
   receipt_url: string;
   receipt_name: string;
@@ -116,7 +116,10 @@ function courseFee(raw: unknown, invoiceId: string, invoiceNumber: string, cours
     balance_minor: balance,
     bonus_given: bonus ? bonus.given === true : null,
     bonus_minor: bonus?.given === true ? minor(bonus.amountMinor) ?? 0 : 0,
-    ...(/^[A-Z]{3}$/.test(text(bonus?.currency, 3).toUpperCase()) ? { bonus_currency: text(bonus?.currency, 3).toUpperCase() } : {}),
+    ...(/^[A-Z]{3}$/.test(text(bonus?.currency, 3).toUpperCase())
+      ? { bonus_currency: text(bonus?.currency, 3).toUpperCase() }
+      // A sales CRM's bonus that came with no currency was meant in US dollars (the user, 2026-10-12).
+      : bonus && salesCrmOf(salesCrm) ? { bonus_currency: CRM_BONUS_CURRENCY } : {}),
     // Only a link a browser can open — anything else would be a dead or hostile one.
     receipt_url: /^https?:\/\//i.test(receiptUrl) ? receiptUrl : "",
     receipt_name: text(receipt?.name, 200),

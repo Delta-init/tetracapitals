@@ -362,6 +362,23 @@ step("Who looks after them — finance asking, for the sales CRMs' My Enrolments
     (await lookup({ codes: [looked.student_code] }, null)).status === 401 && (await lookup({ codes: [looked.student_code] }, "wrong-secret")).status === 401);
 }
 
+/* The bonus's currency (the user, 2026-10-12): a sales CRM's bonus that came with none is USD; one typed in finance keeps the fee's. */
+{
+  const feeOf = async (e: { invoiceId: string }) => ((await db.collection("students").findOne({ finance_invoice_id: e.invoiceId })) as any)?.course_fees?.[0];
+  const noCur = enrolment({ crm: "delta", feeSummary: { ...fees, bonus: { given: true, amountMinor: 50_000 } } });
+  await send(noCur);
+  let f = await feeOf(noCur);
+  check("Bonus — a sales CRM's bonus sent with no currency is kept as USD, the amount as sent", f?.bonus_currency === "USD" && f?.bonus_minor === 50_000, JSON.stringify(f));
+  const aed = enrolment({ crm: "remote", feeSummary: { ...fees, bonus: { given: true, amountMinor: 50_000, currency: "AED" } } });
+  await send(aed);
+  f = await feeOf(aed);
+  check("Bonus — one finance labels keeps its label", f?.bonus_currency === "AED", JSON.stringify(f));
+  const typed = enrolment({ feeSummary: { ...fees, bonus: { given: true, amountMinor: 50_000 } } });
+  await send(typed);
+  f = await feeOf(typed);
+  check("Bonus — one typed in finance (no CRM) gets no label: the fee's currency, as before", f && !("bonus_currency" in f), JSON.stringify(f));
+}
+
 await db.dropDatabase();
 await client.close();
 console.log(`\n${pass}/${pass + fail} checks passed`);

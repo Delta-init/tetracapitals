@@ -2,7 +2,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { GraduationCap, Receipt, Gift } from "lucide-react";
 import { format } from "date-fns";
-import { SalesCrmBadge, salesCrmOfFee } from "@/components/students/salesCrm";
+import { SalesCrmBadge, salesCrmOfFee, bonusCurrencyOfFee } from "@/components/students/salesCrm";
 import { BangaloreBadge } from "@/components/common/LocationFilter";
 
 /* Amounts arrive in the smallest unit (cents / fils), the way finance keeps them; one the source did not give is a dash. */
@@ -124,7 +124,7 @@ export default function CourseFeesCard({ fees }) {
                     {f.bonus_given === true ? (
                       <Badge variant="outline" className="bg-amber-50 text-amber-800 border-amber-200 gap-1">
                         <Gift className="h-3 w-3" />
-                        {money(f.bonus_minor, f.bonus_currency || f.currency)}
+                        {money(f.bonus_minor, bonusCurrencyOfFee(f))}
                       </Badge>
                     ) : f.bonus_given === false ? (
                       <span className="text-gray-500">No</span>

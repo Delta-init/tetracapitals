@@ -27,6 +27,21 @@ export function salesCrmOf(raw: unknown): SalesCrm | "" {
   return (SALES_CRMS as readonly string[]).includes(v) ? (v as SalesCrm) : "";
 }
 
+/** The currency every sales CRM gives the course (MT5) bonus in. */
+export const CRM_BONUS_CURRENCY = "USD";
+
+/**
+ * A course's bonus currency (the user, 2026-10-12): its own (`bonus_currency`); else USD for one a
+ * sales CRM sold — a close queued before the CRMs said so, its bonus meant in US dollars all the
+ * same — else the fee's. Nothing is converted: the label the amount is shown and counted with.
+ */
+export function bonusCurrencyOf(fee: { bonus_currency?: unknown; sales_crm?: unknown; currency?: unknown } | null | undefined): string {
+  const own = String(fee?.bonus_currency ?? "").trim().toUpperCase();
+  if (/^[A-Z]{3}$/.test(own)) return own;
+  if (salesCrmOf(fee?.sales_crm)) return CRM_BONUS_CURRENCY;
+  return String(fee?.currency || "AED").trim().toUpperCase();
+}
+
 /**
  * The CRM by name, as a student's arrival is told — "Delta sales CRM" for a
  * student from before finance said which, as every one of those was.
