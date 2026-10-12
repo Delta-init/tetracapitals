@@ -455,9 +455,9 @@ export default function ProcessFundingDialog({ transaction, open, onClose, onPro
           )}
 
           {/* Receipts from elsewhere — finance's receipt for the invoice a sales-close bonus belongs to (MT5 Approvals) */}
-          {extraReceipts?.payments?.length > 0 && !paymentsOf(transaction).some(p => p.receipt_url) && (
+          {extraReceipts?.payments?.length > 0 && (
             <div className="space-y-2">
-              <Label>Finance receipt</Label>
+              <Label>{extraReceipts.payments.length > 1 ? `Receipts (${extraReceipts.payments.length})` : 'Receipt'}</Label>
               <PaymentsList tx={extraReceipts} />
             </div>
           )}

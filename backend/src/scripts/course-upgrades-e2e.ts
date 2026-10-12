@@ -161,6 +161,13 @@ check("phase 4: one step completed → $500 raised in MT5 Bonus Approvals, on th
   && bs[0].type === "BONUS" && bs[0].mt5_login === "5550002" && bs[0].course_upgrade?.payment_id === p1, JSON.stringify(bs).slice(0, 300));
 r = await fn("getBonusApprovals", {}, tAdmin);
 check("…on the approvals page as a course upgrade bonus", r.body.pending?.some((t: any) => t.source === "course_upgrade" && t.course === "DSLP Offer"), show(r.body.pending));
+{
+  // Every payment of the upgrade with its receipt, the one that raised it marked (2026-10-12).
+  const ub = r.body.pending?.find((t: any) => t.source === "course_upgrade");
+  const recs = ub?.upgrade_receipts ?? [];
+  const recorded = await db.collection("course_payments").countDocuments({ upgrade_id: String(ub?.course_upgrade?.upgrade_id), receipt_url: /^https?:/ });
+  check("…with each of the upgrade's payment receipts, this payment's marked", recs.length === recorded && recs.length >= 1 && recs.filter((x: any) => x.this_one).length === 1, show(recs));
+}
 check("…and no commission from it", (await fn("creditCommission", { transaction_id: String(bs[0]._id) }, tAdmin)).body?.skipped === true);
 check("the same approval again is fine; a rejection now is 409", (await approve(p1, 4500)).body.already === true
   && (await decide({ fundingId: p1, decision: "rejected", reason: "wrong" })).status === 409);

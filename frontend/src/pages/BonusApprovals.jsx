@@ -77,7 +77,18 @@ const paidLines = (t) => invoicesOf(t).map(f => ({
   recorded: f.recorded != null ? money(f.recorded, f.currency) : null,
   paid: money(f.paid, f.currency), fee: money(f.fee, f.currency), balance: f.balance > 0 ? money(f.balance, f.currency) : null,
 }));
-const receiptTxOf = (t) => (paymentsOf(t).some(p => p.receipt_url) ? t : financeReceiptsOf(t) || t);
+/** A course-upgrade bonus: every payment of its upgrade with its receipt — this bonus's own first (2026-10-12). */
+const upgradeReceiptsOf = (t) => {
+  const list = [...(t.upgrade_receipts || [])].sort((a, b) => (b.this_one ? 1 : 0) - (a.this_one ? 1 : 0));
+  return list.length ? { payments: list.map(p => ({
+    method: `${p.this_one ? 'This payment' : 'Upgrade payment'} · ${p.method || '—'}${p.status && p.status !== 'approved' ? ` (${p.status})` : ''}`,
+    amount: p.amount_aed, currency: 'AED', collected_on: p.paid_on, receipt_url: p.receipt_url, receipt_name: p.receipt_name,
+  })) } : null;
+};
+/** What a row's receipts open: an upgrade's payments, the request's own (one per payment), or finance's for its invoice. */
+const receiptTxOf = (t) => upgradeReceiptsOf(t) || (paymentsOf(t).some(p => p.receipt_url) ? t : financeReceiptsOf(t) || t);
+/** The receipts the approval box adds: an upgrade's payments, or finance's when the request has none of its own. */
+const extraReceiptsOf = (t) => upgradeReceiptsOf(t) || (paymentsOf(t).some(p => p.receipt_url) ? null : financeReceiptsOf(t));
 /** A small select for the filter bar. */
 function FilterSelect({ value, onChange, options }) {
   return (
@@ -432,7 +443,7 @@ export default function BonusApprovals() {
                             <td className="whitespace-nowrap px-3 py-2.5 font-mono text-sm text-slate-600">{t.transaction_id || '—'}</td>
                             <td className="whitespace-nowrap px-3 py-2.5 text-sm">
                               <ReceiptsButton tx={receiptTxOf(t)} title={t.student?.full_name || t.student_name} />
-                              {receiptTxOf(t) !== t && <div className="mt-0.5 text-[11px] text-slate-400">from finance</div>}
+                              {receiptTxOf(t) !== t && <div className="mt-0.5 text-[11px] text-slate-400">{upgradeReceiptsOf(t) ? 'upgrade payments' : 'from finance'}</div>}
                             </td>
                             <td className="whitespace-nowrap px-3 py-2.5 text-xs">
                               {t.student?.onboarded
@@ -475,7 +486,7 @@ export default function BonusApprovals() {
 
       {sendingBack && <SendBackDialog tx={sendingBack} onClose={() => setSendingBack(null)} />}
       <ProcessFundingDialog
-        extraReceipts={deciding ? financeReceiptsOf(deciding) : null}
+        extraReceipts={deciding ? extraReceiptsOf(deciding) : null}
         transaction={deciding}
         currentUser={currentUser}
         open={!!deciding}

@@ -76,10 +76,26 @@ export async function getBonusApprovals(req: Request, user: AuthUser): Promise<R
     .toArray()) as any[];
   const studentOf = new Map(students.map((s) => [String(s._id), s]));
 
+  // A course-upgrade bonus: every payment of its upgrade, each with its receipt — the one that raised it marked (2026-10-12).
+  const upgradeIds = [...new Set(bonuses.map((t) => String(t.course_upgrade?.upgrade_id ?? "")).filter(Boolean))];
+  const upgradePayments = upgradeIds.length
+    ? ((await col("course_payments").find({ upgrade_id: { $in: upgradeIds } }, { projection: { upgrade_id: 1, amount_aed: 1, approved_amount_aed: 1, method: 1, paid_on: 1, receipt_url: 1, receipt_name: 1, status: 1, recorded_at: 1 } })
+      .sort({ recorded_at: 1 }).toArray()) as any[])
+    : [];
+  const paymentsOfUpgrade = new Map<string, any[]>();
+  for (const p of upgradePayments) paymentsOfUpgrade.set(String(p.upgrade_id), [...(paymentsOfUpgrade.get(String(p.upgrade_id)) ?? []), p]);
+
   const row = (t: any) => {
     const s = studentOf.get(String(t.student_id ?? ""));
     return {
       ...serialize(t),
+      upgrade_receipts: t.course_upgrade?.upgrade_id
+        ? (paymentsOfUpgrade.get(String(t.course_upgrade.upgrade_id)) ?? []).filter((p) => /^https?:\/\//i.test(String(p.receipt_url ?? ""))).map((p) => ({
+          receipt_url: String(p.receipt_url), receipt_name: String(p.receipt_name ?? ""), method: String(p.method ?? ""),
+          amount_aed: Number(p.approved_amount_aed ?? p.amount_aed) || 0, paid_on: String(p.paid_on ?? ""), status: String(p.status ?? ""),
+          this_one: String(p._id) === String(t.course_upgrade.payment_id ?? ""),
+        }))
+        : [],
       source: t.type !== "BONUS" ? "request" : t.bonus_credit === "sales_close" ? "sales_close" : t.bonus_credit === "course_upgrade" ? "course_upgrade" : "request",
       course: String(t.sales_close?.course || t.course_upgrade?.course || (Array.isArray(t.tags) ? t.tags[0] ?? "" : "") || s?.lms_course || ""),
       student: s
