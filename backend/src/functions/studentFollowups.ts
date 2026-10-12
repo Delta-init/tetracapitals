@@ -29,6 +29,10 @@ const AED_PER_USD = 3.67;
 /** The bonus promised at each sales close (finance's course fees) — given or not, and how much; [] when not known. */
 export function salesBonusOf(student: any) {
   return (Array.isArray(student?.course_fees) ? student.course_fees : [])
+    // A course fee from the CS enrolment tracker carries its "Bonus Credited" — already credited (the user,
+    // 2026-10-12): never one to credit again, so never a sales-close bonus here (Log follow-up, the automatic credit,
+    // Bonus pending, the welcome's check). Shown as "Already credited" on the student's fees and MT5 tabs.
+    .filter((f: any) => f && f.source !== "cs_tracker")
     .filter((f: any) => f && (f.bonus_given === true || f.bonus_given === false))
     .map((f: any) => ({
       invoice_id: String(f.invoice_id ?? ""),

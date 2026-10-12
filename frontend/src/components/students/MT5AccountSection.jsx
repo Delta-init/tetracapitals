@@ -24,6 +24,8 @@ export default function MT5AccountSection({ student, currentUser }) {
   });
 
   const queryClient = useQueryClient();
+  // The tracker's "Bonus Credited" (course fees from the CS enrolment tracker): already credited.
+  const credited = (Array.isArray(student?.course_fees) ? student.course_fees : []).filter(f => f?.source === 'cs_tracker' && f.bonus_given === true && Number(f.bonus_minor) > 0);
 
   // Only this student's, the primary one first (mt5Accounts.jsx).
   const { data: mt5Accounts = [] } = useStudentMt5(student.id);
@@ -80,6 +82,15 @@ export default function MT5AccountSection({ student, currentUser }) {
         )}
       </CardHeader>
       <CardContent className="p-6">
+        {/* Bonuses the CS enrolment tracker has as "Bonus Credited" — already in their MT5, never credited again (2026-10-12) */}
+        {credited.length > 0 && (
+          <div className="mb-4 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-800">
+            <p className="font-medium">Bonus already credited — not to be credited again</p>
+            {credited.map((f, i) => (
+              <p key={i} className="text-xs">{f.course || 'Course'} · {(f.bonus_currency || 'USD')} {((Number(f.bonus_minor) || 0) / 100).toLocaleString('en-US')} · from the CS enrolment tracker{f.invoice_id ? ` (${String(f.invoice_id).replace(/^tracker:/, '').replace(':', ', row ')})` : ''}</p>
+            ))}
+          </div>
+        )}
         {mt5Accounts.length === 0 ? (
           <div className="text-center py-8 text-gray-500">
             <p>No MT5 accounts added yet</p>

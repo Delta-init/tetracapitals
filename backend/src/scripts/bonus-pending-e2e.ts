@@ -205,6 +205,14 @@ r = await list(CS2, { tab: "my", filters: { bonus: "needs_call" } });
 check("a CS: only their own", names(r.body.rows) === "Close Usd", names(r.body.rows));
 const closePage = await getStudentBonusPending(new Request("http://x", { method: "POST", body: JSON.stringify({ studentId: String(sClose._id) }) }), CS1);
 check("the student page says it too", (await closePage.json() as any).bonus_pending?.stage === "needs_call");
+// The CS enrolment tracker's "Bonus Credited" (2026-10-12): already credited — never pending, never raised again.
+const sTracker = student("Tracker Credited", cs1, { course_fees: [fee("tracker:AMMU:12", 775000, { source: "cs_tracker" })] });
+await db.collection("students").insertOne(sTracker as any);
+r = await list(BOSS, { tab: "all" });
+check("a tracker bonus (already credited): not pending, not needs call", rowOf(r.body.rows, sTracker)?.bonus_pending === null, JSON.stringify(rowOf(r.body.rows, sTracker)?.bonus_pending));
+r = await list(BOSS, { tab: "all", filters: { bonus: "needs_call" } });
+check("…and not under Needs call + MT5", !names(r.body.rows).includes("Tracker Credited"), names(r.body.rows));
+await db.collection("students").deleteOne({ _id: sTracker._id });
 const after2 = JSON.stringify(await db.collection("funding_transactions").find().sort({ _id: 1 }).toArray()) + JSON.stringify(await db.collection("students").find().sort({ _id: 1 }).toArray());
 check("still read-only", after2 === before2);
 

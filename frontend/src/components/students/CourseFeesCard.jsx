@@ -124,7 +124,13 @@ export default function CourseFeesCard({ fees }) {
                     {!fromTracker(f) && <NextDue f={f} />}
                   </td>
                   <td className="p-3 text-sm whitespace-nowrap">
-                    {f.bonus_given === true ? (
+                    {f.bonus_given === true && fromTracker(f) ? (
+                      // From the CS enrolment tracker's "Bonus Credited": already credited, never again (2026-10-12).
+                      <Badge variant="outline" className="bg-emerald-50 text-emerald-800 border-emerald-200 gap-1" title="On the CS enrolment tracker as Bonus Credited — already in their MT5, not to be credited again">
+                        <Gift className="h-3 w-3" />
+                        Already credited · {money(f.bonus_minor, bonusCurrencyOfFee(f))}
+                      </Badge>
+                    ) : f.bonus_given === true ? (
                       <Badge variant="outline" className="bg-amber-50 text-amber-800 border-amber-200 gap-1">
                         <Gift className="h-3 w-3" />
                         {money(f.bonus_minor, bonusCurrencyOfFee(f))}
