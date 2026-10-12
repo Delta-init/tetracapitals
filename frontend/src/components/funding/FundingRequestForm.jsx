@@ -1,3 +1,4 @@
+import LmsModulesPreview from '@/components/students/LmsModulesPreview';
 import React, { useState } from 'react';
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { EnterCoursesDialog, UpgradeDialog, PaymentDialog } from '../students/StudentCoursesCard';
@@ -687,6 +688,11 @@ export default function FundingRequestForm({ students, allStudents = [], current
           </>)}
 
           <CoursePaymentPanel product={product} plan={plan} payment={payment} className="md:col-span-2" />
+          {/* What this course payment will open in the LMS once approved (the user, 2026-10-12) */}
+          {product && kind && formData.student_id && (
+            <LmsModulesPreview className="md:col-span-2"
+              body={{ studentId: formData.student_id, products: formData.tags, kind, planAed: plan.planAed, todayAed: money.aed }} />
+          )}
 
           <div className="space-y-2">
             <Label>Meeting Conducted By (Mentor)</Label>

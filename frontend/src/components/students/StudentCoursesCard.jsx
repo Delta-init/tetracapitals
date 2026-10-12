@@ -1,3 +1,4 @@
+import LmsModulesPreview from '@/components/students/LmsModulesPreview';
 import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
@@ -317,7 +318,7 @@ export function PaymentDialog({ upgrade, onClose, onSaved }) {
   const valid = aedAmount > 0 && aedAmount <= room && receipt && !uploading;
   return (
     <Dialog open onOpenChange={(o) => !o && onClose()}>
-      <DialogContent className="max-w-md">
+      <DialogContent className="max-h-[90vh] max-w-md overflow-y-auto">
         <DialogHeader>
           <DialogTitle>Record payment</DialogTitle>
           <DialogDescription>{upgrade.courseName} upgrade · up to {aed(room)} left to record. Delta Finance approves it; it counts once approved.</DialogDescription>
@@ -349,6 +350,8 @@ export function PaymentDialog({ upgrade, onClose, onSaved }) {
           <label className="block">Note (optional)
             <Input value={note} onChange={(e) => setNote(e.target.value)} className="mt-1 h-9" />
           </label>
+          {/* What this payment will open in the LMS once finance approves it */}
+          <LmsModulesPreview body={{ upgradeId: upgrade.id, payAed: aedAmount }} />
         </div>
         <DialogFooter>
           <Button variant="ghost" onClick={onClose}>Cancel</Button>
