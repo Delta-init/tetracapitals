@@ -94,6 +94,8 @@ export async function getBonusApprovals(req: Request, user: AuthUser): Promise<R
             invoices: (Array.isArray(s.course_fees) ? s.course_fees : []).map((f: any) => ({
               invoice_number: String(f.invoice_number ?? ""), course: String(f.course ?? ""), currency: String(f.currency ?? ""),
               fee: (Number(f.fee_minor) || 0) / 100, paid: (Number(f.paid_minor) || 0) / 100, balance: (Number(f.balance_minor) || 0) / 100,
+              // Finance's receipt for that invoice — the one a sales-close bonus has (it has none of its own).
+              receipt_url: /^https?:\/\//i.test(String(f.receipt_url ?? "")) ? String(f.receipt_url) : "", receipt_name: String(f.receipt_name ?? ""),
             })),
             finance_invoice_number: String(s.finance_invoice_number ?? ""),
             closed_by: (Array.isArray(s.closed_by) ? s.closed_by : []).map((c: any) => ({ name: String(c.name ?? c.email ?? ""), crm: String(c.crm ?? "") })),

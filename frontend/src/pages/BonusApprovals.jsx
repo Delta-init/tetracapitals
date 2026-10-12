@@ -9,7 +9,8 @@ import StatsCard from '@/components/dashboard/StatsCard';
 import { Card, CardContent, CardHeader } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { CheckCircle2, Gift, Hourglass, Landmark, Search, Undo2, XCircle } from 'lucide-react';
+import { CheckCircle2, Download, Gift, Hourglass, Landmark, Loader2, Search, Undo2, XCircle } from 'lucide-react';
+import { downloadExcel } from '@/components/utils/excelExport';
 import { CopyText, SendBackDialog, FIELDS } from '@/components/funding/corrections';
 import { getEffectiveUser } from '@/components/utils/ImpersonationContext';
 import { createPageUrl } from '@/utils';
@@ -17,7 +18,7 @@ import { logAction } from '@/components/utils/AuditLogger';
 import ProcessFundingDialog from '@/components/funding/ProcessFundingDialog';
 import TagChips from '@/components/funding/TagChips';
 import { PaymentDetails } from '@/components/funding/FundingRequestForm';
-import { ReceiptsButton, methodsText } from '@/components/funding/payments';
+import { ReceiptsButton, methodsText, paymentsOf } from '@/components/funding/payments';
 import { useUrlState } from '@/components/utils/urlState';
 
 /*
@@ -49,6 +50,17 @@ const TYPES = {
   BONUS: { label: 'Bonus', cls: 'bg-violet-50 text-violet-700 ring-violet-200' },
 };
 const typeOf = (t) => TYPES[t.type] || TYPES.BONUS;
+/**
+ * What the Receipt column and the approval box open (2026-10-12): the request's own receipts — or, when it has none (a
+ * sales-close bonus), finance's receipt for its invoice (the student's other invoices' if it names none).
+ */
+const financeReceiptsOf = (t) => {
+  const all = (t.student?.invoices || []).filter(f => f.receipt_url);
+  const mine = t.sales_close?.invoice_number ? all.filter(f => f.invoice_number === t.sales_close.invoice_number) : [];
+  const list = mine.length ? mine : all;
+  return list.length ? { payments: list.map(f => ({ method: `Finance receipt · ${f.invoice_number}`, receipt_url: f.receipt_url, receipt_name: f.receipt_name })) } : null;
+};
+const receiptTxOf = (t) => (paymentsOf(t).some(p => p.receipt_url) ? t : financeReceiptsOf(t) || t);
 /** A small select for the filter bar. */
 function FilterSelect({ value, onChange, options }) {
   return (
@@ -57,6 +69,40 @@ function FilterSelect({ value, onChange, options }) {
     </select>
   );
 }
+/**
+ * The export (2026-10-12): the rows shown — tab, filters, search and order — with the Funding Requests export's
+ * columns (but Added by) and what this page adds. Excel keeps dates as dates and amounts as numbers.
+ */
+const EXPORT_COLUMNS = [
+  { header: 'Requested', type: 'datetime', value: t => t.resubmitted_at || t.requested_at || t.created_date },
+  { header: 'Type', value: t => typeOf(t).label },
+  { header: 'Status', value: t => (t.returned?.at ? 'SENT BACK' : t.status) },
+  { header: 'Student', value: t => t.student?.full_name || t.student_name },
+  { header: 'Email', value: t => t.student?.email },
+  { header: 'Code', value: t => t.student?.student_code || t.student_code },
+  { header: 'Level', value: t => (t.student?.level === 'LEVEL_2' ? 'Level 2' : t.student?.level ? 'Level 1' : '') },
+  { header: 'CS', value: t => t.student?.cs || t.primary_mentor_name },
+  { header: 'Team', value: t => t.student?.team },
+  { header: 'Meeting by', value: t => t.meeting_mentor_name },
+  { header: 'MT5 login', value: t => t.mt5_login },
+  { header: 'Amount USD', type: 'number', value: t => Number(t.amount_usd) || 0 },
+  { header: 'Original amount', value: t => original(t) },
+  { header: 'Payment', value: t => methodsText(t) },
+  { header: 'Product', value: t => [...(t.tags || []), ...(t.course && !(t.tags || []).includes(t.course) ? [t.course] : [])].join('; ') },
+  { header: 'LMS courses now', width: 40, value: t => (t.student?.lms_courses || []).map(c => `${c.title} (${c.status === 'active' ? `${Math.round(c.progress)}%` : c.status})`).join('; ') },
+  { header: 'Finance invoices', width: 40, value: t => [t.sales_close?.invoice_number, ...(t.student?.invoices || []).filter(f => f.invoice_number !== t.sales_close?.invoice_number).map(f => `${f.invoice_number} ${f.currency} ${f.fee}${f.balance > 0 ? ` owes ${f.balance}` : ''}`)].filter(Boolean).join('; ') },
+  { header: 'Source', value: t => (t.source === 'sales_close' ? 'Sales close' : t.source === 'course_upgrade' ? 'Course upgrade' : 'Request') },
+  { header: 'Sold by', value: t => (t.source === 'sales_close' ? (t.student?.closed_by || []).map(c => c.name).join('; ') : '') },
+  { header: 'User ID', value: t => t.user_id },
+  { header: 'Txn ID', value: t => t.transaction_id },
+  { header: 'Welcome', value: t => (t.student?.onboarded ? 'Sent' : 'Not yet') },
+  { header: 'Decided by', value: t => t.approved_by_name },
+  { header: 'Decided at', type: 'datetime', value: t => t.approved_at },
+  { header: 'Rejection reason', width: 30, value: t => t.rejection_reason },
+  { header: 'Sent back / corrected', width: 40, value: t => (t.returned?.at ? `Sent back by ${t.returned.by_name}: ${(t.returned.fields || []).join(', ')}${t.returned.note ? ` — ${t.returned.note}` : ''}` : t.corrected?.at ? `Corrected by ${t.corrected.by_name}${t.corrected.changed?.length ? `: ${t.corrected.changed.join(', ')}` : ''}` : '') },
+];
+const csvCell = (v) => { const x = v == null ? '' : String(v); return /[",\n]/.test(x) ? `"${x.replace(/"/g, '""')}"` : x; };
+
 const STATUS_CLS = {
   PENDING: 'border-amber-200 bg-amber-50 text-amber-700', APPROVED: 'border-emerald-200 bg-emerald-50 text-emerald-700',
   REJECTED: 'border-rose-200 bg-rose-50 text-rose-700', RETURNED: 'border-orange-200 bg-orange-50 text-orange-700',
@@ -92,6 +138,7 @@ export default function BonusApprovals() {
   const clearFilters = () => { setFrom(''); setTo(''); setCsF('all'); setSource('all'); setMt5F('all'); setEmailF('all'); setWelcomeF('all'); };
   const [deciding, setDeciding] = useState(null);
   const [sendingBack, setSendingBack] = useState(null);
+  const [exporting, setExporting] = useState(false);
 
   // The same as the Funding Requests page: the decision, the audit log, then the commission credit.
   const decide = useMutation({
@@ -154,6 +201,29 @@ export default function BonusApprovals() {
     return by ? [...out].sort((a, b) => (tab === 'pending' ? (b.corrected?.at ? 1 : 0) - (a.corrected?.at ? 1 : 0) : 0) || by(a, b)) : out;
   }, [data, tab, needle, type, from, to, csF, source, mt5F, emailF, welcomeF, sort]);
 
+  const fileName = (ext) => `mt5_approvals_${tab}_${new Date().toISOString().slice(0, 10)}.${ext}`;
+  const exportCsv = () => {
+    if (!rows.length) { toast.error('Nothing to export'); return; }
+    const text = [EXPORT_COLUMNS.map(c => csvCell(c.header)).join(','),
+      ...rows.map(t => EXPORT_COLUMNS.map(c => { const v = c.value(t); return csvCell(c.type === 'datetime' && v ? new Date(v).toLocaleString('en-GB') : v); }).join(','))].join('\n');
+    const url = URL.createObjectURL(new Blob([text], { type: 'text/csv;charset=utf-8;' }));
+    const a = Object.assign(document.createElement('a'), { href: url, download: fileName('csv') });
+    document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(url);
+    toast.success(`Exported ${rows.length} row${rows.length === 1 ? '' : 's'}`);
+  };
+  const exportExcel = async () => {
+    if (!rows.length) { toast.error('Nothing to export'); return; }
+    setExporting(true);
+    try {
+      await downloadExcel({ fileName: fileName('xlsx'), sheet: 'MT5 Approvals', columns: EXPORT_COLUMNS, rows: rows.map(t => EXPORT_COLUMNS.map(c => c.value(t))) });
+      toast.success(`Exported ${rows.length} row${rows.length === 1 ? '' : 's'}`);
+    } catch (e) {
+      toast.error(e?.message || "The export didn't work");
+    } finally {
+      setExporting(false);
+    }
+  };
+
   if (currentUser && !allowed) {
     return (
       <div className="min-h-screen p-6">
@@ -170,7 +240,15 @@ export default function BonusApprovals() {
     <div className="min-h-screen p-6">
       <div className="mx-auto max-w-[1600px] space-y-6">
         <div>
-          <PageTitle eyebrow="Funding" icon={Gift}>MT5 Approvals</PageTitle>
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <PageTitle eyebrow="Funding" icon={Gift}>MT5 Approvals</PageTitle>
+            <div className="flex gap-2">
+              <Button variant="outline" size="sm" onClick={exportCsv} disabled={!rows.length} className="border-green-600 text-green-700 hover:bg-green-50"><Download className="mr-1.5 h-4 w-4" />CSV</Button>
+              <Button variant="outline" size="sm" onClick={exportExcel} disabled={!rows.length || exporting} className="border-green-600 text-green-700 hover:bg-green-50">
+                {exporting ? <Loader2 className="mr-1.5 h-4 w-4 animate-spin" /> : <Download className="mr-1.5 h-4 w-4" />}Excel
+              </Button>
+            </div>
+          </div>
           <p className="mt-2 max-w-3xl text-sm text-slate-500 sm:text-base">
             Every deposit, withdrawal and bonus waiting for a broker admin, in one place — the Type column says which. Bonuses: the bonus promised at a sales close — the student is onboarded, and the salesperson's commission counts, only once it's approved — and other bonus requests once finance has approved their payment. Credit the bonus in MT5, then approve it with the transaction ID. A rejected sales-close bonus goes back to the student's CS to submit again.
           </p>
@@ -318,7 +396,10 @@ export default function BonusApprovals() {
                             </td>
                             <td className="whitespace-nowrap px-3 py-2.5 text-sm text-slate-600">{t.user_id || '—'}</td>
                             <td className="whitespace-nowrap px-3 py-2.5 font-mono text-sm text-slate-600">{t.transaction_id || '—'}</td>
-                            <td className="whitespace-nowrap px-3 py-2.5 text-sm"><ReceiptsButton tx={t} title={t.student?.full_name || t.student_name} /></td>
+                            <td className="whitespace-nowrap px-3 py-2.5 text-sm">
+                              <ReceiptsButton tx={receiptTxOf(t)} title={t.student?.full_name || t.student_name} />
+                              {receiptTxOf(t) !== t && <div className="mt-0.5 text-[11px] text-slate-400">from finance</div>}
+                            </td>
                             <td className="whitespace-nowrap px-3 py-2.5 text-xs">
                               {t.student?.onboarded
                                 ? <span className="text-emerald-700">Sent {when(t.student.onboarded_at)}</span>
@@ -360,6 +441,7 @@ export default function BonusApprovals() {
 
       {sendingBack && <SendBackDialog tx={sendingBack} onClose={() => setSendingBack(null)} />}
       <ProcessFundingDialog
+        extraReceipts={deciding ? financeReceiptsOf(deciding) : null}
         transaction={deciding}
         currentUser={currentUser}
         open={!!deciding}

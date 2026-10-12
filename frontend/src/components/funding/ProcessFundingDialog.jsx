@@ -24,7 +24,7 @@ const WITHDRAWAL_PAYMENT_METHODS = [
   'Other'
 ];
 
-export default function ProcessFundingDialog({ transaction, open, onClose, onProcess, currentUser }) {
+export default function ProcessFundingDialog({ transaction, open, onClose, onProcess, currentUser, extraReceipts = null }) {
   const [formData, setFormData] = useState({
     amount_usd: 0,
     payment_method: '',
@@ -451,6 +451,14 @@ export default function ProcessFundingDialog({ transaction, open, onClose, onPro
             <div className="space-y-2">
               <Label>{paymentsOf(transaction).length > 1 ? `Payments (${paymentsOf(transaction).length})` : 'Payment receipt'}</Label>
               <PaymentsList tx={transaction} />
+            </div>
+          )}
+
+          {/* Receipts from elsewhere — finance's receipt for the invoice a sales-close bonus belongs to (MT5 Approvals) */}
+          {extraReceipts?.payments?.length > 0 && !paymentsOf(transaction).some(p => p.receipt_url) && (
+            <div className="space-y-2">
+              <Label>Finance receipt</Label>
+              <PaymentsList tx={extraReceipts} />
             </div>
           )}
 
