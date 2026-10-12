@@ -277,7 +277,7 @@ export default function FundingRequestForm({ students, allStudents = [], current
     type: 'DEPOSIT',
     student_id: '',
     amount: '',       // as typed, in `currency`
-    currency: 'USD',  // AED, USD or INR — USD to start, whatever the type and payment
+    currency: 'AED',  // AED, USD or INR — AED to start (the user, 2026-10-12), whatever the type and payment
     payment_kind: '', // a Bonus: 'full' or 'partial' — asked once the course is picked
     payment_method: '',
     mt5_login: '',
@@ -326,15 +326,15 @@ export default function FundingRequestForm({ students, allStudents = [], current
   const payment = product && kind ? coursePayment({ plan, kind, beforeAed, todayAed: money.aed }) : null;
   /** The payments' amounts: `first` in the first, the others emptied — methods and receipts stay. */
   const setAmounts = (first) => setPayments(rows => rows.map((p, i) => ({ ...p, amount: i === 0 ? first : '' })));
-  // Full: the course's price fills in the first payment, in USD. Partial: what was paid today — in USD unless an
-  // amount was already typed.
+  // Full: the course's price fills in the first payment, in AED. Partial: what was paid today — in AED unless an
+  // amount was already typed (AED first, the user, 2026-10-12).
   const chooseKind = (k) => {
     if (k === 'full') {
-      setFormData(f => ({ ...f, payment_kind: k, ...(plan.price ? { currency: 'USD' } : {}) }));
-      if (plan.price) setAmounts(String(plan.priceMoney.usd));
+      setFormData(f => ({ ...f, payment_kind: k, ...(plan.price ? { currency: 'AED' } : {}) }));
+      if (plan.price) setAmounts(String(plan.priceMoney.aed));
     } else {
       const restart = formData.payment_kind === 'full' || !paymentsTotal(payments);
-      setFormData(f => ({ ...f, payment_kind: k, ...(restart ? { currency: 'USD' } : {}) }));
+      setFormData(f => ({ ...f, payment_kind: k, ...(restart ? { currency: 'AED' } : {}) }));
       if (restart) setAmounts('');
     }
   };
@@ -349,7 +349,8 @@ export default function FundingRequestForm({ students, allStudents = [], current
     staleTime: 5 * 60_000,
   });
   const mentorOptions = React.useMemo(() => {
-    const pool = isMentorRole(currentUser?.app_role) ? teamMembersOf(currentUser, allUsers) : allUsers;
+    // A CS Manager raises requests for every CS's students (the user, 2026-10-12): every mentor.
+    const pool = isMentorRole(currentUser?.app_role) && currentUser?.app_role !== 'cs_manager' ? teamMembersOf(currentUser, allUsers) : allUsers;
     return pool
       .filter(u => /mentor/.test(String(u.app_role || '')) && u.full_name)
       .sort((a, b) => String(a.full_name).localeCompare(String(b.full_name)))
@@ -498,12 +499,14 @@ export default function FundingRequestForm({ students, allStudents = [], current
       requested_by_id: currentUser.id,
       requested_by_name: currentUser.full_name,
       requested_at: new Date().toISOString(),
+      // Whose request it counts as: an assistant's mentor's; a CS Manager's for another CS's student, that CS's
+      // (the user, 2026-10-12) — they raise it, the CS keeps it; otherwise the person raising it.
       initiating_mentor_id: currentUser.app_role === 'assistance' && currentUser.assigned_mentor_id
         ? currentUser.assigned_mentor_id
-        : currentUser.id,
+        : currentUser.app_role === 'cs_manager' && primaryMentorId ? primaryMentorId : currentUser.id,
       initiating_mentor_name: currentUser.app_role === 'assistance' && currentUser.assigned_mentor_name
         ? currentUser.assigned_mentor_name
-        : currentUser.full_name,
+        : currentUser.app_role === 'cs_manager' && primaryMentorId ? primaryMentorName : currentUser.full_name,
       // Correcting a rejected request: sent as a new one, naming it.
       ...(from ? { resubmit_of: from.id } : {}),
     };
@@ -614,8 +617,8 @@ export default function FundingRequestForm({ students, allStudents = [], current
                   // Full payment only (no instalments): its price fills in the first payment. Otherwise full or partial
                   // is asked next.
                   const terms = coursePlan(picked0);
-                  setFormData({ ...formData, tags: allTags, payment_kind: '', currency: 'USD' });
-                  setAmounts(terms.instalments === 0 && terms.price ? String(terms.priceMoney.usd) : '');
+                  setFormData({ ...formData, tags: allTags, payment_kind: '', currency: 'AED' });
+                  setAmounts(terms.instalments === 0 && terms.price ? String(terms.priceMoney.aed) : '');
                 }}
               />
               {formData.tags.length > 1 && (

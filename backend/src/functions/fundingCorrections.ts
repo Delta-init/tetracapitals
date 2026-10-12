@@ -88,7 +88,8 @@ export async function correctFundingRequest(req: Request, user: AuthUser): Promi
   if (tx.status !== "PENDING" || !tx.returned?.at) return error("This request isn't waiting for a correction", 409);
   const student: any = tx.student_id && ObjectId.isValid(String(tx.student_id)) ? await col("students").findOne({ _id: new ObjectId(String(tx.student_id)) }) : null;
   const mine = [tx.requested_by_id, tx.initiating_mentor_id].map(String).includes(user.id);
-  if (!mine && !(student && canWorkOn(user, student))) return forbidden("Only whoever raised it, the student's CS or the people above them correct it");
+  // A CS Manager corrects any CS's (the user, 2026-10-12) — they create and correct, never approve or reject.
+  if (!mine && user.app_role !== "cs_manager" && !(student && canWorkOn(user, student))) return forbidden("Only whoever raised it, the student's CS, a CS Manager or the people above them correct it");
 
   const now = new Date().toISOString();
   const changed: string[] = [];

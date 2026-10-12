@@ -93,7 +93,8 @@ export const WITH_FINANCE_MESSAGE = "This request is with Delta Finance for appr
    has already decided the old one). The rejected one stays, with its reason,
    and says which request it was sent again as. Once each. */
 
-const MAY_RESEND_ANY = ["super_admin", "admin"];
+// CS Managers correct any CS's rejected request too (the user, 2026-10-12).
+const MAY_RESEND_ANY = ["super_admin", "admin", "cs_manager"];
 
 /**
  * For a new request that names `resubmit_of`: the rejected request it corrects. Claims that one — its
@@ -111,7 +112,7 @@ export async function claimResubmit(data: Record<string, any>, user: { id: strin
   if (old.status !== "REJECTED") return { status: 409, message: "Only a rejected request can be corrected and sent again" };
   if (old.resubmitted_as) return { status: 409, message: "This request has already been corrected and sent again" };
   const theirs = [old.requested_by_id, old.initiating_mentor_id, old.created_by].map((v) => String(v ?? "")).includes(user.id);
-  if (!theirs && !MAY_RESEND_ANY.includes(user.app_role)) return { status: 403, message: "Only whoever made this request, or an admin, can send it again" };
+  if (!theirs && !MAY_RESEND_ANY.includes(user.app_role)) return { status: 403, message: "Only whoever made this request, a CS Manager or an admin, can send it again" };
   const id = new ObjectId();
   const claimed = await col("funding_transactions").updateOne(
     { _id: old._id, status: "REJECTED", resubmitted_as: { $in: [null, ""] } },

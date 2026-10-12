@@ -97,18 +97,38 @@ async function studentsWithEmails(emails: string[]): Promise<Map<string, any>> {
   return new Map(rows.map((s) => [emailOf(s.email), s]));
 }
 
-type LmsPage = { requests: any[]; total: number; page: number; perPage: number };
+type LmsPage = { requests: any[]; total: number; page: number; perPage: number; programs?: string[] };
 const ask = (body: Record<string, unknown>) =>
   callLms<LmsPage>("/enrolment-requests", { method: "POST", body, verb: "share the enrolment requests" });
 
+/** The page's filters the LMS applies (the user, 2026-10-12): applied from/to, academy, programme, search. */
+type Filters = { from?: string; to?: string; academy?: string; program?: string; q?: string };
+const HERE = new Set(["all", "not_here", "no_cs", "with_cs"]);
+/** At most this many requests looked through for the "Here" filter, which only the portal can answer. */
+const HERE_MAX = 2000;
+const isoOr = (v: unknown) => { const d = new Date(String(v ?? "")); return v && !Number.isNaN(d.getTime()) ? d.toISOString() : undefined; };
+function filtersOf(body: any): Filters {
+  const academy = String(body?.academy ?? "").toLowerCase();
+  return {
+    from: isoOr(body?.from), to: isoOr(body?.to),
+    academy: academy === "dubai" || academy === "bangalore" ? academy : undefined,
+    program: str(body?.program, 120) || undefined,
+    q: str(body?.q, 120) || undefined,
+  };
+}
+/** Whether a request's student here is what the "Here" filter asks for. */
+const hereMatches = (here: string, student: any) =>
+  here === "all" || (here === "not_here" ? !student : here === "no_cs" ? !!student && unassigned(student) : !!student && !unassigned(student));
+
 /** Every request of these students — the LMS takes 500 addresses at a time, and answers 100 a page. */
-async function requestsOf(emails: string[], status: string): Promise<any[]> {
+async function requestsOf(emails: string[], status: string, filters: Filters = {}, programs?: Set<string>): Promise<any[]> {
   const batches: string[][] = [];
   for (let i = 0; i < emails.length; i += LMS_BATCH) batches.push(emails.slice(i, i + LMS_BATCH));
   const all = async (list: string[]) => {
     const out: any[] = [];
     for (let page = 1; ; page++) {
-      const r = await ask({ status, emails: list, page, perPage: LMS_PAGE });
+      const r = await ask({ ...filters, status, emails: list, page, perPage: LMS_PAGE });
+      for (const p of r?.programs ?? []) programs?.add(String(p));
       out.push(...(r?.requests ?? []));
       if (!r?.requests?.length || out.length >= Number(r.total ?? 0)) return out;
     }
@@ -127,10 +147,13 @@ function lmsTrouble(err: unknown) {
 }
 
 /**
- * POST /api/functions/getLmsEnrolmentRequests { status = "pending", page = 1 }
- * The enrolment requests in the Delta LMS the user may decide — the Super Admin every Forex applicant's,
- * a CS their students' — newest first, 50 a page, each with its student here when there is one.
- * → { configured, available, message?, reach, requests, total, page, perPage }
+ * POST /api/functions/getLmsEnrolmentRequests { status = "pending", page = 1, from?, to?, academy?, program?, q?, here? }
+ * The enrolment requests in the Delta LMS the user may decide — the Super Admin and CS Managers every Forex
+ * applicant's, a CS their students' — newest first, 50 a page, each with its student here when there is one.
+ * Filters (the user, 2026-10-12): applied from/to, academy (dubai | bangalore), programme and search (name, email,
+ * phone — an STU code is looked up here and asked for by its email) go to the LMS; "here" — not in the portal, no CS
+ * yet, with a CS — only the portal knows, so for it the matching requests are looked through here (at most 2,000).
+ * → { configured, available, message?, reach, canAssign, requests, total, page, perPage, programs, capped? }
  */
 export async function getLmsEnrolmentRequests(req: Request, user: AuthUser): Promise<Response> {
   const reach = await reachOf(user);
@@ -138,25 +161,59 @@ export async function getLmsEnrolmentRequests(req: Request, user: AuthUser): Pro
   const body: any = await req.json().catch(() => ({}));
   const status = STATUSES.has(String(body?.status)) ? String(body.status) : "pending";
   const page = Math.max(1, Math.floor(Number(body?.page) || 1));
+  const here = HERE.has(String(body?.here)) ? String(body.here) : "all";
+  const filters = filtersOf(body);
   // canAssign: may give one who is nobody's yet to a CS (assignLmsApplicant).
-  const empty = { reach, canAssign: mayTransfer(user), requests: [], total: 0, page, perPage: PAGE };
+  const empty = { reach, canAssign: mayTransfer(user), requests: [], total: 0, page, perPage: PAGE, programs: [] as string[] };
   if (!lmsConfigured()) return json({ configured: false, available: false, ...empty });
   try {
-    if (reach === "all") {
-      const r = await ask({ status, page, perPage: PAGE });
-      const requests = r?.requests ?? [];
-      const here = await studentsWithEmails(requests.map((q) => emailOf(q.email)).filter(Boolean));
-      return json({
-        configured: true, available: true, reach, canAssign: empty.canAssign, page, perPage: PAGE, total: Number(r?.total ?? 0),
-        requests: requests.map((q) => ({ ...q, student: studentCard(here.get(emailOf(q.email)), user) })),
-      });
+    // An STU code: that student's requests, by their email — the LMS doesn't know the code.
+    let onlyEmail: string | null = null;
+    if (filters.q && /^stu-\d+$/i.test(filters.q)) {
+      const s: any = await col("students").findOne({ student_code: filters.q.toUpperCase() }, { projection: { email: 1 } });
+      onlyEmail = emailOf(s?.email);
+      delete filters.q;
+      if (!onlyEmail) return json({ configured: true, available: true, ...empty });
     }
-    const byEmail = await studentsByEmail(await theirStudents(user));
-    const found = (await requestsOf([...byEmail.keys()], status))
-      .sort((a, b) => String(b.appliedAt ?? "").localeCompare(String(a.appliedAt ?? "")));
+    const programs = new Set<string>();
+    let found: any[];
+    let total: number | null = null;
+    let capped = false;
+    if (reach === "all") {
+      if (here === "all") {
+        const r = await ask({ ...filters, status, page, perPage: PAGE, ...(onlyEmail ? { emails: [onlyEmail] } : {}) });
+        for (const p of r?.programs ?? []) programs.add(String(p));
+        const requests = r?.requests ?? [];
+        const byEmail = await studentsWithEmails(requests.map((q) => emailOf(q.email)).filter(Boolean));
+        return json({
+          configured: true, available: true, reach, canAssign: empty.canAssign, page, perPage: PAGE, total: Number(r?.total ?? 0), programs: [...programs],
+          requests: requests.map((q) => ({ ...q, student: studentCard(byEmail.get(emailOf(q.email)), user) })),
+        });
+      }
+      // "Here": every matching request, then the portal's side of it.
+      found = [];
+      for (let p = 1; found.length < HERE_MAX; p++) {
+        const r = await ask({ ...filters, status, page: p, perPage: LMS_PAGE, ...(onlyEmail ? { emails: [onlyEmail] } : {}) });
+        for (const x of r?.programs ?? []) programs.add(String(x));
+        found.push(...(r?.requests ?? []));
+        total = Number(r?.total ?? 0);
+        if (!r?.requests?.length || found.length >= total) break;
+      }
+      capped = (total ?? 0) > found.length;
+    } else {
+      const mine = await studentsByEmail(await theirStudents(user));
+      const emails = onlyEmail ? (mine.has(onlyEmail) ? [onlyEmail] : []) : [...mine.keys()];
+      found = await requestsOf(emails, status, filters, programs);
+    }
+    const byEmail = await studentsWithEmails([...new Set(found.map((q) => emailOf(q.email)).filter(Boolean))]);
+    const rows = found
+      .map((q) => ({ q, s: byEmail.get(emailOf(q.email)) ?? null }))
+      .filter(({ s }) => hereMatches(here, s))
+      .sort((a, b) => String(b.q.appliedAt ?? "").localeCompare(String(a.q.appliedAt ?? "")));
     return json({
-      configured: true, available: true, reach, canAssign: empty.canAssign, page, perPage: PAGE, total: found.length,
-      requests: found.slice((page - 1) * PAGE, page * PAGE).map((q) => ({ ...q, student: studentCard(byEmail.get(emailOf(q.email)), user) })),
+      configured: true, available: true, reach, canAssign: empty.canAssign, page, perPage: PAGE, total: rows.length,
+      programs: [...programs].sort((a, b) => a.localeCompare(b)), ...(capped ? { capped: true } : {}),
+      requests: rows.slice((page - 1) * PAGE, page * PAGE).map(({ q, s }) => ({ ...q, student: studentCard(s, user) })),
     });
   } catch (err) {
     return json({ configured: true, available: false, message: lmsTrouble(err), ...empty });

@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
@@ -238,6 +238,38 @@ function RequestDialog({ request, canView, onClose, onDecide }) {
   );
 }
 
+/** A Dubai day (YYYY-MM-DD) as the instant it starts, `plus` days on — the server's from / to (to not included). */
+function dubaiStart(day, plus = 0) {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(day || '')) return undefined;
+  const d = new Date(`${day}T00:00:00+04:00`);
+  d.setUTCDate(d.getUTCDate() + plus);
+  return d.toISOString();
+}
+const dubaiToday = (minus = 0) => {
+  const d = new Date(Date.now() - minus * 86_400_000);
+  return d.toLocaleDateString('en-CA', { timeZone: 'Asia/Dubai' });
+};
+const PRESETS = [
+  { key: 'today', label: 'Today', range: () => [dubaiToday(), dubaiToday()] },
+  { key: 'yesterday', label: 'Yesterday', range: () => [dubaiToday(1), dubaiToday(1)] },
+  { key: '7d', label: 'Last 7 days', range: () => [dubaiToday(6), dubaiToday()] },
+  { key: 'month', label: 'This month', range: () => [`${dubaiToday().slice(0, 8)}01`, dubaiToday()] },
+  { key: 'all', label: 'All time', range: () => ['', ''] },
+];
+
+/** A filter's dropdown — "all" is its first choice. */
+function FilterSelect({ value, onChange, label, options }) {
+  return (
+    <Select value={value} onValueChange={onChange}>
+      <SelectTrigger className={cn('h-8 w-auto min-w-[150px] text-xs', value !== 'all' && 'border-brand-navy text-brand-navy')}><SelectValue /></SelectTrigger>
+      <SelectContent>
+        <SelectItem value="all">{label}</SelectItem>
+        {options.map(([v, l]) => <SelectItem key={v} value={v}>{l}</SelectItem>)}
+      </SelectContent>
+    </Select>
+  );
+}
+
 export default function LmsRequests() {
   const queryClient = useQueryClient();
   // The tab and the page live in the address (?tab=approved&page=2) — Back and a refresh land on the same list.
@@ -245,13 +277,28 @@ export default function LmsRequests() {
   const tab = TABS.some(t => t.key === params.get('tab')) ? params.get('tab') : 'pending';
   const { page, setPage } = useUrlPage();
   const setTabAndFirstPage = (key) => update(n => { if (key === 'pending') n.delete('tab'); else n.set('tab', key); n.delete('page'); });
-  const [query, setQuery] = useState('');
+  // Filters (the user, 2026-10-12), in the address too: applied from–to (Dubai days), academy, programme, here, search.
+  const f = {
+    from: params.get('from') || '', to: params.get('to') || '', academy: params.get('academy') || 'all',
+    program: params.get('program') || 'all', here: params.get('here') || 'all', q: params.get('q') || '',
+  };
+  const setFilter = (patch) => update(n => {
+    for (const [k, v] of Object.entries(patch)) { if (!v || v === 'all') n.delete(k); else n.set(k, v); }
+    n.delete('page');
+  });
+  const filtered = !!(f.from || f.to || f.academy !== 'all' || f.program !== 'all' || f.here !== 'all' || f.q);
+  const [query, setQuery] = useState(f.q);
+  // Typing settles for a moment before it asks the server.
+  useEffect(() => { const t = setTimeout(() => { if (query.trim() !== f.q) setFilter({ q: query.trim() }); }, 400); return () => clearTimeout(t); }, [query]); // eslint-disable-line react-hooks/exhaustive-deps
   const [viewing, setViewing] = useState(null);
   const [decision, setDecision] = useState(null);   // { kind: 'approve' | 'reject', request }
 
   const { data, isLoading, isFetching, refetch, error } = useQuery({
-    queryKey: ['lms-enrolment-requests', tab, page],
-    queryFn: () => call('getLmsEnrolmentRequests', { status: tab, page }),
+    queryKey: ['lms-enrolment-requests', tab, page, f.from, f.to, f.academy, f.program, f.here, f.q],
+    queryFn: () => call('getLmsEnrolmentRequests', {
+      status: tab, page, q: f.q || undefined, here: f.here, academy: f.academy === 'all' ? undefined : f.academy,
+      program: f.program === 'all' ? undefined : f.program, from: dubaiStart(f.from), to: dubaiStart(f.to, 1),
+    }),
     staleTime: 30_000,
     placeholderData: (previous) => previous,   // the page stays while the next one comes
   });
@@ -262,10 +309,15 @@ export default function LmsRequests() {
   });
   const requests = useMemo(() => data?.requests ?? [], [data]);
   const shown = useMemo(() => {
-    const q = query.trim().toLowerCase();
-    return requests.filter((r) => !q || [r.name, r.email, r.phone, r.country, r.student?.code, r.student?.cs, ...(r.programs || [])]
-      .some((v) => String(v || '').toLowerCase().includes(q)));
-  }, [requests, query]);
+    // The server filters; this keeps the page right while the LMS hasn't its filters yet.
+    const q = f.q.toLowerCase();
+    const from = dubaiStart(f.from), to = dubaiStart(f.to, 1);
+    return requests.filter((r) => (!q || [r.name, r.email, r.phone, r.country, r.student?.code, r.student?.cs, ...(r.programs || [])]
+      .some((v) => String(v || '').toLowerCase().includes(q)))
+      && (f.academy === 'all' || String(r.academy || '').toLowerCase().includes(f.academy))
+      && (f.program === 'all' || (r.programs || []).some(p => String(p).trim().toLowerCase() === f.program.toLowerCase()))
+      && (!from || String(r.appliedAt || '') >= from) && (!to || String(r.appliedAt || '') < to));
+  }, [requests, f.q, f.academy, f.program, f.from, f.to]);
 
   const refresh = () => {
     queryClient.invalidateQueries({ queryKey: ['lms-enrolment-requests'] });
@@ -326,12 +378,44 @@ export default function LmsRequests() {
           ))}
         </div>
 
+        <div className="flex flex-wrap items-center gap-2 rounded-2xl border border-slate-200 bg-white p-3">
+          <div className="flex flex-wrap gap-1">
+            {PRESETS.map(p => {
+              const [a, b] = p.range();
+              const on = f.from === a && f.to === b;
+              return (
+                <button key={p.key} type="button" onClick={() => setFilter({ from: a, to: b })}
+                  className={cn('rounded-lg px-2.5 py-1 text-xs', on ? 'bg-brand-navy text-white' : 'text-slate-600 hover:bg-slate-100')}>{p.label}</button>
+              );
+            })}
+          </div>
+          <div className="flex items-center gap-1 text-xs text-slate-500">
+            <Input type="date" value={f.from} max={f.to || undefined} onChange={(e) => setFilter({ from: e.target.value })} className="h-8 w-[140px] text-xs" aria-label="Applied from" />
+            <span>to</span>
+            <Input type="date" value={f.to} min={f.from || undefined} onChange={(e) => setFilter({ to: e.target.value })} className="h-8 w-[140px] text-xs" aria-label="Applied to" />
+          </div>
+          <FilterSelect value={f.academy} onChange={(v) => setFilter({ academy: v })} label="All academies"
+            options={[['dubai', 'Dubai Academy'], ['bangalore', 'Bangalore Academy']]} />
+          <FilterSelect value={f.program} onChange={(v) => setFilter({ program: v })} label="All programmes"
+            options={[...new Set([...(data?.programs || []), ...(f.program !== 'all' ? [f.program] : [])])].map(p => [p, p])} />
+          <FilterSelect value={f.here} onChange={(v) => setFilter({ here: v })} label="In the portal or not"
+            options={[['not_here', 'Not in the portal'], ['no_cs', 'In the portal, no CS'], ['with_cs', 'With a CS']]} />
+          {filtered && (
+            <Button variant="ghost" size="sm" className="h-8 text-xs" onClick={() => { setQuery(''); setFilter({ from: '', to: '', academy: '', program: '', here: '', q: '' }); }}>
+              Clear filters
+            </Button>
+          )}
+          <span className="ml-auto text-xs text-slate-500">
+            {data ? `${(data.total ?? 0).toLocaleString('en-US')} request${data.total === 1 ? '' : 's'}${data.capped ? ' · the first 2,000 looked through' : ''}` : ''}
+          </span>
+        </div>
+
         <Card className="overflow-hidden border-gray-200">
           <CardContent className="p-0">
             {isLoading ? (
               <div className="space-y-2 p-4">{[0, 1, 2, 3].map((i) => <Skeleton key={i} className="h-12 w-full" />)}</div>
             ) : notice ? <Empty>{notice}</Empty> : shown.length === 0 ? (
-              <Empty>{requests.length === 0 ? (tab === 'pending' ? 'Nobody is waiting to be let in.' : 'No requests here.') : 'No request matches that search.'}</Empty>
+              <Empty>{filtered ? 'No request matches these filters.' : tab === 'pending' ? 'Nobody is waiting to be let in.' : 'No requests here.'}</Empty>
             ) : (
               <>
                 <div className="overflow-x-auto">

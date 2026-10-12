@@ -161,6 +161,9 @@ export default function MyFundingRequests() {
   const isAssistance = currentUser.app_role === 'assistance';
   // A CS's Commission Summary is their bonus only — no deposit commission (the user, 2026-10-03).
   const isCs = currentUser.app_role === 'cs';
+  // A CS Manager (the user, 2026-10-12): raises requests for every student, sees every CS's requests and corrects
+  // them — never approves or rejects.
+  const isCsManager = currentUser.app_role === 'cs_manager';
 
   let myTransactions, myStudents, teamTransactions = [];
   
@@ -178,9 +181,10 @@ export default function MyFundingRequests() {
     // initiating_mentor_id set, matching the commission-attribution rule.
     myTransactions = transactions.filter(t => {
       const attribMentor = t.initiating_mentor_id || t.primary_mentor_id;
-      return attribMentor === currentUser.id;
+      // A CS Manager's own: those they raised, though another CS's student's counts as that CS's.
+      return attribMentor === currentUser.id || (isCsManager && t.requested_by_id === currentUser.id);
     });
-    myStudents = students.filter(s => {
+    myStudents = isCsManager ? students : students.filter(s => {
       if (s.primary_mentor_id === currentUser.id) return true;
       if (!s.co_mentors_details) return false;
       try {
@@ -191,7 +195,11 @@ export default function MyFundingRequests() {
 
     // Filter TEAM transactions - raised by people on my team (Up Head chain), or
     // where I'm listed as senior mentor, but NOT my own
-    if (getScope(currentUser) === 'downline') {
+    if (isCsManager) {
+      // Every CS's requests.
+      const mine = new Set(myTransactions.map(t => t.id));
+      teamTransactions = transactions.filter(t => !mine.has(t.id));
+    } else if (getScope(currentUser) === 'downline') {
       const team = downlineIds(currentUser.id, users);
       teamTransactions = transactions.filter(t => {
         const by = t.initiating_mentor_id || t.primary_mentor_id;
@@ -382,7 +390,7 @@ export default function MyFundingRequests() {
 
   const canCreate = canCreateFundingTransaction(currentUser.app_role);
   // Team tab: roles whose visibility is Team (Chief Mentor by default).
-  const hasTeamView = getScope(currentUser) === 'downline';
+  const hasTeamView = isCsManager || getScope(currentUser) === 'downline';
 
   const getReferralStatusColor = () => 'bg-orange-100 text-orange-800 border-orange-200';
 
@@ -423,7 +431,7 @@ export default function MyFundingRequests() {
           <TabsList className="grid w-full max-w-md" style={{ gridTemplateColumns: hasTeamView ? '1fr 1fr' : '1fr' }}>
             <TabsTrigger value="my">My Funding Requests</TabsTrigger>
             {hasTeamView && (
-              <TabsTrigger value="team">Team Funding Requests</TabsTrigger>
+              <TabsTrigger value="team">{isCsManager ? 'All CS Funding Requests' : 'Team Funding Requests'}</TabsTrigger>
             )}
           </TabsList>
 
@@ -897,12 +905,13 @@ export default function MyFundingRequests() {
                           <TableHead className="font-semibold">Amount</TableHead>
                           <TableHead className="font-semibold">Upline Commission</TableHead>
                           <TableHead className="font-semibold">Payment Method</TableHead>
+                          {isCsManager && <TableHead className="font-semibold">Correct</TableHead>}
                         </TableRow>
                       </TableHeader>
                       <TableBody>
                         {teamTransactions.length === 0 ? (
                           <TableRow>
-                            <TableCell colSpan={11} className="text-center py-8 text-gray-500">
+                            <TableCell colSpan={isCsManager ? 12 : 11} className="text-center py-8 text-gray-500">
                               No team funding requests yet
                             </TableCell>
                           </TableRow>
@@ -970,6 +979,22 @@ export default function MyFundingRequests() {
                                   : '-'}
                               </TableCell>
                               <TableCell className="text-sm">{methodsText(transaction)}</TableCell>
+                              {isCsManager && (
+                                <TableCell className="text-sm">
+                                  {/* A CS Manager corrects any CS's request: a rejected one sent again, once; one sent back */}
+                                  {transaction.status === 'REJECTED' && transaction.rejection_reason && <div className="max-w-[220px] text-xs text-red-600">{transaction.rejection_reason}</div>}
+                                  {transaction.status === 'REJECTED' && (transaction.resubmitted_as ? (
+                                    <div className="mt-1 text-xs font-medium text-emerald-700">Corrected and sent again</div>
+                                  ) : (
+                                    <Button size="sm" variant="outline" className="mt-1 h-7 px-2 text-xs"
+                                      onClick={() => { setResending(transaction); setShowAddDialog(true); }}>
+                                      Correct &amp; resend
+                                    </Button>
+                                  ))}
+                                  <SentBackNotice tx={transaction} />
+                                  {transaction.status !== 'REJECTED' && !transaction.returned?.at && <span className="text-gray-400">-</span>}
+                                </TableCell>
+                              )}
                               </TableRow>
                               );
                               })
