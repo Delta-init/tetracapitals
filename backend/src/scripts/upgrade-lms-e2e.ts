@@ -137,6 +137,57 @@ check("…caught up (no MBT course in this academy: nothing to open, not asked a
 check("COURSE_LMS_SYNC=off keeps a server out of it", (process.env.COURSE_LMS_SYNC = "off", !U.upgradeLmsOn()) && (delete process.env.COURSE_LMS_SYNC, U.upgradeLmsOn()));
 check("modulesFor: 0 → none, 0.01 → 1, 1 → all", U.modulesFor(0, 10) === 0 && U.modulesFor(0.01, 10) === 1 && U.modulesFor(0.999, 10) === 10 && U.modulesFor(1, 10) === 10);
 
+step("A course paid through a Bonus request (course_payment)");
+// A fresh student in the stand-in LMS: on nothing yet.
+enrolled.clear();
+const s4 = new ObjectId();
+await db.collection("students").insertOne({ _id: s4, full_name: "Nora", email: "nora@upg.test", primary_mentor_id: String(cs) } as any);
+const bonusPay = (status: string, product: string, kind: string, plan: number, paid: number, tags: string[] = [product], at = new Date().toISOString()) => ({
+  type: "BONUS", status, student_id: String(s4), amount_usd: paid / 3.67, requested_at: at, tags,
+  course_payment: { product, kind, plan_aed: plan, paid_today_aed: paid, balance_aed: plan - paid },
+});
+await db.collection("funding_transactions").insertOne(bonusPay("PENDING", "DSLP", "partial", 20000, 3670) as any);
+check("waiting for approval: nothing to open", !(await U.coursePaymentsToSync()).some((p) => p.studentId === String(s4)));
+await db.collection("funding_transactions").updateOne({ student_id: String(s4) }, { $set: { status: "APPROVED" } });
+check("approved: on the list", (await U.coursePaymentsToSync()).some((p) => p.studentId === String(s4) && p.product === "DSLP"));
+let c = await U.syncCoursePaymentLms(String(s4), "DSLP");
+check("DSLP 3,670 of 20,000 paid: given, its first 2 of 10 open (18% rounded up)", c.ok && openCount(DSLP) === 2 && firstOpen(DSLP, 2), JSON.stringify(c));
+let st: any = (await db.collection("students").findOne({ _id: s4 }))?.course_lms_sync?.DSLP;
+check("…noted on the student, not asked again", st?.share === 0.1835 && !(await U.coursePaymentsToSync()).some((p) => p.studentId === String(s4)), JSON.stringify(st));
+check("…the CS told, the history says so", (await db.collection("notifications").find({ user_id: String(cs) }).toArray()).filter((n: any) => String(n.message).startsWith("DSLP") && String(n.message).includes("18% paid")).length === 1
+  && (await db.collection("student_history").find({ student_id: String(s4) }).toArray()).filter((h: any) => String(h.text).includes("LMS modules opened for DSLP (18% paid)")).length === 1);
+await db.collection("funding_transactions").insertOne(bonusPay("APPROVED", "DSLP", "partial", 20000, 6330, ["DSLP", "DWT"]) as any);
+c = (await U.upgradeLmsTick(), { ok: true });
+check("the next approved payment (50% now), by the worker: DSLP 5 of 10; a bundled DWT given too, 3 of 5", openCount(DSLP) === 5 && openCount(DWT) === 3, `${openCount(DSLP)} ${openCount(DWT)}`);
+await db.collection("funding_transactions").insertOne(bonusPay("APPROVED", "DSLP", "partial", 20000, 10000) as any);
+await U.syncCoursePaymentLms(String(s4), "DSLP");
+check("nothing left to pay: all of DSLP and DWT", openCount(DSLP) === 10 && openCount(DWT) === 5);
+
+enrolled.clear();
+const s5 = new ObjectId();
+await db.collection("students").insertOne({ _id: s5, full_name: "Ola", email: "ola@upg.test", primary_mentor_id: String(cs) } as any);
+await db.collection("funding_transactions").insertMany([
+  { ...bonusPay("APPROVED", "DSLP — Offer Price", "full", 18350, 18350), student_id: String(s5) },
+  { ...bonusPay("APPROVED", "HADC", "full", 1000, 1000), student_id: String(s5) },
+] as any);
+await U.syncCoursePaymentLms(String(s5), "DSLP — Offer Price");
+check("a Full payment for DSLP Offer: its first 10 of DSLP (here all 10)", openCount(DSLP) === 10);
+const h = await U.syncCoursePaymentLms(String(s5), "HADC");
+st = (await db.collection("students").findOne({ _id: s5 }))?.course_lms_sync?.HADC;
+check("a product with no LMS course (HADC): nothing opened, noted, not asked again", h.ok && h.courses?.length === 0 && st?.unmapped === true
+  && !(await U.coursePaymentsToSync()).some((p) => p.studentId === String(s5)), JSON.stringify(st));
+
+refuse = true;
+const s6 = new ObjectId();
+await db.collection("students").insertOne({ _id: s6, full_name: "Pia", email: "pia@upg.test", primary_mentor_id: String(cs) } as any);
+await db.collection("funding_transactions").insertOne({ ...bonusPay("APPROVED", "MSNR", "full", 4000, 4000), student_id: String(s6) } as any);
+const bad = await U.syncCoursePaymentLms(String(s6), "MSNR");
+check("the LMS refusing: noted, tried again later", !bad.ok && !(await U.coursePaymentsToSync()).some((p) => p.studentId === String(s6)));
+refuse = false;
+await db.collection("students").updateOne({ _id: s6 }, { $set: { "course_lms_sync.MSNR.retry_at": new Date(Date.now() - 1000).toISOString() } });
+await U.upgradeLmsTick();
+check("…and done when due: MMC all open", openCount(MMC) === 4, String(openCount(MMC)));
+
 lms.stop(true);
 console.log(`\n${pass} passed, ${fail} failed`);
 await closeDb();

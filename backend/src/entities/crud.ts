@@ -333,6 +333,13 @@ export async function updateEntity(req: Request, entityName: string, id: string)
   const doc = await col(ctx.cfg.collection).findOne({ _id: oid });
   if (!doc) return notFound();
   await recordHistory(history);
+  // A course paid through a Bonus request, just approved: its LMS modules open as far as it is paid (courses/upgradeLms.ts).
+  const paidCourse = entityName === "FundingTransaction" && (doc as any).type === "BONUS" && (doc as any).status === "APPROVED" && (doc as any).course_payment?.product;
+  if (paidCourse) {
+    const sid = String((doc as any).student_id ?? ""), product = String((doc as any).course_payment.product);
+    setTimeout(() => void import("../courses/upgradeLms").then((m) => (m.upgradeLmsOn() ? m.syncCoursePaymentLms(sid, product) : null))
+      .catch((err) => console.error("[course-lms] after approval", err)), 0);
+  }
   // Given to somebody (from Delta Open Students, a transfer, an admin's edit): tell them.
   if (history.some((h) => h.type === "assigned" || h.type === "mentor_changed")) void notifyStudentsGiven([doc], ctx.user.id);
   return json(serialize(doc));

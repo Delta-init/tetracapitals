@@ -35,3 +35,36 @@ export function lmsTargetsOf(code: CourseCode): { targets: LmsTarget[]; ownMappe
   }
   return { targets: out, ownMapped: (CSE_LMS[code] ?? []).length > 0 };
 }
+
+/** "DSLP — Offer Price" → "DSLPOFFERPRICE": a product's name, however it was typed. */
+export const productKey = (name: unknown) => String(name ?? "").toUpperCase().replace(/[^A-Z0-9]/g, "");
+
+/**
+ * The LMS course a Bonus course payment's product opens (the user, 2026-10-12 — "go, your way"): by the product's name,
+ * as Course Upgrades map their courses — DSLP Offer the first 10 DSLP modules, DSLP (Full) all of DSLP, DWT, MSNR (MMC),
+ * MBT. A product that bundles others has them on the request too (its tags), and each opens its own. Anything else
+ * (HADC, DQMP…) opens nothing yet.
+ */
+export function lmsTargetOfProduct(name: unknown): LmsTarget | null {
+  const k = productKey(name);
+  if (!k) return null;
+  if (k.startsWith("DSLP") && k.includes("OFFER")) return { ...CSE_LMS.DSLP_OFFER[0]! };
+  if (k.startsWith("DSLP")) return { ...CSE_LMS.DSLP_PRO[0]! };
+  if (k.startsWith("DWT") || k.includes("DELTAWAVE")) return { ...CSE_LMS.DWT[0]! };
+  if (k.startsWith("MSNR") || k.startsWith("MMC") || k.includes("MARKETMAKING")) return { ...CSE_LMS.MSNR[0]! };
+  if (k.startsWith("MBT") || k.includes("BREAKOUT")) return { ...CSE_LMS.MBT[0]! };
+  return null;
+}
+
+/** Every LMS course a set of products opens, the widest per course (a bundle and its own course). */
+export function lmsTargetsOfProducts(names: unknown[]): LmsTarget[] {
+  const out: LmsTarget[] = [];
+  for (const n of names) {
+    const t = lmsTargetOfProduct(n);
+    if (!t) continue;
+    const have = out.find((o) => sameTitle(o.title, t.title));
+    if (!have) out.push(t);
+    else if (have.firstModules !== undefined && (t.firstModules === undefined || t.firstModules > have.firstModules)) have.firstModules = t.firstModules;
+  }
+  return out;
+}
