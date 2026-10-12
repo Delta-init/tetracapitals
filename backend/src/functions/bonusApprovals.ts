@@ -35,6 +35,8 @@ export function decidableMt5Filter(): Record<string, any> {
     type: { $in: MT5_TYPES },
     status: "PENDING",
     "finance_approval.state": { $nin: financeFundingConfigured() ? ["sent", "queued"] : ["sent"] },
+    // Sent back to the CS for correction (fundingCorrections.ts): theirs until corrected.
+    "returned.at": { $exists: false },
   };
 }
 
@@ -47,13 +49,18 @@ export function decidableBonusFilter(): Record<string, any> {
   };
 }
 
-export async function getBonusApprovals(_req: Request, user: AuthUser): Promise<Response> {
+export async function getBonusApprovals(req: Request, user: AuthUser): Promise<Response> {
   if (!BONUS_APPROVERS.includes(user.app_role)) return forbidden(BONUS_APPROVERS_MESSAGE);
-  const monthStart = uaeMonthStart();
+  // The approved and rejected ones: this month (UAE), or from the date range picked (YYYY-MM-DD, UAE days — 2026-10-12).
+  const body: any = await req.json().catch(() => ({}));
+  const day = (v: unknown) => (/^\d{4}-\d{2}-\d{2}$/.test(String(v ?? "")) ? String(v) : "");
+  const from = day(body?.from), to = day(body?.to);
+  const monthStart = from ? new Date(Date.parse(`${from}T00:00:00+04:00`)).toISOString() : uaeMonthStart();
+  const decidedUntil = to ? new Date(Date.parse(`${to}T00:00:00+04:00`) + 86_400_000).toISOString() : null;
   const bonuses = (await col("funding_transactions")
     .find({
       type: { $in: MT5_TYPES },
-      $or: [{ status: "PENDING" }, { status: { $in: ["APPROVED", "REJECTED"] }, approved_at: { $gte: monthStart } }],
+      $or: [{ status: "PENDING" }, { status: { $in: ["APPROVED", "REJECTED"] }, approved_at: { $gte: monthStart, ...(decidedUntil ? { $lt: decidedUntil } : {}) } }],
     })
     .limit(3000)
     .toArray()) as any[];
@@ -61,7 +68,10 @@ export async function getBonusApprovals(_req: Request, user: AuthUser): Promise<
   const studentIds = [...new Set(bonuses.map((t) => String(t.student_id ?? "")))].map(toObjectId).filter(Boolean);
   const students = (await col("students")
     .find({ _id: { $in: studentIds as any[] } }, {
-      projection: { full_name: 1, student_code: 1, primary_mentor_name: 1, team_name: 1, onboarded: 1, onboarded_at: 1, lms_course: 1 },
+      projection: {
+        full_name: 1, student_code: 1, email: 1, primary_mentor_name: 1, team_name: 1, onboarded: 1, onboarded_at: 1, lms_course: 1,
+        student_level: 1, lms_courses: 1, closed_by: 1, course_fees: 1, finance_invoice_number: 1,
+      },
     })
     .toArray()) as any[];
   const studentOf = new Map(students.map((s) => [String(s._id), s]));
@@ -74,15 +84,28 @@ export async function getBonusApprovals(_req: Request, user: AuthUser): Promise<
       course: String(t.sales_close?.course || t.course_upgrade?.course || (Array.isArray(t.tags) ? t.tags[0] ?? "" : "") || s?.lms_course || ""),
       student: s
         ? {
-            id: String(s._id), full_name: String(s.full_name ?? ""), student_code: String(s.student_code ?? ""),
+            id: String(s._id), full_name: String(s.full_name ?? ""), student_code: String(s.student_code ?? ""), email: String(s.email ?? ""),
             cs: String(s.primary_mentor_name ?? ""), team: String(s.team_name ?? ""),
             onboarded: s.onboarded === true, onboarded_at: s.onboarded_at ?? null,
+            level: String(s.student_level ?? ""),
+            // What the MT5 Approvals table shows beside the request (the user, 2026-10-12): the LMS courses they are on
+            // now (kept hourly from the LMS, students/lmsEnrolment.ts), finance's invoices, and who closed the sale.
+            lms_courses: (Array.isArray(s.lms_courses) ? s.lms_courses : []).map((c: any) => ({ title: String(c.title ?? ""), status: String(c.status ?? ""), progress: Number(c.progress) || 0 })),
+            invoices: (Array.isArray(s.course_fees) ? s.course_fees : []).map((f: any) => ({
+              invoice_number: String(f.invoice_number ?? ""), course: String(f.course ?? ""), currency: String(f.currency ?? ""),
+              fee: (Number(f.fee_minor) || 0) / 100, paid: (Number(f.paid_minor) || 0) / 100, balance: (Number(f.balance_minor) || 0) / 100,
+            })),
+            finance_invoice_number: String(s.finance_invoice_number ?? ""),
+            closed_by: (Array.isArray(s.closed_by) ? s.closed_by : []).map((c: any) => ({ name: String(c.name ?? c.email ?? ""), crm: String(c.crm ?? "") })),
           }
         : null,
     };
   };
   const at = (t: any) => String(t.requested_at ?? t.created_date ?? "");
-  const pending = bonuses.filter((t) => t.status === "PENDING" && !withFinance(t)).sort((a, b) => at(a).localeCompare(at(b)));
+  // Corrected ones first — they were waiting already; those sent back to the CS are listed apart.
+  const waitAt = (t: any) => String(t.corrected?.at ? "0" + t.corrected.at : "1" + at(t));
+  const pending = bonuses.filter((t) => t.status === "PENDING" && !withFinance(t) && !t.returned?.at).sort((a, b) => waitAt(a).localeCompare(waitAt(b)));
+  const returned = bonuses.filter((t) => t.status === "PENDING" && t.returned?.at).sort((a, b) => String(b.returned.at).localeCompare(String(a.returned.at)));
   const decided = (status: string) =>
     bonuses.filter((t) => t.status === status).sort((a, b) => String(b.approved_at ?? "").localeCompare(String(a.approved_at ?? "")));
   const approved = decided("APPROVED");
@@ -96,15 +119,18 @@ export async function getBonusApprovals(_req: Request, user: AuthUser): Promise<
       approved: approved.length,
       rejected: rejected.length,
       with_finance: bonuses.filter((t) => t.status === "PENDING" && withFinance(t)).length,
+      returned: returned.length,
       // Each type's pending / approved / rejected, for the Type filter.
       by_type: Object.fromEntries(MT5_TYPES.map((ty) => [ty, {
         pending: pending.filter((t) => t.type === ty).length,
         approved: approved.filter((t) => t.type === ty).length,
         rejected: rejected.filter((t) => t.type === ty).length,
+        returned: returned.filter((t) => t.type === ty).length,
       }])),
     },
     pending: pending.map(row),
     approved: approved.map(row),
     rejected: rejected.map(row),
+    returned: returned.map(row),
   });
 }

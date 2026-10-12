@@ -1,3 +1,4 @@
+import { SentBackNotice } from '@/components/funding/corrections';
 import { useMemo, useState } from 'react';
 import { format } from 'date-fns';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -143,6 +144,7 @@ export default function StudentFundingCard({ student, transactions = [], loading
                           </td>
                           <td className="max-w-[220px] p-3 text-sm">
                             {txn.status === 'REJECTED' && txn.rejection_reason ? <span className="font-medium text-red-600">{txn.rejection_reason}</span> : <span className="text-gray-400">-</span>}
+                            <SentBackNotice tx={txn} email={student?.email} compact />
                           </td>
                           <td className="p-3 text-sm">
                             <ReceiptsButton tx={txn} title={`${typeLabel(txn)} · ${money(txn.amount_usd)}`} />

@@ -1,3 +1,4 @@
+import { SentBackNotice } from '@/components/funding/corrections';
 import React, { useState, useEffect } from 'react';
 import { PageTitle } from '@/components/common/PageHeader';
 import { Paged, TablePagination } from '@/components/common/TablePagination';
@@ -790,6 +791,8 @@ export default function MyFundingRequests() {
                                       </Button>
                                     ))}
                                     {transaction.resubmit_of && <div className="mt-1 text-xs text-slate-500">A corrected request, sent again</div>}
+                                    {/* Sent back by a broker admin to correct the email or MT5 (2026-10-12) */}
+                                    <SentBackNotice tx={transaction} />
                                   </TableCell>
                                   <TableCell>
                                     {/* Every payment's receipt — "View (2)" for two */}

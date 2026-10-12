@@ -7,6 +7,7 @@ import { notOnboardedFilter, newFromFinanceFilter } from "../students/onboarding
 import { theirStudents } from "../students/closedBy";
 import { countCallNeeded } from "../students/classCompletions";
 import { decidableMt5Filter } from "./bonusApprovals";
+import { returnedFilter } from "./fundingCorrections";
 import { BONUS_APPROVERS } from "../finance/funding";
 import { dueSoonFilter, uaeDay } from "../finance/balanceDue";
 
@@ -63,7 +64,7 @@ export async function getNavCounts(_req: Request, user: AuthUser): Promise<Respo
   // As the Not onboarded and Balance payments pages: the Sales role the students they closed.
   const theirs = async (filter: Record<string, any>) => (visible ? { $and: [filter, await theirStudents(user, studentsOf(visible))] } : filter);
   const unseen = (status: "approved" | "rejected") => col("payment_link_requests").countDocuments(paymentLinksUnseenFilter(status, user.id));
-  const [newStudents, dueToday, overdue, linksWaiting, linksReady, linksTurnedDown, notOnboarded, notOnboardedLate, classesToCall, bonusesWaiting, balanceDue] = await Promise.all([
+  const [newStudents, dueToday, overdue, linksWaiting, linksReady, linksTurnedDown, notOnboarded, notOnboardedLate, classesToCall, bonusesWaiting, balanceDue, sentBack] = await Promise.all([
     col("students").countDocuments(newStudentsFilter(user.id)),
     col("student_followups").countDocuments({ ...open, ...followupsDueTodayFilter(today) }),
     col("student_followups").countDocuments({ ...open, ...followupsOverdueFilter(today) }),
@@ -75,12 +76,14 @@ export async function getNavCounts(_req: Request, user: AuthUser): Promise<Respo
     countCallNeeded(ids),
     BONUS_APPROVERS.includes(user.app_role) ? col("funding_transactions").countDocuments(decidableMt5Filter()) : 0,
     col("students").countDocuments(await theirs(dueSoonFilter(uaeDay()))),
+    // Funding requests a broker admin sent back to them to correct (fundingCorrections.ts).
+    col("funding_transactions").countDocuments(returnedFilter(user.id)),
   ]);
   return json({
     today, new_students: newStudents, followups_today: dueToday, followups_overdue: overdue,
     payment_links_pending: linksWaiting, payment_links_ready: linksReady, payment_links_turned_down: linksTurnedDown,
     not_onboarded: notOnboarded, not_onboarded_late: notOnboardedLate, class_completions_open: classesToCall,
-    bonus_approvals_pending: bonusesWaiting, balance_due: balanceDue,
+    bonus_approvals_pending: bonusesWaiting, balance_due: balanceDue, funding_sent_back: sentBack,
   });
 }
 

@@ -9,11 +9,15 @@ import StatsCard from '@/components/dashboard/StatsCard';
 import { Card, CardContent, CardHeader } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { CheckCircle2, Gift, Hourglass, Landmark, Search, XCircle } from 'lucide-react';
+import { CheckCircle2, Gift, Hourglass, Landmark, Search, Undo2, XCircle } from 'lucide-react';
+import { CopyText, SendBackDialog, FIELDS } from '@/components/funding/corrections';
 import { getEffectiveUser } from '@/components/utils/ImpersonationContext';
 import { createPageUrl } from '@/utils';
 import { logAction } from '@/components/utils/AuditLogger';
 import ProcessFundingDialog from '@/components/funding/ProcessFundingDialog';
+import TagChips from '@/components/funding/TagChips';
+import { PaymentDetails } from '@/components/funding/FundingRequestForm';
+import { ReceiptsButton, methodsText } from '@/components/funding/payments';
 import { useUrlState } from '@/components/utils/urlState';
 
 /*
@@ -31,8 +35,9 @@ import { useUrlState } from '@/components/utils/urlState';
 const APPROVERS = ['broker_admin', 'super_admin'];
 const TABS = [
   { key: 'pending', label: 'Pending', icon: Hourglass, on: 'border-amber-300 bg-amber-50 text-amber-800' },
-  { key: 'approved', label: 'Approved this month', icon: CheckCircle2, on: 'border-emerald-300 bg-emerald-50 text-emerald-700' },
-  { key: 'rejected', label: 'Rejected this month', icon: XCircle, on: 'border-rose-300 bg-rose-50 text-rose-700' },
+  { key: 'approved', label: 'Approved',  icon: CheckCircle2, on: 'border-emerald-300 bg-emerald-50 text-emerald-700' },
+  { key: 'rejected', label: 'Rejected',  icon: XCircle, on: 'border-rose-300 bg-rose-50 text-rose-700' },
+  { key: 'returned', label: 'Sent back to CS', icon: Undo2, on: 'border-orange-300 bg-orange-50 text-orange-700' },
 ];
 // The decision column stays at the right edge when the table scrolls sideways.
 const STICKY_END = 'sticky right-0 shadow-[-8px_0_8px_-8px_rgba(15,23,42,0.15)]';
@@ -44,6 +49,18 @@ const TYPES = {
   BONUS: { label: 'Bonus', cls: 'bg-violet-50 text-violet-700 ring-violet-200' },
 };
 const typeOf = (t) => TYPES[t.type] || TYPES.BONUS;
+/** A small select for the filter bar. */
+function FilterSelect({ value, onChange, options }) {
+  return (
+    <select value={value} onChange={(e) => onChange(e.target.value)} className="h-8 rounded-md border border-slate-200 bg-white px-2 text-xs text-slate-700">
+      {options.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
+    </select>
+  );
+}
+const STATUS_CLS = {
+  PENDING: 'border-amber-200 bg-amber-50 text-amber-700', APPROVED: 'border-emerald-200 bg-emerald-50 text-emerald-700',
+  REJECTED: 'border-rose-200 bg-rose-50 text-rose-700', RETURNED: 'border-orange-200 bg-orange-50 text-orange-700',
+};
 const original = (t) => (t.amount_currency && t.amount_currency !== 'USD' && t.amount_original
   ? `${t.amount_currency} ${Number(t.amount_original).toLocaleString('en-US')}` : '');
 
@@ -52,15 +69,28 @@ export default function BonusApprovals() {
   const { data: currentUser } = useQuery({ queryKey: ['me-effective'], queryFn: async () => getEffectiveUser(await base44.auth.me()) });
   const allowed = APPROVERS.includes(currentUser?.app_role);
   const { data, isLoading, error } = useQuery({
-    queryKey: ['bonus-approvals'],
-    queryFn: async () => (await base44.functions.invoke('getBonusApprovals', {})).data,
+    queryKey: ['bonus-approvals', from, to],
+    queryFn: async () => (await base44.functions.invoke('getBonusApprovals', { ...(from ? { from } : {}), ...(to ? { to } : {}) })).data,
     enabled: !!currentUser && allowed,
     refetchInterval: 60_000,
   });
   const [tab, setTab] = useState('pending');
   const [q, setQ] = useState('');
   const [type, setType] = useUrlState('type', 'all');
+  // Filters and sorting, kept in the address (2026-10-12): the date range (requested — and, for Approved / Rejected,
+  // decided — UAE days), the CS, where it came from, MT5 and email there or missing, the welcome, and the order.
+  const [from, setFrom] = useUrlState('from', '');
+  const [to, setTo] = useUrlState('to', '');
+  const [csF, setCsF] = useUrlState('cs', 'all');
+  const [source, setSource] = useUrlState('source', 'all');
+  const [mt5F, setMt5F] = useUrlState('mt5', 'all');
+  const [emailF, setEmailF] = useUrlState('email', 'all');
+  const [welcomeF, setWelcomeF] = useUrlState('welcome', 'all');
+  const [sort, setSort] = useUrlState('sort', 'oldest');
+  const anyFilter = from || to || csF !== 'all' || source !== 'all' || mt5F !== 'all' || emailF !== 'all' || welcomeF !== 'all';
+  const clearFilters = () => { setFrom(''); setTo(''); setCsF('all'); setSource('all'); setMt5F('all'); setEmailF('all'); setWelcomeF('all'); };
   const [deciding, setDeciding] = useState(null);
+  const [sendingBack, setSendingBack] = useState(null);
 
   // The same as the Funding Requests page: the decision, the audit log, then the commission credit.
   const decide = useMutation({
@@ -91,11 +121,37 @@ export default function BonusApprovals() {
   });
 
   const needle = q.trim().toLowerCase();
-  const rows = useMemo(
-    () => (data?.[tab] || []).filter(t => (type === 'all' || t.type === type) && (!needle || [t.student?.full_name, t.student?.student_code, t.student?.cs, t.mt5_login, t.course, t.student_name]
-      .some(v => String(v || '').toLowerCase().includes(needle)))),
-    [data, tab, needle, type],
-  );
+  const csOptions = useMemo(() => [...new Set(['pending', 'approved', 'rejected', 'returned'].flatMap(k => (data?.[k] || []).map(t => t.student?.cs || t.primary_mentor_name)).filter(Boolean))].sort(), [data]);
+  const dayOf = (iso) => (iso ? new Date(new Date(iso).getTime() + 4 * 3_600_000).toISOString().slice(0, 10) : '');   // UAE day
+  const rows = useMemo(() => {
+    const out = (data?.[tab] || []).filter(t => {
+      if (type !== 'all' && t.type !== type) return false;
+      if (needle && ![t.student?.full_name, t.student?.student_code, t.student?.email, t.student?.cs, t.mt5_login, t.course, t.student_name, t.transaction_id, t.user_id, t.sales_close?.invoice_number, ...(t.student?.invoices || []).map(f => f.invoice_number), ...(t.student?.closed_by || []).map(c => c.name)]
+        .some(v => String(v || '').toLowerCase().includes(needle))) return false;
+      // The date range: when it was requested (Approved / Rejected are already that range's decisions, from the server).
+      if (tab === 'pending' || tab === 'returned') {
+        const d = dayOf(t.resubmitted_at || t.requested_at || t.created_date);
+        if ((from && d < from) || (to && d > to)) return false;
+      }
+      if (csF !== 'all' && (t.student?.cs || t.primary_mentor_name) !== csF) return false;
+      if (source !== 'all' && t.source !== source) return false;
+      if (mt5F !== 'all' && (mt5F === 'has') !== !!t.mt5_login) return false;
+      if (emailF !== 'all' && (emailF === 'has') !== !!t.student?.email) return false;
+      if (welcomeF !== 'all' && (welcomeF === 'sent') !== !!t.student?.onboarded) return false;
+      return true;
+    });
+    const at = (t) => String(tab === 'pending' || tab === 'returned' ? (t.resubmitted_at || t.requested_at || t.created_date || '') : (t.approved_at || ''));
+    const by = {
+      oldest: (a, b) => at(a).localeCompare(at(b)),
+      newest: (a, b) => at(b).localeCompare(at(a)),
+      amount_high: (a, b) => (Number(b.amount_usd) || 0) - (Number(a.amount_usd) || 0),
+      amount_low: (a, b) => (Number(a.amount_usd) || 0) - (Number(b.amount_usd) || 0),
+      student: (a, b) => String(a.student?.full_name || a.student_name || '').localeCompare(String(b.student?.full_name || b.student_name || '')),
+      cs: (a, b) => String(a.student?.cs || a.primary_mentor_name || '').localeCompare(String(b.student?.cs || b.primary_mentor_name || '')),
+    }[sort];
+    // Pending keeps corrected ones first whatever the order — they were waiting already.
+    return by ? [...out].sort((a, b) => (tab === 'pending' ? (b.corrected?.at ? 1 : 0) - (a.corrected?.at ? 1 : 0) : 0) || by(a, b)) : out;
+  }, [data, tab, needle, type, from, to, csF, source, mt5F, emailF, welcomeF, sort]);
 
   if (currentUser && !allowed) {
     return (
@@ -121,8 +177,8 @@ export default function BonusApprovals() {
 
         <div className="grid grid-cols-2 gap-4 md:grid-cols-4">
           <StatsCard title="Waiting for you" value={data?.counts?.pending ?? 0} icon={Hourglass} color="amber" delay={0.02} />
-          <StatsCard title="Approved this month" value={data?.counts?.approved ?? 0} icon={CheckCircle2} color="emerald" delay={0.05} />
-          <StatsCard title="Rejected this month" value={data?.counts?.rejected ?? 0} icon={XCircle} color="red" delay={0.08} />
+          <StatsCard title={from || to ? 'Approved in those dates' : 'Approved this month'} value={data?.counts?.approved ?? 0} icon={CheckCircle2} color="emerald" delay={0.05} />
+          <StatsCard title={from || to ? 'Rejected in those dates' : 'Rejected this month'} value={data?.counts?.rejected ?? 0} icon={XCircle} color="red" delay={0.08} />
           <StatsCard title="Still with finance" value={data?.counts?.with_finance ?? 0} icon={Landmark} color="blue" delay={0.11} />
         </div>
 
@@ -148,7 +204,21 @@ export default function BonusApprovals() {
             </div>
             <div className="relative w-fit">
               <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
-              <Input value={q} onChange={e => setQ(e.target.value)} placeholder="Student, code, CS, MT5, course…" className="h-9 w-72 pl-9" />
+              <Input value={q} onChange={e => setQ(e.target.value)} placeholder="Student, email, CS, MT5, invoice, seller…" className="h-9 w-72 pl-9" />
+            </div>
+            <div className="flex w-full flex-wrap items-center gap-2 text-xs">
+              <span className="text-slate-500">{tab === 'approved' || tab === 'rejected' ? 'Decided' : 'Requested'}</span>
+              <Input type="date" value={from} max={to || undefined} onChange={e => setFrom(e.target.value)} className="h-8 w-36 text-xs" aria-label="From" />
+              <span className="text-slate-400">to</span>
+              <Input type="date" value={to} min={from || undefined} onChange={e => setTo(e.target.value)} className="h-8 w-36 text-xs" aria-label="To" />
+              <FilterSelect value={csF} onChange={setCsF} options={[['all', 'All CSs'], ...csOptions.map(c => [c, c])]} />
+              <FilterSelect value={source} onChange={setSource} options={[['all', 'Any source'], ['sales_close', 'Sales close'], ['course_upgrade', 'Course upgrade'], ['request', 'Request']]} />
+              <FilterSelect value={mt5F} onChange={setMt5F} options={[['all', 'MT5: any'], ['has', 'MT5 given'], ['none', 'No MT5 login']]} />
+              <FilterSelect value={emailF} onChange={setEmailF} options={[['all', 'Email: any'], ['has', 'Has an email'], ['none', 'No email']]} />
+              <FilterSelect value={welcomeF} onChange={setWelcomeF} options={[['all', 'Welcome: any'], ['sent', 'Welcome sent'], ['not', 'Welcome not sent']]} />
+              <FilterSelect value={sort} onChange={setSort} options={[['oldest', 'Oldest first'], ['newest', 'Newest first'], ['amount_high', 'Amount: high → low'], ['amount_low', 'Amount: low → high'], ['student', 'Student A → Z'], ['cs', 'CS A → Z']]} />
+              {anyFilter && <button type="button" onClick={clearFilters} className="text-brand-navy underline">Clear filters</button>}
+              <span className="ml-auto text-slate-400">{rows.length} shown{!from && !to && (tab === 'approved' || tab === 'rejected') ? ' · this month — pick dates for earlier' : ''}</span>
             </div>
           </CardHeader>
           <CardContent className="p-0">
@@ -159,57 +229,95 @@ export default function BonusApprovals() {
             ) : rows.length === 0 ? (
               <p className="py-12 text-center text-sm text-slate-400">
                 {(data?.[tab] || []).length ? 'Nothing matches the search.'
-                  : tab === 'pending' ? 'Nothing is waiting for approval.' : tab === 'approved' ? 'Nothing approved this month yet.' : 'Nothing rejected this month.'}
+                  : tab === 'pending' ? 'Nothing is waiting for approval.' : tab === 'approved' ? 'Nothing approved this month yet.' : tab === 'returned' ? 'Nothing is with a CS for correction.' : 'Nothing rejected this month.'}
               </p>
             ) : (
-              <Paged items={rows} resetKey={`${tab}|${needle}|${type}`}>
+              <Paged items={rows} resetKey={`${tab}|${needle}|${type}|${from}|${to}|${csF}|${source}|${mt5F}|${emailF}|${welcomeF}|${sort}`}>
                 {(pageRows, bar) => (<>
                   <div className="overflow-x-auto">
                     <table className="w-full text-sm">
                       <thead>
                         <tr className="border-b bg-slate-50/80">
-                          <TH>Type</TH><TH>Student</TH><TH>CS</TH><TH>Amount · MT5</TH><TH>From</TH><TH>Welcome</TH>
+                          {/* The Funding Requests page's columns (but Added by), and what matters for an MT5 credit (2026-10-12) */}
+                          <TH>Requested</TH><TH>Type</TH><TH>Status</TH><TH>Student</TH><TH>CS</TH><TH>Meeting by</TH><TH>MT5 login</TH>
+                          <TH>Amount</TH><TH>Payment</TH><TH>Product</TH><TH>LMS courses now</TH><TH>Finance invoice</TH><TH>From · sold by</TH>
+                          <TH>User ID</TH><TH>Txn ID</TH><TH>Receipt</TH><TH>Welcome</TH>
                           <th className={`${STICKY_END} whitespace-nowrap bg-slate-50 px-3 py-3 text-left text-[11px] font-semibold uppercase tracking-wider text-slate-500`}>
-                            {tab === 'pending' ? '' : 'Decided'}
+                            {tab === 'pending' ? '' : tab === 'returned' ? 'Sent back' : 'Decided'}
                           </th>
                         </tr>
                       </thead>
                       <tbody>
                         {pageRows.map(t => (
                           <tr key={t.id} className="group border-b border-slate-100 align-top hover:bg-slate-50">
+                            <td className="whitespace-nowrap px-3 py-2.5 text-xs text-slate-600">
+                              {when(t.resubmitted_at || t.requested_at || t.created_date)}
+                              {t.resubmit_count ? <div className="text-[11px] text-slate-400">Submitted again{t.resubmit_count > 1 ? ` ×${t.resubmit_count}` : ''}</div> : null}
+                            </td>
                             <td className="whitespace-nowrap px-3 py-2.5">
                               <span className={`inline-block rounded-full px-2 py-0.5 text-[11px] font-semibold ring-1 ring-inset ${typeOf(t).cls}`}>{typeOf(t).label}</span>
                             </td>
-                            <td className="min-w-[180px] px-3 py-2.5">
+                            <td className="whitespace-nowrap px-3 py-2.5">
+                              <span className={`inline-block rounded-full border px-2 py-0.5 text-[11px] font-semibold ${STATUS_CLS[t.returned?.at ? 'RETURNED' : t.status] || STATUS_CLS.PENDING}`}>
+                                {t.returned?.at ? 'SENT BACK' : t.status}
+                              </span>
+                              {t.finance_approval?.decision === 'approved' && <div className="mt-0.5 text-[11px] text-slate-400">Finance approved</div>}
+                            </td>
+                            <td className="min-w-[200px] px-3 py-2.5">
                               {t.student
                                 ? <Link to={`${createPageUrl('StudentDetail')}?id=${t.student.id}`} className="font-medium text-slate-900 hover:text-blue-600">{t.student.full_name || t.student_name || 'Student'}</Link>
                                 : <span className="font-medium text-slate-900">{t.student_name || 'Student'}</span>}
-                              <div className="font-mono text-xs text-slate-400">{t.student?.student_code || t.student_code}</div>
-                              {t.course && <div className="mt-0.5 max-w-[240px] text-xs text-slate-500">{t.course}{t.sales_close?.invoice_number ? ` · ${t.sales_close.invoice_number}` : ''}</div>}
+                              <div className="font-mono text-xs text-slate-400">
+                                {t.student?.student_code || t.student_code}
+                                {t.student?.level && <span className="ml-1.5 font-sans">· {t.student.level === 'LEVEL_2' ? 'Level 2' : 'Level 1'}</span>}
+                              </div>
+                              {/* Their email — to check the MT5 account is theirs before crediting (2026-10-12) */}
+                              <CopyText text={t.student?.email} className="mt-0.5" />
+                              {t.corrected?.at && <div className="mt-1 text-[11px] font-medium text-emerald-700">Corrected by {t.corrected.by_name}{t.corrected.changed?.length ? ` — ${t.corrected.changed.join(', ')}` : ''}{t.corrected.note ? ` (“${t.corrected.note}”)` : ''}</div>}
                             </td>
                             <td className="whitespace-nowrap px-3 py-2.5">
                               <div className="text-slate-700">{t.student?.cs || t.primary_mentor_name || <span className="text-slate-400">No CS</span>}</div>
                               {t.student?.team && <div className="text-xs text-slate-400">{t.student.team}</div>}
                             </td>
+                            <td className="whitespace-nowrap px-3 py-2.5 text-sm text-slate-600">{t.meeting_mentor_name || '—'}</td>
+                            <td className="whitespace-nowrap px-3 py-2.5 font-mono text-sm text-slate-700">{t.mt5_login || <span className="font-sans text-xs text-rose-600">No MT5 login</span>}</td>
                             <td className="whitespace-nowrap px-3 py-2.5">
                               <div className="font-semibold text-slate-800">{usd(t)}</div>
                               {original(t) && <div className="text-xs text-slate-400">{original(t)}</div>}
-                              <div className="mt-0.5 font-mono text-xs text-slate-600">{t.mt5_login ? `MT5 ${t.mt5_login}` : 'No MT5 login'}</div>
+                              <PaymentDetails tx={t} />
+                            </td>
+                            <td className="whitespace-nowrap px-3 py-2.5 text-sm text-slate-600">{methodsText(t) || '—'}</td>
+                            <td className="min-w-[140px] px-3 py-2.5">
+                              {t.tags?.length ? <TagChips tags={t.tags} /> : null}
+                              {t.course && (!t.tags?.length || !t.tags.includes(t.course)) && <div className="mt-0.5 max-w-[220px] text-xs text-slate-500">{t.course}</div>}
+                              {!t.tags?.length && !t.course && <span className="text-slate-300">—</span>}
+                            </td>
+                            <td className="min-w-[180px] px-3 py-2.5 text-xs">
+                              {t.student?.lms_courses?.length ? t.student.lms_courses.map((c) => (
+                                <div key={c.title} className="text-slate-700">{c.title}<span className="text-slate-400"> · {c.status === 'active' ? `${Math.round(c.progress)}%` : c.status}</span></div>
+                              )) : <span className="text-slate-400">Not on an LMS course</span>}
+                            </td>
+                            <td className="min-w-[160px] px-3 py-2.5 text-xs">
+                              {t.sales_close?.invoice_number && <div className="font-mono font-medium text-slate-800">{t.sales_close.invoice_number}</div>}
+                              {(t.student?.invoices || []).filter(f => f.invoice_number !== t.sales_close?.invoice_number).map((f) => (
+                                <div key={f.invoice_number} className="text-slate-600"><span className="font-mono">{f.invoice_number}</span> · {f.currency} {Number(f.fee).toLocaleString('en-US')}{f.balance > 0 ? <span className="text-amber-700"> · owes {Number(f.balance).toLocaleString('en-US')}</span> : ''}</div>
+                              ))}
+                              {!t.sales_close?.invoice_number && !t.student?.invoices?.length && <span className="text-slate-300">—</span>}
                             </td>
                             <td className="whitespace-nowrap px-3 py-2.5">
                               <span className={`inline-block rounded-full px-2 py-0.5 text-[11px] font-semibold ${t.source === 'sales_close' ? 'bg-violet-50 text-violet-700' : t.source === 'course_upgrade' ? 'bg-amber-50 text-amber-700' : 'bg-sky-50 text-sky-700'}`}>
                                 {t.source === 'sales_close' ? 'Sales close' : t.source === 'course_upgrade' ? 'Course upgrade' : `${typeOf(t).label} request`}
                               </span>
-                              {t.source === 'course_upgrade' && <div className="mt-0.5 text-[11px] text-slate-400">Payment approved by finance</div>}
-                              {t.source === 'request' && t.finance_approval?.decision === 'approved' && (
-                                <div className="mt-0.5 text-[11px] text-slate-400">Finance approved</div>
+                              {/* Who sold it — for a sales-close bonus (the student's closer in the sales CRM) */}
+                              {t.source === 'sales_close' && t.student?.closed_by?.length > 0 && (
+                                <div className="mt-0.5 text-xs text-slate-700">Sold by {t.student.closed_by.map(c => c.name).join(', ')}</div>
                               )}
-                              {t.resubmit_count ? <div className="mt-0.5 text-[11px] text-slate-400">Submitted again{t.resubmit_count > 1 ? ` ×${t.resubmit_count}` : ''}</div> : null}
-                              <div className="mt-0.5 text-xs text-slate-500">
-                                {when(t.resubmitted_at || t.requested_at || t.created_date)}
-                                {(t.resubmitted_by_name || t.requested_by_name) && <span className="text-slate-400"> · {t.resubmitted_by_name || t.requested_by_name}</span>}
-                              </div>
+                              {t.source === 'course_upgrade' && <div className="mt-0.5 text-[11px] text-slate-400">Payment approved by finance</div>}
+                              {(t.resubmitted_by_name || t.requested_by_name) && <div className="mt-0.5 text-[11px] text-slate-400">{t.resubmitted_by_name || t.requested_by_name}</div>}
                             </td>
+                            <td className="whitespace-nowrap px-3 py-2.5 text-sm text-slate-600">{t.user_id || '—'}</td>
+                            <td className="whitespace-nowrap px-3 py-2.5 font-mono text-sm text-slate-600">{t.transaction_id || '—'}</td>
+                            <td className="whitespace-nowrap px-3 py-2.5 text-sm"><ReceiptsButton tx={t} title={t.student?.full_name || t.student_name} /></td>
                             <td className="whitespace-nowrap px-3 py-2.5 text-xs">
                               {t.student?.onboarded
                                 ? <span className="text-emerald-700">Sent {when(t.student.onboarded_at)}</span>
@@ -217,7 +325,16 @@ export default function BonusApprovals() {
                             </td>
                             <td className={`${STICKY_END} whitespace-nowrap bg-white px-3 py-2.5 group-hover:bg-slate-50`}>
                               {tab === 'pending' ? (
-                                <Button size="sm" onClick={() => setDeciding(t)}>Approve / Reject</Button>
+                                <div className="flex flex-col items-stretch gap-1.5">
+                                  <Button size="sm" onClick={() => setDeciding(t)}>Approve / Reject</Button>
+                                  <Button size="sm" variant="outline" onClick={() => setSendingBack(t)}><Undo2 className="mr-1.5 h-3.5 w-3.5" />Send back to CS</Button>
+                                </div>
+                              ) : tab === 'returned' ? (
+                                <div className="max-w-[240px] whitespace-normal text-xs">
+                                  <div className="text-orange-700">Sent back {when(t.returned?.at)} by {t.returned?.by_name}</div>
+                                  <div className="text-slate-500">{(t.returned?.fields || []).map(f => FIELDS[f] || f).join(', ')}{t.returned?.note ? ` — “${t.returned.note}”` : ''}</div>
+                                  <div className="text-slate-400">Waiting for the CS to correct it</div>
+                                </div>
                               ) : (
                                 <div className="text-xs">
                                   <div className="text-slate-600">{when(t.approved_at)}</div>
@@ -240,6 +357,7 @@ export default function BonusApprovals() {
         </Card>
       </div>
 
+      {sendingBack && <SendBackDialog tx={sendingBack} onClose={() => setSendingBack(null)} />}
       <ProcessFundingDialog
         transaction={deciding}
         currentUser={currentUser}

@@ -122,6 +122,46 @@ check("a broker admin: what waits for them — the bonus and the deposit", r.sta
 r = await call("POST", "/api/functions/getNavCounts", {}, tCs);
 check("a CS: none", r.status === 200 && r.body.bonus_approvals_pending === 0);
 
+step("A date range (2026-10-12)");
+r = await call("POST", "/api/functions/getBonusApprovals", { from: "2000-01-01" }, tBroker);
+check("from long ago: last month's approved one too", r.body.approved?.some((t: any) => t.id === String(approvedLastMonth._id)), JSON.stringify(r.body.counts));
+r = await call("POST", "/api/functions/getBonusApprovals", { from: "2000-01-01", to: "2000-12-31" }, tBroker);
+check("a range with nothing decided in it: none, pending ones still listed", r.body.approved?.length === 0 && r.body.rejected?.length === 0 && r.body.pending?.length > 0);
+
+step("Sent back to the CS to correct (2026-10-12)");
+await db.collection("students").updateOne({ _id: s1._id }, { $set: { email: "wrong@e2e-bonus.test" } });
+r = await list(tBroker);
+check("each row shows the student's email", r.body.pending.find((t: any) => t.id === String(deposit._id))?.student?.email === "wrong@e2e-bonus.test");
+r = await call("POST", "/api/functions/sendFundingBack", { id: String(deposit._id), fields: ["email", "mt5"], note: "MT5 is under another email" }, tCs);
+check("a CS can't send one back: 403", r.status === 403, `${r.status}`);
+r = await call("POST", "/api/functions/sendFundingBack", { id: String(deposit._id), fields: [] }, tBroker);
+check("nothing said wrong: refused", r.status === 400);
+r = await call("POST", "/api/functions/sendFundingBack", { id: String(withFinance._id), fields: ["email"] }, tBroker);
+check("one finance still has: refused", r.status === 409, `${r.status}`);
+r = await call("POST", "/api/functions/sendFundingBack", { id: String(deposit._id), fields: ["email", "mt5"], note: "MT5 is under another email" }, tBroker);
+check("a broker admin sends the deposit back: still PENDING, marked", r.status === 200 && (await db.collection("funding_transactions").findOne({ _id: deposit._id }))?.status === "PENDING", JSON.stringify(r.body));
+r = await list(tBroker);
+check("…off their list, on Sent back", !r.body.pending.some((t: any) => t.id === String(deposit._id)) && r.body.returned?.[0]?.id === String(deposit._id) && r.body.counts?.returned === 1);
+r = await call("POST", "/api/functions/getNavCounts", {}, tBroker);
+check("…their count goes down", r.body.bonus_approvals_pending === 1, JSON.stringify(r.body));
+r = await call("POST", "/api/functions/getNavCounts", {}, tCs);
+check("…the CS's goes up, and they're told", r.body.funding_sent_back === 1 && (await db.collection("notifications").countDocuments({ user_id: String(cs._id), type: "funding_returned" })) === 1, JSON.stringify(r.body));
+r = await call("POST", "/api/functions/sendFundingBack", { id: String(deposit._id), fields: ["email"] }, tBroker);
+check("sent back twice: refused", r.status === 409);
+r = await call("POST", "/api/functions/correctFundingRequest", { id: String(deposit._id), email: "not-an-email", mt5Login: "7002002" }, tCs);
+check("a bad email: refused", r.status === 400);
+r = await call("POST", "/api/functions/correctFundingRequest", { id: String(deposit._id), email: "right@e2e-bonus.test", mt5Login: "7002002", note: "Fixed both" }, tCs);
+const fixed: any = await db.collection("funding_transactions").findOne({ _id: deposit._id });
+check("the CS corrects it: the student's email and the request's MT5", r.status === 200 && (await db.collection("students").findOne({ _id: s1._id }))?.email === "right@e2e-bonus.test"
+  && fixed.mt5_login === "7002002" && !fixed.returned && fixed.corrected?.by_name === cs.full_name && fixed.corrections?.length === 2, JSON.stringify(r.body));
+check("…not sent to finance again", !fixed.finance_approval);
+r = await list(tBroker);
+check("…straight back on MT5 Approvals, first, marked corrected", r.body.pending[0]?.id === String(deposit._id) && r.body.pending[0]?.corrected?.changed?.length === 2 && r.body.counts?.returned === 0, JSON.stringify(r.body.pending.map((t: any) => t.id)));
+check("…the approvers told", (await db.collection("notifications").countDocuments({ user_id: String(broker._id), type: "funding_corrected" })) === 1);
+check("…the history has both steps", (await db.collection("student_history").countDocuments({ student_id: String(s1._id), type: "funding_returned" })) === 2);
+r = await call("POST", "/api/functions/correctFundingRequest", { id: String(deposit._id), note: "again" }, tCs);
+check("correcting one not sent back: refused", r.status === 409);
+
 console.log(`\n${pass}/${pass + fail} checks passed`);
 await client.close();
 process.exit(fail ? 1 : 0);

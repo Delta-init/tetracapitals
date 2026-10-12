@@ -29,6 +29,7 @@ import { getTransferPeople, transferStudent } from "./studentTransfer";
 import { getDashboardTotals } from "./dashboardTotals";
 import { getLmsExams, getStudentLmsExams } from "./lmsExams";
 import { previewCourseLms } from "./lmsPreview";
+import { sendFundingBack, correctFundingRequest } from "./fundingCorrections";
 import { getMoneyReport, getFundingRequestReport, getBonusReport, getReportFilters } from "./reports";
 import { setEnrolment, setStudentPriority, getLmsEnrolment, syncLmsEnrolmentNow } from "./studentEnrolment";
 import { updateStudentDetails } from "./studentDetails";
@@ -111,6 +112,8 @@ const AUTHED: Record<string, AuthedHandler> = {
   getLmsExams,
   getStudentLmsExams,
   previewCourseLms,
+  sendFundingBack,
+  correctFundingRequest,
   getMoneyReport,
   getFundingRequestReport,
   getBonusReport,
