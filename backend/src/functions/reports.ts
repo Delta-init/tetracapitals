@@ -232,10 +232,10 @@ export async function getBonusReport(req: Request, user: AuthUser): Promise<Resp
   const ctx = await reportCtx(await req.json().catch(() => ({})), user);
   if (ctx instanceof Response) return ctx;
   const txs = (await col("funding_transactions")
-    .find({ type: "BONUS" }, { projection: { status: 1, amount_usd: 1, initiating_mentor_id: 1, primary_mentor_id: 1, primary_mentor_name: 1, requested_at: 1, created_date: 1, finance_approval: 1, bonus_credit: 1 } })
+    .find({ type: "BONUS" }, { projection: { status: 1, amount_usd: 1, initiating_mentor_id: 1, primary_mentor_id: 1, primary_mentor_name: 1, requested_at: 1, created_date: 1, finance_approval: 1, bonus_credit: 1, amount_aed: 1, "course_payment.paid_today_aed": 1 } })
     .toArray()) as any[];
   const blank = () => ({
-    count: 0, usd: 0, needs_call: 0, needs_call_usd: 0, with_finance: 0, with_finance_usd: 0,
+    count: 0, usd: 0, approved_collected_aed: 0, needs_call: 0, needs_call_usd: 0, with_finance: 0, with_finance_usd: 0,
     waiting_broker: 0, waiting_broker_usd: 0, approved: 0, approved_usd: 0, rejected: 0, rejected_usd: 0,
   });
   const g = grouper(blank);
@@ -246,7 +246,12 @@ export async function getBonusReport(req: Request, user: AuthUser): Promise<Resp
     if (!counts(ctx, p)) continue;
     const stage = t.status === "APPROVED" ? "approved" : t.status === "REJECTED" ? "rejected" : bonusStageOf(t);
     const usd = usdOf(t);
-    g.add(p, at, { count: 1, usd, [stage]: 1, [`${stage}_usd`]: usd } as any);
+    // Approved: what the student paid, in AED (the user, 2026-10-12) — the course payment's paid today, else the
+    // request's AED, else its USD at 3.67.
+    const collected = stage !== "approved" ? 0
+      : Number(t.course_payment?.paid_today_aed) > 0 ? Number(t.course_payment.paid_today_aed)
+      : Number(t.amount_aed) > 0 ? Number(t.amount_aed) : usd * 3.67;
+    g.add(p, at, { count: 1, usd, [stage]: 1, [`${stage}_usd`]: usd, ...(collected ? { approved_collected_aed: collected } : {}) } as any);
   }
   // Promised at a sales close and not sent to be credited yet — for the student's CS now.
   const students = await notSentOf({});

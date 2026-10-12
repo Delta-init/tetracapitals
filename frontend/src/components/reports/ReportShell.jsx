@@ -158,7 +158,7 @@ export default function ReportShell({ title, description, fn, body = {}, cards, 
               </p>
             ) : d && (
               <>
-                <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+                <div className={`grid gap-4 sm:grid-cols-2 ${cards(d).length > 4 ? 'lg:grid-cols-3 xl:grid-cols-5' : 'lg:grid-cols-4'}`}>
                   {cards(d).map(c => (
                     <div key={c.label} className={`rounded-2xl border p-4 shadow-soft ${CARD_TONE[c.tone] || 'border-slate-200/70 bg-white'}`}>
                       <p className="text-[13px] font-medium text-slate-500">{c.label}</p>
