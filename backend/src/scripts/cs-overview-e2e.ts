@@ -4,7 +4,8 @@
  *   Case 1  happy path   each CS's students (Common ones too), deposits (by who initiated, else the student's CS),
  *                        commission credited (pool rows aside), today's and overdue follow-ups, instalments due in
  *                        7 days and overdue, balances per currency, bonuses waiting, not onboarded (6h+ late)
- *   Case 2  edge         the period bounds deposits and commission only; a closed follow-up, a pending deposit, a
+ *                        course upgrades (by who started them, else the student's CS) and the AED approved on them
+ *   Case 2  edge         the period bounds deposits, commission and upgrades only; a closed follow-up, a pending deposit, a
  *                        paid fee, a due date 20 days off; one CS's page with the lists behind the figures
  *   Case 3  errors       a date that is not one, from after to, nobody by that id
  *   Case 4  permission   no secret, a wrong one
@@ -79,6 +80,19 @@ await db.collection("commission_credits").insertMany([
   { recipient_id: id(cs1), commission_usd: 999, requested_at: iso(2), is_pool: true, status: "pooled" },
   { recipient_id: id(cs2), commission_usd: 30, requested_at: iso(2), status: "accrued" },
 ]);
+const upg = (student: { _id: ObjectId }, created_at: string, extra: Record<string, unknown> = {}) =>
+  ({ _id: new ObjectId(), student_id: String(student._id), course: "CSE", plan: "full", status: "open", created_at, quote: { dueAed: 5000 }, ...extra });
+const u1 = upg(s3, iso(4), { created_by: id(cs1), created_by_name: "Cee One" });           // Cee One started it on Cee Two's student
+const u2 = upg(s2, "2026-09-01T10:00:00.000Z");                                            // no starter: the student's CS (Cee One); before the period
+const u3 = upg(s1, iso(1), { created_by: id(cs2), status: "cancelled" });                  // cancelled: not counted
+const u4 = upg(s4, iso(5), { created_by: id(cs2) });                                       // Cee Two, nothing paid yet
+await db.collection("course_upgrades").insertMany([u1, u2, u3, u4]);
+await db.collection("course_payments").insertMany([
+  { upgrade_id: String(u1._id), amount_aed: 2000, approved_amount_aed: 2000, status: "approved", decided_at: iso(2) },
+  { upgrade_id: String(u1._id), amount_aed: 1000, status: "pending", recorded_at: iso(1) },                 // not approved yet
+  { upgrade_id: String(u2._id), amount_aed: 1500, status: "approved", decided_at: iso(3) },                 // approved in the period on an older upgrade
+  { upgrade_id: String(u2._id), amount_aed: 700, status: "approved", decided_at: "2026-09-02T10:00:00.000Z" }, // before the period
+]);
 const period = `from=${encodeURIComponent(iso(24))}&to=${encodeURIComponent(new Date(nowMs + 3_600_000).toISOString())}`;
 
 step("Case 1 — happy path: every CS's figures");
@@ -101,11 +115,21 @@ check("bonus: Cee One 1 client $500 waiting for a broker admin; Cee Two 1 client
   a?.bonus?.clients === 1 && a.bonus.usd === 500 && a.bonus.waitingBroker === 1 && b?.bonus?.clients === 1 && b.bonus.usd === 250 && b.bonus.needsCall === 1, show([a?.bonus, b?.bonus]));
 check("not onboarded: Emre 7 hours (late) for Cee One, Divya 1 hour for Cee Two", a?.notOnboarded === 1 && a.notOnboardedLate === 1 && b?.notOnboarded === 1 && b.notOnboardedLate === 0,
   show([a?.notOnboarded, a?.notOnboardedLate, b?.notOnboarded, b?.notOnboardedLate]));
+check("course upgrades: Cee One started 1 in the period (on Cee Two's student) and finance approved AED 3,500 in 2 payments; Cee Two 1, nothing paid; a cancelled one not counted",
+  a?.upgrades?.count === 1 && a.upgrades.paidAed === 3500 && a.upgrades.payments === 2 && b?.upgrades?.count === 1 && b.upgrades.paidAed === 0, show([a?.upgrades, b?.upgrades]));
+const t = r.body?.data?.totals;
+check("the team's totals count each student once (Asha, shared with Cee Common, once): 5 students, $1,400, $80, 2 upgrades AED 3,500",
+  t?.students === 5 && t.deposits.usd === 1400 && t.commissionUsd === 80 && t.upgrades.count === 2 && t.upgrades.paidAed === 3500, show(t));
+check("…and now: balance AED 4,000 + USD 500 over 3 students, 1 follow-up today + 1 overdue, bonus 2 clients $750, 2 not onboarded (1 late)",
+  t?.balance?.students === 3 && t.balance.amount.AED === 4000 && t.balance.amount.USD === 500 && t.followupsToday === 1 && t.followupsOverdue === 1
+  && t.bonus.clients === 2 && t.bonus.usd === 750 && t.notOnboarded === 2 && t.notOnboardedLate === 1, show(t));
+check("no team row among the CSs", !(r.body?.data?.rows ?? []).some((x: any) => x.id === "*"));
 
 step("Case 2 — edges and one CS's page");
 r = await get("/cs-overview");
 const all = (r.body?.data?.rows ?? []).find((x: any) => x.id === id(cs1));
 check("no period: all time — deposits $2,300 and commission $70; the rest the same", all?.deposits?.usd === 2300 && all.commissionUsd === 70 && all.students === 3, show(all));
+check("no period: upgrades all time — 2 started, AED 4,200 approved", all?.upgrades?.count === 2 && all.upgrades.paidAed === 4200, show(all?.upgrades));
 r = await get(`/cs-overview/${id(cs1)}?${period}`);
 const d = r.body?.data;
 check("Cee One's page: the same figures", r.status === 200 && d?.summary?.deposits?.usd === 1400 && d.summary.students === 3 && d.person.name === "Cee One", show(d?.summary));
@@ -117,6 +141,11 @@ check("…bonus waiting: Asha $500", d?.bonus?.length === 1 && d.bonus[0].studen
 check("…not onboarded: Emre, late", d?.notOnboarded?.length === 1 && d.notOnboarded[0].student === "Emre" && d.notOnboarded[0].late === true, show(d?.notOnboarded));
 check("…deposits in the period: Chen $1,000 and Bilal $400", d?.deposits?.length === 2 && d.deposits.reduce((n: number, x: any) => n + x.usd, 0) === 1400, show(d?.deposits));
 check("…commission in the period: $50 on Chen", d?.commission?.length === 1 && d.commission[0].usd === 50 && d.commission[0].student === "Chen", show(d?.commission));
+check("…upgrades started or paid on in the period: Chen (AED 2,000 paid) and Bilal's older one (AED 1,500)", d?.upgrades?.length === 2
+  && d.upgrades.some((u: any) => u.student === "Chen" && u.paidAed === 2000 && u.startedBy === "Cee One") && d.upgrades.some((u: any) => u.student === "Bilal" && u.paidAed === 1500)
+  && d.summary.upgrades.count === 1, show(d?.upgrades));
+r = await get(`/cs-overview/${id(cs2)}?${period}`);
+check("Cee Two's page: only Divya's upgrade, not the one Cee One started on Chen", r.body?.data?.upgrades?.length === 1 && r.body.data.upgrades[0].student === "Divya", show(r.body?.data?.upgrades));
 
 step("Case 3 — errors");
 check("a date that is not one: 400", (await get("/cs-overview?from=soon")).status === 400);
