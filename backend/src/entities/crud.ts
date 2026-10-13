@@ -333,6 +333,12 @@ export async function updateEntity(req: Request, entityName: string, id: string)
   const doc = await col(ctx.cfg.collection).findOne({ _id: oid });
   if (!doc) return notFound();
   await recordHistory(history);
+  // Approved: its commission, here on the server whichever page or tool approved it (the user, 2026-10-13 — approvals
+  // that never asked for it left CSs on $0). Before answering, so the page's own call after finds it done; once only.
+  if (entityName === "FundingTransaction" && (doc as any).status === "APPROVED") {
+    try { await (await import("../functions/creditCommission")).creditCommissionFor(String(oid)); }
+    catch (err) { console.error("[commission] after approval", err); }
+  }
   // A course paid through a Bonus request, just approved: its LMS modules open as far as it is paid (courses/upgradeLms.ts).
   const paidCourse = entityName === "FundingTransaction" && (doc as any).type === "BONUS" && (doc as any).status === "APPROVED" && (doc as any).course_payment?.product;
   if (paidCourse) {
