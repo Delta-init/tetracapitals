@@ -31,8 +31,9 @@ import { useFinanceLink, WithAccountsBadge, FinanceApprovalNote } from "../compo
 import { toast } from "sonner";
 import { format } from "date-fns";
 import { logAction } from "../components/utils/AuditLogger";
-import { PaymentDetails } from "../components/funding/FundingRequestForm";
-import { ReceiptsButton, methodsOf, methodsText } from "../components/funding/payments";
+import { methodsOf, methodsText } from "../components/funding/payments";
+import { AmountCell, PaidCell, InvoiceCell, SourceCell, studentInfoOf, sourceOf, bonusUsdOf, receivedOf, paidLines, sourceLabel } from "../components/funding/mt5Cells";
+import { CopyText } from "../components/funding/corrections";
 
 export default function FundingRequests() {
   const [currentUser, setCurrentUser] = useState(null);
@@ -479,11 +480,14 @@ export default function FundingRequests() {
     };
 
     const csvContent = [
-      ['Requested Date', 'Type', 'Status', 'Student Name', 'Student Email', 'Student Code', 'CS', 'Added By', 'Meeting Conducted By', 'MT5 Login', 'Amount USD', 'Payment Method', 'Tags', 'User ID', 'Transaction ID', 'Approved By', 'Approved Date', 'Notes'].join(','),
+      ['Requested Date', 'Type', 'Status', 'Student Name', 'Student Email', 'Student Code', 'CS', 'Added By', 'Meeting Conducted By', 'MT5 Login', 'Amount to credit USD', 'Paid by the student', 'Payment Method', 'Tags', 'Finance invoice', 'From', 'Transaction ID', 'Approved By', 'Approved Date', 'Notes'].join(','),
       ...filteredTransactions.map(t => {
         const student = students.find(s => s.id === t.student_id);
         // Tags are stored as a string array; join with "; " so they fit in one CSV cell.
         const tagsStr = Array.isArray(t.tags) ? t.tags.join('; ') : '';
+        const row = { ...t, student: studentInfoOf(student), source: sourceOf(t) };
+        const got = receivedOf(row);
+        const paidText = got ? `Received ${got.received}${got.method ? ` · ${got.method}` : ''}${got.balance ? ` · balance ${got.balance}` : ''}` : paidLines(row).map(l => (l.collected ? `Collected by counsellor ${l.collected}` : `Paid ${l.paid}`)).join('; ');
         return [
           escapeCSV(t.requested_at ? format(new Date(t.requested_at), 'yyyy-MM-dd HH:mm') : ''),
           escapeCSV(t.type || ''),
@@ -495,10 +499,12 @@ export default function FundingRequests() {
           escapeCSV(t.initiating_mentor_name || t.requested_by_name || ''),
           escapeCSV(t.meeting_mentor_name || ''),
           escapeCSV(t.mt5_login || ''),
-          escapeCSV(t.amount_usd?.toFixed(2) || '0.00'),
+          escapeCSV(bonusUsdOf(row).toFixed(2)),
+          escapeCSV(paidText),
           escapeCSV(methodsText(t)),
           escapeCSV(tagsStr),
-          escapeCSV(t.user_id || ''),
+          escapeCSV([t.sales_close?.invoice_number, ...(row.student?.invoices || []).map(f => f.invoice_number)].filter(Boolean).filter((v, i, a) => a.indexOf(v) === i).join(' ')),
+          escapeCSV(sourceLabel(row)),
           escapeCSV(t.transaction_id || ''),
           escapeCSV(t.approved_by_name || ''),
           escapeCSV(t.approved_at ? format(new Date(t.approved_at), 'yyyy-MM-dd HH:mm') : ''),
@@ -785,19 +791,16 @@ export default function FundingRequests() {
                     <TableHead className="font-semibold">Type</TableHead>
                     <TableHead className="font-semibold">Status</TableHead>
                     <TableHead className="font-semibold">Student</TableHead>
-                    <TableHead className="font-semibold">Email</TableHead>
-                    <TableHead className="font-semibold">Code</TableHead>
-                    <TableHead className="font-semibold">Level</TableHead>
                     <TableHead className="font-semibold">CS</TableHead>
                     <TableHead className="font-semibold">Added By</TableHead>
                     <TableHead className="font-semibold">Meeting By</TableHead>
                     <TableHead className="font-semibold">MT5 Login</TableHead>
-                    <TableHead className="font-semibold">Amount</TableHead>
-                    <TableHead className="font-semibold">Payment</TableHead>
+                    <TableHead className="font-semibold">Amount to credit</TableHead>
+                    <TableHead className="font-semibold">Paid by the student</TableHead>
                     <TableHead className="font-semibold">Product</TableHead>
-                    <TableHead className="font-semibold">User ID</TableHead>
+                    <TableHead className="font-semibold">Finance invoice</TableHead>
+                    <TableHead className="font-semibold">From</TableHead>
                     <TableHead className="font-semibold">Txn ID</TableHead>
-                    <TableHead className="font-semibold">Receipt</TableHead>
                     <TableHead className="font-semibold">Approved By</TableHead>
                     <TableHead className="font-semibold">Rejection Reason</TableHead>
                     <TableHead className="font-semibold text-right">Actions</TableHead>
@@ -806,14 +809,16 @@ export default function FundingRequests() {
                 <TableBody>
                   {filteredTransactions.length === 0 ? (
                     <TableRow>
-                      <TableCell colSpan={['super_admin', 'broker_admin'].includes(currentUser.app_role) ? 20 : 19} className="text-center py-8 text-gray-500">
+                      <TableCell colSpan={['super_admin', 'broker_admin'].includes(currentUser.app_role) ? 17 : 16} className="text-center py-8 text-gray-500">
                         No funding requests found
                       </TableCell>
                     </TableRow>
                   ) : (
                     pageTransactions.map((transaction) => {
                       const student = students.find(s => s.id === transaction.student_id);
-                      
+                      // As MT5 Approvals' rows (components/funding/mt5Cells.jsx): the student and where it came from.
+                      const row = { ...transaction, student: studentInfoOf(student), source: sourceOf(transaction) };
+
                       return (
                       <TableRow key={transaction.id} className="hover:bg-gray-50 transition-colors">
                         {['super_admin', 'broker_admin'].includes(currentUser.app_role) && (
@@ -860,25 +865,18 @@ export default function FundingRequests() {
                           )}
                           <FinanceApprovalNote transaction={transaction} />
                         </TableCell>
-                        <TableCell className="font-medium">{transaction.student_name}</TableCell>
-                        <TableCell className="text-sm">
-                          {student?.email || '-'}
+                        <TableCell className="min-w-[200px]">
+                          <div className="font-medium text-slate-900">{transaction.student_name}</div>
+                          <div className="font-mono text-xs text-slate-400">
+                            {transaction.student_code}
+                            {student?.student_level && <span className="ml-1.5 font-sans">· {student.student_level === 'LEVEL_2' ? 'Level 2' : 'Level 1'}</span>}
+                          </div>
+                          <CopyText text={student?.email} className="mt-0.5" />
                         </TableCell>
-                        <TableCell className="font-mono text-sm text-blue-600">
-                          {transaction.student_code}
+                        <TableCell className="whitespace-nowrap text-sm">
+                          <div className="text-slate-700">{transaction.primary_mentor_name || <span className="text-slate-400">No CS</span>}</div>
+                          {student?.team_name && <div className="text-xs text-slate-400">{student.team_name}</div>}
                         </TableCell>
-                        <TableCell>
-                         {student?.student_level === 'LEVEL_1' ? (
-                           <Badge variant="outline" className="bg-yellow-100 text-yellow-800 border-yellow-200">
-                             Level 1
-                           </Badge>
-                         ) : (
-                           <Badge variant="outline" className="bg-green-100 text-green-800 border-green-200">
-                             Level 2
-                           </Badge>
-                         )}
-                        </TableCell>
-                        <TableCell className="text-sm">{transaction.primary_mentor_name}</TableCell>
                         <TableCell className="text-sm">
                           {transaction.initiating_mentor_name ? (
                             <>
@@ -894,23 +892,21 @@ export default function FundingRequests() {
                         <TableCell className="font-mono text-sm">
                           {transaction.mt5_login || '-'}
                         </TableCell>
-                        <TableCell className="font-semibold text-gray-900">
-                          ${transaction.amount_usd?.toFixed(2)}
-                          <PaymentDetails tx={transaction} />
+                        <TableCell className="whitespace-nowrap">
+                          <AmountCell t={row} original={transaction.amount_currency && transaction.amount_currency !== 'USD' && transaction.amount_original ? `${transaction.amount_currency} ${Number(transaction.amount_original).toLocaleString('en-US', { maximumFractionDigits: 2 })}` : null} />
                         </TableCell>
-                        <TableCell className="text-sm">{methodsText(transaction)}</TableCell>
+                        <TableCell className="min-w-[180px] text-xs">
+                          <PaidCell t={row} title={transaction.student_name} />
+                        </TableCell>
                         <TableCell>
                           {transaction.tags && transaction.tags.length > 0
                             ? <TagChips tags={transaction.tags} />
                             : <span className="text-gray-400">-</span>}
                         </TableCell>
-                        <TableCell className="text-sm">{transaction.user_id || '-'}</TableCell>
+                        <TableCell className="min-w-[150px] text-xs"><InvoiceCell t={row} /></TableCell>
+                        <TableCell className="whitespace-nowrap"><SourceCell t={row} /></TableCell>
                         <TableCell className="text-sm font-mono">
                           {transaction.transaction_id || '-'}
-                        </TableCell>
-                        <TableCell className="text-sm">
-                          {/* Every payment's receipt — "View (2)" for two */}
-                          <ReceiptsButton tx={transaction} title={transaction.student_name} />
                         </TableCell>
                         <TableCell className="text-sm">
                           {transaction.approved_by_name ? (

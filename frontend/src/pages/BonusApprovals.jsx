@@ -20,7 +20,8 @@ import { logAction } from '@/components/utils/AuditLogger';
 import ProcessFundingDialog from '@/components/funding/ProcessFundingDialog';
 import TagChips from '@/components/funding/TagChips';
 import { PaymentDetails } from '@/components/funding/FundingRequestForm';
-import { ReceiptsButton, methodsText, paymentsOf } from '@/components/funding/payments';
+import { ReceiptsButton, methodsText } from '@/components/funding/payments';
+import { usdText, bonusUsdOf, bonusLabel, receivedOf, sourceLabel, paidLines, upgradeReceiptsOf, receiptTxOf, extraReceiptsOf } from '@/components/funding/mt5Cells';
 import { useUrlState } from '@/components/utils/urlState';
 
 /*
@@ -46,76 +47,12 @@ const TABS = [
 const STICKY_END = 'sticky right-0 shadow-[-8px_0_8px_-8px_rgba(15,23,42,0.15)]';
 const when = (iso) => (iso ? new Date(iso).toLocaleString('en-GB', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' }) : '');
 const usd = (t) => `$${Number(t.amount_usd || 0).toLocaleString('en-US', { maximumFractionDigits: 2 })}`;
-const usdText = (n) => `$${Number(n || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
-const aedText = (n) => `AED ${Number(n || 0).toLocaleString('en-US', { maximumFractionDigits: 2 })}`;
-/** A bonus's amount column is the MT5 bonus to credit, in USD only (the user, 2026-10-13): a course payment's bonus —
- *  not the payment — else the request's amount. */
-const bonusUsdOf = (t) => (t.type === 'BONUS' && t.course_payment ? Number(t.course_payment.bonus_usd) || 0 : Number(t.amount_usd) || 0);
-const bonusLabel = (t) => (t.bonus_credit === 'sales_close' ? 'Sales-close bonus credit · no commission'
-  : t.bonus_credit === 'course_upgrade' || t.course_upgrade ? 'Course upgrade bonus'
-  : t.course_payment && !(Number(t.course_payment.bonus_usd) > 0) ? 'No MT5 bonus yet — on hold'
-  : 'MT5 bonus');
-/** Direct from the CS portal: what the student paid with this request, and how — beside the bonus, as a sales close
- *  shows the counsellor's collection; with what waits on hold and the balance. */
-const receivedOf = (t) => {
-  if (t.type !== 'BONUS' || t.bonus_credit) return null;
-  const cp = t.course_payment;
-  const amount = cp && Number(cp.paid_today_aed) > 0 ? aedText(cp.paid_today_aed)
-    : Number(t.amount_original) > 0 ? `${t.amount_currency === 'USD' ? usdText(t.amount_original) : `${t.amount_currency || 'AED'} ${Number(t.amount_original).toLocaleString('en-US', { maximumFractionDigits: 2 })}`}` : null;
-  if (!amount) return null;
-  return {
-    received: amount, method: methodsText(t),
-    kind: cp?.kind === 'partial' ? 'Partial payment' : cp?.kind === 'full' ? 'Full payment' : '',
-    before: cp && Number(cp.paid_before_aed) > 0 ? aedText(cp.paid_before_aed) : null,
-    hold: cp && Number(cp.hold_aed) > 0 ? aedText(cp.hold_aed) : null,
-    balance: cp && cp.balance_aed != null ? aedText(cp.balance_aed) : null,
-  };
-};
 const TYPES = {
   DEPOSIT: { label: 'Deposit', cls: 'bg-emerald-50 text-emerald-700 ring-emerald-200' },
   WITHDRAWAL: { label: 'Withdrawal', cls: 'bg-rose-50 text-rose-700 ring-rose-200' },
   BONUS: { label: 'Bonus', cls: 'bg-violet-50 text-violet-700 ring-violet-200' },
 };
 const typeOf = (t) => TYPES[t.type] || TYPES.BONUS;
-/** Where it came from (2026-10-12): the bonus promised at a sales close, a course upgrade, or raised by a CS here. */
-const sourceLabel = (t) => (t.source === 'sales_close' ? 'Sales close' : t.source === 'course_upgrade' ? 'Course upgrade' : 'Direct from CS portal');
-/**
- * What the Receipt column and the approval box open (2026-10-12): the request's own receipts — or, when it has none (a
- * sales-close bonus), finance's receipt for its invoice (the student's other invoices' if it names none).
- */
-/** The invoices a request is about: a sales-close bonus its own, anything else all of the student's. */
-const invoicesOf = (t) => {
-  const all = t.student?.invoices || [];
-  const mine = t.sales_close?.invoice_number ? all.filter(f => f.invoice_number === t.sales_close.invoice_number) : [];
-  return mine.length ? mine : all;
-};
-const financeReceiptsOf = (t) => {
-  // Each payment the salesperson declared, with its own receipt (2026-10-12); else the invoice's one receipt.
-  const list = invoicesOf(t).flatMap(f => (f.payments?.some(p => p.receipt_url)
-    ? f.payments.filter(p => p.receipt_url).map(p => ({ method: `${f.invoice_number} · ${p.method || 'payment'}`, amount: p.amount, currency: f.currency, collected_on: p.paid_on, receipt_url: p.receipt_url, receipt_name: p.receipt_name }))
-    : f.receipt_url ? [{ method: `Finance receipt · ${f.invoice_number}`, receipt_url: f.receipt_url, receipt_name: f.receipt_name }] : []));
-  return list.length ? { payments: list } : null;
-};
-const money = (n, cur) => `${cur || 'AED'} ${Number(n || 0).toLocaleString('en-US', { maximumFractionDigits: 2 })}`;
-/** "Collected AED 2,250 · tabby · recorded AED 2,250" for each invoice the request is about. */
-const paidLines = (t) => invoicesOf(t).map(f => ({
-  key: f.invoice_number,
-  collected: f.collected != null ? money(f.collected, f.currency) + (f.collected_method ? ` · ${f.collected_method}` : '') : null,
-  recorded: f.recorded != null ? money(f.recorded, f.currency) : null,
-  paid: money(f.paid, f.currency), fee: money(f.fee, f.currency), balance: f.balance > 0 ? money(f.balance, f.currency) : null,
-}));
-/** A course-upgrade bonus: every payment of its upgrade with its receipt — this bonus's own first (2026-10-12). */
-const upgradeReceiptsOf = (t) => {
-  const list = [...(t.upgrade_receipts || [])].sort((a, b) => (b.this_one ? 1 : 0) - (a.this_one ? 1 : 0));
-  return list.length ? { payments: list.map(p => ({
-    method: `${p.this_one ? 'This payment' : 'Upgrade payment'} · ${p.method || '—'}${p.status && p.status !== 'approved' ? ` (${p.status})` : ''}`,
-    amount: p.amount_aed, currency: 'AED', collected_on: p.paid_on, receipt_url: p.receipt_url, receipt_name: p.receipt_name,
-  })) } : null;
-};
-/** What a row's receipts open: an upgrade's payments, the request's own (one per payment), or finance's for its invoice. */
-const receiptTxOf = (t) => upgradeReceiptsOf(t) || (paymentsOf(t).some(p => p.receipt_url) ? t : financeReceiptsOf(t) || t);
-/** The receipts the approval box adds: an upgrade's payments, or finance's when the request has none of its own. */
-const extraReceiptsOf = (t) => upgradeReceiptsOf(t) || (paymentsOf(t).some(p => p.receipt_url) ? null : financeReceiptsOf(t));
 /** A small select for the filter bar. */
 function FilterSelect({ value, onChange, options }) {
   return (
