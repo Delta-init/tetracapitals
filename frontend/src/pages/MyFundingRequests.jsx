@@ -872,7 +872,8 @@ export default function MyFundingRequests() {
           {/* Team Funding Requests Tab */}
           {hasTeamView && (
             <TabsContent value="team" className="space-y-6">
-              {/* Team Commission Summary */}
+              {/* Team Commission Summary — mentors only, not CSs or CS Managers (the user, 2026-10-13) */}
+              {!isCs && !isCsManager && (
               <Card className="border-purple-200 bg-gradient-to-br from-purple-50 to-pink-50">
                 <CardHeader className="border-b border-purple-100">
                   <div className="flex items-center justify-between flex-wrap gap-3">
@@ -930,6 +931,7 @@ export default function MyFundingRequests() {
                   </div>
                 </CardContent>
               </Card>
+              )}
 
               {/* Team Transaction History */}
               <Card className="border-gray-200">
