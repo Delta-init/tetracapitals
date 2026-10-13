@@ -10,7 +10,7 @@ import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Plus, TrendingUp, TrendingDown, DollarSign, Award, Wallet, Eye, Users, Clock, Filter, X, AlertTriangle } from "lucide-react";
+import { Plus, TrendingUp, TrendingDown, Banknote, Award, Wallet, Eye, Users, Clock, Filter, X, AlertTriangle } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import FundingRequestForm from "../components/funding/FundingRequestForm";
@@ -39,6 +39,8 @@ import { format } from "date-fns";
 // A CS's bonus, in USD and AED: amounts are kept in USD, AED at the fixed 3.67 (the user, 2026-10-03).
 const AED_PER_USD = 3.67;
 const two = (n) => (n || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+/** A USD figure in AED only, at 3.67 (the user, 2026-10-14: mentors' commission in AED too). */
+const aedM = (n) => `AED ${two((Number(n) || 0) * AED_PER_USD)}`;
 
 export default function MyFundingRequests() {
   const [currentUser, setCurrentUser] = useState(null);
@@ -496,6 +498,8 @@ export default function MyFundingRequests() {
           <TabsContent value="my" className="space-y-6">
             {/* Commission Summary - hidden for assistance role */}
             {/* A CS or CS Manager: Course upgradation instead (2026-10-13; components/funding/CourseCommissionSummary.jsx) */}
+            {/* Mentors: Course upgradation on top, their deposit and bonus commission below — all in AED (the user, 2026-10-14) */}
+            {!isCs && !isCsManager && !isAssistance && <CourseCommissionSummary role={currentUser.app_role} />}
             {(isCs || isCsManager) ? <CourseCommissionSummary isManager={isCsManager} /> : !isAssistance && (<Card className="border-gray-200 bg-gradient-to-br from-blue-50 to-indigo-50">
               <CardHeader className="border-b border-blue-100">
                 <div className="flex items-center justify-between flex-wrap gap-3">
@@ -533,7 +537,7 @@ export default function MyFundingRequests() {
                 {!isCs && (
                 <div>
                   <div className="flex items-center gap-2 mb-3">
-                    <DollarSign className="h-4 w-4 text-blue-600" />
+                    <Banknote className="h-4 w-4 text-blue-600" />
                     <h3 className="text-sm font-bold text-blue-800 uppercase tracking-wide">Deposit Commission — Quarterly</h3>
                     <span className="text-xs text-gray-400">released 75% now, 25% held as buffer</span>
                   </div>
@@ -541,11 +545,11 @@ export default function MyFundingRequests() {
                     <div className="bg-white rounded-lg p-4 border border-blue-100">
                       <div className="flex items-center justify-between mb-2">
                         <p className="text-sm text-gray-600">Net Deposit</p>
-                        <DollarSign className="h-5 w-5 text-blue-600" />
+                        <Banknote className="h-5 w-5 text-blue-600" />
                       </div>
-                      <p className="text-2xl font-bold text-gray-900">${view.netDeposit.toFixed(2)}</p>
+                      <p className="text-2xl font-bold text-gray-900">{aedM(view.netDeposit)}</p>
                       <p className="text-xs text-gray-500 mt-1">
-                        Actual: <span className={view.rawNetDeposit < 0 ? 'text-red-500 font-semibold' : 'text-gray-600'}>${view.rawNetDeposit.toFixed(2)}</span>
+                        Actual: <span className={view.rawNetDeposit < 0 ? 'text-red-500 font-semibold' : 'text-gray-600'}>{aedM(view.rawNetDeposit)}</span>
                       </p>
                     </div>
 
@@ -554,8 +558,8 @@ export default function MyFundingRequests() {
                         <p className="text-sm text-gray-600">Deposit Commission</p>
                         <Award className="h-5 w-5 text-emerald-600" />
                       </div>
-                      <p className="text-2xl font-bold text-emerald-600">${view.gross.toFixed(2)}</p>
-                      <p className="text-xs text-gray-500 mt-1">level-based · capped at $25k/client</p>
+                      <p className="text-2xl font-bold text-emerald-600">{aedM(view.gross)}</p>
+                      <p className="text-xs text-gray-500 mt-1">level-based · capped at AED 91,750 ($25k)/client</p>
                     </div>
 
                     <div className="bg-white rounded-lg p-4 border border-purple-100">
@@ -564,7 +568,7 @@ export default function MyFundingRequests() {
                         <Wallet className="h-5 w-5 text-purple-600" />
                       </div>
                       <p className={`text-2xl font-bold ${view.adjustmentTotal >= 0 ? 'text-green-600' : 'text-red-600'}`}>
-                        {view.adjustmentTotal >= 0 ? '+' : ''}${view.adjustmentTotal.toFixed(2)}
+                        {view.adjustmentTotal >= 0 ? '+' : ''}{aedM(view.adjustmentTotal)}
                       </p>
                       <p className="text-xs text-gray-500 mt-1">{myAdjustments.length} adjustment(s)</p>
                     </div>
@@ -574,7 +578,7 @@ export default function MyFundingRequests() {
                         <p className="text-sm text-gray-600">Last Quarter Buffer In</p>
                         <Wallet className="h-5 w-5 text-orange-600" />
                       </div>
-                      <p className="text-2xl font-bold text-orange-600">${view.bufferIn.toFixed(2)}</p>
+                      <p className="text-2xl font-bold text-orange-600">{aedM(view.bufferIn)}</p>
                       <p className="text-xs text-gray-500 mt-1">Carried from Q{prevQuarterNum} {prevQuarterYear}</p>
                     </div>
 
@@ -583,9 +587,9 @@ export default function MyFundingRequests() {
                         <p className="text-sm text-gray-600">Adjusted Gross</p>
                         <Award className="h-5 w-5 text-indigo-600" />
                       </div>
-                      <p className="text-2xl font-bold text-indigo-600">${view.adjustedGross.toFixed(2)}</p>
+                      <p className="text-2xl font-bold text-indigo-600">{aedM(view.adjustedGross)}</p>
                       {view.bufferIn > 0 && (
-                        <p className="text-xs text-gray-500 mt-1">incl. ${view.bufferIn.toFixed(2)} buffer in</p>
+                        <p className="text-xs text-gray-500 mt-1">incl. {aedM(view.bufferIn)} buffer in</p>
                       )}
                     </div>
 
@@ -594,7 +598,7 @@ export default function MyFundingRequests() {
                         <p className="text-sm text-gray-600">Release (75%)</p>
                         <Wallet className="h-5 w-5 text-green-600" />
                       </div>
-                      <p className="text-2xl font-bold text-green-600">${view.release.toFixed(2)}</p>
+                      <p className="text-2xl font-bold text-green-600">{aedM(view.release)}</p>
                     </div>
 
                     <div className="bg-white rounded-lg p-4 border border-amber-100">
@@ -602,7 +606,7 @@ export default function MyFundingRequests() {
                         <p className="text-sm text-gray-600">Buffer (25%)</p>
                         <Wallet className="h-5 w-5 text-amber-600" />
                       </div>
-                      <p className="text-2xl font-bold text-amber-600">${view.buffer.toFixed(2)}</p>
+                      <p className="text-2xl font-bold text-amber-600">{aedM(view.buffer)}</p>
                     </div>
                   </div>
                 </div>
@@ -619,28 +623,26 @@ export default function MyFundingRequests() {
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <div className="bg-white rounded-lg p-4 border border-blue-100">
                       <p className="text-sm text-gray-600 mb-2">Bonus In</p>
-                      <p className="text-2xl font-bold text-blue-700">${two(bonusIn)}</p>
-                      <p className="text-sm font-semibold text-gray-500 mt-1">AED {two(bonusIn * AED_PER_USD)}</p>
+                      <p className="text-2xl font-bold text-blue-700">{aedM(bonusIn)}</p>
                     </div>
                     <div className="bg-white rounded-lg p-4 border border-purple-100">
                       <p className="text-sm text-gray-600 mb-2">Bonus Commission</p>
-                      <p className="text-2xl font-bold text-purple-700">${two(bonusTotal)}</p>
-                      <p className="text-sm font-semibold text-gray-500 mt-1">AED {two(bonusTotal * AED_PER_USD)}</p>
+                      <p className="text-2xl font-bold text-purple-700">{aedM(bonusTotal)}</p>
                     </div>
                   </div>
                   ) : (
                   <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                     <div className="bg-white rounded-lg p-4 border border-green-100">
                       <p className="text-sm text-gray-600 mb-2">With Bonus</p>
-                      <p className="text-2xl font-bold text-green-600">${bonusWith.toFixed(2)}</p>
+                      <p className="text-2xl font-bold text-green-600">{aedM(bonusWith)}</p>
                     </div>
                     <div className="bg-white rounded-lg p-4 border border-amber-100">
                       <p className="text-sm text-gray-600 mb-2">Without Bonus</p>
-                      <p className="text-2xl font-bold text-amber-600">${bonusWithout.toFixed(2)}</p>
+                      <p className="text-2xl font-bold text-amber-600">{aedM(bonusWithout)}</p>
                     </div>
                     <div className="bg-white rounded-lg p-4 border border-purple-100">
                       <p className="text-sm text-gray-600 mb-2">Total Bonus</p>
-                      <p className="text-2xl font-bold text-purple-700">${bonusTotal.toFixed(2)}</p>
+                      <p className="text-2xl font-bold text-purple-700">{aedM(bonusTotal)}</p>
                     </div>
                   </div>
                   )}
@@ -899,10 +901,10 @@ export default function MyFundingRequests() {
                     <div className="bg-white rounded-lg p-4 border border-purple-100">
                       <div className="flex items-center justify-between mb-2">
                         <p className="text-sm text-gray-600">Team Net Deposit</p>
-                        <DollarSign className="h-5 w-5 text-purple-600" />
+                        <Banknote className="h-5 w-5 text-purple-600" />
                       </div>
                       <p className="text-2xl font-bold text-gray-900">
-                        ${totalTeamCommission.netDeposit.toFixed(2)}
+                        {aedM(totalTeamCommission.netDeposit)}
                       </p>
                       <p className="text-xs text-gray-500 mt-1">
                         {teamCommissionDataGrouped.length} junior mentor(s), {approvedTeamTransactions.length} transactions
@@ -915,7 +917,7 @@ export default function MyFundingRequests() {
                         <Award className="h-5 w-5 text-emerald-600" />
                       </div>
                       <p className="text-2xl font-bold text-emerald-600">
-                        ${totalTeamCommission.grossCommission.toFixed(2)}
+                        {aedM(totalTeamCommission.grossCommission)}
                       </p>
                     </div>
 
@@ -925,7 +927,7 @@ export default function MyFundingRequests() {
                         <Wallet className="h-5 w-5 text-green-600" />
                       </div>
                       <p className="text-2xl font-bold text-green-600">
-                        ${totalTeamCommission.release.toFixed(2)}
+                        {aedM(totalTeamCommission.release)}
                       </p>
                     </div>
 
@@ -935,7 +937,7 @@ export default function MyFundingRequests() {
                         <Wallet className="h-5 w-5 text-amber-600" />
                       </div>
                       <p className="text-2xl font-bold text-amber-600">
-                        ${totalTeamCommission.buffer.toFixed(2)}
+                        {aedM(totalTeamCommission.buffer)}
                       </p>
                     </div>
                   </div>

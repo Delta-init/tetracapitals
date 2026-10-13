@@ -26,12 +26,9 @@ export const mayViewInLms = (user, student, teamIds = []) =>
   canViewInLms(user) && (user.app_role === 'super_admin' || isStudentOf(student, user.id)
     || (['chief_mentor', 'cs_manager'].includes(user.app_role) && teamIds.some(id => isStudentOf(student, id))));
 
-/** "Act as student" — read & write (2026-10-09): the student's own CS (or a CS they're Common with), the CS Manager
- *  over them (`teamIds`), a Super Admin; not a Chief Mentor. The server checks the same. */
-export const mayActInLms = (user, student, teamIds = []) =>
-  canViewInLms(user) && (user.app_role === 'super_admin'
-    || (user.app_role === 'cs' && isStudentOf(student, user.id))
-    || (user.app_role === 'cs_manager' && (isStudentOf(student, user.id) || teamIds.some(id => isStudentOf(student, id)))));
+/** "Act as student" — read & write (2026-10-09): whoever may view them (2026-10-14: every mentor role too — their own
+ *  students, a Chief Mentor or CS Manager their team's, `teamIds`), a Super Admin. The server checks the same. */
+export const mayActInLms = mayViewInLms;
 
 const WAITING = `<!doctype html><title>Opening the LMS…</title>
 <body style="margin:0;height:100vh;display:grid;place-items:center;font:15px system-ui,sans-serif;color:#64748b">Opening the student's LMS…</body>`;

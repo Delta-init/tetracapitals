@@ -2,6 +2,8 @@ import { col } from "../db";
 import { json, forbidden } from "../lib/response";
 import { toObjectId } from "../lib/id";
 import type { AuthUser } from "../auth/middleware";
+import { isMentorRole } from "../lib/roles";
+import { visibleMentorIds } from "../students/followups";
 
 /* ────────────────────────────────────────────────────────────────────────────
    Course upgradation — a CS's and CS Manager's commission summary on Funding
@@ -17,6 +19,9 @@ import type { AuthUser } from "../auth/middleware";
                         plan % would pay on it.
    A CS: the requests they raised; a CS Manager:
    every CS's — they are paid on all of them (the user: "your way").
+   Mentors too (the user, 2026-10-14), above their deposit and bonus
+   commission: those they raised or for their students; a Chief Mentor their
+   team's.
 ──────────────────────────────────────────────────────────────────────────── */
 
 const AED_PER_USD = 3.67;
@@ -32,7 +37,9 @@ async function myRate(user: AuthUser): Promise<{ pct: number; plan: string }> {
   const levels: any[] = Array.isArray(plan?.bonus_with_levels) ? plan.bonus_with_levels : [];
   const level = user.app_role === "cs_manager"
     ? levels.find((l) => /cs\s*manager/i.test(String(l.label ?? ""))) ?? levels[1]
-    : levels[0];
+    : user.app_role === "chief_mentor"
+      ? levels.find((l) => /chief/i.test(String(l.label ?? ""))) ?? levels[0]
+      : levels[0];
   return { pct: Number(level?.percentage) || 0, plan: String(plan?.name ?? "") };
 }
 
@@ -42,13 +49,17 @@ async function myRate(user: AuthUser): Promise<{ pct: number; plan: string }> {
  *     commission: { usd, aed, count }, to_collect: { aed, usd, students, commission_usd }, rate: { pct, plan }, scope }
  */
 export async function getCourseCommissionSummary(req: Request, user: AuthUser): Promise<Response> {
-  if (!["cs", ...SEE_ALL].includes(user.app_role)) return forbidden();
+  if (!SEE_ALL.includes(user.app_role) && !isMentorRole(user.app_role)) return forbidden();
   const body: any = await req.json().catch(() => ({}));
   const from = iso(body?.from), to = iso(body?.to);
   const range = { ...(from ? { $gte: from } : {}), ...(to ? { $lt: to } : {}) };
   const ranged = Object.keys(range).length > 0;
   const all = SEE_ALL.includes(user.app_role);
-  const mine = all ? {} : { $or: [{ initiating_mentor_id: user.id }, { requested_by_id: user.id }] };
+  // A mentor (not a CS): theirs and their students' — a Chief Mentor their whole team's.
+  const ids = all || user.app_role === "cs" ? [user.id] : [...((await visibleMentorIds(user)) ?? new Set([user.id]))];
+  const mine = all ? {} : user.app_role === "cs"
+    ? { $or: [{ initiating_mentor_id: user.id }, { requested_by_id: user.id }] }
+    : { $or: [{ initiating_mentor_id: { $in: ids } }, { requested_by_id: { $in: ids } }, { primary_mentor_id: { $in: ids } }] };
   const COURSE = { type: "BONUS", bonus_credit: { $in: [null, ""] }, "course_payment.product": { $exists: true } };
 
   // Collected: course payments approved in the range, by the AED received.
@@ -83,7 +94,7 @@ export async function getCourseCommissionSummary(req: Request, user: AuthUser): 
 
   const collectedAed = coursePaymentsAed;
   return json({
-    scope: all ? "all" : "own",
+    scope: all ? "all" : ids.length > 1 ? "team" : "own",
     collected: {
       aed: round(collectedAed), usd: round(collectedAed / AED_PER_USD), course_payments_aed: round(coursePaymentsAed),
       count: approved.length, pending_aed: round(pending.reduce((s, t) => s + aedOf(t), 0)), pending_count: pending.length,

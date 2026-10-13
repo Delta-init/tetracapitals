@@ -50,7 +50,9 @@ function Stat({ label, value, sub, tone, children }) {
   );
 }
 
-export default function CourseCommissionSummary({ isManager = false }) {
+/** isManager: a CS Manager — every CS's; a Chief Mentor (role chief_mentor) — their team's. */
+export default function CourseCommissionSummary({ isManager = false, role = '' }) {
+  const chief = role === 'chief_mentor';
   const [preset, setPreset] = useState('month');
   const [from, setFrom] = useState('');
   const [to, setTo] = useState('');
@@ -73,7 +75,7 @@ export default function CourseCommissionSummary({ isManager = false }) {
           <CardTitle className="flex items-center gap-2 text-xl font-semibold">
             <GraduationCap className="h-5 w-5 text-blue-600" />
             Course upgradation
-            <span className="text-xs font-normal text-gray-500">{isManager ? "every CS's course payments, and your commission" : 'your course payments and commission'}</span>
+            <span className="text-xs font-normal text-gray-500">{chief ? "your team's course payments, and your commission" : isManager ? "every CS's course payments, and your commission" : 'your course payments and commission'}</span>
           </CardTitle>
           <div className="flex flex-wrap items-center gap-1.5">
             {[...PRESETS, { key: 'custom', label: 'Custom' }].map(p => (
@@ -103,8 +105,8 @@ export default function CourseCommissionSummary({ isManager = false }) {
               <p className="mt-2 text-xs text-gray-400">{c?.count ?? 0} course payment{c?.count === 1 ? '' : 's'}</p>
               {c?.pending_count > 0 && <p className="mt-1 text-xs text-amber-700">+ {AED(c.pending_aed)} waiting approval ({c.pending_count})</p>}
             </Stat>
-            <Stat label={isManager ? 'Your CS Manager commission' : 'Commission earned'} value={AED(earnedAed)} tone="text-emerald-600">
-              <p className="mt-2 text-xs text-gray-400">{pct ? `${pct}% of ${AED(c?.course_payments_aed)} collected${isManager ? " by every CS" : ''} · ${""}` : 'no commission plan'}</p>
+            <Stat label={chief ? 'Your Chief Mentor commission' : isManager ? 'Your CS Manager commission' : 'Commission earned'} value={AED(earnedAed)} tone="text-emerald-600">
+              <p className="mt-2 text-xs text-gray-400">{pct ? `${pct}% of ${AED(c?.course_payments_aed)} collected${chief ? ' by your team' : isManager ? " by every CS" : ''} · ${""}` : 'no commission plan'}</p>
             </Stat>
             <Stat label="Still to collect" value={AED(t?.aed)} sub={`${t?.students ?? 0} student${t?.students === 1 ? '' : 's'}`} tone="text-amber-600">
               {moreAed > 0 && <p className="mt-2 text-xs text-emerald-700">you earn {AED(moreAed)} more when it's paid</p>}

@@ -394,20 +394,21 @@ export async function rejectLmsEnrolmentRequest(req: Request, user: AuthUser): P
  * Common student — not their leaders; the Super Admin anyone's, by the LMS address too for a request from somebody
  * who isn't in the portal. → { url, expiresIn, sessionExpiresAt, from: "own" | "shared" }
  */
-/** "Act as student" — read & write (the user, 2026-10-09): the student's own CS, their CS Manager, a Super Admin. */
-const ACTS_AS_STUDENT = new Set(["super_admin", "cs", "cs_manager"]);
+/** "Act as student" — read & write (the user, 2026-10-09): the student's own CS, their CS Manager, a Super Admin; every
+ *  mentor role too — their own students, a Chief Mentor their team's (the user, 2026-10-14). */
+const actsAsStudent = (role: string) => role === "super_admin" || isMentorRole(role);
 
 export async function viewStudentInLms(req: Request, user: AuthUser): Promise<Response> {
   // The student's own CS — Common ones too — and the Super Admin anyone's (the user, 2026-10-06); their team's leaders
   // too — a Chief Mentor or CS Manager, for the students of the CSs under them (2026-10-08).
   // { mode: "write" } — "Act as student", read & write (2026-10-09): the student's own CS (Common ones too), the CS
-  // Manager over them, a Super Admin; not a Chief Mentor. The LMS lets it change things except the student's security,
+  // Manager over them, a Super Admin; mentors too, a Chief Mentor for their team (2026-10-14). The LMS lets it change things except the student's security,
   // payments and ID documents, and records every change as the person (its auth.middleware.ts denyImpersonatedWrite).
   const body: any = await req.json().catch(() => ({}));
   const write = body?.mode === "write";
-  if (write && !ACTS_AS_STUDENT.has(user.app_role)) return error("Act as student is for the student's own CS, their CS Manager and Super Admins", 403);
+  if (write && !actsAsStudent(user.app_role)) return error("Act as student is for the student's own CS or mentor, their leaders and Super Admins", 403);
   const leads = user.app_role === "chief_mentor" || user.app_role === "cs_manager";
-  const found = await lmsStudentFor(body, user, { ownOnly: write ? user.app_role !== "cs_manager" : !leads });
+  const found = await lmsStudentFor(body, user, { ownOnly: !leads });
   if (found instanceof Response) return found;
   if (!lmsConfigured()) return error(NOT_LINKED, 503);
   try {
