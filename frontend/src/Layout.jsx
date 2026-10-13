@@ -126,6 +126,8 @@ export default function Layout({ children, currentPageName }) {
         let pendingTickets = 0;
         if (['super_admin', 'academic_admin', 'broker_admin', 'chief_mentor', 'senior_mentor', 'junior_mentor'].includes(role)) {
           pendingTickets = tickets.filter(t => ['open', 'in_progress'].includes(t.status)).length;
+        } else if (role === 'cs_manager') {
+          pendingTickets = tickets.filter(t => t.assigned_to_role === 'academic_head' && ['open', 'in_progress'].includes(t.status)).length;
         }
 
         // Count pending retention assignments
@@ -189,6 +191,8 @@ export default function Layout({ children, currentPageName }) {
     if (item.name === 'Leaderboard' && ['cs', 'cs_manager'].includes(currentUser?.app_role)) return true;
     // …and Personnel for CS Managers (2026-10-13): the CS accounts, to View as.
     if (item.name === 'Personnel' && currentUser?.app_role === 'cs_manager') return true;
+    // …and Tickets: the Academic Head's come to CS Managers too (2026-10-13).
+    if (item.name === 'Tickets' && currentUser?.app_role === 'cs_manager') return true;
     if (Array.isArray(allowedPages)) return allowedPages.includes(item.sameAccessAs || item.name);
     return item.roles.includes('all') || item.roles.includes(currentUser?.app_role);
   });

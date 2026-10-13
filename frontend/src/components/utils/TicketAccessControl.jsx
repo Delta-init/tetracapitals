@@ -6,12 +6,13 @@ export function canCreateTicket(role) {
     || isMentorRole(role);
 }
 
+// CS Managers answer and resolve the Academic Head's tickets with them (the user, 2026-10-13).
 export function canRespondToTicket(role) {
-  return ['academic_head', 'finance_admin', 'broker_admin', 'super_admin', 'admin'].includes(role);
+  return ['academic_head', 'cs_manager', 'finance_admin', 'broker_admin', 'super_admin', 'admin'].includes(role);
 }
 
 export function canResolveTicket(role) {
-  return ['academic_head', 'finance_admin', 'broker_admin', 'super_admin', 'admin'].includes(role);
+  return ['academic_head', 'cs_manager', 'finance_admin', 'broker_admin', 'super_admin', 'admin'].includes(role);
 }
 
 export function canCloseTicket(userRole, userId, ticket) {
@@ -23,6 +24,7 @@ export function canViewTicket(user, ticket) {
   const role = user.app_role;
   if (['super_admin', 'admin'].includes(role)) return true;
   if (role === 'academic_head') return ticket.assigned_to_role === 'academic_head';
+  if (role === 'cs_manager') return ticket.assigned_to_role === 'academic_head' || ticket.created_by_id === user.id;
   if (role === 'finance_admin') return ticket.assigned_to_role === 'finance_admin';
   if (role === 'broker_admin') return ticket.assigned_to_role === 'broker_admin';
   // Mentors and others see only their own

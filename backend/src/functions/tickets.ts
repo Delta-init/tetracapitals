@@ -98,6 +98,8 @@ export async function sendTicketNotification(req: Request, _user: AuthUser): Pro
     if (u.app_role === "super_admin") return true;
     if (assignedToId && u.id === assignedToId) return true;
     if (!assignedToId && assignedToRole && u.app_role === assignedToRole) return true;
+    // The Academic Head's tickets go to every CS Manager too (the user, 2026-10-13).
+    if (assignedToRole === "academic_head" && u.app_role === "cs_manager" && u.status !== "inactive") return true;
     return false;
   });
   const seen = new Set<string>();

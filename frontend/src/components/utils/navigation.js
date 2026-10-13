@@ -166,7 +166,7 @@ export const NAV_ITEMS = [
   { name: 'Transactions', page: 'Transactions', icon: ArrowLeftRight, roles: ['super_admin', 'admin', 'broker_admin', 'academic_head'] },
   { name: 'TransactionTags', label: 'Products', page: 'TransactionTags', icon: Package, roles: ['super_admin', 'admin', 'broker_admin', 'academic_head', 'finance_admin'] },
   { name: 'Commissions', hidden: true, page: 'Commissions', icon: Percent, roles: ['super_admin', 'broker_admin', 'academic_head'] },
-  { name: 'Tickets', page: 'Tickets', icon: Ticket, roles: ['super_admin', 'broker_admin', 'academic_head', 'chief_mentor', 'senior_mentor', 'junior_mentor'] },
+  { name: 'Tickets', page: 'Tickets', icon: Ticket, roles: ['super_admin', 'broker_admin', 'academic_head', 'cs_manager', 'chief_mentor', 'senior_mentor', 'junior_mentor'] },
   { name: 'Reports', label: 'Student & commission reports', page: 'Reports', icon: BarChart3, roles: ['super_admin', 'broker_admin', 'academic_head', 'junior_mentor', 'chief_mentor', 'senior_mentor'] },
   // The Reports section (the user, 2026-10-11): each report its own page, under one "Reports" entry in the sidebar.
   // For everyone but the Sales role; the server decides whose figures each person sees (functions/reports.ts).

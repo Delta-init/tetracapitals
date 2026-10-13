@@ -8,10 +8,10 @@ import { base44 } from '@/api/base44Client';
 import { Info } from 'lucide-react';
 
 const CATEGORY_ROLE_LABEL = {
-  academic: 'Academic Head',
+  academic: 'Academic Head and CS Managers',
   financial: 'Finance Admin',
   technical: 'Broker Admin',
-  general: 'Academic Head',
+  general: 'Academic Head and CS Managers',
 };
 
 export default function TicketForm({ onSubmit, onCancel, isSubmitting, students = [], currentUser }) {
