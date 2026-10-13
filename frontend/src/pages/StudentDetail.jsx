@@ -26,6 +26,7 @@ import ZohoInvoicesCard from "../components/students/ZohoInvoicesCard";
 import StudentCoursesCard from "../components/students/StudentCoursesCard";
 import { SalesCrmBadge, salesCrmOfStudent } from "@/components/students/salesCrm";
 import { BonusPendingBadge, useStudentBonusPending } from "@/components/students/bonusPending";
+import { RaiseCreditRequestButton } from "@/components/funding/CreditRequests";
 import { BangaloreBadge } from "@/components/common/LocationFilter";
 import StudentHistory, { useStudentHistory } from "../components/students/StudentHistory";
 import StudentFollowupsSection from "@/components/followups/StudentFollowupsSection";
@@ -318,6 +319,8 @@ export default function StudentDetail() {
                 <SalesCrmBadge crm={salesCrmOfStudent(displayStudent)} />
                 {/* A bonus not decided yet, and where it waits — opens their Funding tab */}
                 <BonusPendingBadge info={bonusPending} student={student} onClick={() => changeTab('funding')} />
+                {/* A bonus still not in their MT5 — to the broker admins (Not Credited Yet) */}
+                {!salesOnly && <RaiseCreditRequestButton student={student} currentUser={currentUser} />}
               </p>
               {/* Open, or Closed = enrolled */}
               <div className="mt-2"><EnrolmentControl student={student} currentUser={currentUser} /></div>

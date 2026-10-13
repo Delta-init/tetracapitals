@@ -113,6 +113,7 @@ import ZohoInvoices from './pages/ZohoInvoices';
 import NotOnboarded from './pages/NotOnboarded';
 import BalancePayments from './pages/BalancePayments';
 import BonusApprovals from './pages/BonusApprovals';
+import NotCreditedYet from './pages/NotCreditedYet';
 import __Layout from './Layout.jsx';
 
 
@@ -165,6 +166,7 @@ export const PAGES = {
     "NotOnboarded": NotOnboarded,
     "BalancePayments": BalancePayments,
     "BonusApprovals": BonusApprovals,
+    "NotCreditedYet": NotCreditedYet,
     "StudentCalls": StudentCalls,
     "MentorCalendar": MentorCalendar,
     "Programs": Programs,

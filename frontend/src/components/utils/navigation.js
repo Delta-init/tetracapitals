@@ -59,8 +59,7 @@ import {
   BookCheck,
   ClipboardCheck,
   Repeat,
-  Coins,
-} from 'lucide-react';
+  Coins, BadgeAlert } from 'lucide-react';
 
 // "StudentLogHistoryPage" -> "Student Log History", "AIInsights" -> "AI Insights"
 export const humanize = (name = '') =>
@@ -143,6 +142,9 @@ export const NAV_ITEMS = [
   // MT5 bonuses waiting for a broker admin: sales-close bonuses (onboarding verification) and finance-approved bonus
   // requests. Only the people who decide a bonus (backend BONUS_APPROVERS) — `only`, so no role override opens it.
   { name: 'BonusApprovals', label: 'MT5 Approvals', page: 'BonusApprovals', icon: Gift, roles: ['super_admin', 'broker_admin'], only: ['super_admin', 'broker_admin'] },
+  // A bonus still not in the student's MT5 (2026-10-13): raised by a CS, CS Manager or Super Admin, answered by the broker
+  // admins (backend functions/creditRequests.ts). Layout lets CS and CS Managers past their role's page list.
+  { name: 'NotCreditedYet', label: 'Not Credited Yet', page: 'NotCreditedYet', icon: BadgeAlert, roles: ['super_admin', 'broker_admin', 'admin', 'cs', 'cs_manager'], only: ['super_admin', 'broker_admin', 'admin', 'cs', 'cs_manager'], notForSales: true },
   // CSs ask on the student's page; a Super Admin pastes the link in (backend/src/functions/paymentLinks.ts). A CS
   // sees what they asked for here, along with their Students page; no other role gets it.
   { name: 'PaymentLinks', label: 'Payment Links', page: 'PaymentLinks', icon: CreditCard, roles: ['super_admin', 'cs'], only: ['super_admin', 'cs'], sameAccessAs: 'Students' },
@@ -182,7 +184,7 @@ export const GROUP_OF = {
   Dashboard: 'Overview', TeamDashboard: 'Overview', Teams: 'Overview', ActivityTracker: 'Overview', AIInsights: 'Overview', Leaderboard: 'Overview', MentorPerformance: 'Overview', MentorTraining: 'Overview',
   Personnel: 'People & Access', RolesManagement: 'People & Access', Hierarchy: 'People & Access', AcademicCounselors: 'People & Access', MasterAdmin: 'People & Access',
   Students: 'Students', CourseUpgrades: 'Students', NotOnboarded: 'Students', BalancePayments: 'Students', StudentFollowups: 'Students', OverdueFollowups: 'Students', StudentCalls: 'Students', ClassCompletions: 'Students', WhatsApp: 'Students', MentorCalendar: 'Students', Programs: 'Students', SupportTickets: 'Students', LmsRequests: 'Students', Exams: 'Students', ZohoInvoices: 'Students', StudentLogs: 'Students', StudentLogHistoryPage: 'Students', MyStudentRequests: 'Students', StudentRequestApprovals: 'Students', RetentionManagement: 'Students', DrawAdminStudents: 'Students', MT5Accounts: 'Students', InactivityTransfers: 'Students', StudentTags: 'Students',
-  FundingActivities: 'Funding', FundingRequests: 'Funding', BonusApprovals: 'Funding', PaymentLinks: 'Funding', Transactions: 'Funding', TransactionTags: 'Funding',
+  FundingActivities: 'Funding', FundingRequests: 'Funding', BonusApprovals: 'Funding', NotCreditedYet: 'Funding', PaymentLinks: 'Funding', Transactions: 'Funding', TransactionTags: 'Funding',
   CommissionPlans: 'Commission', BonusCommissionReports: 'Commission', DepositCommissionReports: 'Commission', CommissionTools: 'Commission', Commissions: 'Commission', QuarterClosing: 'Commission', MonthlyClosing: 'Commission', DailyPayouts: 'Commission', MyCommissionHistory: 'Commission', MyTargets: 'Commission', TargetsManagement: 'Commission',
   DepositReport: 'Reports', WithdrawalReport: 'Reports', FundingRequestReport: 'Reports', BonusReport: 'Reports', Reports: 'Reports', CommissionReports: 'Reports',
   Tickets: 'More', AuditLogs: 'More', GamificationSettings: 'More',
@@ -195,7 +197,7 @@ export const GROUP_OF = {
  * student's page stays open to them (MT5 Approvals links to it), and the report details the Reports open.
  */
 export const ROLE_ONLY_PAGES = {
-  broker_admin: ['BonusApprovals', 'Tickets', 'DepositReport', 'WithdrawalReport', 'FundingRequestReport', 'BonusReport', 'Reports', 'CommissionReports', 'StudentDetail', 'ReportTransactionDetails'],
+  broker_admin: ['BonusApprovals', 'NotCreditedYet', 'Tickets', 'DepositReport', 'WithdrawalReport', 'FundingRequestReport', 'BonusReport', 'Reports', 'CommissionReports', 'StudentDetail', 'ReportTransactionDetails'],
 };
 /** Where such a role starts instead of the Dashboard. */
 export const ROLE_HOME = { broker_admin: 'BonusApprovals' };

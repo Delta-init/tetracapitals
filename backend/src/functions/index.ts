@@ -46,6 +46,7 @@ import {
   approveLmsEnrolmentRequest, rejectLmsEnrolmentRequest, viewStudentInLms, assignLmsApplicant,
 } from "./lmsEnrolmentRequests";
 import { getSalesBonusToSend, sendSalesBonusCredit } from "./salesBonusSend";
+import { getCreditRequestOptions, raiseCreditRequest, listCreditRequests, decideCreditRequest } from "./creditRequests";
 import { getLmsCourseAccess, giveLmsCourses, setLmsModuleAccess } from "./lmsCourseAccess";
 import { getClassCompletions } from "./classCompletions";
 import { getMyTeamCsIds } from "./myTeam";
@@ -168,6 +169,11 @@ const AUTHED: Record<string, AuthedHandler> = {
   // A sales-close bonus sent for credit from its Bonus pending badge (salesBonusSend.ts)
   getSalesBonusToSend,
   sendSalesBonusCredit,
+  // Bonus not credited yet — raised to the broker admins, answered on their page (creditRequests.ts)
+  getCreditRequestOptions,
+  raiseCreditRequest,
+  listCreditRequests,
+  decideCreditRequest,
   // A student's own LMS, read-only — from LMS Requests and the student page
   viewStudentInLms,
   // Their LMS courses: put on Forex courses, modules opened or locked (lmsCourseAccess.ts)

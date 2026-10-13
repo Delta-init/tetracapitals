@@ -187,6 +187,8 @@ export default function Layout({ children, currentPageName }) {
     if (item.name === 'FundingRequests' && currentUser?.app_role === 'cs_manager') return true;
     // Every CS and CS Manager sees the Leaderboard (2026-10-11), whatever their role's page list says.
     if (item.name === 'Leaderboard' && ['cs', 'cs_manager'].includes(currentUser?.app_role)) return true;
+    // …and Not Credited Yet (2026-10-13), to raise a bonus not credited and see the answer.
+    if (item.name === 'NotCreditedYet' && ['cs', 'cs_manager', 'admin'].includes(currentUser?.app_role)) return true;
     if (Array.isArray(allowedPages)) return allowedPages.includes(item.sameAccessAs || item.name);
     return item.roles.includes('all') || item.roles.includes(currentUser?.app_role);
   });
@@ -243,6 +245,7 @@ export default function Layout({ children, currentPageName }) {
     ],
     ClassCompletions: [{ n: navCounts?.class_completions_open, cls: 'bg-violet-500 text-white', title: 'class completions waiting for a call' }],
     FundingActivities: [{ n: navCounts?.funding_sent_back, cls: 'bg-amber-400 text-brand-navy', title: 'funding requests sent back to you to correct' }],
+    NotCreditedYet: [{ n: navCounts?.credit_requests_open, cls: 'bg-amber-400 text-brand-navy', title: 'Bonuses not credited yet, waiting for you' }],
     BonusApprovals: [{ n: navCounts?.bonus_approvals_pending, cls: 'bg-amber-400 text-brand-navy', title: 'MT5 deposits, withdrawals and bonuses waiting for your approval' }],
     SupportTickets: [
       { n: ticketCount?.open, cls: 'bg-amber-400 text-brand-navy', title: 'support tickets waiting for an answer' },

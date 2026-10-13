@@ -9,6 +9,7 @@ import { countCallNeeded } from "../students/classCompletions";
 import { decidableMt5Filter } from "./bonusApprovals";
 import { returnedFilter } from "./fundingCorrections";
 import { BONUS_APPROVERS } from "../finance/funding";
+import { openCreditRequests } from "./creditRequests";
 import { dueSoonFilter, uaeDay } from "../finance/balanceDue";
 
 /* The filters behind each number — shared with the Root portal's Pending page (portal/pending.ts), so the two never
@@ -79,7 +80,10 @@ export async function getNavCounts(_req: Request, user: AuthUser): Promise<Respo
     // Funding requests a broker admin sent back to them to correct (fundingCorrections.ts).
     col("funding_transactions").countDocuments(returnedFilter(user.id)),
   ]);
+  // Bonus not credited, waiting for a broker admin (creditRequests.ts).
+  const creditOpen = BONUS_APPROVERS.includes(user.app_role) ? await openCreditRequests() : 0;
   return json({
+    credit_requests_open: creditOpen,
     today, new_students: newStudents, followups_today: dueToday, followups_overdue: overdue,
     payment_links_pending: linksWaiting, payment_links_ready: linksReady, payment_links_turned_down: linksTurnedDown,
     not_onboarded: notOnboarded, not_onboarded_late: notOnboardedLate, class_completions_open: classesToCall,
