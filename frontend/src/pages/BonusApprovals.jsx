@@ -44,6 +44,31 @@ const TABS = [
 const STICKY_END = 'sticky right-0 shadow-[-8px_0_8px_-8px_rgba(15,23,42,0.15)]';
 const when = (iso) => (iso ? new Date(iso).toLocaleString('en-GB', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' }) : '');
 const usd = (t) => `$${Number(t.amount_usd || 0).toLocaleString('en-US', { maximumFractionDigits: 2 })}`;
+const usdText = (n) => `$${Number(n || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+const aedText = (n) => `AED ${Number(n || 0).toLocaleString('en-US', { maximumFractionDigits: 2 })}`;
+/** A bonus's amount column is the MT5 bonus to credit, in USD only (the user, 2026-10-13): a course payment's bonus —
+ *  not the payment — else the request's amount. */
+const bonusUsdOf = (t) => (t.type === 'BONUS' && t.course_payment ? Number(t.course_payment.bonus_usd) || 0 : Number(t.amount_usd) || 0);
+const bonusLabel = (t) => (t.bonus_credit === 'sales_close' ? 'Sales-close bonus credit · no commission'
+  : t.bonus_credit === 'course_upgrade' || t.course_upgrade ? 'Course upgrade bonus'
+  : t.course_payment && !(Number(t.course_payment.bonus_usd) > 0) ? 'No MT5 bonus yet — on hold'
+  : 'MT5 bonus');
+/** Direct from the CS portal: what the student paid with this request, and how — beside the bonus, as a sales close
+ *  shows the counsellor's collection; with what waits on hold and the balance. */
+const receivedOf = (t) => {
+  if (t.type !== 'BONUS' || t.bonus_credit) return null;
+  const cp = t.course_payment;
+  const amount = cp && Number(cp.paid_today_aed) > 0 ? aedText(cp.paid_today_aed)
+    : Number(t.amount_original) > 0 ? `${t.amount_currency === 'USD' ? usdText(t.amount_original) : `${t.amount_currency || 'AED'} ${Number(t.amount_original).toLocaleString('en-US', { maximumFractionDigits: 2 })}`}` : null;
+  if (!amount) return null;
+  return {
+    received: amount, method: methodsText(t),
+    kind: cp?.kind === 'partial' ? 'Partial payment' : cp?.kind === 'full' ? 'Full payment' : '',
+    before: cp && Number(cp.paid_before_aed) > 0 ? aedText(cp.paid_before_aed) : null,
+    hold: cp && Number(cp.hold_aed) > 0 ? aedText(cp.hold_aed) : null,
+    balance: cp && cp.balance_aed != null ? aedText(cp.balance_aed) : null,
+  };
+};
 const TYPES = {
   DEPOSIT: { label: 'Deposit', cls: 'bg-emerald-50 text-emerald-700 ring-emerald-200' },
   WITHDRAWAL: { label: 'Withdrawal', cls: 'bg-rose-50 text-rose-700 ring-rose-200' },
@@ -113,9 +138,11 @@ const EXPORT_COLUMNS = [
   { header: 'Team', value: t => t.student?.team },
   { header: 'Meeting by', value: t => t.meeting_mentor_name },
   { header: 'MT5 login', value: t => t.mt5_login },
-  { header: 'Amount to credit USD', type: 'number', value: t => Number(t.amount_usd) || 0 },
+  { header: 'Amount to credit USD', type: 'number', value: t => bonusUsdOf(t) },
   { header: 'Original amount', value: t => original(t) },
-  { header: 'Collected by counsellor', value: t => paidLines(t).map(l => l.collected || `Paid ${l.paid}`).join('; ') },
+  { header: 'Collected by counsellor', value: t => paidLines(t).map(l => l.collected || `Paid ${l.paid}`).join('; ') || (receivedOf(t) ? `Received ${receivedOf(t).received}${receivedOf(t).method ? ` · ${receivedOf(t).method}` : ''}` : '') },
+  { header: 'On hold', value: t => receivedOf(t)?.hold || '' },
+  { header: 'Balance', value: t => receivedOf(t)?.balance || '' },
   { header: 'Recorded against invoice', value: t => paidLines(t).map(l => l.recorded || '').filter(Boolean).join('; ') },
   { header: 'Payment', value: t => methodsText(t) },
   { header: 'Product', value: t => [...(t.tags || []), ...(t.course && !(t.tags || []).includes(t.course) ? [t.course] : [])].join('; ') },
@@ -393,9 +420,19 @@ export default function BonusApprovals() {
                             <td className="whitespace-nowrap px-3 py-2.5 text-sm text-slate-600">{t.meeting_mentor_name || '—'}</td>
                             <td className="whitespace-nowrap px-3 py-2.5 font-mono text-sm text-slate-700">{t.mt5_login || <span className="font-sans text-xs text-rose-600">No MT5 login</span>}</td>
                             <td className="whitespace-nowrap px-3 py-2.5">
-                              <div className="font-semibold text-slate-800">{usd(t)}</div>
-                              {original(t) && <div className="text-xs text-slate-400">{original(t)}</div>}
-                              <PaymentDetails tx={t} />
+                              {t.type === 'BONUS' ? (
+                                <>
+                                  {/* Only the MT5 bonus to credit, in USD — what was paid is in the next column */}
+                                  <div className="font-semibold text-slate-800">{usdText(bonusUsdOf(t))}</div>
+                                  <div className={`text-xs ${t.bonus_credit === 'sales_close' ? 'text-amber-700' : bonusUsdOf(t) > 0 ? 'text-emerald-700' : 'text-amber-700'}`}>{bonusLabel(t)}</div>
+                                </>
+                              ) : (
+                                <>
+                                  <div className="font-semibold text-slate-800">{usd(t)}</div>
+                                  {original(t) && <div className="text-xs text-slate-400">{original(t)}</div>}
+                                  <PaymentDetails tx={t} />
+                                </>
+                              )}
                             </td>
                             {/* What the student paid — the counsellor's collection and what accounts recorded — beside the bonus, never mixed */}
                             <td className="min-w-[180px] px-3 py-2.5 text-xs">
@@ -406,7 +443,14 @@ export default function BonusApprovals() {
                                   {l.recorded && <div className="text-slate-500">Recorded {l.recorded}</div>}
                                   <div className="text-slate-400">of {l.fee}{l.balance ? <span className="text-amber-700"> · owes {l.balance}</span> : ''}</div>
                                 </div>
-                              )) : <span className="text-slate-300">—</span>}
+                              )) : receivedOf(t) ? (() => { const r = receivedOf(t); return (
+                                <div>
+                                  <div className="text-slate-800">Received <b>{r.received}{r.method ? ` · ${r.method}` : ''}</b></div>
+                                  {r.kind && <div className="text-slate-500">{r.kind}{r.before ? ` · paid before ${r.before}` : ''}</div>}
+                                  {r.hold && <div className="text-amber-700">On hold {r.hold}</div>}
+                                  {r.balance && <div className="text-slate-500">Balance {r.balance}</div>}
+                                </div>
+                              ); })() : <span className="text-slate-300">—</span>}
                             </td>
                             <td className="min-w-[140px] px-3 py-2.5">
                               {t.tags?.length ? <TagChips tags={t.tags} /> : null}
