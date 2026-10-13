@@ -22,6 +22,8 @@ const PERIODS = [
 ];
 const usd = (n) => `$${(Number(n) || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 const aed = (n) => `AED ${(Number(n) || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+/** A USD figure in AED at the fixed 3.67 — shown under it, as Funding Requests does (2026-10-13). */
+const inAed = (n) => aed((Number(n) || 0) * 3.67);
 
 const ACCENT = {
   emerald: { chip: 'bg-emerald-50 text-emerald-600 ring-emerald-100', bar: 'from-emerald-400 to-brand-mint' },
@@ -91,9 +93,9 @@ export default function LocationTotals() {
               title="Total Deposits" icon={DollarSign} color="emerald" fmt={usd} delay={0.1}
               total={d.deposits.total} dubai={d.deposits.dubai} bangalore={d.deposits.bangalore}
               sub={{
-                total: `${d.deposits.count.toLocaleString()} approved · withdrawals ${usd(d.deposits.withdrawals.total)} · net ${usd(d.deposits.net.total)}`,
-                dubai: `net ${usd(d.deposits.net.dubai)}`,
-                bangalore: `net ${usd(d.deposits.net.bangalore)}`,
+                total: `${inAed(d.deposits.total)} · ${d.deposits.count.toLocaleString()} approved · withdrawals ${usd(d.deposits.withdrawals.total)} · net ${usd(d.deposits.net.total)}`,
+                dubai: `${inAed(d.deposits.dubai)} · net ${usd(d.deposits.net.dubai)}`,
+                bangalore: `${inAed(d.deposits.bangalore)} · net ${usd(d.deposits.net.bangalore)}`,
               }}
             />
             <LocationCard
@@ -105,7 +107,7 @@ export default function LocationTotals() {
             <LocationCard
               title="Total Commission" icon={Award} color="cyan" fmt={usd} delay={0.24}
               total={d.commission.total} dubai={d.commission.dubai} bangalore={d.commission.bangalore}
-              sub={{ total: 'Deposit and bonus commission, by the team of the person paid' }}
+              sub={{ total: `${inAed(d.commission.total)} · deposit and bonus commission, by the team of the person paid`, dubai: inAed(d.commission.dubai), bangalore: inAed(d.commission.bangalore) }}
             />
           </div>
           {!d.bangalore_teams && (
