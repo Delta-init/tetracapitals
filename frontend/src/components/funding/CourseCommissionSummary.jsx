@@ -104,7 +104,7 @@ export default function CourseCommissionSummary({ isManager = false }) {
               {c?.pending_count > 0 && <p className="mt-1 text-xs text-amber-700">+ {AED(c.pending_aed)} waiting approval ({c.pending_count})</p>}
             </Stat>
             <Stat label={isManager ? 'Your CS Manager commission' : 'Commission earned'} value={AED(earnedAed)} tone="text-emerald-600">
-              <p className="mt-2 text-xs text-gray-400">{pct ? `${pct}% of ${AED(c?.course_payments_aed)} collected${isManager ? " by every CS" : ''} · ${data.rate.plan}` : 'no commission plan'}</p>
+              <p className="mt-2 text-xs text-gray-400">{pct ? `${pct}% of ${AED(c?.course_payments_aed)} collected${isManager ? " by every CS" : ''} · ${""}` : 'no commission plan'}</p>
             </Stat>
             <Stat label="Still to collect" value={AED(t?.aed)} sub={`${t?.students ?? 0} student${t?.students === 1 ? '' : 's'}`} tone="text-amber-600">
               {moreAed > 0 && <p className="mt-2 text-xs text-emerald-700">you earn {AED(moreAed)} more when it's paid</p>}
