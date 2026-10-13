@@ -98,8 +98,9 @@ async function run(file: string) {
       source: { batch: BATCH, file: String(r.file ?? "") },
     };
     // An admin's link stays; otherwise the contact decides.
-    const m: Match = before?.match === "manual"
-      ? { student_id: before.student_id ?? null, match: "manual" as any, not_linked_why: before.not_linked_why ?? "" }
+    // Linked by hand, or by the Strong suggestions (scripts/link-zoho-suggested.ts): kept as it is.
+    const m: Match = before?.match === "manual" || before?.match === "suggested"
+      ? { student_id: before.student_id ?? null, match: before.match as any, not_linked_why: before.not_linked_why ?? "" }
       : matchOf(doc.customer);
     add(m.student_id ? `linked by ${m.match}` : `not linked — ${m.not_linked_why}`);
     if (m.student_id) linkedStudents.add(m.student_id);

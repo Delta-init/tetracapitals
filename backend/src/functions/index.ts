@@ -49,7 +49,7 @@ import { getSalesBonusToSend, sendSalesBonusCredit } from "./salesBonusSend";
 import { getLmsCourseAccess, giveLmsCourses, setLmsModuleAccess } from "./lmsCourseAccess";
 import { getClassCompletions } from "./classCompletions";
 import { getMyTeamCsIds } from "./myTeam";
-import { getStudentZohoInvoices, listZohoInvoices, getZohoInvoiceOptions, linkZohoInvoice } from "./zohoInvoices";
+import { getStudentZohoInvoices, listZohoInvoices, getZohoInvoiceOptions, linkZohoInvoice, getStudentInvoicesForLink, listFinanceInvoices } from "./zohoInvoices";
 import { getStudentLmsCourses } from "./lmsCourses";
 import { getStudentTags, setStudentTag } from "./studentTags";
 import { getPushConfig, savePushSubscription, deletePushSubscription, sendTestPush } from "./push";
@@ -152,6 +152,8 @@ const AUTHED: Record<string, AuthedHandler> = {
   listZohoInvoices,
   getZohoInvoiceOptions,
   linkZohoInvoice,
+  getStudentInvoicesForLink,
+  listFinanceInvoices,
   answerLmsTicket,
   resolveLmsTicket,
   // LMS enrolment requests, decided here (lmsEnrolmentRequests.ts)

@@ -1,7 +1,8 @@
 import { col } from "../db";
 import { json, error, forbidden, notFound } from "../lib/response";
 import { toObjectId } from "../lib/id";
-import { allOf as and, escapeRe, pageOf } from "../lib/paging";
+import { allOf as and, escapeRe, pageOf, PAGE_SIZES, MAX_ALL } from "../lib/paging";
+import { suggestionsFor, strengthRank, type Suggestion } from "../students/zohoSuggest";
 import { buildScopeFilter } from "../lib/scope";
 import { isMentorRole } from "../lib/roles";
 import { userCanListEntity } from "../entities/crud";
@@ -16,6 +17,12 @@ import type { AuthUser } from "../auth/middleware";
    a CS their own and Common ones, a leader their team, admins everyone), so a
    CS sees only their own students' invoices. Not linked ones: Super Admin and
    Admin only. Amounts and balances for everyone who sees one (the user).
+
+   2026-10-13 (the user): each Not linked invoice with the student it is most
+   likely for (students/zohoSuggest.ts — Strong / Likely / Weak) and a filter
+   by it; the Link window shows the picked student's Zoho and Delta finance
+   invoices first; and Finance invoices — the students' Delta finance course
+   fees (course_fees) — as a list of its own, scoped like the rest.
 ──────────────────────────────────────────────────────────────────────────── */
 
 const COLL = "zoho_invoices";
@@ -45,6 +52,16 @@ const totals = (rows: any[]) => ({
   overdue: rows.filter((r) => r.status === "Overdue").length,
 });
 const shown = (d: any) => { const { _id, ...rest } = d; return { id: String(_id), ...rest }; };
+
+/** A page of a list made here — body { page, pageSize, all }, as lib/paging pageOf answers. */
+function pageList<T>(list: T[], body: any) {
+  const all = !!body?.all;
+  const pageSize = all ? MAX_ALL : PAGE_SIZES.includes(Number(body?.pageSize)) ? Number(body.pageSize) : PAGE_SIZES[0]!;
+  const pages = Math.max(1, Math.ceil(list.length / pageSize));
+  const page = all ? 1 : Math.min(Math.max(1, Math.floor(Number(body?.page) || 1)), pages);
+  return { rows: list.slice((page - 1) * pageSize, page * pageSize), total: list.length, page, page_size: all ? list.length : pageSize };
+}
+const SUGGESTED = new Set(["strong", "likely", "weak", "none", "any"]);
 
 /**
  * POST /api/functions/getStudentZohoInvoices { studentId }
@@ -97,6 +114,21 @@ export async function listZohoInvoices(req: Request, user: AuthUser): Promise<Re
   const course = str(body?.course);
   if (course && course !== "all") parts.push({ "items.name": course });
   const query = and(...parts);
+
+  // Not linked: each with the students it may be for, and the filter by how sure (the user, 2026-10-13).
+  if (notLinked) {
+    const docs = (await col(COLL).find(query).sort({ date: -1, number: -1 }).toArray()) as any[];
+    const withSuggestions = await Promise.all(docs.map(async (d) => ({ ...shown(d), suggestions: await suggestionsFor(d.customer ?? {}) as Suggestion[] })));
+    const want = SUGGESTED.has(String(body?.suggested)) ? String(body.suggested) : "";
+    const kept = withSuggestions.filter((r) => {
+      const best = r.suggestions[0]?.strength;
+      return !want ? true : want === "none" ? !best : want === "any" ? !!best : best === want;
+    });
+    if (body?.sort === "suggested") kept.sort((a, b) => strengthRank(a.suggestions[0]?.strength) - strengthRank(b.suggestions[0]?.strength));
+    const counts = { strong: 0, likely: 0, weak: 0, none: 0 } as Record<string, number>;
+    for (const r of withSuggestions) counts[r.suggestions[0]?.strength ?? "none"]!++;
+    return json({ ...pageList(kept, body), totals: totals(kept), may_link: mayLink, suggested_counts: counts });
+  }
 
   const result = await pageOf(COLL, query, { date: -1, number: -1 } as any, body);
   // Who each one is for, as the Students page names them.
@@ -154,4 +186,77 @@ export async function linkZohoInvoice(req: Request, user: AuthUser): Promise<Res
   if (!student) return notFound("That student wasn't found");
   await col(COLL).updateOne({ _id: oid }, { $set: { student_id: String(sid), match: "manual", not_linked_why: "", ...by } });
   return json({ ok: true, student_id: String(sid), student_name: student.full_name ?? "" });
+}
+
+/** A student's Delta finance invoices (course_fees), as the Invoices page shows them. */
+function financeInvoicesOf(st: any) {
+  const m = (v: unknown) => (Number.isFinite(Number(v)) ? Math.round(Number(v)) / 100 : 0);
+  return (Array.isArray(st?.course_fees) ? st.course_fees : []).filter((f: any) => f && typeof f === "object").map((f: any) => {
+    const receipts = [f.receipt_url, ...(Array.isArray(f.declared_payments) ? f.declared_payments.map((p: any) => p?.receipt_url) : [])]
+      .filter((u: unknown, i: number, all: unknown[]) => /^https?:\/\//i.test(String(u ?? "")) && all.indexOf(u) === i);
+    return {
+      invoice_id: String(f.invoice_id ?? ""), number: String(f.invoice_number ?? ""), course: String(f.course ?? ""),
+      currency: String(f.currency ?? "AED"), total: m(f.total_minor), paid: m(f.paid_minor), balance: m(f.balance_minor),
+      collected: f.collected_minor != null ? m(f.collected_minor) : null, collected_method: String(f.collected_method ?? ""),
+      date: String(f.recorded_at ?? f.invoice_date ?? "").slice(0, 10), source: String(f.source ?? "finance"),
+      bonus: f.bonus_given === true ? m(f.bonus_minor) : 0, bonus_currency: String(f.bonus_currency ?? f.currency ?? ""),
+      receipts,
+    };
+  });
+}
+
+/**
+ * POST /api/functions/getStudentInvoicesForLink { studentId } — Super Admin / Admin, in the Link window: the student
+ * picked, with their Zoho invoices and their Delta finance invoices, so a second copy is seen before linking.
+ */
+export async function getStudentInvoicesForLink(req: Request, user: AuthUser): Promise<Response> {
+  if (!LINKERS.includes(user.app_role)) return forbidden("Only a Super Admin or an Admin links invoices to students");
+  const body: any = await req.json().catch(() => ({}));
+  const oid = toObjectId(str(body?.studentId, 40));
+  if (!oid) return error("studentId is required", 400);
+  const st: any = await col("students").findOne({ _id: oid }, { projection: { full_name: 1, student_code: 1, email: 1, phone: 1, primary_mentor_name: 1, course_fees: 1 } });
+  if (!st) return notFound("That student wasn't found");
+  const zoho = (await col(COLL).find({ student_id: String(oid) }).sort({ date: -1 }).toArray()) as any[];
+  return json({
+    student: { id: String(st._id), full_name: st.full_name ?? "", student_code: st.student_code ?? "", email: st.email ?? "", phone: st.phone ?? "", cs: st.primary_mentor_name ?? "" },
+    zoho: zoho.map((z) => ({ id: String(z._id), number: z.number, date: z.date, total: z.total, paid: z.paid, balance: z.balance, status: z.status, currency: z.currency, courses: (z.items ?? []).map((i: any) => i?.name).filter(Boolean) })),
+    finance: financeInvoicesOf(st),
+  });
+}
+
+/**
+ * POST /api/functions/listFinanceInvoices { page?, pageSize?, all?, search?, year?, course?, cs? }
+ * The Delta finance invoices on the students this person may see — newest first.
+ * → { rows: [{ ...invoice, student_id, student_name, student_code, cs_name }], total, page, page_size, totals, courses }
+ */
+export async function listFinanceInvoices(req: Request, user: AuthUser): Promise<Response> {
+  if (!userCanListEntity(user, "Student")) return forbidden();
+  const body: any = await req.json().catch(() => ({}));
+  const scope = await studentScope(user);
+  const parts: Record<string, any>[] = [{ "course_fees.0": { $exists: true } }];
+  const cs = str(body?.cs, 40);
+  if (cs && cs !== "all") parts.push({ primary_mentor_id: cs });
+  const students = (await col("students").find(and(scope, ...parts), { projection: { full_name: 1, student_code: 1, email: 1, phone: 1, primary_mentor_id: 1, primary_mentor_name: 1, course_fees: 1 } }).toArray()) as any[];
+  const search = str(body?.search, 100).toLowerCase();
+  const year = str(body?.year, 4), course = str(body?.course);
+  const all: any[] = [];
+  const courses = new Set<string>(), mentors = new Map<string, string>();
+  for (const st of students) {
+    if (st.primary_mentor_id) mentors.set(String(st.primary_mentor_id), String(st.primary_mentor_name || "—"));
+    for (const f of financeInvoicesOf(st)) {
+      if (f.course) courses.add(f.course);
+      if (/^\d{4}$/.test(year) && !f.date.startsWith(year)) continue;
+      if (course && course !== "all" && f.course !== course) continue;
+      const row = { ...f, student_id: String(st._id), student_name: String(st.full_name ?? "").trim(), student_code: st.student_code ?? "", cs_name: st.primary_mentor_name ?? "", email: st.email ?? "", phone: st.phone ?? "" };
+      if (search && ![row.number, row.course, row.student_name, row.student_code, row.email, row.phone].some((v) => String(v ?? "").toLowerCase().includes(search))) continue;
+      all.push(row);
+    }
+  }
+  all.sort((a, b) => String(b.date).localeCompare(String(a.date)) || String(b.number).localeCompare(String(a.number)));
+  const sum = (k: string) => Math.round(all.reduce((s, r) => s + (Number(r[k]) || 0), 0) * 100) / 100;
+  return json({
+    ...pageList(all, body),
+    totals: { count: all.length, total: sum("total"), paid: sum("paid"), balance: sum("balance"), overdue: 0 },
+    courses: [...courses].sort(), mentors: [...mentors].map(([id, name]) => ({ id, name })).sort((a, b) => a.name.localeCompare(b.name)),
+  });
 }
