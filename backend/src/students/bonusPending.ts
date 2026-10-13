@@ -27,15 +27,18 @@ import { salesBonusOf } from "../functions/studentFollowups";
    Read-only: nothing is changed.
 ──────────────────────────────────────────────────────────────────────────── */
 
-export type BonusStage = "needs_call" | "with_finance" | "waiting_broker";
-export const BONUS_STAGE_KEYS: BonusStage[] = ["needs_call", "with_finance", "waiting_broker"];
-const RANK: Record<BonusStage, number> = { needs_call: 0, with_finance: 1, waiting_broker: 2 };
+// sent_back (the user, 2026-10-13): sent back to its CS to correct — by a broker admin (still PENDING, `returned`) or
+// by accounts (REJECTED, finance_approval.sent_back, not sent again yet) — never "waiting for a broker admin".
+export type BonusStage = "sent_back" | "needs_call" | "with_finance" | "waiting_broker";
+export const BONUS_STAGE_KEYS: BonusStage[] = ["sent_back", "needs_call", "with_finance", "waiting_broker"];
+const RANK: Record<BonusStage, number> = { sent_back: 0, needs_call: 1, with_finance: 2, waiting_broker: 3 };
 export interface BonusStageTotal { count: number; total_usd: number }
 export interface BonusPending {
   count: number;
   total_usd: number;
   /** The earliest stage among them: with finance while any one is there. */
   stage: BonusStage;
+  sent_back: BonusStageTotal;
   needs_call: BonusStageTotal;
   with_finance: BonusStageTotal;
   waiting_broker: BonusStageTotal;
@@ -43,11 +46,19 @@ export interface BonusPending {
   since: string;
 }
 
-/** A bonus not decided yet — what the Bonus filter and the badge count. */
-export const PENDING_BONUS = { type: "BONUS", status: "PENDING" } as const;
+/** A bonus not decided yet — what the Bonus filter and the badge count: pending, or sent back by accounts to correct. */
+export const PENDING_BONUS: Record<string, any> = {
+  type: "BONUS",
+  $or: [{ status: "PENDING" }, { status: "REJECTED", "finance_approval.sent_back": true, resubmitted_as: { $in: [null, ""] } }],
+};
+
+/** Sent back to its CS to correct and not corrected yet. */
+export const isSentBack = (tx: any): boolean =>
+  (tx?.status === "PENDING" && !!tx?.returned?.at) || (tx?.status === "REJECTED" && tx?.finance_approval?.sent_back === true && !tx?.resubmitted_as);
 
 /** Where one pending bonus waits. A bonus credit never goes to finance, whatever it carries. */
-export const bonusStageOf = (tx: any): BonusStage => (!tx?.bonus_credit && withFinance(tx) ? "with_finance" : "waiting_broker");
+export const bonusStageOf = (tx: any): BonusStage =>
+  isSentBack(tx) ? "sent_back" : !tx?.bonus_credit && withFinance(tx) ? "with_finance" : "waiting_broker";
 
 const cents = (n: number) => Math.round(n * 100) / 100;
 const usdOf = (tx: any) => (Number.isFinite(Number(tx?.amount_usd)) ? Number(tx.amount_usd) : 0);
@@ -80,7 +91,7 @@ export async function notSentOf(match: Record<string, any>): Promise<Map<string,
 
 const blank = (since: string): BonusPending => ({
   count: 0, total_usd: 0, stage: "waiting_broker",
-  needs_call: { count: 0, total_usd: 0 }, with_finance: { count: 0, total_usd: 0 }, waiting_broker: { count: 0, total_usd: 0 }, since,
+  sent_back: { count: 0, total_usd: 0 }, needs_call: { count: 0, total_usd: 0 }, with_finance: { count: 0, total_usd: 0 }, waiting_broker: { count: 0, total_usd: 0 }, since,
 });
 function add(b: BonusPending, stage: BonusStage, usd: number, at: string) {
   b.count++;
@@ -98,7 +109,7 @@ export async function bonusPendingOf(studentIds: string[]): Promise<Map<string, 
   if (!ids.length) return out;
   const txs = (await col("funding_transactions")
     .find({ ...PENDING_BONUS, student_id: { $in: ids } }, {
-      projection: { student_id: 1, status: 1, amount_usd: 1, finance_approval: 1, bonus_credit: 1, requested_at: 1, created_date: 1 },
+      projection: { student_id: 1, status: 1, amount_usd: 1, finance_approval: 1, bonus_credit: 1, requested_at: 1, created_date: 1, returned: 1, resubmitted_as: 1 },
     })
     .toArray()) as any[];
   for (const t of txs) {
@@ -125,7 +136,7 @@ export async function idsWithBonusPending(stage: "pending" | BonusStage = "pendi
   const ids = new Set<string>();
   if (stage !== "needs_call") {
     const txs = (await col("funding_transactions")
-      .find({ ...PENDING_BONUS, student_id: { $nin: [null, ""] } }, { projection: { student_id: 1, finance_approval: 1, bonus_credit: 1, status: 1 } })
+      .find({ ...PENDING_BONUS, student_id: { $nin: [null, ""] } }, { projection: { student_id: 1, finance_approval: 1, bonus_credit: 1, status: 1, returned: 1, resubmitted_as: 1 } })
       .toArray()) as any[];
     for (const t of txs) if (stage === "pending" || bonusStageOf(t) === stage) ids.add(String(t.student_id));
   }

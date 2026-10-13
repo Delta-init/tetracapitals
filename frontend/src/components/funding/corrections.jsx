@@ -141,10 +141,10 @@ export function SentBackNotice({ tx, email, compact = false }) {
   if (tx?.status !== 'PENDING') return null;
   if (tx.returned?.at) {
     return (
-      <div className={`${compact ? 'mt-1' : 'mt-1.5'} rounded-md border border-amber-200 bg-amber-50 px-2 py-1.5 text-xs text-amber-800`}>
+      <div className={`${compact ? 'mt-1' : 'mt-1.5'} rounded-md border border-rose-300 bg-rose-50 px-2 py-1.5 text-xs text-rose-800`}>
         <div className="font-medium">Sent back by {tx.returned.by_name} · {when(tx.returned.at)}</div>
         <div>{(tx.returned.fields || []).map(f => FIELDS[f] || f).join(', ')} {tx.returned.note ? `— “${tx.returned.note}”` : 'looks wrong'}</div>
-        <Button size="sm" variant="outline" className="mt-1 h-7 px-2 text-xs" onClick={() => setOpen(true)}>Correct</Button>
+        <Button size="sm" className="mt-1 h-7 bg-rose-600 px-2 text-xs hover:bg-rose-700" onClick={() => setOpen(true)}>Correct</Button>
         {open && <CorrectDialog tx={tx} email={email} onClose={() => setOpen(false)} />}
       </div>
     );

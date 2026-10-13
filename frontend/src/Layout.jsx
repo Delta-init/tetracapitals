@@ -244,7 +244,7 @@ export default function Layout({ children, currentPageName }) {
       { n: navCounts?.payment_links_turned_down, cls: 'bg-rose-500 text-white', title: 'payment link requests turned down — not seen yet' },
     ],
     ClassCompletions: [{ n: navCounts?.class_completions_open, cls: 'bg-violet-500 text-white', title: 'class completions waiting for a call' }],
-    FundingActivities: [{ n: navCounts?.funding_sent_back, cls: 'bg-amber-400 text-brand-navy', title: 'funding requests sent back to you to correct' }],
+    FundingActivities: [{ n: navCounts?.funding_sent_back, cls: 'bg-rose-600 text-white', title: 'funding requests sent back to you to correct' }],
     NotCreditedYet: [{ n: navCounts?.credit_requests_open, cls: 'bg-amber-400 text-brand-navy', title: 'Bonuses not credited yet, waiting for you' }],
     BonusApprovals: [{ n: navCounts?.bonus_approvals_pending, cls: 'bg-amber-400 text-brand-navy', title: 'MT5 deposits, withdrawals and bonuses waiting for your approval' }],
     SupportTickets: [

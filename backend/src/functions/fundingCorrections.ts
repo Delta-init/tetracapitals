@@ -36,6 +36,18 @@ export function returnedFilter(userId: string): Record<string, any> {
   return { status: "PENDING", "returned.at": { $exists: true }, $or: [{ requested_by_id: userId }, { initiating_mentor_id: userId }, { primary_mentor_id: userId }] };
 }
 
+/**
+ * Everything waiting for this person to correct (the user, 2026-10-13): sent back by a broker admin (returnedFilter),
+ * or by accounts — rejected to be corrected (finance_approval.sent_back) and not sent again yet — theirs.
+ */
+export function needsCorrectionFilter(userId: string): Record<string, any> {
+  return { $or: [
+    returnedFilter(userId),
+    { status: "REJECTED", "finance_approval.sent_back": true, resubmitted_as: { $in: [null, ""] },
+      $or: [{ requested_by_id: userId }, { initiating_mentor_id: userId }, { created_by: userId }] },
+  ] };
+}
+
 /** POST /api/functions/sendFundingBack { id, fields: ["email" | "mt5" | "other"], note } — a broker admin or a Super Admin. */
 export async function sendFundingBack(req: Request, user: AuthUser): Promise<Response> {
   if (!BONUS_APPROVERS.includes(user.app_role)) return forbidden("Only a broker admin or a Super Admin sends a request back");

@@ -244,7 +244,9 @@ export async function getBonusReport(req: Request, user: AuthUser): Promise<Resp
     if (!inRange(ctx, at)) continue;
     const p = personOf(ctx, raisedBy(t), t.primary_mentor_name);
     if (!counts(ctx, p)) continue;
-    const stage = t.status === "APPROVED" ? "approved" : t.status === "REJECTED" ? "rejected" : bonusStageOf(t);
+    // Sent back to correct still waits — counted with the broker admin's column in this report.
+    const raw = t.status === "APPROVED" ? "approved" : t.status === "REJECTED" ? "rejected" : bonusStageOf(t);
+    const stage = raw === "sent_back" ? "waiting_broker" : raw;
     const usd = usdOf(t);
     // Approved: what the student paid, in AED (the user, 2026-10-12) — the course payment's paid today, else the
     // request's AED, else its USD at 3.67.

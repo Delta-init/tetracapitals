@@ -830,6 +830,7 @@ export default function Students() {
                 <SelectContent>
                   <SelectItem value="all">Any bonus</SelectItem>
                   <SelectItem value="pending">Bonus pending — any</SelectItem>
+                  <SelectItem value="sent_back">Sent back — to correct</SelectItem>
                   <SelectItem value="needs_call">Needs a connected call + MT5</SelectItem>
                   <SelectItem value="with_finance">With finance</SelectItem>
                   <SelectItem value="waiting_broker">Waiting for broker admin</SelectItem>

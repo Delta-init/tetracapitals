@@ -24,11 +24,12 @@ import { Mt5LoginField, MT5_LOGIN, mt5LoginOf } from '@/components/students/mt5A
 ──────────────────────────────────────────────────────────────────────────── */
 
 export const BONUS_STAGES = {
+  sent_back: { label: 'Sent back — correct it', cls: 'border-rose-300 bg-rose-100 text-rose-800', note: 'Sent back to the CS to correct (by a broker admin or by accounts) — it waits for the correction, not for a broker admin' },
   needs_call: { label: 'Needs call + MT5', cls: 'border-rose-200 bg-rose-50 text-rose-800', note: 'Promised at the sales close — it goes to be credited once a call that connected is logged with their MT5' },
   with_finance: { label: 'With finance', cls: 'border-sky-200 bg-sky-50 text-sky-800', note: 'Delta finance is approving the payment' },
   waiting_broker: { label: 'Waiting for broker admin', cls: 'border-amber-200 bg-amber-50 text-amber-800', note: 'A broker admin or a Super Admin credits it in MT5 and approves it' },
 };
-const STAGE_KEYS = ['needs_call', 'with_finance', 'waiting_broker'];
+const STAGE_KEYS = ['sent_back', 'needs_call', 'with_finance', 'waiting_broker'];
 
 const usd = (n) => `$${Number(n || 0).toLocaleString('en-US', { maximumFractionDigits: 2 })}`;
 

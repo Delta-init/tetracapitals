@@ -1,9 +1,11 @@
 import React, { useState, useEffect } from 'react';
 import { base44 } from "@/api/base44Client";
 import { useQuery } from "@tanstack/react-query";
+import { Link } from "react-router-dom";
+import { createPageUrl } from "@/utils";
 import StatsCard from "../components/dashboard/StatsCard";
 import LocationTotals from "../components/dashboard/LocationTotals";
-import { Users, TrendingUp, DollarSign, Target, AlertCircle, Award, Wallet, Activity } from "lucide-react";
+import { Users, TrendingUp, DollarSign, Target, AlertCircle, AlertTriangle, ArrowRight, Award, Wallet, Activity } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import TransactionTable from "../components/transactions/TransactionTable";
 import { canViewAllStudents, canApproveTransactions } from "../components/utils/DataMasking";
@@ -29,6 +31,15 @@ export default function Dashboard() {
     };
     fetchUser();
   }, []);
+
+  // Funding requests sent back to them to correct (the user, 2026-10-13) — the sidebar's count, shared.
+  const { data: navCounts } = useQuery({
+    queryKey: ['nav-counts'],
+    queryFn: async () => (await base44.functions.invoke('getNavCounts', {})).data,
+    enabled: !!currentUser,
+    staleTime: 30_000,
+  });
+  const toCorrect = Number(navCounts?.funding_sent_back) || 0;
 
   const { data: students = [] } = useQuery({
     queryKey: ['students'],
@@ -232,6 +243,19 @@ export default function Dashboard() {
             </FadeIn>
           </div>
         </motion.section>
+
+        {/* Sent back to correct — red, under the hero, until corrected */}
+        {toCorrect > 0 && (
+          <Link to={createPageUrl('MyFundingRequests')}
+            className="flex items-center gap-3 rounded-2xl border border-rose-300 bg-rose-50 px-5 py-4 text-rose-800 shadow-soft transition hover:bg-rose-100">
+            <AlertTriangle className="h-6 w-6 flex-shrink-0 text-rose-600" />
+            <div className="flex-1">
+              <p className="font-semibold">{toCorrect === 1 ? 'A funding request was sent back to you to correct' : `${toCorrect} funding requests were sent back to you to correct`}</p>
+              <p className="text-sm text-rose-700">Correct it on Funding Activities and it goes straight back for approval.</p>
+            </div>
+            <span className="inline-flex items-center gap-1 whitespace-nowrap rounded-full bg-rose-600 px-3 py-1.5 text-sm font-semibold text-white">Correct now <ArrowRight className="h-4 w-4" /></span>
+          </Link>
+        )}
 
         {/* Stats Grid — the Super Admin's is Dubai and Bangalore side by side (the user, 2026-10-10) */}
         {currentUser.app_role === 'super_admin' ? (

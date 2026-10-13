@@ -7,7 +7,7 @@ import { notOnboardedFilter, newFromFinanceFilter } from "../students/onboarding
 import { theirStudents } from "../students/closedBy";
 import { countCallNeeded } from "../students/classCompletions";
 import { decidableMt5Filter } from "./bonusApprovals";
-import { returnedFilter } from "./fundingCorrections";
+import { needsCorrectionFilter } from "./fundingCorrections";
 import { BONUS_APPROVERS } from "../finance/funding";
 import { openCreditRequests } from "./creditRequests";
 import { dueSoonFilter, uaeDay } from "../finance/balanceDue";
@@ -78,7 +78,8 @@ export async function getNavCounts(_req: Request, user: AuthUser): Promise<Respo
     BONUS_APPROVERS.includes(user.app_role) ? col("funding_transactions").countDocuments(decidableMt5Filter()) : 0,
     col("students").countDocuments(await theirs(dueSoonFilter(uaeDay()))),
     // Funding requests a broker admin sent back to them to correct (fundingCorrections.ts).
-    col("funding_transactions").countDocuments(returnedFilter(user.id)),
+    // …and by accounts, to correct and send again (2026-10-13).
+    col("funding_transactions").countDocuments(needsCorrectionFilter(user.id)),
   ]);
   // Bonus not credited, waiting for a broker admin (creditRequests.ts).
   const creditOpen = BONUS_APPROVERS.includes(user.app_role) ? await openCreditRequests() : 0;

@@ -10,7 +10,7 @@ import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Plus, TrendingUp, TrendingDown, DollarSign, Award, Wallet, Eye, Users, Clock, Filter, X } from "lucide-react";
+import { Plus, TrendingUp, TrendingDown, DollarSign, Award, Wallet, Eye, Users, Clock, Filter, X, AlertTriangle } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import FundingRequestForm, { PaymentDetails } from "../components/funding/FundingRequestForm";
 import TagChips from "../components/funding/TagChips";
@@ -384,7 +384,12 @@ export default function MyFundingRequests() {
     if (dateTo && d > new Date(dateTo + 'T23:59:59')) return false;
     return true;
   });
-  const historyRows = [...filteredReferrals, ...filteredAdjustments, ...filteredTransactions];
+  // Sent back to correct — by a broker admin or by accounts — first, in red (the user, 2026-10-13).
+  const needsCorrection = (t) => (t.status === 'PENDING' && !!t.returned?.at) || (t.status === 'REJECTED' && t.finance_approval?.sent_back && !t.resubmitted_as);
+  filteredTransactions.sort((a, b) => (needsCorrection(b) ? 1 : 0) - (needsCorrection(a) ? 1 : 0));
+  const toCorrect = myTransactions.filter(needsCorrection);
+  // …on the first page too.
+  const historyRows = [...filteredTransactions.filter(needsCorrection), ...filteredReferrals, ...filteredAdjustments, ...filteredTransactions.filter(t => !needsCorrection(t))];
   // Back to page 1 whenever a filter, or the quarter (it picks the adjustments), changes.
   const historyResetKey = [filterSearch, filterType, filterStatus, dateFrom, dateTo, selectedQuarter, selectedYear].join('|');
 
@@ -425,6 +430,20 @@ export default function MyFundingRequests() {
             </Button>
           )}
         </div>
+
+        {/* Sent back to correct — red, on top (2026-10-13) */}
+        {toCorrect.length > 0 && (
+          <div className="flex items-start gap-3 rounded-2xl border border-rose-300 bg-rose-50 px-4 py-3 text-sm text-rose-800">
+            <AlertTriangle className="mt-0.5 h-5 w-5 flex-shrink-0 text-rose-600" />
+            <div>
+              <p className="font-semibold">{toCorrect.length === 1 ? 'A request was sent back to you to correct' : `${toCorrect.length} requests were sent back to you to correct`}</p>
+              <p className="text-rose-700">
+                {toCorrect.slice(0, 4).map(t => `${t.student_name?.trim() || t.student_code} (${String(t.type || '').toLowerCase()} $${Number(t.amount_usd || 0).toLocaleString('en-US')})`).join(', ')}{toCorrect.length > 4 ? ` and ${toCorrect.length - 4} more` : ''}
+                {' '}— they are at the top of your Request History, in red. Correct them and they go straight back.
+              </p>
+            </div>
+          </div>
+        )}
 
         {/* Tabs */}
         <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
@@ -743,7 +762,7 @@ export default function MyFundingRequests() {
                             {filteredTransactions.filter(t => onPage.has(t)).map((transaction) => {
                               const commissionEarned = transaction.commission_amount || 0;
                               return (
-                                <TableRow key={transaction.id} className="hover:bg-gray-50 transition-colors">
+                                <TableRow key={transaction.id} className={`transition-colors ${needsCorrection(transaction) ? 'bg-rose-50/70 hover:bg-rose-50' : 'hover:bg-gray-50'}`}>
                                   <TableCell className="text-sm">
                                     {transaction.requested_at ? format(new Date(transaction.requested_at), 'MMM d, yyyy HH:mm') : '-'}
                                   </TableCell>
