@@ -10,7 +10,6 @@ import { decidableMt5Filter } from "./bonusApprovals";
 import { needsCorrectionFilter, NEEDS_CORRECTION_ALL } from "./fundingCorrections";
 import { BONUS_APPROVERS } from "../finance/funding";
 import { openCreditRequests } from "./creditRequests";
-import { dueSoonFilter, uaeDay } from "../finance/balanceDue";
 
 /* The filters behind each number — shared with the Root portal's Pending page (portal/pending.ts), so the two never
    drift apart. A `forId` narrows one to that person, as their own sidebar has it. */
@@ -47,9 +46,8 @@ export const paymentLinksUnseenFilter = (status: "approved" | "rejected", forId?
  * waited 6 hours or more (students/onboardingAlerts.ts) — whose, as the follow-ups. Class completions:
  * classes students attended, told to their CS, with no call logged since the
  * class ended (students/classCompletions.ts) — whose, as the follow-ups. MT5 bonuses: for a broker admin or a Super
- * Admin, the bonuses waiting for their approval (functions/bonusApprovals.ts). Balance payments: students owing on a
- * course finance sold them whose next instalment is due within 3 days or overdue (finance/balanceDue.ts) — whose, as
- * the Not onboarded page.
+ * Admin, the bonuses waiting for their approval (functions/bonusApprovals.ts). Balance payments due: always 0 since
+ * 2026-10-13 (a sales close's instalments are followed up in its CRM).
  */
 export async function getNavCounts(_req: Request, user: AuthUser): Promise<Response> {
   const today = businessToday();
@@ -76,7 +74,9 @@ export async function getNavCounts(_req: Request, user: AuthUser): Promise<Respo
     col("students").countDocuments(mine(newFromFinanceFilter(Date.now()))),
     countCallNeeded(ids),
     BONUS_APPROVERS.includes(user.app_role) ? col("funding_transactions").countDocuments(decidableMt5Filter()) : 0,
-    col("students").countDocuments(await theirs(dueSoonFilter(uaeDay()))),
+    // Balance payments due (2026-10-13): none here now — a sales close's instalments are followed up in its CRM, and a
+    // course paid in parts here has no due date. Kept at 0 so an older screen reads nothing due.
+    Promise.resolve(0),
     // Funding requests a broker admin sent back to them to correct (fundingCorrections.ts).
     // …and by accounts, to correct and send again (2026-10-13).
     col("funding_transactions").countDocuments(user.app_role === "cs_manager" ? NEEDS_CORRECTION_ALL : needsCorrectionFilter(user.id)),

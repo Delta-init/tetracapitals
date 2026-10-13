@@ -238,8 +238,7 @@ export default function Layout({ children, currentPageName }) {
       cls: navCounts?.not_onboarded_late ? 'bg-rose-500 text-white' : 'bg-amber-400 text-brand-navy',
       title: `new students from finance not onboarded yet${navCounts?.not_onboarded_late ? ` — ${navCounts.not_onboarded_late} over 6 hours` : ''}`,
     }],
-    // Students owing on a finance course whose next instalment is due within 3 days or overdue (backend balance_due).
-    BalancePayments: [{ n: navCounts?.balance_due, cls: 'bg-rose-500 text-white', title: 'balance payments due within 3 days or overdue' }],
+    // Balance payments has no badge since 2026-10-13: what was due there (a sales close's instalments) is followed up in the sales CRMs.
     StudentFollowups: [{ n: navCounts?.followups_today, cls: 'bg-amber-400 text-brand-navy', title: 'follow-ups due today' }],
     OverdueFollowups: [{ n: navCounts?.followups_overdue, cls: 'bg-rose-500 text-white', title: 'overdue follow-ups' }],
     PaymentLinks: [
