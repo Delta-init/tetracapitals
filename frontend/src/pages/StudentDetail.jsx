@@ -317,7 +317,7 @@ export default function StudentDetail() {
                 {/* Which sales CRM they came through */}
                 <SalesCrmBadge crm={salesCrmOfStudent(displayStudent)} />
                 {/* A bonus not decided yet, and where it waits — opens their Funding tab */}
-                <BonusPendingBadge info={bonusPending} onClick={() => changeTab('funding')} />
+                <BonusPendingBadge info={bonusPending} student={student} onClick={() => changeTab('funding')} />
               </p>
               {/* Open, or Closed = enrolled */}
               <div className="mt-2"><EnrolmentControl student={student} currentUser={currentUser} /></div>

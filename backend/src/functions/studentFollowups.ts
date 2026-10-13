@@ -45,11 +45,20 @@ export function salesBonusOf(student: any) {
     }));
 }
 
-/** Each sales-close bonus not raised yet goes to the admins to credit in `login` — a credit only; how many went. */
-async function raiseSalesBonusCredits(student: any, login: string, user: AuthUser): Promise<number> {
+/**
+ * Each sales-close bonus not raised yet goes to the admins to credit in `login` — a credit only; how many went.
+ * `receipts`: a receipt uploaded for an invoice finance sent none for (the Bonus pending badge, 2026-10-12), kept on
+ * the request; `only`: just these invoices.
+ */
+export async function raiseSalesBonusCredits(
+  student: any, login: string, user: AuthUser,
+  opts: { receipts?: Map<string, { url: string; name: string }>; only?: Set<string>; via?: string } = {},
+): Promise<number> {
   let raised = 0;
   for (const b of salesBonusOf(student)) {
     if (!b.given || !(b.amount > 0)) continue;
+    if (opts.only && !opts.only.has(b.invoice_id)) continue;
+    const receipt = opts.receipts?.get(b.invoice_id);
     const usd = b.currency === "USD" ? b.amount : Math.round((b.amount / AED_PER_USD) * 100) / 100;
     const aed = b.currency === "USD" ? Math.round(b.amount * AED_PER_USD * 100) / 100 : b.amount;
     const money = b.currency === "USD" ? `$${b.amount.toLocaleString("en-US")}` : `${b.currency} ${b.amount.toLocaleString("en-US")}`;
@@ -62,13 +71,14 @@ async function raiseSalesBonusCredits(student: any, login: string, user: AuthUse
           type: "BONUS", status: "PENDING", bonus_credit: "sales_close",
           sales_close: { invoice_id: b.invoice_id, invoice_number: b.invoice_number, course: b.course },
           amount_currency: b.currency, amount_original: b.amount, amount_aed: aed, amount_usd: usd, fx_rate_aed_per_usd: AED_PER_USD,
-          mt5_login: login, tags: [], payment_method: "", screenshot_url: "",
+          mt5_login: login, tags: [], payment_method: "", screenshot_url: receipt?.url ?? "",
+          ...(receipt ? { payments: [{ method: "", amount: b.amount, currency: b.currency, receipt_url: receipt.url, receipt_name: receipt.name }] } : {}),
           student_id: String(student._id), student_name: student.full_name ?? "", student_code: student.student_code ?? "",
           primary_mentor_id: student.primary_mentor_id ?? "", primary_mentor_name: student.primary_mentor_name ?? "",
           senior_mentor_id: student.senior_mentor_id ?? null, senior_mentor_name: student.senior_mentor_name ?? null,
           initiating_mentor_id: user.id, initiating_mentor_name: who(user), upline_commission_percentage: 0,
           requested_by_id: user.id, requested_by_name: who(user), requested_at: now,
-          notes: `Sales-close bonus credit — ${b.course || "the course"}${b.invoice_number ? `, invoice ${b.invoice_number}` : ""}: ${money} promised at the close. Credit it in MT5 ${login}. No commission on it.`,
+          notes: `Sales-close bonus credit — ${b.course || "the course"}${b.invoice_number ? `, invoice ${b.invoice_number}` : ""}: ${money} promised at the close. Credit it in MT5 ${login}. No commission on it.${opts.via ? ` ${opts.via}` : ""}`,
           created_date: now, updated_date: now,
         },
       },

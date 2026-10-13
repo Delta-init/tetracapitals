@@ -45,6 +45,7 @@ import {
   getLmsEnrolmentRequests, getLmsEnrolmentRequestCount, getLmsEnrolmentRequest, getLmsEnrolmentDocument,
   approveLmsEnrolmentRequest, rejectLmsEnrolmentRequest, viewStudentInLms, assignLmsApplicant,
 } from "./lmsEnrolmentRequests";
+import { getSalesBonusToSend, sendSalesBonusCredit } from "./salesBonusSend";
 import { getLmsCourseAccess, giveLmsCourses, setLmsModuleAccess } from "./lmsCourseAccess";
 import { getClassCompletions } from "./classCompletions";
 import { getMyTeamCsIds } from "./myTeam";
@@ -162,6 +163,9 @@ const AUTHED: Record<string, AuthedHandler> = {
   rejectLmsEnrolmentRequest,
   // …and given to a CS when nobody's yet (CS Manager, Super Admin)
   assignLmsApplicant,
+  // A sales-close bonus sent for credit from its Bonus pending badge (salesBonusSend.ts)
+  getSalesBonusToSend,
+  sendSalesBonusCredit,
   // A student's own LMS, read-only — from LMS Requests and the student page
   viewStudentInLms,
   // Their LMS courses: put on Forex courses, modules opened or locked (lmsCourseAccess.ts)

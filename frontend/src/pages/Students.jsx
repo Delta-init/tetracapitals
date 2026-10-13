@@ -1015,7 +1015,7 @@ export default function Students() {
                             <TableCell>
                               <div className="font-medium text-slate-900">{student.full_name}<NewForYou student={student} me={currentUser.id} /></div>
                               {student.email && <div className="text-xs text-slate-500">{student.email}</div>}
-                              <BonusPendingBadge info={student.bonus_pending} className="mt-1" />
+                              <BonusPendingBadge info={student.bonus_pending} student={student} className="mt-1" />
                             </TableCell>
                             <TableCell className="text-sm font-mono">{student.phone}</TableCell>
                             <TableCell><PriorityPicker student={student} currentUser={currentUser} /></TableCell>
@@ -1116,7 +1116,7 @@ export default function Students() {
                          <TableCell>
                            <div className="font-medium text-slate-900">{student.full_name}<NewForYou student={student} me={currentUser.id} /></div>
                            {student.email && <div className="text-xs text-slate-500">{student.email}</div>}
-                           <BonusPendingBadge info={student.bonus_pending} className="mt-1" />
+                           <BonusPendingBadge info={student.bonus_pending} student={student} className="mt-1" />
                          </TableCell>
                          <TableCell className="text-sm font-mono">{student.phone}</TableCell>
                          <TableCell><PriorityPicker student={student} currentUser={currentUser} /></TableCell>
@@ -1244,7 +1244,7 @@ export default function Students() {
                           <TableCell>
                             <div className="font-medium text-slate-900">{student.full_name}<NewForYou student={student} me={currentUser.id} /></div>
                             {student.email && <div className="text-xs text-slate-500">{student.email}</div>}
-                            <BonusPendingBadge info={student.bonus_pending} className="mt-1" />
+                            <BonusPendingBadge info={student.bonus_pending} student={student} className="mt-1" />
                           </TableCell>
                           <TableCell className="text-sm font-mono">{student.phone}</TableCell>
                           <TableCell><PriorityPicker student={student} currentUser={currentUser} /></TableCell>
@@ -1345,7 +1345,7 @@ export default function Students() {
                         <TableCell>
                           <div className="font-medium text-slate-900">{student.full_name}<NewForYou student={student} me={currentUser.id} /></div>
                           {student.email && <div className="text-xs text-slate-500">{student.email}</div>}
-                          <BonusPendingBadge info={student.bonus_pending} className="mt-1" />
+                          <BonusPendingBadge info={student.bonus_pending} student={student} className="mt-1" />
                         </TableCell>
                         <TableCell className="text-sm font-mono">{student.phone}</TableCell>
                         <TableCell><PriorityPicker student={student} currentUser={currentUser} /></TableCell>
@@ -1453,7 +1453,7 @@ export default function Students() {
                       <TableCell>
                         <div className="font-medium text-slate-900">{student.full_name}<NewForYou student={student} me={currentUser.id} /></div>
                         {student.email && <div className="text-xs text-slate-500">{student.email}</div>}
-                        <BonusPendingBadge info={student.bonus_pending} className="mt-1" />
+                        <BonusPendingBadge info={student.bonus_pending} student={student} className="mt-1" />
                       </TableCell>
                       <TableCell className="text-sm font-mono">{student.phone}</TableCell>
                       <TableCell><PriorityPicker student={student} currentUser={currentUser} /></TableCell>
