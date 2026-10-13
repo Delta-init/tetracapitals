@@ -60,7 +60,8 @@ const addDays = (d: string, n: number) => new Date(Date.parse(`${d}T12:00:00Z`) 
 
 /* ── A stand-in finance: checks each signature as finance's service-auth does, and answers as told. ── */
 const INBOUND_SECRET = process.env.FINANCE_INTEGRATION_SECRET!;
-let mode: "up" | "down" | "refuse" = "up";
+// Only "up" since 2026-10-13 (nothing is sent to finance from this page now); kept to show a refusal would surface.
+let mode = "up" as "up" | "down" | "refuse";
 const received: any[] = [];
 const fake = Bun.serve({
   port: Number(process.env.E2E_FAKE_FINANCE_PORT),
