@@ -15,6 +15,7 @@ import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import FundingRequestForm from "../components/funding/FundingRequestForm";
 import { AmountCell, PaidCell, studentInfoOf, sourceOf } from "../components/funding/mt5Cells";
+import CourseCommissionSummary from "../components/funding/CourseCommissionSummary";
 import TagChips from "../components/funding/TagChips";
 import { useFinanceLink, WithAccountsBadge, FinanceApprovalNote } from "../components/funding/FinanceApproval";
 import {
@@ -488,7 +489,8 @@ export default function MyFundingRequests() {
           {/* My Funding Requests Tab */}
           <TabsContent value="my" className="space-y-6">
             {/* Commission Summary - hidden for assistance role */}
-            {!isAssistance && (<Card className="border-gray-200 bg-gradient-to-br from-blue-50 to-indigo-50">
+            {/* A CS or CS Manager: Course upgradation instead (2026-10-13; components/funding/CourseCommissionSummary.jsx) */}
+            {(isCs || isCsManager) ? <CourseCommissionSummary isManager={isCsManager} /> : !isAssistance && (<Card className="border-gray-200 bg-gradient-to-br from-blue-50 to-indigo-50">
               <CardHeader className="border-b border-blue-100">
                 <div className="flex items-center justify-between flex-wrap gap-3">
                   <CardTitle className="text-xl font-semibold flex items-center gap-2">

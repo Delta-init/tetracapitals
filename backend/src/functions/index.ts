@@ -47,6 +47,7 @@ import {
 } from "./lmsEnrolmentRequests";
 import { getSalesBonusToSend, sendSalesBonusCredit } from "./salesBonusSend";
 import { getCreditRequestOptions, raiseCreditRequest, listCreditRequests, decideCreditRequest } from "./creditRequests";
+import { getCourseCommissionSummary } from "./courseCommissionSummary";
 import { getLmsCourseAccess, giveLmsCourses, setLmsModuleAccess } from "./lmsCourseAccess";
 import { getClassCompletions } from "./classCompletions";
 import { getMyTeamCsIds } from "./myTeam";
@@ -176,6 +177,8 @@ const AUTHED: Record<string, AuthedHandler> = {
   raiseCreditRequest,
   listCreditRequests,
   decideCreditRequest,
+  // A CS's / CS Manager's course upgradation summary on Funding Activities (courseCommissionSummary.ts)
+  getCourseCommissionSummary,
   // A student's own LMS, read-only — from LMS Requests and the student page
   viewStudentInLms,
   // Their LMS courses: put on Forex courses, modules opened or locked (lmsCourseAccess.ts)
