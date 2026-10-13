@@ -143,7 +143,7 @@ export default function StudentFundingCard({ student, transactions = [], loading
                             <FinanceApprovalNote transaction={txn} />
                           </td>
                           <td className="max-w-[220px] p-3 text-sm">
-                            {txn.status === 'REJECTED' && txn.rejection_reason ? <span className="font-medium text-red-600">{txn.rejection_reason}</span> : <span className="text-gray-400">-</span>}
+                            {txn.status === 'REJECTED' && txn.rejection_reason ? <span className="font-medium text-red-600">{txn.finance_approval?.sent_back ? 'Sent back by accounts — correct it and send it again: ' : ''}{txn.rejection_reason}</span> : <span className="text-gray-400">-</span>}
                             <SentBackNotice tx={txn} email={student?.email} compact />
                           </td>
                           <td className="p-3 text-sm">

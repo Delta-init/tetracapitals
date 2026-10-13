@@ -416,6 +416,24 @@ await until(async () => (await stateOf(b2)) === "sent", 3000);
 r = await reject(b2);
 tb = await txOf(b2);
 check("a bonus finance rejects is rejected here, with the reason", r.status === 200 && tb.status === "REJECTED" && tb.rejection_reason === "No such payment on the statement", show(r));
+check("…a plain reject is not marked sent back", !tb.finance_approval?.sent_back, JSON.stringify(tb.finance_approval));
+
+// Sent back to correct (the user, 2026-10-13): a reject marked so; the CS corrects it and sends it again.
+const sb1 = String((await bonus({ amount_usd: 250 })).body?.id ?? "");
+await until(async () => (await stateOf(sb1)) === "sent", 3000);
+r = await reject(sb1, { reason: "The receipt is for a different amount — attach the right one", sentBack: true });
+tb = await txOf(sb1);
+check("finance sends a bonus back: rejected here, marked sent back, with what to correct", r.status === 200 && tb.status === "REJECTED"
+  && tb.finance_approval?.sent_back === true && tb.rejection_reason === "The receipt is for a different amount — attach the right one", JSON.stringify(tb.finance_approval));
+const sbNote = await db.collection("notifications").findOne({ type: "funding_sent_back", user_id: String(mentor._id) });
+check("…and whoever raised it is told what to correct", Boolean(sbNote) && /different amount/.test(String(sbNote?.message ?? sbNote?.body ?? "")), JSON.stringify(sbNote));
+const sbBefore = received.length;
+const sb2r = await bonus({ amount_usd: 250, resubmit_of: sb1 });
+const sb2 = String(sb2r.body?.id ?? "");
+check("corrected and sent again as a new request", sb2r.status === 200 && sb2 !== sb1 && (await txOf(sb1)).resubmitted_as === sb2, show(sb2r));
+await until(async () => (await stateOf(sb2)) === "sent", 3000);
+const sbSent = received.slice(sbBefore).find((x) => x.body?.externalId === sb2)?.body;
+check("…which finance is told replaces the one it sent back, and why", sbSent?.resubmitOf === sb1 && sbSent?.resubmitReason === "The receipt is for a different amount — attach the right one", JSON.stringify(sbSent).slice(0, 300));
 
 const credit = await txs.insertOne({
   type: "BONUS", status: "PENDING", bonus_credit: "sales_close", student_id: String(student._id), student_name: student.full_name,

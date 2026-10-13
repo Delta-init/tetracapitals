@@ -419,6 +419,8 @@ async function depositPayload(tx: any) {
     // …and each payment with its receipt, which finance lists on the review (the user, 2026-10-06).
     ...(paymentsForFinance(tx).length ? { payments: paymentsForFinance(tx) } : {}),
     notes: notesForFinance(tx),
+    // A corrected request, sent again after accounts sent it back or rejected it (the user, 2026-10-13): which, and why.
+    ...(tx.resubmit_of ? { resubmitOf: String(tx.resubmit_of), resubmitReason: String(tx.resubmit_reason ?? "").slice(0, 1000) } : {}),
     requestedAt: String(tx.requested_at || tx.created_date || new Date().toISOString()),
     requestedBy: String(tx.requested_by_name ?? ""),
     initiatingMentor: String(tx.initiating_mentor_name ?? ""),
@@ -679,6 +681,23 @@ async function approvalEffects(oid: ObjectId, byName: string, byEmail: string) {
   return { credited: Number(credit?.credited ?? credit?.count ?? 0), levelUpgraded };
 }
 
+/** Whoever raised a request accounts sent back: what to correct, and where to send it again. Never throws. */
+async function tellSentBack(tx: any, reason: string, byName: string): Promise<void> {
+  try {
+    const to = [...new Set([tx.requested_by_id, tx.initiating_mentor_id, tx.created_by].map((v) => String(v ?? "")).filter(Boolean))];
+    if (!to.length) return;
+    await notify(to, {
+      type: "funding_sent_back",
+      title: `Sent back to correct: ${tx.student_name || tx.student_code || "a request"}`,
+      body: `${byName} in Delta Finance sent this ${String(tx.type ?? "").toLowerCase() || "request"} back — ${reason}. Correct it and send it again.`,
+      link: "/MyFundingRequests",
+      tag: `funding-sent-back-${String(tx._id)}`,
+    });
+  } catch (err) {
+    console.warn("[finance funding] could not tell anyone a request was sent back", err);
+  }
+}
+
 const logRejection = (tx: any, byName: string, byEmail: string) =>
   logOnce(tx, "reject_funding_transaction",
     `REJECTED transaction for ${tx.student_name ?? "a student"} — rejected in Delta Finance by ${byName}: ${tx.rejection_reason ?? ""}`,
@@ -751,6 +770,8 @@ export async function handleFundingDecision(req: Request): Promise<Response> {
   const at = isoOr(body.decidedAt, now);
   const note = text(body.note, 1000);
   const reason = text(body.reason, 1000);
+  // Rejected to be corrected and sent again, not refused (the user, 2026-10-13) — a bonus.
+  const sentBack = decision === "rejected" && body.sentBack === true;
   const transactionId = text(body.transactionId, 100);
   const amountMinor = Number(body.amountMinor);
   if (decision === "approved") {
@@ -832,6 +853,8 @@ export async function handleFundingDecision(req: Request): Promise<Response> {
   } else {
     set.status = "REJECTED";
     set.rejection_reason = reason;
+    // Sent back to correct (the user, 2026-10-13): its CS corrects it and sends it again, rather than it being refused.
+    if (sentBack) set["finance_approval.sent_back"] = true;
   }
 
   const res = await txs.updateOne({ _id: oid, status: "PENDING" }, { $set: set });
@@ -845,7 +868,10 @@ export async function handleFundingDecision(req: Request): Promise<Response> {
   let effects = {};
   if (firstOfTwo) await bonusToBroker(tx, byName, byEmail);
   else if (decision === "approved") effects = await applyApproval(oid, byName, byEmail);
-  else await logRejection({ ...tx, rejection_reason: reason }, byName, byEmail);
+  else {
+    await logRejection({ ...tx, rejection_reason: reason }, byName, byEmail);
+    if (sentBack) await tellSentBack(tx, reason, byName);
+  }
   const fresh = await txs.findOne({ _id: oid });
   console.log(`[finance funding] ${String(tx.type).toLowerCase()} ${oid} ${decision} in Delta Finance by ${byName}${firstOfTwo ? " — now with the broker admins" : ""}`);
   return ok(outcome(fresh ?? tx, false, effects));

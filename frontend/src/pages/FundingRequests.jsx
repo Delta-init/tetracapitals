@@ -928,7 +928,7 @@ export default function FundingRequests() {
                         </TableCell>
                         <TableCell className="text-sm">
                           {transaction.status === 'REJECTED' && transaction.rejection_reason ? (
-                            <span className="text-red-600 font-medium">{transaction.rejection_reason}</span>
+                            <span className="text-red-600 font-medium">{transaction.finance_approval?.sent_back ? 'Sent back by accounts — correct it and send it again: ' : ''}{transaction.rejection_reason}</span>
                           ) : '-'}
                         </TableCell>
                         <TableCell className="text-right">

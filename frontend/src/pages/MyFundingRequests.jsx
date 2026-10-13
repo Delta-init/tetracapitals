@@ -788,7 +788,7 @@ export default function MyFundingRequests() {
                                   </TableCell>
                                   <TableCell className="text-sm">
                                     {transaction.status === 'REJECTED' && transaction.rejection_reason ? (
-                                      <span className="text-red-600 font-medium">{transaction.rejection_reason}</span>
+                                      <span className="text-red-600 font-medium">{transaction.finance_approval?.sent_back ? 'Sent back by accounts — correct it and send it again: ' : ''}{transaction.rejection_reason}</span>
                                     ) : '-'}
                                     {/* Rejected: corrected and sent again as a new request, once (the user, 2026-10-07) */}
                                     {transaction.status === 'REJECTED' && (transaction.resubmitted_as ? (
@@ -984,7 +984,7 @@ export default function MyFundingRequests() {
                               {isCsManager && (
                                 <TableCell className="text-sm">
                                   {/* A CS Manager corrects any CS's request: a rejected one sent again, once; one sent back */}
-                                  {transaction.status === 'REJECTED' && transaction.rejection_reason && <div className="max-w-[220px] text-xs text-red-600">{transaction.rejection_reason}</div>}
+                                  {transaction.status === 'REJECTED' && transaction.rejection_reason && <div className="max-w-[220px] text-xs text-red-600">{transaction.finance_approval?.sent_back ? 'Sent back by accounts — correct it and send it again: ' : ''}{transaction.rejection_reason}</div>}
                                   {transaction.status === 'REJECTED' && (transaction.resubmitted_as ? (
                                     <div className="mt-1 text-xs font-medium text-emerald-700">Corrected and sent again</div>
                                   ) : (
