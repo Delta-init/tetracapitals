@@ -2,6 +2,7 @@ import { col } from "../db";
 import { config } from "../config";
 import { ok, refuse, secretMatches, text, isEmail } from "../students/intake";
 import { bonusChecksFor, verificationOf, type BonusCheck } from "../students/bonusVerification";
+import { onboardingOf } from "../students/lmsCs";
 
 /* ────────────────────────────────────────────────────────────────────────────
    POST /api/v1/integrations/finance/students/lookup { codes?, emails? }
@@ -38,6 +39,7 @@ const describe = (asked: string, r: Row | undefined, checks: Map<string, BonusCh
   if (!r) return { asked, found: false, code: "", cs: "", team: "", assignment: "", onboarded: false, verification: "none", bonuses: [] };
   const pooled = r.assignment_status === "open_pool";
   const bonuses = checks.get(String(r._id)) ?? [];
+  const onboarding = onboardingOf(r);
   return {
     asked,
     found: true,
@@ -45,9 +47,9 @@ const describe = (asked: string, r: Row | undefined, checks: Map<string, BonusCh
     cs: pooled ? "" : String(r.primary_mentor_name ?? ""),
     team: String(r.team_name ?? ""),
     assignment: pooled ? "open_pool" : "assigned",
-    onboarded: r.onboarded === true,
-    onboarded_at: r.onboarded === true ? (r.onboarded_at ?? null) : null,
-    onboarded_by: r.onboarded === true ? String(r.onboarded_by_name ?? "") : "",
+    onboarded: onboarding.onboarded,
+    onboarded_at: onboarding.at,
+    onboarded_by: onboarding.onboarded ? String(r.onboarded_by_name ?? "") : "",
     verification: verificationOf(bonuses),
     bonuses,
   };

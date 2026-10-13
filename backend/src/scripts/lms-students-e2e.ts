@@ -146,8 +146,14 @@ const askCs = (body: unknown, secret: string | null = LMS_SECRET) =>
 r = await askCs({ lmsUserId: first.lmsUserId, email: "someone-else@e2e-lms.test" });
 check("found by their LMS id: their CS, team and student code", r.status === 200 && r.body?.data?.found === true
   && r.body.data.cs === s1?.primary_mentor_name && r.body.data.team === s1?.team_name && r.body.data.code === s1?.student_code && r.body.data.open === false, JSON.stringify(r.body));
+check("...not onboarded yet: false, no date", r.body?.data?.onboarded === false && r.body.data.onboardedAt === null, JSON.stringify(r.body));
 check("...and noted as told, so the ten-minute push does not send it again",
-  ((await students.findOne({ _id: s1?._id })) as any)?.lms_cs_sent?.code === s1?.student_code);
+  ((await students.findOne({ _id: s1?._id })) as any)?.lms_cs_sent?.code === s1?.student_code
+  && ((await students.findOne({ _id: s1?._id })) as any)?.lms_cs_sent?.onboarded === false);
+await students.updateOne({ _id: s1?._id }, { $set: { onboarded: true, onboarded_at: "2026-10-13T06:45:00.000Z", onboarded_by_name: "E2E CS" } });
+r = await askCs({ lmsUserId: first.lmsUserId });
+check("onboarded since: onboarded, and when", r.body?.data?.found === true && r.body.data.onboarded === true && r.body.data.onboardedAt === "2026-10-13T06:45:00.000Z", JSON.stringify(r.body));
+check("...noted as told too", ((await students.findOne({ _id: s1?._id })) as any)?.lms_cs_sent?.onboardedAt === "2026-10-13T06:45:00.000Z");
 r = await askCs({ email: "TAKEN@e2e-lms.test" });
 check("found by email, whatever its case", r.body?.data?.found === true && r.body.data.cs === "Existing Mentor", JSON.stringify(r.body));
 r = await askCs({ email: "nobody@e2e-lms.test" });

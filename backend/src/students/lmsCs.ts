@@ -9,7 +9,8 @@ import { callLms, lmsConfigured } from "../lib/lms";
    details … every student showing area").
 
    Every EVERY_MS, the students with an LMS account whose CS, team, student
-   code or open-pool state is not what the LMS was last told (lms_cs_sent) —
+   code, open-pool state or onboarding is not what the LMS was last told
+   (lms_cs_sent) —
    every one of them the first time — go to the LMS's POST /service/student-cs,
    BATCH at a time (LMS_API_URL / LMS_SERVICE_SECRET, as the hourly enrolment
    check). What a batch's answer took is remembered as told; a batch the LMS
@@ -18,7 +19,11 @@ import { callLms, lmsConfigured } from "../lib/lms";
 
    The CS is the primary mentor — "" while the student waits in Delta Open
    Students (open) — and the team their team, as finance's lookup reads them
-   (finance/studentLookup.ts).
+   (finance/studentLookup.ts). `onboarded` / `onboardedAt`: whether their CS
+   has onboarded them (functions/studentOnboarding.ts — the `onboarded` flag
+   and `onboarded_at`), as finance's lookup reads it too (onboardingOf) —
+   for the LMS's Students Requests (2026-10-13). A record told before these
+   two were (no `onboarded` in lms_cs_sent) differs, so is told once again.
 
    LMS_CS_SYNC=off keeps a server out of it.
 ──────────────────────────────────────────────────────────────────────────── */
@@ -34,6 +39,9 @@ interface CsTold {
   team: string;
   code: string;
   open: boolean;
+  onboarded: boolean;
+  /** ISO — when they were onboarded; null when they are not. */
+  onboardedAt: string | null;
 }
 
 export interface LmsCsRun {
@@ -67,21 +75,35 @@ async function takeLease(): Promise<boolean> {
   }
 }
 
-/** Who looks after them now, as the LMS is to be told. */
-export function csOf(s: { primary_mentor_name?: unknown; team_name?: unknown; student_code?: unknown; assignment_status?: unknown }): CsTold {
+/** Onboarded or not, and when — the one reading of a student's onboarding fields (the LMS push, its recheck, finance's lookup). */
+export function onboardingOf(s: { onboarded?: unknown; onboarded_at?: unknown }): { onboarded: boolean; at: string | null } {
+  if (s.onboarded !== true) return { onboarded: false, at: null };
+  const at = s.onboarded_at instanceof Date ? s.onboarded_at.toISOString() : typeof s.onboarded_at === "string" && s.onboarded_at.trim() ? s.onboarded_at.trim() : null;
+  return { onboarded: true, at };
+}
+
+/** Who looks after them now, and whether they are onboarded, as the LMS is to be told. */
+export function csOf(s: {
+  primary_mentor_name?: unknown; team_name?: unknown; student_code?: unknown; assignment_status?: unknown; onboarded?: unknown; onboarded_at?: unknown;
+}): CsTold {
   const open = s.assignment_status === "open_pool";
+  const onboarding = onboardingOf(s);
   return {
     cs: open ? "" : String(s.primary_mentor_name ?? "").trim(),
     team: String(s.team_name ?? "").trim(),
     code: String(s.student_code ?? "").trim(),
     open,
+    onboarded: onboarding.onboarded,
+    onboardedAt: onboarding.at,
   };
 }
 
-const same = (a: CsTold | undefined | null, b: CsTold) =>
-  !!a && a.cs === b.cs && a.team === b.team && a.code === b.code && !!a.open === b.open;
+/** Told already as it is now. A record from before onboarding was told (no `onboarded` kept) is not the same. */
+const same = (a: Partial<CsTold> | undefined | null, b: CsTold) =>
+  !!a && a.cs === b.cs && a.team === b.team && a.code === b.code && !!a.open === b.open
+  && a.onboarded === b.onboarded && (a.onboardedAt ?? null) === b.onboardedAt;
 
-/** Tell the LMS whoever's CS or team changed since it was last told. */
+/** Tell the LMS whoever's CS, team or onboarding changed since it was last told. */
 export async function syncLmsCs(by = "Schedule"): Promise<LmsCsRun> {
   const at = new Date().toISOString();
   const run: LmsCsRun = { at, by, ok: false, students: 0, sent: 0, updated: 0, not_found: 0 };
@@ -97,7 +119,7 @@ export async function syncLmsCs(by = "Schedule"): Promise<LmsCsRun> {
     const students = (await col("students")
       .find(
         { $or: [{ "lms_account.exists": true }, { lms_user_id: { $exists: true, $nin: [null, ""] } }] },
-        { projection: { email: 1, lms_user_id: 1, student_code: 1, primary_mentor_name: 1, team_name: 1, assignment_status: 1, lms_cs_sent: 1 } },
+        { projection: { email: 1, lms_user_id: 1, student_code: 1, primary_mentor_name: 1, team_name: 1, assignment_status: 1, onboarded: 1, onboarded_at: 1, lms_cs_sent: 1 } },
       )
       .toArray()) as any[];
     run.students = students.length;

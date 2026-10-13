@@ -6,10 +6,13 @@
  *   A. the first run tells the LMS every student with an LMS account — by
  *      email, and by their LMS id where kept — with their CS, team, code and
  *      whether they wait in Delta Open Students (no CS then, whatever is in
- *      the mentor field); none without an account; each remembered as told;
+ *      the mentor field), and whether they are onboarded, and when; none
+ *      without an account; each remembered as told;
  *   B. the next run tells nothing new — only a student the LMS did not find is
  *      asked about again; a changed team, a CS given to an open-pool student,
- *      a student code — each told, alone;
+ *      a student code — each told, alone; onboarded, marked not onboarded,
+ *      onboarded again later — each told; one told before onboarding was
+ *      (no `onboarded` kept) told once again;
  *   C. an LMS that is down changes nothing here, and the next run tells it all
  *      the same; more than 500 go in batches of 500;
  *   D. one run at a time; switched off by LMS_CS_SYNC=off; not set up without
@@ -62,8 +65,8 @@ await col("app_settings").deleteMany({});
 
 const LMS_ID = new ObjectId().toHexString();
 await db.insertMany([
-  { student_code: "STU-10", email: "Aisha@Example.com", primary_mentor_name: "CS 2- AB", team_name: "Falcons", assignment_status: "assigned", lms_account: { exists: true } },
-  { student_code: "STU-11", email: "bilal@example.com", lms_user_id: LMS_ID, primary_mentor_name: "CS 3- KT", team_name: "Eagles", assignment_status: "assigned" },
+  { student_code: "STU-10", email: "Aisha@Example.com", primary_mentor_name: "CS 2- AB", team_name: "Falcons", assignment_status: "assigned", lms_account: { exists: true }, onboarded: true, onboarded_at: "2026-10-01T09:30:00.000Z", onboarded_by_name: "CS 2- AB" },
+  { student_code: "STU-11", email: "bilal@example.com", lms_user_id: LMS_ID, primary_mentor_name: "CS 3- KT", team_name: "Eagles", assignment_status: "assigned", onboarded: false },
   { student_code: "STU-12", email: "cara@example.com", primary_mentor_name: "Left over", team_name: "Delta Open Students", assignment_status: "open_pool", lms_account: { exists: true } },
   { student_code: "STU-13", email: "dev@example.com", primary_mentor_name: "CS 4", team_name: "Owls", assignment_status: "assigned", lms_account: { exists: false } },
   { student_code: "STU-14", email: "eve@example.com", primary_mentor_name: "CS 5", team_name: "Owls", assignment_status: "assigned", lms_account: { exists: true } },
@@ -84,7 +87,11 @@ try {
   const c = told("STU-12");
   check("the open pool: no CS, whatever the mentor field says; its team; open", c?.cs === "" && c?.team === "Delta Open Students" && c?.open === true, JSON.stringify(c));
   check("no LMS account: not sent", !told("STU-13"));
-  check("each remembered as told", (await sentOf("STU-10"))?.team === "Falcons" && (await sentOf("STU-12"))?.open === true && !!(await sentOf("STU-11"))?.at);
+  check("onboarded, and when", a?.onboarded === true && a?.onboardedAt === "2026-10-01T09:30:00.000Z", JSON.stringify(a));
+  check("not onboarded (false, or never set): false, no date", told("STU-11")?.onboarded === false && told("STU-11")?.onboardedAt === null
+    && c?.onboarded === false && c?.onboardedAt === null, JSON.stringify([told("STU-11"), c]));
+  check("each remembered as told", (await sentOf("STU-10"))?.team === "Falcons" && (await sentOf("STU-12"))?.open === true && !!(await sentOf("STU-11"))?.at
+    && (await sentOf("STU-10"))?.onboarded === true && (await sentOf("STU-10"))?.onboardedAt === "2026-10-01T09:30:00.000Z" && (await sentOf("STU-11"))?.onboarded === false);
   check("…but not the one the LMS did not find", !(await sentOf("STU-14")));
   check("the secret went with it (the stand-in refuses otherwise)", calls.length === 1);
 
@@ -104,6 +111,31 @@ try {
   await freeLease();
   r = await syncLmsCs("Test");
   check("and then nothing at all", r.ok && r.sent === 0, JSON.stringify(r));
+  await db.updateOne({ student_code: "STU-11B" }, { $set: { onboarded: true, onboarded_at: "2026-10-13T07:00:00.000Z", onboarded_by_name: "CS 3- KT" } });
+  await freeLease();
+  r = await syncLmsCs("Test");
+  check("onboarded since: told, alone, with when", r.ok && r.sent === 1 && told("STU-11B")?.onboarded === true && told("STU-11B")?.onboardedAt === "2026-10-13T07:00:00.000Z"
+    && (await sentOf("STU-11B"))?.onboarded === true, JSON.stringify([r, told("STU-11B")]));
+  await db.updateOne({ student_code: "STU-11B" }, { $set: { onboarded: false }, $unset: { onboarded_at: "", onboarded_by_name: "" } });
+  await freeLease();
+  r = await syncLmsCs("Test");
+  check("marked not onboarded: told, alone", r.ok && r.sent === 1 && told("STU-11B")?.onboarded === false && told("STU-11B")?.onboardedAt === null, JSON.stringify([r, told("STU-11B")]));
+  await db.updateOne({ student_code: "STU-11B" }, { $set: { onboarded: true, onboarded_at: "2026-10-13T08:15:00.000Z" } });
+  await freeLease();
+  r = await syncLmsCs("Test");
+  check("onboarded again: told, with the new time", r.ok && r.sent === 1 && told("STU-11B")?.onboardedAt === "2026-10-13T08:15:00.000Z", JSON.stringify([r, told("STU-11B")]));
+  await db.updateOne({ student_code: "STU-11B" }, { $set: { onboarded_at: "2026-10-13T09:00:00.000Z" } });
+  await freeLease();
+  r = await syncLmsCs("Test");
+  check("only the onboarding time moved: told", r.ok && r.sent === 1 && told("STU-11B")?.onboardedAt === "2026-10-13T09:00:00.000Z", JSON.stringify(r));
+  await db.updateOne({ student_code: "STU-12" }, { $unset: { "lms_cs_sent.onboarded": "", "lms_cs_sent.onboardedAt": "" } });
+  await freeLease();
+  r = await syncLmsCs("Test");
+  check("told before onboarding was told: told once again, then remembered", r.ok && r.sent === 1 && told("STU-12")?.onboarded === false
+    && (await sentOf("STU-12"))?.onboarded === false, JSON.stringify(r));
+  await freeLease();
+  r = await syncLmsCs("Test");
+  check("and then nothing again", r.ok && r.sent === 0, JSON.stringify(r));
 
   step("C · an LMS that is down, and many students");
   await db.updateOne({ student_code: "STU-10" }, { $set: { primary_mentor_name: "CS 8- ZZ" } });

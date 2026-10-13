@@ -10,7 +10,8 @@ import { csOf } from "../students/lmsCs";
    waiting up to ten minutes for the push (students/lmsCs.ts).
 
    Body { lmsUserId?, email }. Found by their LMS id, else by email. Answers
-   { found: true, cs, team, code, open } — what the push would say — or
+   { found: true, cs, team, code, open, onboarded, onboardedAt } — what the
+   push would say — or
    { found: false }. Read only, but what was told is noted as the push notes
    it, so the next push does not send the same again. The LMS's own secret in
    `x-lms-secret`, as for new students (lms/students.ts).
