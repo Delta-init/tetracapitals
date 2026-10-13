@@ -19,7 +19,6 @@ import { cn } from '@/lib/utils';
 ──────────────────────────────────────────────────────────────────────────── */
 
 const AED = (n) => `AED ${Number(n || 0).toLocaleString('en-US', { maximumFractionDigits: 2 })}`;
-const USD = (n) => `$${Number(n || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 /** A Dubai day (YYYY-MM-DD) as the instant it starts, `plus` days on. */
 const dubaiStart = (day, plus = 0) => {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(day || '')) return undefined;
@@ -61,7 +60,12 @@ export default function CourseCommissionSummary({ isManager = false }) {
     queryFn: async () => (await base44.functions.invoke('getCourseCommissionSummary', { from: dubaiStart(a), to: dubaiStart(b, 1) })).data,
     retry: false,
   });
-  const c = data?.collected, k = data?.commission, t = data?.to_collect;
+  const c = data?.collected, t = data?.to_collect;
+  // In AED only (the user, 2026-10-13): their % of the AED the students paid — course payments (upgrades earn none) —
+  // and of what is still to collect.
+  const pct = Number(data?.rate?.pct) || 0;
+  const earnedAed = ((Number(c?.course_payments_aed) || 0) * pct) / 100;
+  const moreAed = ((Number(t?.aed) || 0) * pct) / 100;
   return (
     <Card className="border-gray-200 bg-gradient-to-br from-blue-50 to-indigo-50">
       <CardHeader className="border-b border-blue-100">
@@ -95,15 +99,15 @@ export default function CourseCommissionSummary({ isManager = false }) {
           <div className="flex items-center gap-2 py-6 text-sm text-gray-500"><Loader2 className="h-4 w-4 animate-spin" /> Adding it up…</div>
         ) : (
           <div className="grid gap-4 md:grid-cols-3">
-            <Stat label="Collected" value={AED(c?.aed)} sub={USD(c?.usd)} tone="text-gray-900">
+            <Stat label="Collected" value={AED(c?.aed)} tone="text-gray-900">
               <p className="mt-2 text-xs text-gray-400">course payments {AED(c?.course_payments_aed)} · upgrades {AED(c?.upgrades_aed)} · {c?.count ?? 0} payment{c?.count === 1 ? '' : 's'}</p>
               {c?.pending_count > 0 && <p className="mt-1 text-xs text-amber-700">+ {AED(c.pending_aed)} waiting approval ({c.pending_count})</p>}
             </Stat>
-            <Stat label="Commission earned" value={USD(k?.usd)} sub={AED(k?.aed)} tone="text-emerald-600">
-              <p className="mt-2 text-xs text-gray-400">{data?.rate?.pct ? `${data.rate.pct}% · ${data.rate.plan}` : 'no commission plan'}{k?.count ? ` · ${k.count} credit${k.count === 1 ? '' : 's'}` : ''}</p>
+            <Stat label="Commission earned" value={AED(earnedAed)} tone="text-emerald-600">
+              <p className="mt-2 text-xs text-gray-400">{pct ? `${pct}% of ${AED(c?.course_payments_aed)} collected · ${data.rate.plan}` : 'no commission plan'}</p>
             </Stat>
-            <Stat label="Still to collect" value={AED(t?.aed)} sub={`${USD(t?.usd)} · ${t?.students ?? 0} student${t?.students === 1 ? '' : 's'}`} tone="text-amber-600">
-              {t?.commission_usd > 0 && <p className="mt-2 text-xs text-emerald-700">you earn {USD(t.commission_usd)} more when it's paid</p>}
+            <Stat label="Still to collect" value={AED(t?.aed)} sub={`${t?.students ?? 0} student${t?.students === 1 ? '' : 's'}`} tone="text-amber-600">
+              {moreAed > 0 && <p className="mt-2 text-xs text-emerald-700">you earn {AED(moreAed)} more when it's paid</p>}
               <p className="mt-1 text-xs text-gray-400">today's balances — not the dates picked</p>
             </Stat>
           </div>
