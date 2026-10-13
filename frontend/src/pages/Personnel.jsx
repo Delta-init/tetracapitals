@@ -422,7 +422,7 @@ export default function Personnel() {
                     </TableCell>
                     <TableCell>
                       <div className="flex items-center gap-1">
-                        {['super_admin', 'academic_head', 'broker_admin'].includes(currentUser.app_role) && (
+                        {(['super_admin', 'academic_head', 'broker_admin'].includes(currentUser.app_role) || (currentUser.app_role === 'cs_manager' && user.app_role === 'cs')) && (
                           <Button
                             variant="ghost"
                             size="sm"
@@ -475,6 +475,7 @@ export default function Personnel() {
           onSubmit={handleSubmit}
           onClose={handleClose}
           allUsers={allUsers}
+          limited={currentUser?.app_role === 'cs_manager'}
         />
       )}
 

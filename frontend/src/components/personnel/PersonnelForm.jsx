@@ -19,7 +19,9 @@ import {
 import { base44 } from '@/api/base44Client';
 import SearchableSelect from '@/components/common/SearchableSelect';
 
-export default function PersonnelForm({ user, onSubmit, onClose, allUsers }) {
+// `limited` (a CS Manager editing a CS, 2026-10-13): the name, 3CX extension, Up Head and No new students only — the
+// server takes nothing else from them.
+export default function PersonnelForm({ user, onSubmit, onClose, allUsers, limited = false }) {
   const isCreate = !user;
   const [formData, setFormData] = useState({
     full_name: '',
@@ -217,7 +219,7 @@ export default function PersonnelForm({ user, onSubmit, onClose, allUsers }) {
             </div>
           )}
 
-          <div>
+          {!limited && <div>
             <Label htmlFor="app_role">Role *</Label>
             <Select
               value={formData.app_role}
@@ -232,9 +234,9 @@ export default function PersonnelForm({ user, onSubmit, onClose, allUsers }) {
                 ))}
               </SelectContent>
             </Select>
-          </div>
+          </div>}
 
-          {formData.app_role === 'assistance' && (
+          {!limited && formData.app_role === 'assistance' && (
             <div>
               <Label htmlFor="assigned_mentor">Assigned Mentor *</Label>
               <Select
@@ -271,12 +273,14 @@ export default function PersonnelForm({ user, onSubmit, onClose, allUsers }) {
               noneLabel="(no head — top of chain)"
               options={(allUsers || [])
                 .filter(u => u.id !== user?.id)
+                // A CS Manager puts a CS under a team's leader.
+                .filter(u => !limited || ['chief_mentor', 'cs_manager', 'senior_mentor'].includes(u.app_role))
                 .map(u => ({ value: u.id, label: `${u.full_name} — ${u.email}` }))}
             />
             <p className="text-xs text-gray-500 mt-1">The person directly above this user. Set B here in A's profile → A is under B.</p>
           </div>
 
-          <div>
+          {!limited && <div>
             <Label htmlFor="commission_plan">Commission Plan</Label>
             <SearchableSelect
               key={`plan-select-${commissionPlans.length}`}
@@ -288,7 +292,7 @@ export default function PersonnelForm({ user, onSubmit, onClose, allUsers }) {
               options={commissionPlans.map(p => ({ value: p.id, label: p.name }))}
             />
             <p className="text-xs text-gray-500 mt-1">Applied when this staff submits a transaction — pays each level up the chain per the plan.</p>
-          </div>
+          </div>}
 
           {formData.app_role === 'cs' && (
             <label className="flex items-start gap-2 text-sm">
