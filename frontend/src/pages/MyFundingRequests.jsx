@@ -12,6 +12,7 @@ import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Plus, TrendingUp, TrendingDown, DollarSign, Award, Wallet, Eye, Users, Clock, Filter, X, AlertTriangle } from "lucide-react";
 import { Input } from "@/components/ui/input";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import FundingRequestForm, { PaymentDetails } from "../components/funding/FundingRequestForm";
 import TagChips from "../components/funding/TagChips";
 import { ReceiptsButton, methodsText } from "../components/funding/payments";
@@ -42,12 +43,20 @@ export default function MyFundingRequests() {
   const [showAddDialog, setShowAddDialog] = useState(false);
   // A rejected request being corrected and sent again (FundingRequestForm `from`).
   const [resending, setResending] = useState(null);
-  const [activeTab, setActiveTab] = useState('my');
+  const [activeTab, setActiveTab] = useState(() => (new URLSearchParams(typeof window !== 'undefined' ? window.location.search : '').get('tab') === 'team' ? 'team' : 'my'));
   const [dateFrom, setDateFrom] = useState('');
   const [dateTo, setDateTo] = useState('');
   const [filterType, setFilterType] = useState('ALL');
   const [filterStatus, setFilterStatus] = useState('ALL');
   const [filterSearch, setFilterSearch] = useState('');
+  // The All CS / Team tab's own search and filters (2026-10-13); ?tab=team&sent_back=1 opens it on the sent-back ones.
+  const startParams = new URLSearchParams(typeof window !== 'undefined' ? window.location.search : '');
+  const [teamSearch, setTeamSearch] = useState('');
+  const [teamType, setTeamType] = useState('ALL');
+  const [teamStatus, setTeamStatus] = useState(startParams.get('sent_back') === '1' ? 'SENT_BACK' : 'ALL');
+  const [teamCs, setTeamCs] = useState('ALL');
+  const [teamFrom, setTeamFrom] = useState('');
+  const [teamTo, setTeamTo] = useState('');
   const currentQ = Math.ceil((new Date().getMonth() + 1) / 3);
   const currentYear = new Date().getFullYear();
   const [selectedQuarter, setSelectedQuarter] = useState(currentQ);
@@ -386,9 +395,28 @@ export default function MyFundingRequests() {
   });
   // Sent back to correct — by a broker admin or by accounts — first, in red (the user, 2026-10-13).
   const needsCorrection = (t) => (t.status === 'PENDING' && !!t.returned?.at) || (t.status === 'REJECTED' && t.finance_approval?.sent_back && !t.resubmitted_as);
-  filteredTransactions.sort((a, b) => (needsCorrection(b) ? 1 : 0) - (needsCorrection(a) ? 1 : 0));
+  // …then the latest updated (approved, rejected, corrected, sent again) first.
+  const updatedOf = (t) => String(t.updated_date || t.approved_at || t.requested_at || t.created_date || '');
+  const byNewest = (a, b) => (needsCorrection(b) ? 1 : 0) - (needsCorrection(a) ? 1 : 0) || updatedOf(b).localeCompare(updatedOf(a));
+  filteredTransactions.sort(byNewest);
   const toCorrect = myTransactions.filter(needsCorrection);
   // …on the first page too.
+  // The All CS / Team tab: its search and filters, sent back first, then the latest updated.
+  const teamCsOptions = [...new Set(teamTransactions.map(t => t.primary_mentor_name).filter(Boolean))].sort();
+  const filteredTeam = teamTransactions.filter(t => {
+    const d = new Date(t.requested_at || t.created_date);
+    if (teamFrom && d < new Date(teamFrom)) return false;
+    if (teamTo && d > new Date(teamTo + 'T23:59:59')) return false;
+    if (teamType !== 'ALL' && t.type !== teamType) return false;
+    if (teamStatus === 'SENT_BACK' ? !needsCorrection(t) : teamStatus !== 'ALL' && t.status !== teamStatus) return false;
+    if (teamCs !== 'ALL' && t.primary_mentor_name !== teamCs) return false;
+    if (teamSearch) {
+      const q = teamSearch.toLowerCase();
+      if (![t.student_name, t.student_code, t.mt5_login, t.transaction_id, t.requested_by_name].some(v => v != null && String(v).toLowerCase().includes(q))) return false;
+    }
+    return true;
+  }).sort(byNewest);
+  const teamFiltered = !!(teamSearch || teamType !== 'ALL' || teamStatus !== 'ALL' || teamCs !== 'ALL' || teamFrom || teamTo);
   const historyRows = [...filteredTransactions.filter(needsCorrection), ...filteredReferrals, ...filteredAdjustments, ...filteredTransactions.filter(t => !needsCorrection(t))];
   // Back to page 1 whenever a filter, or the quarter (it picks the adjustments), changes.
   const historyResetKey = [filterSearch, filterType, filterStatus, dateFrom, dateTo, selectedQuarter, selectedYear].join('|');
@@ -906,10 +934,48 @@ export default function MyFundingRequests() {
               {/* Team Transaction History */}
               <Card className="border-gray-200">
                 <CardHeader className="border-b border-gray-100">
-                  <CardTitle className="text-lg font-semibold">Team Request History</CardTitle>
+                  <CardTitle className="text-lg font-semibold">{isCsManager ? 'All CS Request History' : 'Team Request History'}</CardTitle>
+                  <div className="mt-3 flex flex-wrap items-center gap-2">
+                    <Input value={teamSearch} onChange={(e) => setTeamSearch(e.target.value)} placeholder="Student, code, MT5, transaction…" className="h-9 w-56" />
+                    <Select value={teamType} onValueChange={setTeamType}>
+                      <SelectTrigger className="h-9 w-36"><SelectValue /></SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="ALL">All types</SelectItem>
+                        <SelectItem value="DEPOSIT">Deposit</SelectItem>
+                        <SelectItem value="WITHDRAWAL">Withdrawal</SelectItem>
+                        <SelectItem value="BONUS">Bonus</SelectItem>
+                      </SelectContent>
+                    </Select>
+                    <Select value={teamStatus} onValueChange={setTeamStatus}>
+                      <SelectTrigger className="h-9 w-44"><SelectValue /></SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="ALL">All statuses</SelectItem>
+                        <SelectItem value="SENT_BACK">Sent back — to correct</SelectItem>
+                        <SelectItem value="PENDING">Pending</SelectItem>
+                        <SelectItem value="APPROVED">Approved</SelectItem>
+                        <SelectItem value="REJECTED">Rejected</SelectItem>
+                      </SelectContent>
+                    </Select>
+                    {teamCsOptions.length > 1 && (
+                      <Select value={teamCs} onValueChange={setTeamCs}>
+                        <SelectTrigger className="h-9 w-44"><SelectValue /></SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="ALL">Every CS</SelectItem>
+                          {teamCsOptions.map(n => <SelectItem key={n} value={n}>{n}</SelectItem>)}
+                        </SelectContent>
+                      </Select>
+                    )}
+                    <Input type="date" value={teamFrom} onChange={(e) => setTeamFrom(e.target.value)} className="h-9 w-[140px] text-xs" aria-label="From" />
+                    <span className="text-xs text-gray-400">to</span>
+                    <Input type="date" value={teamTo} onChange={(e) => setTeamTo(e.target.value)} className="h-9 w-[140px] text-xs" aria-label="To" />
+                    {teamFiltered && (
+                      <Button variant="ghost" size="sm" className="h-9 text-xs" onClick={() => { setTeamSearch(''); setTeamType('ALL'); setTeamStatus('ALL'); setTeamCs('ALL'); setTeamFrom(''); setTeamTo(''); }}>Clear</Button>
+                    )}
+                    <span className="ml-auto text-xs text-gray-500">{filteredTeam.length} of {teamTransactions.length}{teamTransactions.filter(needsCorrection).length ? ` · ${teamTransactions.filter(needsCorrection).length} sent back` : ''}</span>
+                  </div>
                 </CardHeader>
                 <CardContent className="p-0">
-                  <Paged items={teamTransactions} urlKey="team_page">{(pageTeamTransactions, bar) => (<>
+                  <Paged items={filteredTeam} urlKey="team_page" resetKey={[teamSearch, teamType, teamStatus, teamCs, teamFrom, teamTo].join('|')}>{(pageTeamTransactions, bar) => (<>
                   <div className="overflow-x-auto">
                     <Table>
                       <TableHeader>
@@ -929,7 +995,7 @@ export default function MyFundingRequests() {
                         </TableRow>
                       </TableHeader>
                       <TableBody>
-                        {teamTransactions.length === 0 ? (
+                        {filteredTeam.length === 0 ? (
                           <TableRow>
                             <TableCell colSpan={isCsManager ? 12 : 11} className="text-center py-8 text-gray-500">
                               No team funding requests yet
@@ -948,7 +1014,7 @@ export default function MyFundingRequests() {
                             }
 
                             return (
-                            <TableRow key={transaction.id} className="hover:bg-gray-50 transition-colors">
+                            <TableRow key={transaction.id} className={`transition-colors ${needsCorrection(transaction) ? 'bg-rose-50/70 hover:bg-rose-50' : 'hover:bg-gray-50'}`}>
                               <TableCell className="text-sm">
                                 {transaction.requested_at
                                   ? format(new Date(transaction.requested_at), 'MMM d, yyyy HH:mm')

@@ -48,6 +48,12 @@ export function needsCorrectionFilter(userId: string): Record<string, any> {
   ] };
 }
 
+/** Every CS's waiting to be corrected — a CS Manager's count (2026-10-13). */
+export const NEEDS_CORRECTION_ALL: Record<string, any> = { $or: [
+  { status: "PENDING", "returned.at": { $exists: true } },
+  { status: "REJECTED", "finance_approval.sent_back": true, resubmitted_as: { $in: [null, ""] } },
+] };
+
 /** POST /api/functions/sendFundingBack { id, fields: ["email" | "mt5" | "other"], note } — a broker admin or a Super Admin. */
 export async function sendFundingBack(req: Request, user: AuthUser): Promise<Response> {
   if (!BONUS_APPROVERS.includes(user.app_role)) return forbidden("Only a broker admin or a Super Admin sends a request back");

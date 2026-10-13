@@ -7,7 +7,7 @@ import { notOnboardedFilter, newFromFinanceFilter } from "../students/onboarding
 import { theirStudents } from "../students/closedBy";
 import { countCallNeeded } from "../students/classCompletions";
 import { decidableMt5Filter } from "./bonusApprovals";
-import { needsCorrectionFilter } from "./fundingCorrections";
+import { needsCorrectionFilter, NEEDS_CORRECTION_ALL } from "./fundingCorrections";
 import { BONUS_APPROVERS } from "../finance/funding";
 import { openCreditRequests } from "./creditRequests";
 import { dueSoonFilter, uaeDay } from "../finance/balanceDue";
@@ -79,12 +79,16 @@ export async function getNavCounts(_req: Request, user: AuthUser): Promise<Respo
     col("students").countDocuments(await theirs(dueSoonFilter(uaeDay()))),
     // Funding requests a broker admin sent back to them to correct (fundingCorrections.ts).
     // …and by accounts, to correct and send again (2026-10-13).
-    col("funding_transactions").countDocuments(needsCorrectionFilter(user.id)),
+    col("funding_transactions").countDocuments(user.app_role === "cs_manager" ? NEEDS_CORRECTION_ALL : needsCorrectionFilter(user.id)),
   ]);
   // Bonus not credited, waiting for a broker admin (creditRequests.ts).
   const creditOpen = BONUS_APPROVERS.includes(user.app_role) ? await openCreditRequests() : 0;
+  // Funding Activities: requests not decided yet (2026-10-13) — a CS Manager every CS's, anyone else the ones they raised.
+  const fundingPending = await col("funding_transactions").countDocuments(user.app_role === "cs_manager"
+    ? { status: "PENDING", bonus_credit: { $in: [null, ""] } }
+    : { status: "PENDING", bonus_credit: { $in: [null, ""] }, $or: [{ requested_by_id: user.id }, { initiating_mentor_id: user.id }, { created_by: user.id }] });
   return json({
-    credit_requests_open: creditOpen,
+    credit_requests_open: creditOpen, funding_pending: fundingPending,
     today, new_students: newStudents, followups_today: dueToday, followups_overdue: overdue,
     payment_links_pending: linksWaiting, payment_links_ready: linksReady, payment_links_turned_down: linksTurnedDown,
     not_onboarded: notOnboarded, not_onboarded_late: notOnboardedLate, class_completions_open: classesToCall,

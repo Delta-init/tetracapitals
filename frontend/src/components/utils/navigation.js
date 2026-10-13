@@ -94,7 +94,8 @@ export const NAV_ITEMS = [
   { name: 'Leaderboard', page: 'Leaderboard', icon: Trophy, roles: ['super_admin', 'admin', 'broker_admin', 'academic_head', 'junior_mentor', 'chief_mentor', 'senior_mentor', 'finance_admin', 'cs', 'cs_manager'] },
   { name: 'MentorPerformance', hidden: true, page: 'MentorPerformance', icon: Gauge, roles: ['super_admin', 'admin', 'broker_admin', 'academic_head', 'junior_mentor', 'chief_mentor', 'senior_mentor', 'finance_admin'] },
   { name: 'MasterAdmin', page: 'MasterAdmin', icon: ShieldCheck, roles: ['super_admin'] },
-  { name: 'Personnel', page: 'Personnel', icon: Contact, roles: ['super_admin', 'admin', 'broker_admin', 'academic_head', 'admin_supervisor'] },
+  // CS Managers: the CS accounts only, to View as (2026-10-13; Layout lets them past their role's page list).
+  { name: 'Personnel', page: 'Personnel', icon: Contact, roles: ['super_admin', 'admin', 'broker_admin', 'academic_head', 'admin_supervisor', 'cs_manager'] },
   { name: 'RolesManagement', page: 'RolesManagement', icon: KeyRound, roles: ['super_admin', 'admin'] },
   { name: 'Hierarchy', hidden: true, page: 'Hierarchy', icon: Network, roles: ['super_admin', 'admin', 'broker_admin', 'academic_head'] },
   { name: 'AcademicCounselors', hidden: true, page: 'AcademicCounselors', icon: BookUser, roles: ['academic_head', 'super_admin'] },

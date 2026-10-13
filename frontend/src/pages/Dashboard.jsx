@@ -246,12 +246,21 @@ export default function Dashboard() {
 
         {/* Sent back to correct — red, under the hero, until corrected */}
         {toCorrect > 0 && (
-          <Link to={createPageUrl('MyFundingRequests')}
+          <Link to={currentUser?.app_role === 'cs_manager' ? `${createPageUrl('MyFundingRequests')}?tab=team&sent_back=1` : createPageUrl('MyFundingRequests')}
             className="flex items-center gap-3 rounded-2xl border border-rose-300 bg-rose-50 px-5 py-4 text-rose-800 shadow-soft transition hover:bg-rose-100">
             <AlertTriangle className="h-6 w-6 flex-shrink-0 text-rose-600" />
             <div className="flex-1">
-              <p className="font-semibold">{toCorrect === 1 ? 'A funding request was sent back to you to correct' : `${toCorrect} funding requests were sent back to you to correct`}</p>
-              <p className="text-sm text-rose-700">Correct it on Funding Activities and it goes straight back for approval.</p>
+              {currentUser?.app_role === 'cs_manager' ? (
+                <>
+                  <p className="font-semibold">{toCorrect === 1 ? 'A CS has a funding request sent back to correct' : `${toCorrect} funding requests are sent back to your CSs to correct`}</p>
+                  <p className="text-sm text-rose-700">See them on Funding Activities — you can correct them too.</p>
+                </>
+              ) : (
+                <>
+                  <p className="font-semibold">{toCorrect === 1 ? 'A funding request was sent back to you to correct' : `${toCorrect} funding requests were sent back to you to correct`}</p>
+                  <p className="text-sm text-rose-700">Correct it on Funding Activities and it goes straight back for approval.</p>
+                </>
+              )}
             </div>
             <span className="inline-flex items-center gap-1 whitespace-nowrap rounded-full bg-rose-600 px-3 py-1.5 text-sm font-semibold text-white">Correct now <ArrowRight className="h-4 w-4" /></span>
           </Link>

@@ -1,7 +1,8 @@
 // Utility functions for personnel/user management access control
 
 export const canViewPersonnel = (userRole) => {
-  return ['super_admin', 'admin', 'broker_admin', 'academic_head', 'academic_admin', 'admin_supervisor'].includes(userRole);
+  // CS Managers too (2026-10-13): the CS accounts only, to View as — nothing to edit.
+  return ['super_admin', 'admin', 'broker_admin', 'academic_head', 'academic_admin', 'admin_supervisor', 'cs_manager'].includes(userRole);
 };
 
 export const canEditPersonnel = (userRole) => {
@@ -30,6 +31,11 @@ export const filterPersonnelByRole = (currentUser, allUsers) => {
     });
   }
   
+  // CS Manager: the CS accounts — to View as any of them (the server allows any active CS)
+  if (role === 'cs_manager') {
+    return allUsers.filter(u => String(u.app_role || u.data?.app_role || '').toLowerCase() === 'cs');
+  }
+
   // Admin Supervisor can only see academic_admin users
   if (role === 'admin_supervisor') {
     return allUsers.filter(u => {
