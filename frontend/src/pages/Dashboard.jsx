@@ -4,6 +4,7 @@ import { useQuery } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
 import { createPageUrl } from "@/utils";
 import CourseCommissionSummary from "../components/funding/CourseCommissionSummary";
+import { AmountCell, PaidCell, studentInfoOf, sourceOf } from "../components/funding/mt5Cells";
 import StatsCard from "../components/dashboard/StatsCard";
 import LocationTotals from "../components/dashboard/LocationTotals";
 import { Users, TrendingUp, DollarSign, Target, AlertCircle, AlertTriangle, ArrowRight, Award, Wallet, Activity } from "lucide-react";
@@ -522,7 +523,7 @@ export default function Dashboard() {
                   <table className="w-full">
                     <thead className="bg-slate-50/80">
                       <tr>
-                        {['Student', 'Type', 'Amount', 'Status', 'Date'].map(h => (
+                        {['Student', 'Type', 'Amount to credit', 'Paid by the student', 'Status', 'Date'].map(h => (
                           <th key={h} className="whitespace-nowrap px-4 py-3 text-left text-[11px] font-semibold uppercase tracking-wider text-slate-500 sm:px-6">{h}</th>
                         ))}
                       </tr>
@@ -541,13 +542,20 @@ export default function Dashboard() {
                           </td>
                           <td className="whitespace-nowrap px-4 py-3.5 text-sm sm:px-6">
                             <span className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-semibold ${
-                              tx.type === 'DEPOSIT' ? 'bg-emerald-50 text-emerald-700 ring-1 ring-inset ring-emerald-100' : 'bg-rose-50 text-rose-700 ring-1 ring-inset ring-rose-100'
+                              tx.type === 'DEPOSIT' ? 'bg-emerald-50 text-emerald-700 ring-1 ring-inset ring-emerald-100'
+                                : tx.type === 'BONUS' ? 'bg-violet-50 text-violet-700 ring-1 ring-inset ring-violet-100'
+                                : 'bg-rose-50 text-rose-700 ring-1 ring-inset ring-rose-100'
                             }`}>
                               {tx.type}
                             </span>
                           </td>
-                          <td className="tabular whitespace-nowrap px-4 py-3.5 text-sm font-semibold text-slate-900 sm:px-6">
-                            ${(tx.amount_usd || 0).toLocaleString('en-US', { minimumFractionDigits: 2 })}
+                          {/* As Funding Requests shows it (components/funding/mt5Cells.jsx, 2026-10-13) */}
+                          <td className="tabular whitespace-nowrap px-4 py-3.5 text-sm sm:px-6">
+                            <AmountCell t={{ ...tx, student: studentInfoOf(students.find(s => s.id === tx.student_id)), source: sourceOf(tx) }}
+                              original={tx.amount_currency && tx.amount_currency !== 'USD' && tx.amount_original ? `${tx.amount_currency} ${Number(tx.amount_original).toLocaleString('en-US', { maximumFractionDigits: 2 })}` : null} />
+                          </td>
+                          <td className="min-w-[170px] px-4 py-3.5 text-xs sm:px-6">
+                            <PaidCell t={{ ...tx, student: studentInfoOf(students.find(s => s.id === tx.student_id)), source: sourceOf(tx) }} title={tx.student_name} />
                           </td>
                           <td className="whitespace-nowrap px-4 py-3.5 text-sm sm:px-6">
                             <span className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-xs font-semibold ${
@@ -568,7 +576,7 @@ export default function Dashboard() {
                       ))}
                       {myFundingTransactions.length === 0 && (
                         <tr>
-                          <td colSpan={5} className="px-6 py-12 text-center text-sm text-slate-400">
+                          <td colSpan={6} className="px-6 py-12 text-center text-sm text-slate-400">
                             No transactions yet
                           </td>
                         </tr>

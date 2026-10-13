@@ -59,8 +59,8 @@ export const filterFundingTransactionsByRole = (currentUser, allTransactions, al
   // primary mentor, so existing data is unaffected.
   const initiatorId = (t) => t.initiating_mentor_id || t.primary_mentor_id;
 
-  // Super Admin, Admin and Broker Admin see all
-  if (['super_admin', 'admin', 'broker_admin'].includes(role)) {
+  // Super Admin, Admin and Broker Admin see all — and CS Managers, who read every funding request (2026-10-09)
+  if (['super_admin', 'admin', 'broker_admin', 'cs_manager'].includes(role)) {
     return allTransactions;
   }
 

@@ -20,9 +20,8 @@ const PERIODS = [
   { value: 'year', label: 'This year' },
   { value: 'all', label: 'All time' },
 ];
-const usd = (n) => `$${(Number(n) || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 const aed = (n) => `AED ${(Number(n) || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
-/** A USD figure in AED at the fixed 3.67 — shown under it, as Funding Requests does (2026-10-13). */
+/** A USD figure in AED at the fixed 3.67 — the dashboard is in AED only (the user, 2026-10-13). */
 const inAed = (n) => aed((Number(n) || 0) * 3.67);
 
 const ACCENT = {
@@ -90,12 +89,12 @@ export default function LocationTotals() {
         <>
           <div className="grid grid-cols-1 gap-4 xl:grid-cols-3 lg:gap-6">
             <LocationCard
-              title="Total Deposits" icon={DollarSign} color="emerald" fmt={usd} delay={0.1}
+              title="Total Deposits" icon={DollarSign} color="emerald" fmt={inAed} delay={0.1}
               total={d.deposits.total} dubai={d.deposits.dubai} bangalore={d.deposits.bangalore}
               sub={{
-                total: `${inAed(d.deposits.total)} · ${d.deposits.count.toLocaleString()} approved · withdrawals ${usd(d.deposits.withdrawals.total)} · net ${usd(d.deposits.net.total)}`,
-                dubai: `${inAed(d.deposits.dubai)} · net ${usd(d.deposits.net.dubai)}`,
-                bangalore: `${inAed(d.deposits.bangalore)} · net ${usd(d.deposits.net.bangalore)}`,
+                total: `${d.deposits.count.toLocaleString()} approved · withdrawals ${inAed(d.deposits.withdrawals.total)} · net ${inAed(d.deposits.net.total)}`,
+                dubai: `net ${inAed(d.deposits.net.dubai)}`,
+                bangalore: `net ${inAed(d.deposits.net.bangalore)}`,
               }}
             />
             <LocationCard
@@ -105,9 +104,9 @@ export default function LocationTotals() {
               sub={{ total: `${d.course.count.toLocaleString()} course payment${d.course.count === 1 ? '' : 's'} approved` }}
             />
             <LocationCard
-              title="Total Commission" icon={Award} color="cyan" fmt={usd} delay={0.24}
+              title="Total Commission" icon={Award} color="cyan" fmt={inAed} delay={0.24}
               total={d.commission.total} dubai={d.commission.dubai} bangalore={d.commission.bangalore}
-              sub={{ total: `${inAed(d.commission.total)} · deposit and bonus commission, by the team of the person paid`, dubai: inAed(d.commission.dubai), bangalore: inAed(d.commission.bangalore) }}
+              sub={{ total: 'Deposit and bonus commission, by the team of the person paid' }}
             />
           </div>
           {!d.bangalore_teams && (
