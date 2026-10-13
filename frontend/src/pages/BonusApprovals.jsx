@@ -126,6 +126,7 @@ const EXPORT_COLUMNS = [
   { header: 'Sold by', value: t => (t.source === 'sales_close' ? (t.student?.closed_by || []).map(c => c.name).join('; ') : '') },
   { header: 'User ID', value: t => t.user_id },
   { header: 'Txn ID', value: t => t.transaction_id },
+  { header: 'Already credited', value: t => (t.already_credited?.at ? `Yes — ${t.already_credited.note || ''} (${t.already_credited.by_name || ''})` : '') },
   { header: 'Welcome', value: t => (t.student?.onboarded ? 'Sent' : 'Not yet') },
   { header: 'Decided by', value: t => t.approved_by_name },
   { header: 'Decided at', type: 'datetime', value: t => t.approved_at },
@@ -468,6 +469,12 @@ export default function BonusApprovals() {
                                   <div className="text-slate-400">{t.approved_by_name || ''}</div>
                                   {tab === 'rejected' && t.rejection_reason && <div className="mt-0.5 max-w-[220px] whitespace-normal text-rose-700">{t.rejection_reason}</div>}
                                   {tab === 'approved' && t.transaction_id && <div className="font-mono text-slate-400">{t.transaction_id}</div>}
+                                  {tab === 'approved' && t.already_credited?.at && (
+                                    <div className="mt-0.5 max-w-[220px] whitespace-normal">
+                                      <span className="rounded-full border border-emerald-200 bg-emerald-50 px-1.5 py-0.5 text-[10px] font-semibold text-emerald-700">Already credited</span>
+                                      {t.already_credited.note && <div className="mt-0.5 text-slate-500">{t.already_credited.note}</div>}
+                                    </div>
+                                  )}
                                 </div>
                               )}
                             </td>

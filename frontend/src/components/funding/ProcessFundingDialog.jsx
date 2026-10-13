@@ -36,6 +36,11 @@ export default function ProcessFundingDialog({ transaction, open, onClose, onPro
     tags: [],
   });
   const [transactionIdError, setTransactionIdError] = useState('');
+  // A bonus already credited in MT5 before it came here (the user, 2026-10-12): approved without a new transaction ID,
+  // with a note of when / where it was credited.
+  const [alreadyCredited, setAlreadyCredited] = useState(false);
+  const [alreadyNote, setAlreadyNote] = useState('');
+  const mayMarkCredited = transaction?.type === 'BONUS' && transaction?.status === 'PENDING';
   const [withdrawalMentorId, setWithdrawalMentorId] = useState('');
 
   const { data: mt5Accounts = [] } = useQuery({
@@ -131,11 +136,18 @@ export default function ProcessFundingDialog({ transaction, open, onClose, onPro
       });
       setTransactionIdError('');
       setWithdrawalMentorId('');
+      setAlreadyCredited(false);
+      setAlreadyNote('');
     }
   }, [transaction]);
 
   const handleApprove = async () => {
-    if (!formData.transaction_id || formData.transaction_id.trim() === '') {
+    const credited = mayMarkCredited && alreadyCredited;
+    if (credited && alreadyNote.trim().length < 3) {
+      setTransactionIdError('Say when or where it was credited');
+      return;
+    }
+    if (!credited && (!formData.transaction_id || formData.transaction_id.trim() === '')) {
       setTransactionIdError('Transaction ID is required');
       return;
     }
@@ -145,7 +157,7 @@ export default function ProcessFundingDialog({ transaction, open, onClose, onPro
       return;
     }
 
-    const duplicate = allTransactions.find(
+    const duplicate = formData.transaction_id?.trim() && allTransactions.find(
       t => t.transaction_id === formData.transaction_id && t.id !== transaction.id
     );
     
@@ -171,7 +183,11 @@ export default function ProcessFundingDialog({ transaction, open, onClose, onPro
       initiating_mentor_name: transaction.type === 'WITHDRAWAL'
         ? (isCoManagedWithdrawal ? selectedWithdrawalMentor?.name : transaction.primary_mentor_name)
         : (transaction.initiating_mentor_name || undefined),
-      status: 'APPROVED'
+      status: 'APPROVED',
+      ...(credited ? {
+        already_credited: { at: new Date().toISOString(), by_id: currentUser?.id || '', by_name: currentUser?.full_name || currentUser?.email || '', note: alreadyNote.trim().slice(0, 300) },
+        notes: [formData.notes, `Already credited in MT5 — ${alreadyNote.trim()}`].filter(Boolean).join('\n'),
+      } : {}),
     };
 
     // Auto-upgrade student from Level 1 to Level 2 on first approved deposit
@@ -395,9 +411,24 @@ export default function ProcessFundingDialog({ transaction, open, onClose, onPro
               />
             </div>
 
+            {mayMarkCredited && (
+              <div className={`space-y-2 rounded-lg border p-3 md:col-span-2 ${alreadyCredited ? 'border-emerald-300 bg-emerald-50/60' : 'border-slate-200'}`}>
+                <label className="flex cursor-pointer items-center gap-2 text-sm font-medium text-slate-800">
+                  <input type="checkbox" className="h-4 w-4 accent-emerald-600" checked={alreadyCredited}
+                    onChange={(e) => { setAlreadyCredited(e.target.checked); setTransactionIdError(''); }} />
+                  Already credited in MT5
+                </label>
+                <p className="text-xs text-slate-500">The bonus was credited before it came here — approve it without crediting again. The transaction ID is optional; type the earlier one if you have it.</p>
+                {alreadyCredited && (
+                  <Input value={alreadyNote} onChange={(e) => { setAlreadyNote(e.target.value); setTransactionIdError(''); }}
+                    placeholder="When / where it was credited, e.g. credited by hand on 3 Oct" />
+                )}
+              </div>
+            )}
+
             <div className="space-y-2 md:col-span-2">
               <Label htmlFor="transaction_id">
-                Transaction ID <span className="text-red-500">*</span>
+                Transaction ID {mayMarkCredited && alreadyCredited ? <span className="text-xs font-normal text-slate-500">(optional)</span> : <span className="text-red-500">*</span>}
               </Label>
               <Input
                 id="transaction_id"

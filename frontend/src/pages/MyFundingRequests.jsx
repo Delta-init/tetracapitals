@@ -767,6 +767,7 @@ export default function MyFundingRequests() {
                                         {transaction.status}
                                       </Badge>
                                     )}
+                                      {transaction.already_credited?.at && <div className="mt-1 text-[11px] font-medium text-emerald-700" title={transaction.already_credited.note || ''}>Already credited</div>}
                                     <FinanceApprovalNote transaction={transaction} />
                                   </TableCell>
                                   <TableCell className="font-medium">{transaction.student_name}</TableCell>
@@ -954,6 +955,7 @@ export default function MyFundingRequests() {
                                     {transaction.status}
                                   </Badge>
                                 )}
+                                  {transaction.already_credited?.at && <div className="mt-1 text-[11px] font-medium text-emerald-700" title={transaction.already_credited.note || ''}>Already credited</div>}
                                 <FinanceApprovalNote transaction={transaction} />
                               </TableCell>
                               <TableCell className="font-medium">{transaction.student_name}</TableCell>
