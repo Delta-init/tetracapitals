@@ -3,6 +3,7 @@ import { base44 } from "@/api/base44Client";
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
 import { createPageUrl } from "@/utils";
+import CourseCommissionSummary from "../components/funding/CourseCommissionSummary";
 import StatsCard from "../components/dashboard/StatsCard";
 import LocationTotals from "../components/dashboard/LocationTotals";
 import { Users, TrendingUp, DollarSign, Target, AlertCircle, AlertTriangle, ArrowRight, Award, Wallet, Activity } from "lucide-react";
@@ -105,6 +106,11 @@ export default function Dashboard() {
           .map(r => r.created_student_id);
         return students.filter(s => approvedRequestStudentIds.includes(s.id));
       })()
+    // A CS Manager: every student (they read them all, 2026-10-09); a CS: their own and the ones Common with them.
+    : currentUser.app_role === 'cs_manager'
+    ? students
+    : currentUser.app_role === 'cs'
+    ? students.filter(s => s.primary_mentor_id === currentUser.id || (Array.isArray(s.common_cs) && s.common_cs.some(c => c?.id === currentUser.id)))
     : isMentorRole(currentUser.app_role)
     ? (getScope(currentUser)
         // Roles with a visibility setting (own / team / full system)
@@ -280,7 +286,18 @@ export default function Dashboard() {
               trendUp={true}
               delay={0.1}
             />
-            {isMentorRole(currentUser.app_role) ? (
+            {['cs', 'cs_manager'].includes(currentUser.app_role) ? (
+              // A CS / CS Manager: what waits for a decision (every CS's for a CS Manager) — their money is in Course
+              // upgradation below, not the old deposit figures (2026-10-13).
+              <StatsCard
+                title="Pending Requests"
+                value={Number(navCounts?.funding_pending) || 0}
+                icon={Wallet}
+                color="amber"
+                trend={currentUser.app_role === 'cs_manager' ? "Every CS's, awaiting approval" : 'Awaiting approval'}
+                delay={0.17}
+              />
+            ) : isMentorRole(currentUser.app_role) ? (
               <>
                 <StatsCard
                   title="Monthly Revenue"
@@ -349,6 +366,9 @@ export default function Dashboard() {
             )}
           </div>
         )}
+
+        {/* A CS / CS Manager: their course payments and commission, as on Funding Activities (2026-10-13) */}
+        {['cs', 'cs_manager'].includes(currentUser.app_role) && <CourseCommissionSummary isManager={currentUser.app_role === 'cs_manager'} />}
 
         {/* Charts Section */}
         {myFundingTransactions.length > 0 && (
