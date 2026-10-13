@@ -26,12 +26,14 @@ import type { AuthUser } from "../auth/middleware";
 ──────────────────────────────────────────────────────────────────────────── */
 
 const COLL = "zoho_invoices";
-const LINKERS = ["super_admin", "admin"];
+// CS Managers too (the user, 2026-10-13): every invoice, Not linked ones, and linking, as a Super Admin.
+const LINKERS = ["super_admin", "admin", "cs_manager"];
 const str = (v: unknown, max = 200) => String(v ?? "").trim().slice(0, max);
 
 /** Which students' invoices this person sees, as a students query — null for everyone. A mentor or CS never sees
  *  everyone's, whatever their role is set to: their own (and Common) students at least. */
 async function studentScope(user: AuthUser): Promise<Record<string, any> | null> {
+  if (user.app_role === "cs_manager") return null;
   const scope = await buildScopeFilter(user, "Student");
   if (scope || !isMentorRole(user.app_role)) return scope;
   return { $or: [{ primary_mentor_id: user.id }, { "common_cs.id": user.id }, { created_by: user.id }] };
@@ -88,7 +90,7 @@ export async function listZohoInvoices(req: Request, user: AuthUser): Promise<Re
   const body: any = await req.json().catch(() => ({}));
   const mayLink = LINKERS.includes(user.app_role);
   const notLinked = body?.tab === "not_linked";
-  if (notLinked && !mayLink) return forbidden("Only a Super Admin or an Admin sees the invoices not linked to a student");
+  if (notLinked && !mayLink) return forbidden("Only a Super Admin, an Admin or a CS Manager sees the invoices not linked to a student");
 
   const parts: Record<string, any>[] = [];
   if (notLinked) parts.push({ student_id: null });
@@ -170,7 +172,7 @@ export async function getZohoInvoiceOptions(_req: Request, user: AuthUser): Prom
  * student by hand (kept when the import runs again), or take it off one (back to Not linked).
  */
 export async function linkZohoInvoice(req: Request, user: AuthUser): Promise<Response> {
-  if (!LINKERS.includes(user.app_role)) return forbidden("Only a Super Admin or an Admin links invoices to students");
+  if (!LINKERS.includes(user.app_role)) return forbidden("Only a Super Admin, an Admin or a CS Manager links invoices to students");
   const body: any = await req.json().catch(() => ({}));
   const oid = toObjectId(str(body?.invoiceId, 40));
   if (!oid) return error("invoiceId is required", 400);
@@ -210,7 +212,7 @@ function financeInvoicesOf(st: any) {
  * picked, with their Zoho invoices and their Delta finance invoices, so a second copy is seen before linking.
  */
 export async function getStudentInvoicesForLink(req: Request, user: AuthUser): Promise<Response> {
-  if (!LINKERS.includes(user.app_role)) return forbidden("Only a Super Admin or an Admin links invoices to students");
+  if (!LINKERS.includes(user.app_role)) return forbidden("Only a Super Admin, an Admin or a CS Manager links invoices to students");
   const body: any = await req.json().catch(() => ({}));
   const oid = toObjectId(str(body?.studentId, 40));
   if (!oid) return error("studentId is required", 400);

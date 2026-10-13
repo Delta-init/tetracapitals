@@ -20,8 +20,8 @@ import { aed, dayText, coursesOf, InvoiceStatus } from '@/components/students/Zo
    Invoices (the user, 2026-10-07): the Zoho Books invoices, Jan 2024 – Jun 2026,
    each with the student it is for. A CS sees only their own students', a leader
    their team's, an admin everyone's (backend/src/functions/zohoInvoices.ts).
-   Not linked — no sure match to a student — is a Super Admin's / Admin's to link
-   by hand. 2026-10-13: each Not linked one with the student it is most likely
+   Not linked — no sure match to a student — is a Super Admin's / Admin's / CS
+   Manager's to link by hand (CS Managers see every invoice, 2026-10-13). 2026-10-13: each Not linked one with the student it is most likely
    for (Strong / Likely / Weak — backend students/zohoSuggest.ts), linked in one
    click, and a filter by it; the Link window shows the student picked with
    their Zoho and Delta finance invoices before linking; and Finance invoices —

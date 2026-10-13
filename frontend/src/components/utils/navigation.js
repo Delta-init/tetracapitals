@@ -101,7 +101,7 @@ export const NAV_ITEMS = [
   { name: 'Students', page: 'Students', icon: Users, roles: ['super_admin', 'admin', 'broker_admin', 'academic_head', 'academic_admin', 'junior_mentor', 'chief_mentor', 'senior_mentor', 'subjunior_mentor', 'assistance'] },
   // New students from finance not onboarded yet; 6 hours on, their leaders and the Super Admins are told (backend/src/students/onboardingAlerts.ts).
   // CSE course upgrades: balances, next payments and the MT5 bonus (backend functions/courseUpgrades.ts) — whoever sees Students.
-  { name: 'CourseUpgrades', label: 'Course Upgrades', page: 'CourseUpgrades', icon: ArrowUpCircle, roles: ['super_admin', 'admin', 'broker_admin', 'academic_head', 'academic_admin', 'junior_mentor', 'chief_mentor', 'senior_mentor', 'subjunior_mentor', 'assistance'], sameAccessAs: 'Students' },
+  { name: 'CourseUpgrades', label: 'Course Upgrades', page: 'CourseUpgrades', icon: ArrowUpCircle, roles: ['super_admin', 'admin', 'broker_admin', 'academic_head', 'academic_admin', 'junior_mentor', 'chief_mentor', 'senior_mentor', 'subjunior_mentor', 'assistance', 'cs_manager'], sameAccessAs: 'Students' },
   { name: 'NotOnboarded', label: 'Not onboarded', page: 'NotOnboarded', icon: DoorOpen, roles: ['super_admin', 'admin', 'broker_admin', 'academic_head', 'academic_admin', 'junior_mentor', 'chief_mentor', 'senior_mentor', 'subjunior_mentor', 'assistance'], sameAccessAs: 'Students' },
   // What students still owe on Delta finance's courses, the next instalment due 29 days after the latest payment, and the
   // next payment recorded for finance to approve (backend functions/balancePayments.ts) — whoever sees Students.
