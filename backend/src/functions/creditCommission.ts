@@ -133,7 +133,10 @@ export async function creditCommissionFor(txId: string, opts: { preview?: boolea
     chain = line.slice(0, levels.length).map((u) => [u]);
   }
 
-  const amount = tx.amount_usd || 0;
+  // A course payment (a Bonus request with a course): on the AED the student paid, at 3.67 — not a USD the CS typed
+  // or converted (the user, 2026-10-13: "2% of the AED"). Everything else: its USD amount.
+  const paidAed = tx.type === "BONUS" ? Number(tx.course_payment?.paid_today_aed) || 0 : 0;
+  const amount = paidAed > 0 ? Math.round((paidAed / 3.67) * 100) / 100 : tx.amount_usd || 0;
 
   // Per-student $25k net-deposit cap for DEPOSIT commission (matches the old
   // MAX_CAP). We credit this transaction on the DELTA of the student's CAPPED

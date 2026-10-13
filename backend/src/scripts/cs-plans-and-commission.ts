@@ -20,7 +20,11 @@ import { creditCommissionFor } from "../functions/creditCommission";
  *   bun src/scripts/cs-plans-and-commission.ts --plans --apply          sets them; an undo file first
  *   bun src/scripts/cs-plans-and-commission.ts --backfill               shows every credit it would make
  *   bun src/scripts/cs-plans-and-commission.ts --backfill --apply       makes them; an undo file first
- *   bun src/scripts/cs-plans-and-commission.ts --undo=<file> [--apply]  puts it back (plans unset / credits removed)
+ *   bun src/scripts/cs-plans-and-commission.ts --recompute              course payments approved this month whose
+ *                                                                         credits change now that commission is on the
+ *                                                                         AED received (2026-10-13): old vs new
+ *   bun src/scripts/cs-plans-and-commission.ts --recompute --apply      replaces them; the old ones kept in the undo file
+ *   bun src/scripts/cs-plans-and-commission.ts --undo=<file> [--apply]  puts it back (plans unset / credits removed / old credits back)
  *
  * Uses the same database as the API (MONGO_URI / MONGO_DB, from this folder's .env).
  */
@@ -37,7 +41,13 @@ console.log(`Database: ${host} / ${config.mongoDb} — ${apply ? "WRITING" : "dr
 
 if (undo) {
   const saved = JSON.parse(readFileSync(undo, "utf8"));
-  if (saved.kind === "plans") {
+  if (saved.kind === "recompute") {
+    console.log(`  ${saved.old_credits.length} old credit(s) back on ${saved.transaction_ids.length} request(s)`);
+    if (apply) {
+      await col("commission_credits").deleteMany({ transaction_id: { $in: saved.transaction_ids } });
+      if (saved.old_credits.length) await col("commission_credits").insertMany(saved.old_credits.map((c: any) => ({ ...c, _id: new ObjectId(c._id) })));
+    }
+  } else if (saved.kind === "plans") {
     for (const u of saved.users) console.log(`  ${u.name}: plan back to ${u.before || "none"}`);
     if (apply) for (const u of saved.users) {
       await col("users").updateOne({ _id: new ObjectId(u._id), commission_plan_id: u.after }, u.before ? { $set: { commission_plan_id: u.before } } : { $unset: { commission_plan_id: "" } });
@@ -112,5 +122,37 @@ if (has("--backfill")) {
     console.log(`\nCredited ${made} on ${work.length} request(s). Undo: --undo=${file}`);
   }
 }
-if (!has("--plans") && !has("--backfill")) console.log("Say --plans and/or --backfill.");
+if (has("--recompute")) {
+  const now = new Date(Date.now() + 4 * 3_600_000);
+  const from = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1) - 4 * 3_600_000).toISOString();
+  const txs = (await col("funding_transactions").find({
+    type: "BONUS", status: "APPROVED", bonus_credit: { $in: [null, ""] }, "course_payment.paid_today_aed": { $gt: 0 }, approved_at: { $gte: from },
+  }).sort({ approved_at: 1 }).toArray()) as any[];
+  const names = new Map(((await col("users").find({}, { projection: { full_name: 1 } }).toArray()) as any[]).map((u) => [String(u._id), u.full_name]));
+  const work: { id: string; old: any[] }[] = [];
+  for (const t of txs) {
+    const old = (await col("commission_credits").find({ transaction_id: String(t._id) }).toArray()) as any[];
+    const fresh: any = await creditCommissionFor(String(t._id), { preview: true });
+    const sum = (list: any[]) => list.reduce((a, c) => a + (Number(c.commission_usd) || 0), 0);
+    const a = sum(old), b = sum(fresh?.credits ?? []);
+    const line = `  ${String(t.approved_at).slice(0, 10)} ${String(t.student_code ?? "").padEnd(9)} AED ${t.course_payment.paid_today_aed} (request $${t.amount_usd}) by ${t.initiating_mentor_name ?? "—"}: ${usd(a)} → ${usd(b)}`;
+    if (Math.abs(a - b) < 0.005) { console.log(`${line}  (same)`); continue; }
+    console.log(line);
+    console.log(`      ${(fresh?.credits ?? []).map((c: any) => `${names.get(String(c.recipient_id)) ?? c.recipient_id} ${usd(c.commission_usd)}`).join(" · ")}`);
+    work.push({ id: String(t._id), old });
+  }
+  console.log(`\nCourse payments approved since ${from.slice(0, 10)}: ${txs.length}; to recompute ${work.length}.`);
+  if (apply && work.length) {
+    const file = join(homedir(), `commission-recompute-undo-${stamp()}.json`);
+    writeFileSync(file, JSON.stringify({ kind: "recompute", transaction_ids: work.map((w) => w.id), old_credits: work.flatMap((w) => w.old.map((c) => ({ ...c, _id: String(c._id) }))) }, null, 1));
+    let made = 0;
+    for (const w of work) {
+      await col("commission_credits").deleteMany({ transaction_id: w.id });
+      const r: any = await creditCommissionFor(w.id);
+      made += Number(r?.credited ?? 0);
+    }
+    console.log(`Recomputed ${work.length} request(s), ${made} credit(s). Undo: --undo=${file}`);
+  }
+}
+if (!has("--plans") && !has("--backfill") && !has("--recompute")) console.log("Say --plans and/or --backfill.");
 await closeDb();
