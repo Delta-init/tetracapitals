@@ -13,9 +13,9 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Plus, TrendingUp, TrendingDown, DollarSign, Award, Wallet, Eye, Users, Clock, Filter, X, AlertTriangle } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import FundingRequestForm, { PaymentDetails } from "../components/funding/FundingRequestForm";
+import FundingRequestForm from "../components/funding/FundingRequestForm";
+import { AmountCell, PaidCell, studentInfoOf, sourceOf } from "../components/funding/mt5Cells";
 import TagChips from "../components/funding/TagChips";
-import { ReceiptsButton, methodsText } from "../components/funding/payments";
 import { useFinanceLink, WithAccountsBadge, FinanceApprovalNote } from "../components/funding/FinanceApproval";
 import {
   canCreateFundingTransaction,
@@ -394,6 +394,9 @@ export default function MyFundingRequests() {
     return true;
   });
   // Sent back to correct — by a broker admin or by accounts — first, in red (the user, 2026-10-13).
+  // As MT5 Approvals shows a request (components/funding/mt5Cells.jsx): its student and where it came from.
+  const rowOf = (t) => ({ ...t, student: studentInfoOf(students.find(s => s.id === t.student_id)), source: sourceOf(t) });
+  const originalOf = (t) => (t.amount_currency && t.amount_currency !== 'USD' && t.amount_original ? `${t.amount_currency} ${Number(t.amount_original).toLocaleString('en-US', { maximumFractionDigits: 2 })}` : null);
   const needsCorrection = (t) => (t.status === 'PENDING' && !!t.returned?.at) || (t.status === 'REJECTED' && t.finance_approval?.sent_back && !t.resubmitted_as);
   // …then the latest updated (approved, rejected, corrected, sent again) first.
   const updatedOf = (t) => String(t.updated_date || t.approved_at || t.requested_at || t.created_date || '');
@@ -707,12 +710,11 @@ export default function MyFundingRequests() {
                         <TableHead className="font-semibold">Code</TableHead>
                         <TableHead className="font-semibold">Meeting By</TableHead>
                         <TableHead className="font-semibold">MT5 Login</TableHead>
-                        <TableHead className="font-semibold">Amount</TableHead>
+                        <TableHead className="font-semibold">Amount to credit</TableHead>
                         {!isAssistance && <TableHead className="font-semibold">Commission</TableHead>}
-                        <TableHead className="font-semibold">Payment Method</TableHead>
+                        <TableHead className="font-semibold">Paid by the student</TableHead>
                         <TableHead className="font-semibold">Product</TableHead>
                         <TableHead className="font-semibold">Rejection Reason</TableHead>
-                        <TableHead className="font-semibold">Screenshot</TableHead>
                       </TableRow>
                     </TableHeader>
                     <TableBody>
@@ -720,7 +722,7 @@ export default function MyFundingRequests() {
                         if (filteredTransactions.length === 0 && filteredReferrals.length === 0 && filteredAdjustments.length === 0) {
                           return (
                             <TableRow>
-                              <TableCell colSpan={!isAssistance ? 13 : 12} className="text-center py-8 text-gray-500">
+                              <TableCell colSpan={!isAssistance ? 12 : 11} className="text-center py-8 text-gray-500">
                                 {(dateFrom || dateTo) ? 'No transactions found for selected date range' : 'No funding requests yet'}
                               </TableCell>
                             </TableRow>
@@ -821,13 +823,13 @@ export default function MyFundingRequests() {
                                   <TableCell className="font-mono text-sm text-blue-600">{transaction.student_code}</TableCell>
                                   <TableCell className="text-sm">{transaction.meeting_mentor_name || '-'}</TableCell>
                                   <TableCell className="font-mono text-sm">{transaction.mt5_login || '-'}</TableCell>
-                                  <TableCell className="font-semibold text-gray-900">${transaction.amount_usd?.toFixed(2)}<PaymentDetails tx={transaction} /></TableCell>
+                                  <TableCell className="whitespace-nowrap"><AmountCell t={rowOf(transaction)} original={originalOf(transaction)} /></TableCell>
                                   {!isAssistance && (
                                     <TableCell className={`font-semibold ${commissionEarned >= 0 ? 'text-green-600' : 'text-red-600'}`}>
                                       {transaction.status === 'APPROVED' ? `$${commissionEarned.toFixed(2)}` : '-'}
                                     </TableCell>
                                   )}
-                                  <TableCell className="text-sm">{methodsText(transaction)}</TableCell>
+                                  <TableCell className="min-w-[170px] text-xs"><PaidCell t={rowOf(transaction)} title={transaction.student_name} /></TableCell>
                                   <TableCell>
                                     {transaction.tags && transaction.tags.length > 0
                                       ? <TagChips tags={transaction.tags} />
@@ -849,10 +851,6 @@ export default function MyFundingRequests() {
                                     {transaction.resubmit_of && <div className="mt-1 text-xs text-slate-500">A corrected request, sent again</div>}
                                     {/* Sent back by a broker admin to correct the email or MT5 (2026-10-12) */}
                                     <SentBackNotice tx={transaction} />
-                                  </TableCell>
-                                  <TableCell>
-                                    {/* Every payment's receipt — "View (2)" for two */}
-                                    <ReceiptsButton tx={transaction} title={transaction.student_name} />
                                   </TableCell>
                                 </TableRow>
                               );
@@ -990,9 +988,9 @@ export default function MyFundingRequests() {
                           <TableHead className="font-semibold">Junior Mentor</TableHead>
                           <TableHead className="font-semibold">Meeting By</TableHead>
                           <TableHead className="font-semibold">MT5 Login</TableHead>
-                          <TableHead className="font-semibold">Amount</TableHead>
+                          <TableHead className="font-semibold">Amount to credit</TableHead>
                           <TableHead className="font-semibold">Upline Commission</TableHead>
-                          <TableHead className="font-semibold">Payment Method</TableHead>
+                          <TableHead className="font-semibold">Paid by the student</TableHead>
                           {isCsManager && <TableHead className="font-semibold">Correct</TableHead>}
                         </TableRow>
                       </TableHeader>
@@ -1058,16 +1056,13 @@ export default function MyFundingRequests() {
                               <TableCell className="font-mono text-sm">
                                 {transaction.mt5_login || '-'}
                               </TableCell>
-                              <TableCell className="font-semibold text-gray-900">
-                                ${transaction.amount_usd?.toFixed(2)}
-                                <PaymentDetails tx={transaction} />
-                              </TableCell>
+                              <TableCell className="whitespace-nowrap"><AmountCell t={rowOf(transaction)} original={originalOf(transaction)} /></TableCell>
                               <TableCell className={`font-semibold ${uplineCommission >= 0 ? 'text-green-600' : 'text-red-600'}`}>
                                 {transaction.status === 'APPROVED' 
                                   ? `$${uplineCommission.toFixed(2)} (${transaction.upline_commission_percentage || 0}%)` 
                                   : '-'}
                               </TableCell>
-                              <TableCell className="text-sm">{methodsText(transaction)}</TableCell>
+                              <TableCell className="min-w-[170px] text-xs"><PaidCell t={rowOf(transaction)} title={transaction.student_name} /></TableCell>
                               {isCsManager && (
                                 <TableCell className="text-sm">
                                   {/* A CS Manager corrects any CS's request: a rejected one sent again, once; one sent back */}

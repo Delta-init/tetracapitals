@@ -9,9 +9,8 @@ import { GraduationCap, TrendingDown, TrendingUp, Wallet } from 'lucide-react';
 import { useQuery } from '@tanstack/react-query';
 import { base44 } from '@/api/base44Client';
 import TagChips from '@/components/funding/TagChips';
-import { PaymentDetails } from '@/components/funding/FundingRequestForm';
+import { AmountCell, PaidCell, studentInfoOf, sourceOf } from '@/components/funding/mt5Cells';
 import { useFinanceLink, WithAccountsBadge, FinanceApprovalNote } from '@/components/funding/FinanceApproval';
-import { ReceiptsButton, methodsText } from '@/components/funding/payments';
 import { isWithAccounts } from '@/components/utils/FundingAccessControl';
 
 /* ────────────────────────────────────────────────────────────────────────────
@@ -119,8 +118,8 @@ export default function StudentFundingCard({ student, transactions = [], loading
                   <table className="w-full">
                     <thead>
                       <tr className="border-b bg-gray-50">
-                        <TH>Date</TH><TH>Type</TH><TH>Amount</TH><TH>Payment</TH><TH>MT5 Login</TH><TH>Txn ID</TH>
-                        <TH>Product</TH><TH>Added By</TH><TH>Status</TH><TH>Rejection Reason</TH><TH>Receipt</TH>
+                        <TH>Date</TH><TH>Type</TH><TH>Amount to credit</TH><TH>Paid by the student</TH><TH>MT5 Login</TH><TH>Txn ID</TH>
+                        <TH>Product</TH><TH>Added By</TH><TH>Status</TH><TH>Rejection Reason</TH>
                       </tr>
                     </thead>
                     <tbody>
@@ -130,8 +129,9 @@ export default function StudentFundingCard({ student, transactions = [], loading
                           <td className="p-3 text-sm">
                             <Badge variant="outline" className={`whitespace-nowrap ${TYPE_STYLE[txn.type] || ''}`}>{typeLabel(txn)}</Badge>
                           </td>
-                          <td className="whitespace-nowrap p-3 text-sm font-semibold text-gray-900">{money(txn.amount_usd)}<PaymentDetails tx={txn} /></td>
-                          <td className="p-3 text-sm">{methodsText(txn) || '-'}</td>
+                          {/* As MT5 Approvals shows it (components/funding/mt5Cells.jsx) */}
+                          <td className="whitespace-nowrap p-3 text-sm"><AmountCell t={{ ...txn, student: studentInfoOf(student), source: sourceOf(txn) }} original={txn.amount_currency && txn.amount_currency !== 'USD' && txn.amount_original ? `${txn.amount_currency} ${Number(txn.amount_original).toLocaleString('en-US', { maximumFractionDigits: 2 })}` : null} /></td>
+                          <td className="min-w-[170px] p-3 text-xs"><PaidCell t={{ ...txn, student: studentInfoOf(student), source: sourceOf(txn) }} title={`${typeLabel(txn)} · ${money(txn.amount_usd)}`} /></td>
                           <td className="p-3 font-mono text-sm">{txn.mt5_login || '-'}</td>
                           <td className="p-3 font-mono text-sm">{txn.transaction_id || '-'}</td>
                           <td className="p-3 text-sm">{txn.tags?.length ? <TagChips tags={txn.tags} /> : <span className="text-gray-400">-</span>}</td>
@@ -145,9 +145,6 @@ export default function StudentFundingCard({ student, transactions = [], loading
                           <td className="max-w-[220px] p-3 text-sm">
                             {txn.status === 'REJECTED' && txn.rejection_reason ? <span className="font-medium text-red-600">{txn.finance_approval?.sent_back ? 'Sent back by accounts — correct it and send it again: ' : ''}{txn.rejection_reason}</span> : <span className="text-gray-400">-</span>}
                             <SentBackNotice tx={txn} email={student?.email} compact />
-                          </td>
-                          <td className="p-3 text-sm">
-                            <ReceiptsButton tx={txn} title={`${typeLabel(txn)} · ${money(txn.amount_usd)}`} />
                           </td>
                         </tr>
                       ))}
