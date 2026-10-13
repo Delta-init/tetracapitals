@@ -33,6 +33,15 @@ const DAY_MS = 86_400_000;
 const DATE = /^\d{4}-\d{2}-\d{2}$/;
 const cents = (n: number) => Math.round(n * 100) / 100;
 const usdOf = (t: any) => (Number.isFinite(Number(t?.amount_usd)) ? Number(t.amount_usd) : 0);
+/** As Funding Requests shows a request (the user, 2026-10-13): a bonus its MT5 bonus — a course payment's bonus, not
+ *  the payment — anything else its USD amount… */
+const creditUsdOf = (t: any) => (t?.type === "BONUS" && t?.course_payment ? Number(t.course_payment.bonus_usd) || 0 : usdOf(t));
+/** …and the AED the student paid with it: a course payment's AED received, a deposit's or withdrawal's AED; a bonus
+ *  credit (sales close, course upgrade) none — its money came through finance. */
+const paidAedOf = (t: any) => {
+  if (t?.type === "BONUS" && t?.bonus_credit) return 0;
+  return Number(t?.course_payment?.paid_today_aed) || Number(t?.amount_aed) || usdOf(t) * 3.67;
+};
 const when = (...vals: unknown[]): number => {
   for (const v of vals) {
     const t = v ? Date.parse(String(v)) : NaN;
@@ -190,14 +199,14 @@ export async function getFundingRequestReport(req: Request, user: AuthUser): Pro
   const ctx = await reportCtx(await req.json().catch(() => ({})), user);
   if (ctx instanceof Response) return ctx;
   const txs = (await col("funding_transactions")
-    .find({ type: { $in: [...TYPES] } }, { projection: { type: 1, status: 1, amount_usd: 1, initiating_mentor_id: 1, primary_mentor_id: 1, primary_mentor_name: 1, requested_at: 1, created_date: 1, approved_at: 1, updated_date: 1 } })
+    .find({ type: { $in: [...TYPES] } }, { projection: { type: 1, status: 1, amount_usd: 1, amount_aed: 1, course_payment: 1, bonus_credit: 1, initiating_mentor_id: 1, primary_mentor_id: 1, primary_mentor_name: 1, requested_at: 1, created_date: 1, approved_at: 1, updated_date: 1 } })
     .toArray()) as any[];
   const blank = () => ({
-    count: 0, usd: 0, pending: 0, approved: 0, rejected: 0, deposit: 0, withdrawal: 0, bonus: 0, decided: 0, decide_hours: 0,
+    count: 0, usd: 0, aed: 0, pending: 0, approved: 0, rejected: 0, deposit: 0, withdrawal: 0, bonus: 0, decided: 0, decide_hours: 0,
   });
   const g = grouper(blank);
-  const grid: Record<string, Record<string, { count: number; usd: number }>> = {};
-  for (const ty of TYPES) { grid[ty] = {}; for (const st of STATUSES) grid[ty][st] = { count: 0, usd: 0 }; }
+  const grid: Record<string, Record<string, { count: number; usd: number; aed: number }>> = {};
+  for (const ty of TYPES) { grid[ty] = {}; for (const st of STATUSES) grid[ty][st] = { count: 0, usd: 0, aed: 0 }; }
   for (const t of txs) {
     const at = when(t.requested_at, t.created_date);
     if (!inRange(ctx, at)) continue;
@@ -207,12 +216,13 @@ export async function getFundingRequestReport(req: Request, user: AuthUser): Pro
     const decidedAt = status === "PENDING" ? NaN : when(t.approved_at, t.updated_date);
     const hours = Number.isFinite(decidedAt) && decidedAt >= at ? (decidedAt - at) / 3_600_000 : NaN;
     g.add(p, at, {
-      count: 1, usd: usdOf(t),
+      count: 1, usd: creditUsdOf(t), aed: paidAedOf(t),
       [status.toLowerCase()]: 1, [String(t.type).toLowerCase()]: 1,
       ...(Number.isFinite(hours) ? { decided: 1, decide_hours: hours } : {}),
     } as any);
     grid[t.type][status].count++;
-    grid[t.type][status].usd = cents(grid[t.type][status].usd + usdOf(t));
+    grid[t.type][status].usd = cents(grid[t.type][status].usd + creditUsdOf(t));
+    grid[t.type][status].aed = cents(grid[t.type][status].aed + paidAedOf(t));
   }
   const out = g.out("count");
   const avg = (r: any) => ({ ...r, avg_decide_hours: r.decided ? cents(r.decide_hours / r.decided) : null });
@@ -232,11 +242,11 @@ export async function getBonusReport(req: Request, user: AuthUser): Promise<Resp
   const ctx = await reportCtx(await req.json().catch(() => ({})), user);
   if (ctx instanceof Response) return ctx;
   const txs = (await col("funding_transactions")
-    .find({ type: "BONUS" }, { projection: { status: 1, amount_usd: 1, initiating_mentor_id: 1, primary_mentor_id: 1, primary_mentor_name: 1, requested_at: 1, created_date: 1, finance_approval: 1, bonus_credit: 1, amount_aed: 1, "course_payment.paid_today_aed": 1 } })
+    .find({ type: "BONUS" }, { projection: { type: 1, course_payment: 1, status: 1, amount_usd: 1, initiating_mentor_id: 1, primary_mentor_id: 1, primary_mentor_name: 1, requested_at: 1, created_date: 1, finance_approval: 1, bonus_credit: 1, amount_aed: 1 } })
     .toArray()) as any[];
   const blank = () => ({
-    count: 0, usd: 0, approved_collected_aed: 0, needs_call: 0, needs_call_usd: 0, with_finance: 0, with_finance_usd: 0,
-    waiting_broker: 0, waiting_broker_usd: 0, approved: 0, approved_usd: 0, rejected: 0, rejected_usd: 0,
+    count: 0, usd: 0, aed: 0, approved_collected_aed: 0, needs_call: 0, needs_call_usd: 0, needs_call_aed: 0, with_finance: 0, with_finance_usd: 0, with_finance_aed: 0,
+    waiting_broker: 0, waiting_broker_usd: 0, waiting_broker_aed: 0, approved: 0, approved_usd: 0, approved_aed: 0, rejected: 0, rejected_usd: 0, rejected_aed: 0,
   });
   const g = grouper(blank);
   for (const t of txs) {
@@ -247,13 +257,16 @@ export async function getBonusReport(req: Request, user: AuthUser): Promise<Resp
     // Sent back to correct still waits — counted with the broker admin's column in this report.
     const raw = t.status === "APPROVED" ? "approved" : t.status === "REJECTED" ? "rejected" : bonusStageOf(t);
     const stage = raw === "sent_back" ? "waiting_broker" : raw;
-    const usd = usdOf(t);
+    // The MT5 bonus and the AED the student paid, as Funding Requests shows them (2026-10-13).
+    const usd = creditUsdOf(t), aedPaid = paidAedOf(t);
     // Approved: what the student paid, in AED (the user, 2026-10-12) — the course payment's paid today, else the
     // request's AED, else its USD at 3.67.
     const collected = stage !== "approved" ? 0
       : Number(t.course_payment?.paid_today_aed) > 0 ? Number(t.course_payment.paid_today_aed)
-      : Number(t.amount_aed) > 0 ? Number(t.amount_aed) : usd * 3.67;
-    g.add(p, at, { count: 1, usd, [stage]: 1, [`${stage}_usd`]: usd, ...(collected ? { approved_collected_aed: collected } : {}) } as any);
+      : Number(t.amount_aed) > 0 ? Number(t.amount_aed) : usdOf(t) * 3.67;
+    // Approved: the same AED as the Collected (approved) card.
+    const paidHere = stage === "approved" ? collected : aedPaid;
+    g.add(p, at, { count: 1, usd, aed: paidHere, [stage]: 1, [`${stage}_usd`]: usd, [`${stage}_aed`]: paidHere, ...(collected ? { approved_collected_aed: collected } : {}) } as any);
   }
   // Promised at a sales close and not sent to be credited yet — for the student's CS now.
   const students = await notSentOf({});
