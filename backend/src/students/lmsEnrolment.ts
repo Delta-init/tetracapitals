@@ -1,7 +1,6 @@
 import { col } from "../db";
 import { callLms, lmsConfigured } from "../lib/lms";
 import { recordHistory, type HistoryEntry } from "./history";
-import { onboardEnrolledStudents } from "./onboardByLms";
 
 /* ────────────────────────────────────────────────────────────────────────────
    Enrolled = has a Delta LMS account. Every hour each student's email is
@@ -53,7 +52,7 @@ export interface LmsEnrolmentRun {
   kept_by_hand: number;          // hand-set, disagreeing with the LMS — left
   back_to_lms: number;           // hand-set, now agreeing — the LMS decides again
   classes?: { ok: boolean; with_classes?: number; error?: string };
-  courses?: { ok: boolean; with_courses?: number; onboarded?: number; error?: string };
+  courses?: { ok: boolean; with_courses?: number; error?: string };
 }
 
 /** One LMS course a student is on, as kept on them for the Students table. */
@@ -211,9 +210,7 @@ async function syncCourseLists(students: any[], emails: string[], emailOf: (s: a
       ops.push({ updateOne: { filter: { _id: s._id }, update: { $set: { lms_courses: next, lms_courses_checked_at: new Date().toISOString() } } } });
     }
     for (let i = 0; i < ops.length; i += 1000) await col("students").bulkWrite(ops.slice(i, i + 1000), { ordered: false });
-    // On a course and still not onboarded: onboarded (the user, 2026-10-13; students/onboardByLms.ts).
-    const onboarded = await onboardEnrolledStudents();
-    return { ok: true, with_courses: withCourses, onboarded };
+    return { ok: true, with_courses: withCourses };
   } catch (err) {
     return { ok: false, error: err instanceof Error ? err.message : String(err) };
   }

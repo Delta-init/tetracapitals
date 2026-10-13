@@ -14,6 +14,10 @@ import { recordHistory } from "./history";
    sheets, the DATA sheet, the enrolment tracker, one added by hand — is
    onboarded the same way (the user, 2026-10-13; onboarded_via "no_closer"):
    the Not onboarded list is for students a salesperson closed.
+
+   For the data as it was that day only (the user, 2026-10-13: "only for the
+   current data, the newer will be the same as before") — scripts/
+   onboard-lms-enrolled.ts; nothing runs it by itself.
 ──────────────────────────────────────────────────────────────────────────── */
 
 export const BY_LMS = "LMS enrolment (already on a course)";
