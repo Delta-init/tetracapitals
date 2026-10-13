@@ -475,3 +475,44 @@ export async function applyUpgradeLms(req: Request, user: AuthUser): Promise<Res
   }]);
   return json({ ok: true, courses: done });
 }
+
+/**
+ * POST /api/functions/listCoursePaymentRequests { status?: "pending" | "approved" | "rejected" | "all" } (the user,
+ * 2026-10-13: the bonus course payments on the Course Upgrades page too) — Bonus requests with a course ("Direct from
+ * CS portal"), never a sales close: a CS the ones they raised and their students'; a CS Manager and the admin roles
+ * everyone's; a leader their people's. Newest first.
+ */
+export async function listCoursePaymentRequests(req: Request, user: AuthUser): Promise<Response> {
+  const body: any = await req.json().catch(() => ({}));
+  const status = ["pending", "approved", "rejected", "all"].includes(body?.status) ? body.status : "all";
+  const filter: Record<string, any> = { type: "BONUS", bonus_credit: { $in: [null, ""] }, "course_payment.product": { $exists: true } };
+  if (status !== "all") filter.status = status.toUpperCase();
+  if (user.app_role !== "cs_manager") {
+    const visible = await visibleMentorIds(user);
+    if (visible) {
+      const theirs = ((await col("students").find(studentsOf(visible), { projection: { _id: 1 } }).toArray()) as any[]).map((s) => String(s._id));
+      const ids = [...visible];
+      filter.$or = [{ student_id: { $in: theirs } }, { initiating_mentor_id: { $in: ids } }, { requested_by_id: { $in: ids } }];
+    }
+  }
+  const txs = (await col("funding_transactions").find(filter).sort({ requested_at: -1 }).limit(2000).toArray()) as any[];
+  const students = (await col("students")
+    .find({ _id: { $in: txs.map((t) => toObjectId(t.student_id)).filter(Boolean) as any[] } }, { projection: { full_name: 1, student_code: 1, primary_mentor_name: 1 } })
+    .toArray()) as any[];
+  const sOf = new Map(students.map((s) => [String(s._id), s]));
+  return json({
+    rows: txs.map((t) => {
+      const s = sOf.get(String(t.student_id));
+      const cp = t.course_payment ?? {};
+      return {
+        id: String(t._id), status: t.status, requested_at: t.requested_at || t.created_date, approved_at: t.approved_at ?? null,
+        student: { id: String(t.student_id ?? ""), name: String(s?.full_name ?? t.student_name ?? "").trim(), code: s?.student_code ?? t.student_code ?? "", cs: s?.primary_mentor_name ?? t.primary_mentor_name ?? "" },
+        course: cp.product ?? "", kind: cp.kind ?? "", paid_today_aed: Number(cp.paid_today_aed) || 0, paid_before_aed: Number(cp.paid_before_aed) || 0,
+        hold_aed: Number(cp.hold_aed) || 0, balance_aed: cp.balance_aed ?? null, bonus_usd: Number(cp.bonus_usd) || 0,
+        raised_by: t.initiating_mentor_name || t.requested_by_name || "", payments: t.payments ?? [], screenshot_url: t.screenshot_url ?? "",
+        payment_method: t.payment_method ?? "", transaction_id: t.transaction_id ?? "", rejection_reason: t.rejection_reason ?? "",
+        finance: t.finance_approval?.state === "sent" ? "with finance" : t.finance_approval?.decision ? `finance ${t.finance_approval.decision}` : "",
+      };
+    }),
+  });
+}

@@ -102,7 +102,7 @@ export const NAV_ITEMS = [
   { name: 'Students', page: 'Students', icon: Users, roles: ['super_admin', 'admin', 'broker_admin', 'academic_head', 'academic_admin', 'junior_mentor', 'chief_mentor', 'senior_mentor', 'subjunior_mentor', 'assistance'] },
   // New students from finance not onboarded yet; 6 hours on, their leaders and the Super Admins are told (backend/src/students/onboardingAlerts.ts).
   // CSE course upgrades: balances, next payments and the MT5 bonus (backend functions/courseUpgrades.ts) — whoever sees Students.
-  { name: 'CourseUpgrades', label: 'Course Upgrades', page: 'CourseUpgrades', icon: ArrowUpCircle, roles: ['super_admin', 'admin', 'broker_admin', 'academic_head', 'academic_admin', 'junior_mentor', 'chief_mentor', 'senior_mentor', 'subjunior_mentor', 'assistance', 'cs_manager'], sameAccessAs: 'Students' },
+  { name: 'CourseUpgrades', label: 'Course Upgrades', page: 'CourseUpgrades', icon: ArrowUpCircle, roles: ['super_admin', 'admin', 'broker_admin', 'academic_head', 'academic_admin', 'junior_mentor', 'chief_mentor', 'senior_mentor', 'subjunior_mentor', 'assistance', 'cs_manager', 'cs'], sameAccessAs: 'Students' },
   { name: 'NotOnboarded', label: 'Not onboarded', page: 'NotOnboarded', icon: DoorOpen, roles: ['super_admin', 'admin', 'broker_admin', 'academic_head', 'academic_admin', 'junior_mentor', 'chief_mentor', 'senior_mentor', 'subjunior_mentor', 'assistance'], sameAccessAs: 'Students' },
   // What students still owe on Delta finance's courses, the next instalment due 29 days after the latest payment, and the
   // next payment recorded for finance to approve (backend functions/balancePayments.ts) — whoever sees Students.
@@ -145,7 +145,8 @@ export const NAV_ITEMS = [
   { name: 'BonusApprovals', label: 'MT5 Approvals', page: 'BonusApprovals', icon: Gift, roles: ['super_admin', 'broker_admin'], only: ['super_admin', 'broker_admin'] },
   // A bonus still not in the student's MT5 (2026-10-13): raised by a CS, CS Manager or Super Admin, answered by the broker
   // admins (backend functions/creditRequests.ts). Layout lets CS and CS Managers past their role's page list.
-  { name: 'NotCreditedYet', label: 'Not Credited Yet', page: 'NotCreditedYet', icon: BadgeAlert, roles: ['super_admin', 'broker_admin', 'admin', 'cs', 'cs_manager'], only: ['super_admin', 'broker_admin', 'admin', 'cs', 'cs_manager'], notForSales: true },
+  // Its own page is gone (the user, 2026-10-13): the "Not credited" tab of MT5 Approvals and of Funding Activities.
+  { name: 'NotCreditedYet', label: 'Not Credited Yet', page: 'NotCreditedYet', icon: BadgeAlert, roles: [], only: [], hidden: true, notForSales: true },
   // CSs ask on the student's page; a Super Admin pastes the link in (backend/src/functions/paymentLinks.ts). A CS
   // sees what they asked for here, along with their Students page; no other role gets it.
   { name: 'PaymentLinks', label: 'Payment Links', page: 'PaymentLinks', icon: CreditCard, roles: ['super_admin', 'cs'], only: ['super_admin', 'cs'], sameAccessAs: 'Students' },
@@ -154,7 +155,8 @@ export const NAV_ITEMS = [
   { name: 'MyCommissionHistory', page: 'MyCommissionHistory', icon: ReceiptText, roles: ['chief_mentor', 'senior_mentor', 'junior_mentor'] },
   { name: 'QuarterClosing', label: 'Quarterly Deposit Closing', page: 'QuarterClosing', icon: CalendarCheck, roles: ['super_admin', 'broker_admin', 'finance_admin'] },
   { name: 'MonthlyClosing', label: 'Bonus Closing', page: 'MonthlyClosing', icon: CalendarRange, roles: ['super_admin', 'admin', 'broker_admin', 'finance_admin'] },
-  { name: 'DailyPayouts', page: 'DailyPayouts', icon: Banknote, roles: ['super_admin', 'admin', 'broker_admin', 'finance_admin', 'chief_mentor', 'senior_mentor', 'junior_mentor', 'subjunior_mentor'] },
+  // Removed for everyone (the user, 2026-10-13).
+  { name: 'DailyPayouts', page: 'DailyPayouts', icon: Banknote, roles: [], only: [], hidden: true },
   { name: 'CommissionPlans', page: 'CommissionPlans', icon: Layers, roles: ['super_admin', 'admin', 'broker_admin', 'finance_admin'] },
   { name: 'BonusCommissionReports', hidden: true, page: 'BonusCommissionReports', icon: Gift, roles: ['super_admin', 'admin', 'broker_admin', 'finance_admin'] },
   { name: 'DepositCommissionReports', hidden: true, page: 'DepositCommissionReports', icon: PiggyBank, roles: ['super_admin', 'admin', 'broker_admin', 'finance_admin'] },
@@ -198,7 +200,7 @@ export const GROUP_OF = {
  * student's page stays open to them (MT5 Approvals links to it), and the report details the Reports open.
  */
 export const ROLE_ONLY_PAGES = {
-  broker_admin: ['BonusApprovals', 'NotCreditedYet', 'Tickets', 'DepositReport', 'WithdrawalReport', 'FundingRequestReport', 'BonusReport', 'Reports', 'CommissionReports', 'StudentDetail', 'ReportTransactionDetails'],
+  broker_admin: ['BonusApprovals', 'Tickets', 'DepositReport', 'WithdrawalReport', 'FundingRequestReport', 'BonusReport', 'Reports', 'CommissionReports', 'StudentDetail', 'ReportTransactionDetails'],
 };
 /** Where such a role starts instead of the Dashboard. */
 export const ROLE_HOME = { broker_admin: 'BonusApprovals' };

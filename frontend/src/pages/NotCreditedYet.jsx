@@ -38,7 +38,11 @@ const when = (iso) => (iso ? new Date(iso).toLocaleString('en-GB', { day: '2-dig
 const dubaiStart = (day, plus = 0) => { if (!/^\d{4}-\d{2}-\d{2}$/.test(day || '')) return undefined; const d = new Date(`${day}T00:00:00+04:00`); d.setUTCDate(d.getUTCDate() + plus); return d.toISOString(); };
 const why = (e) => (/unknown function|not found|404/i.test(String(e?.message)) ? 'This page needs the server update (the API deploy).' : e?.message);
 
-export default function NotCreditedYet() {
+/**
+ * The list, its tabs and its actions — on MT5 Approvals ("Not credited" tab) and Funding Activities; the page of its
+ * own is gone (the user, 2026-10-13). `embedded`: without the page's header and padding.
+ */
+export default function NotCreditedYet({ embedded = false }) {
   const qc = useQueryClient();
   const { data: currentUser } = useQuery({ queryKey: ['me-effective'], queryFn: async () => getEffectiveUser(await base44.auth.me()) });
   const [tab, setTab] = useState('open');
@@ -85,17 +89,25 @@ export default function NotCreditedYet() {
     }
   };
 
+  const actions = (
+    <div className="flex gap-2">
+      {mayRaise && <Button onClick={() => setRaising(true)}><Plus className="mr-1.5 h-4 w-4" />Bonus not credited</Button>}
+      <Button variant="outline" onClick={exportExcel} disabled={exporting || !rows.length}>{exporting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <FileSpreadsheet className="mr-2 h-4 w-4" />}Excel</Button>
+    </div>
+  );
   return (
-    <div className="min-h-screen p-4 sm:p-6">
-      <div className="mx-auto max-w-[1500px] space-y-5">
-        <PageHeader eyebrow="Funding" title="Not Credited Yet" icon={AlertTriangle}
+    <div className={embedded ? '' : 'min-h-screen p-4 sm:p-6'}>
+      <div className={embedded ? 'space-y-4' : 'mx-auto max-w-[1500px] space-y-5'}>
+        {embedded ? (
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <p className="text-sm text-slate-500">{mayDecide ? "Bonuses a CS says are still not in the student's MT5 — credit it with the transaction ID, say it was already credited, or reject it." : "Bonuses you told the broker admins are still not in the student's MT5, and what they answered."}</p>
+            {actions}
+          </div>
+        ) : <PageHeader eyebrow="Funding" title="Not Credited Yet" icon={AlertTriangle}
           description={mayDecide
             ? 'Bonuses a CS says are still not in the student\'s MT5. Credit it and give the transaction ID, say it was already credited, or reject it — they are told either way.'
             : 'Bonuses you told the broker admins are still not in the student\'s MT5, and what they answered.'}
-          actions={<div className="flex gap-2">
-            {mayRaise && <Button onClick={() => setRaising(true)}><Plus className="mr-1.5 h-4 w-4" />Bonus not credited</Button>}
-            <Button variant="outline" onClick={exportExcel} disabled={exporting || !rows.length}>{exporting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <FileSpreadsheet className="mr-2 h-4 w-4" />}Excel</Button>
-          </div>} />
+          actions={actions} />}
 
         <div className="flex flex-wrap items-center gap-2">
           {TABS.map(t => (

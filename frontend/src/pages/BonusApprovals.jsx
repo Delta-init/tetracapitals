@@ -11,7 +11,8 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
-import { CheckCircle2, Download, Gift, Hourglass, Landmark, Loader2, Pencil, Search, Undo2, XCircle } from 'lucide-react';
+import { BadgeAlert, CheckCircle2, Download, Gift, Hourglass, Landmark, Loader2, Pencil, Search, Undo2, XCircle } from 'lucide-react';
+import NotCreditedYet from '@/pages/NotCreditedYet';
 import { downloadExcel } from '@/components/utils/excelExport';
 import { CopyText, SendBackDialog, FIELDS } from '@/components/funding/corrections';
 import { getEffectiveUser } from '@/components/utils/ImpersonationContext';
@@ -119,7 +120,9 @@ export default function BonusApprovals() {
     enabled: !!currentUser && allowed,
     refetchInterval: 60_000,
   });
-  const [tab, setTab] = useState('pending');
+  const [tab, setTab] = useState(() => (new URLSearchParams(window.location.search).get('tab') === 'not_credited' ? 'not_credited' : 'pending'));
+  // The sidebar's counts — Not credited's open requests (creditRequests.ts).
+  const { data: navCounts } = useQuery({ queryKey: ['nav-counts'], queryFn: async () => (await base44.functions.invoke('getNavCounts', {})).data, staleTime: 30_000 });
   const [q, setQ] = useState('');
   const [type, setType] = useUrlState('type', 'all');
   // Filters and sorting, kept in the address (2026-10-12): the date range (requested — and, for Approved / Rejected,
@@ -266,8 +269,15 @@ export default function BonusApprovals() {
               <span className="rounded-full bg-white/70 px-1.5 text-xs font-semibold">{type === 'all' ? (data?.counts?.[key] ?? 0) : (data?.counts?.by_type?.[type]?.[key] ?? 0)}</span>
             </button>
           ))}
+          {/* Bonus not credited — raised by a CS, answered here (the user, 2026-10-13: its own page is gone) */}
+          <button type="button" onClick={() => setTab('not_credited')}
+            className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-sm font-medium transition-colors ${tab === 'not_credited' ? 'border-rose-300 bg-rose-50 text-rose-700' : 'border-slate-200 bg-white text-slate-600 hover:bg-slate-50'}`}>
+            <BadgeAlert className="h-4 w-4" />Not credited
+            {navCounts?.credit_requests_open > 0 && <span className="rounded-full bg-white/70 px-1.5 text-xs font-semibold">{navCounts.credit_requests_open}</span>}
+          </button>
         </div>
 
+        {tab === 'not_credited' ? <NotCreditedYet embedded /> : (
         <Card className="overflow-hidden">
           <CardHeader className="flex flex-row flex-wrap items-center gap-3 space-y-0 border-b">
             <div className="flex rounded-md border bg-white p-0.5 text-xs" role="group" aria-label="Type">
@@ -483,6 +493,7 @@ export default function BonusApprovals() {
             )}
           </CardContent>
         </Card>
+        )}
       </div>
 
       {sendingBack && <SendBackDialog tx={sendingBack} onClose={() => setSendingBack(null)} />}

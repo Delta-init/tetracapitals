@@ -16,6 +16,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import FundingRequestForm from "../components/funding/FundingRequestForm";
 import { AmountCell, PaidCell, studentInfoOf, sourceOf } from "../components/funding/mt5Cells";
 import CourseCommissionSummary from "../components/funding/CourseCommissionSummary";
+import NotCreditedYet from "./NotCreditedYet";
 import TagChips from "../components/funding/TagChips";
 import { useFinanceLink, WithAccountsBadge, FinanceApprovalNote } from "../components/funding/FinanceApproval";
 import {
@@ -44,7 +45,10 @@ export default function MyFundingRequests() {
   const [showAddDialog, setShowAddDialog] = useState(false);
   // A rejected request being corrected and sent again (FundingRequestForm `from`).
   const [resending, setResending] = useState(null);
-  const [activeTab, setActiveTab] = useState(() => (new URLSearchParams(typeof window !== 'undefined' ? window.location.search : '').get('tab') === 'team' ? 'team' : 'my'));
+  const [activeTab, setActiveTab] = useState(() => {
+    const t = new URLSearchParams(typeof window !== 'undefined' ? window.location.search : '').get('tab');
+    return t === 'team' || t === 'not_credited' ? t : 'my';
+  });
   const [dateFrom, setDateFrom] = useState('');
   const [dateTo, setDateTo] = useState('');
   const [filterType, setFilterType] = useState('ALL');
@@ -479,11 +483,13 @@ export default function MyFundingRequests() {
 
         {/* Tabs */}
         <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-          <TabsList className="grid w-full max-w-md" style={{ gridTemplateColumns: hasTeamView ? '1fr 1fr' : '1fr' }}>
+          <TabsList className="grid w-full max-w-xl" style={{ gridTemplateColumns: `repeat(${1 + (hasTeamView ? 1 : 0) + (isCs || isCsManager ? 1 : 0)}, minmax(0, 1fr))` }}>
             <TabsTrigger value="my">My Funding Requests</TabsTrigger>
             {hasTeamView && (
               <TabsTrigger value="team">{isCsManager ? 'All CS Funding Requests' : 'Team Funding Requests'}</TabsTrigger>
             )}
+            {/* Bonus not credited — raised to the broker admins, and what they answered (2026-10-13: its page is gone) */}
+            {(isCs || isCsManager) && <TabsTrigger value="not_credited">Not credited</TabsTrigger>}
           </TabsList>
 
           {/* My Funding Requests Tab */}
@@ -868,6 +874,10 @@ export default function MyFundingRequests() {
               </CardContent>
             </Card>
           </TabsContent>
+
+          {(isCs || isCsManager) && (
+            <TabsContent value="not_credited" className="space-y-4"><NotCreditedYet embedded /></TabsContent>
+          )}
 
           {/* Team Funding Requests Tab */}
           {hasTeamView && (

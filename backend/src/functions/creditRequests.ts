@@ -115,7 +115,7 @@ export async function raiseCreditRequest(req: Request, user: AuthUser): Promise<
   const approvers = ((await col("users").find({ app_role: { $in: BONUS_APPROVERS }, status: { $ne: "inactive" } }, { projection: { _id: 1 } }).toArray()) as any[]).map((u) => String(u._id));
   await notify(approvers, {
     type: "credit_request", title: `Bonus not credited: ${doc.student_name || "a student"}`,
-    body: `${who(user)}: ${moneyText(amount, currency)} in MT5 ${login} — ${note}`.slice(0, 300), link: "/NotCreditedYet",
+    body: `${who(user)}: ${moneyText(amount, currency)} in MT5 ${login} — ${note}`.slice(0, 300), link: "/BonusApprovals?tab=not_credited",
   });
   return json({ ok: true, id: String(insertedId) });
 }
@@ -222,7 +222,7 @@ export async function decideCreditRequest(req: Request, user: AuthUser): Promise
   await notify(peopleOf(r), {
     type: "credit_request_decided",
     title: `${r.student_name || "A student"}'s bonus: ${action === "credited" ? "credited" : action === "already_credited" ? "already credited" : "not credited"}`,
-    body: `${who(user)} — ${what}`.slice(0, 300), link: "/NotCreditedYet",
+    body: `${who(user)} — ${what}`.slice(0, 300), link: "/MyFundingRequests?tab=not_credited",
   });
   return json({ ok: true, status: action, ...(linked ? { linked } : {}) });
 }

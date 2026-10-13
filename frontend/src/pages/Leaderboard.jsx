@@ -1,350 +1,152 @@
-import React, { useState, useEffect } from 'react';
+import { useState } from 'react';
+import { useQuery } from '@tanstack/react-query';
+import { base44 } from '@/api/base44Client';
 import { PageTitle } from '@/components/common/PageHeader';
-import { base44 } from "@/api/base44Client";
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
-import { Trophy, Medal, Award, TrendingUp, Users, DollarSign, Flame, RefreshCw, Info } from "lucide-react";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import BadgeDisplay from "../components/gamification/BadgeDisplay";
-import PointsGuide from "../components/gamification/PointsGuide";
-import { calculateMentorPoints, calculateStreakBonus, awardBadges, calculateWeeklyStreak } from "../components/utils/GamificationUtils";
-import { toast } from "sonner";
-import { logAction } from "../components/utils/AuditLogger";
-import { isMentorRole } from "../components/utils/roles";
-import { Paged, TablePagination } from "@/components/common/TablePagination";
+import { Card, CardContent } from '@/components/ui/card';
+import { Input } from '@/components/ui/input';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Loader2, Medal, Trophy, Users } from 'lucide-react';
+import { getEffectiveUser } from '@/components/utils/ImpersonationContext';
+import { cn } from '@/lib/utils';
+
+/* ────────────────────────────────────────────────────────────────────────────
+   Leaderboard (the user, 2026-10-13): the CSs only — no mentors — ranked by the
+   course payments they collected (AED, approved, never a sales close) in the
+   period, with how many and the commission they earned; filtered by team. And
+   the teams, their CSs added up. backend functions/csLeaderboard.ts. (The old
+   mentor points board is gone.)
+──────────────────────────────────────────────────────────────────────────── */
+
+const AED = (n) => `AED ${Number(n || 0).toLocaleString('en-US', { maximumFractionDigits: 2 })}`;
+const dubaiDay = (ms = Date.now()) => new Date(ms).toLocaleDateString('en-CA', { timeZone: 'Asia/Dubai' });
+const dubaiStart = (day, plus = 0) => {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(day || '')) return undefined;
+  const d = new Date(`${day}T00:00:00+04:00`);
+  d.setUTCDate(d.getUTCDate() + plus);
+  return d.toISOString();
+};
+const PERIODS = [
+  { key: 'month', label: 'This month', range: () => [`${dubaiDay().slice(0, 8)}01`, dubaiDay()] },
+  { key: 'quarter', label: 'This quarter', range: () => { const t = dubaiDay(); const m = Math.floor((Number(t.slice(5, 7)) - 1) / 3) * 3 + 1; return [`${t.slice(0, 4)}-${String(m).padStart(2, '0')}-01`, t]; } },
+  { key: 'year', label: 'This year', range: () => [`${dubaiDay().slice(0, 4)}-01-01`, dubaiDay()] },
+  { key: 'all', label: 'All time', range: () => ['', ''] },
+];
+const MEDAL = ['text-amber-500', 'text-slate-400', 'text-orange-500'];
 
 export default function Leaderboard() {
-  const [currentUser, setCurrentUser] = useState(null);
-  const [isRecalculating, setIsRecalculating] = useState(false);
-  const [showGuide, setShowGuide] = useState(false);
-
-  const queryClient = useQueryClient();
-
-  useEffect(() => {
-    const fetchUser = async () => {
-      const user = await base44.auth.me();
-      setCurrentUser(user);
-    };
-    fetchUser();
-  }, []);
-
-  const { data: mentorPoints = [] } = useQuery({
-    queryKey: ['mentor-points'],
-    queryFn: () => base44.entities.MentorPoints.list('-total_points'),
-    enabled: !!currentUser
+  const { data: me } = useQuery({ queryKey: ['me-effective'], queryFn: async () => getEffectiveUser(await base44.auth.me()) });
+  const [view, setView] = useState('cs');
+  const [period, setPeriod] = useState('month');
+  const [from, setFrom] = useState('');
+  const [to, setTo] = useState('');
+  const [team, setTeam] = useState('all');
+  const [a, b] = period === 'custom' ? [from, to] : PERIODS.find(p => p.key === period).range();
+  const { data, isLoading, error } = useQuery({
+    queryKey: ['cs-leaderboard', a, b],
+    queryFn: async () => (await base44.functions.invoke('getCsLeaderboard', { from: dubaiStart(a), to: dubaiStart(b, 1) })).data,
+    retry: false,
   });
-
-  const { data: transactions = [] } = useQuery({
-    queryKey: ['funding-transactions-gamification'],
-    queryFn: () => base44.entities.FundingTransaction.list(),
-    enabled: !!currentUser
-  });
-
-  const { data: settings = [] } = useQuery({
-    queryKey: ['gamification-settings'],
-    queryFn: () => base44.entities.GamificationSettings.list(),
-    enabled: !!currentUser
-  });
-
-  const { data: users = [] } = useQuery({
-    queryKey: ['users-leaderboard'],
-    queryFn: () => base44.entities.User.list(),
-    enabled: !!currentUser
-  });
-
-  const updatePointsMutation = useMutation({
-    mutationFn: async (pointsData) => {
-      if (pointsData.id) {
-        return base44.entities.MentorPoints.update(pointsData.id, pointsData);
-      } else {
-        return base44.entities.MentorPoints.create(pointsData);
-      }
-    }
-  });
-
-  const recalculateAllPoints = async () => {
-    setIsRecalculating(true);
-    try {
-      const mentors = users.filter(u => isMentorRole(u.app_role));
-      
-      for (const mentor of mentors) {
-        const points = calculateMentorPoints(mentor.id, transactions, settings);
-        const streak = calculateWeeklyStreak(mentor.id, transactions);
-        const streakBonus = calculateStreakBonus(streak.current, settings);
-        
-        const totalPoints = points.deposit_points + points.student_points + streakBonus;
-        
-        const badges = awardBadges({
-          total_net_deposit_usd: points.total_net_deposit_usd,
-          unique_depositing_students: points.unique_depositing_students,
-          current_streak_weeks: streak.current
-        });
-
-        const existingRecord = mentorPoints.find(mp => mp.mentor_id === mentor.id);
-        
-        const pointsData = {
-          mentor_id: mentor.id,
-          mentor_name: mentor.full_name,
-          total_points: totalPoints,
-          deposit_points: points.deposit_points,
-          student_points: points.student_points,
-          bonus_points: streakBonus,
-          total_net_deposit_usd: points.total_net_deposit_usd,
-          unique_depositing_students: points.unique_depositing_students,
-          current_streak_weeks: streak.current,
-          longest_streak_weeks: Math.max(streak.longest, existingRecord?.longest_streak_weeks || 0),
-          badges: badges,
-          last_calculated_date: new Date().toISOString(),
-          id: existingRecord?.id
-        };
-
-        await updatePointsMutation.mutateAsync(pointsData);
-      }
-
-      // Assign ranks
-      await queryClient.invalidateQueries({ queryKey: ['mentor-points'] });
-      await logAction('recalculate_leaderboard', 'MentorPoints', null, 'Recalculated entire leaderboard', null, null);
-      toast.success('Leaderboard recalculated successfully!');
-    } catch (error) {
-      toast.error('Failed to recalculate leaderboard');
-      console.error(error);
-    } finally {
-      setIsRecalculating(false);
-    }
-  };
-
-  if (!currentUser) {
-    return (
-      <div className="flex items-center justify-center h-screen">
-        <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto" />
-          <p className="mt-4 text-gray-600">Loading...</p>
-        </div>
-      </div>
-    );
-  }
-
-  // Assign ranks
-  const rankedMentors = [...mentorPoints]
-    .sort((a, b) => (b.total_points || 0) - (a.total_points || 0))
-    .map((mentor, index) => ({ ...mentor, rank: index + 1 }));
-
-  const topThree = rankedMentors.slice(0, 3);
-  const currentMentorRank = rankedMentors.find(m => m.mentor_id === currentUser.id);
-
-  const canRecalculate = ['super_admin', 'academic_head'].includes(currentUser.app_role);
-
-  const getRankIcon = (rank) => {
-    switch (rank) {
-      case 1: return <Trophy className="h-6 w-6 text-yellow-500" />;
-      case 2: return <Medal className="h-6 w-6 text-gray-400" />;
-      case 3: return <Medal className="h-6 w-6 text-amber-600" />;
-      default: return <Award className="h-5 w-5 text-gray-400" />;
-    }
-  };
-
-  const getRankColor = (rank) => {
-    switch (rank) {
-      case 1: return 'bg-gradient-to-r from-yellow-100 to-yellow-50 border-yellow-300';
-      case 2: return 'bg-gradient-to-r from-gray-100 to-gray-50 border-gray-300';
-      case 3: return 'bg-gradient-to-r from-amber-100 to-amber-50 border-amber-300';
-      default: return 'bg-white border-gray-200';
-    }
-  };
+  const teams = data?.teams || [];
+  const cs = (data?.cs || []).filter(r => team === 'all' || r.team_id === team);
+  const list = view === 'cs' ? cs : teams;
+  const top = list.slice(0, 3);
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-50 p-6">
-      <div className="max-w-7xl mx-auto space-y-6">
-        {/* Header */}
-        <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
-          <div>
-            <PageTitle eyebrow="Overview" icon={Trophy}>Mentor Leaderboard</PageTitle>
-            <p className="mt-2 max-w-3xl text-sm text-slate-500 sm:text-base">Compete, achieve, and earn rewards!</p>
+    <div className="min-h-screen p-4 sm:p-6">
+      <div className="mx-auto max-w-6xl space-y-5">
+        <div>
+          <PageTitle eyebrow="Overview" icon={Trophy}>Leaderboard</PageTitle>
+          <p className="mt-2 text-sm text-slate-500">CSs ranked by the course payments they collected — approved, in AED — with the commission they earned. Teams are their CSs added up.</p>
+        </div>
+
+        <div className="flex flex-wrap items-center gap-2">
+          <div className="flex rounded-full border border-slate-200 bg-white p-0.5">
+            {[['cs', 'CS leaderboard'], ['teams', 'Team leaderboard']].map(([k, l]) => (
+              <button key={k} type="button" onClick={() => setView(k)}
+                className={cn('rounded-full px-3 py-1.5 text-sm font-medium', view === k ? 'bg-brand-navy text-white' : 'text-slate-600 hover:bg-slate-50')}>{l}</button>
+            ))}
           </div>
-          <div className="flex items-center gap-3">
-            <Button 
-              onClick={() => setShowGuide(true)}
-              variant="outline"
-              className="border-blue-600 text-blue-600 hover:bg-blue-50"
-            >
-              <Info className="h-4 w-4 mr-2" />
-              How to Earn Points
-            </Button>
-            {canRecalculate && (
-              <Button 
-                onClick={recalculateAllPoints} 
-                disabled={isRecalculating}
-                className="bg-blue-600 hover:bg-blue-700"
-              >
-                <RefreshCw className={`h-4 w-4 mr-2 ${isRecalculating ? 'animate-spin' : ''}`} />
-                {isRecalculating ? 'Recalculating...' : 'Recalculate All'}
-              </Button>
+          {view === 'cs' && teams.length > 1 && (
+            <Select value={team} onValueChange={setTeam}>
+              <SelectTrigger className="h-9 w-48 bg-white"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">Every team</SelectItem>
+                {teams.filter(t => t.id).map(t => <SelectItem key={t.id} value={t.id}>{t.team}</SelectItem>)}
+              </SelectContent>
+            </Select>
+          )}
+          <div className="ml-auto flex flex-wrap items-center gap-1">
+            {[...PERIODS, { key: 'custom', label: 'Custom' }].map(p => (
+              <button key={p.key} type="button" onClick={() => setPeriod(p.key)}
+                className={cn('rounded-lg border px-2.5 py-1 text-xs', period === p.key ? 'border-blue-300 bg-blue-100 font-semibold text-blue-800' : 'border-slate-200 bg-white text-slate-600 hover:bg-slate-50')}>{p.label}</button>
+            ))}
+            {period === 'custom' && (
+              <span className="flex items-center gap-1 text-xs text-slate-500">
+                <Input type="date" value={from} max={to || undefined} onChange={(e) => setFrom(e.target.value)} className="h-8 w-[140px] bg-white text-xs" aria-label="From" />
+                to
+                <Input type="date" value={to} min={from || undefined} onChange={(e) => setTo(e.target.value)} className="h-8 w-[140px] bg-white text-xs" aria-label="To" />
+              </span>
             )}
           </div>
         </div>
 
-        {/* Current User's Rank Card */}
-        {currentMentorRank && (
-          <Card className="border-2 border-blue-500 bg-gradient-to-r from-blue-50 to-indigo-50">
-            <CardContent className="p-6">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-4">
-                  <div className="bg-blue-600 text-white rounded-full w-16 h-16 flex items-center justify-center text-2xl font-bold">
-                    #{currentMentorRank.rank}
-                  </div>
-                  <div>
-                    <p className="text-sm text-gray-600">Your Rank</p>
-                    <p className="text-2xl font-bold text-gray-900">{currentMentorRank.mentor_name}</p>
-                    <p className="text-lg text-blue-600 font-semibold">{currentMentorRank.total_points?.toLocaleString()} points</p>
-                  </div>
-                </div>
-                <div className="text-right">
-                  <BadgeDisplay badges={currentMentorRank.badges} size="large" />
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-        )}
-
-        {/* Top 3 Podium */}
-        {topThree.length > 0 && (
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-            {topThree.map((mentor, index) => (
-              <Card key={mentor.id} className={`border-2 ${getRankColor(mentor.rank)}`}>
-                <CardHeader className="text-center pb-3">
-                  <div className="flex justify-center mb-2">
-                    {getRankIcon(mentor.rank)}
-                  </div>
-                  <CardTitle className="text-lg">
-                    <div className="text-sm text-gray-600 font-normal">Rank #{mentor.rank}</div>
-                    <div className="font-bold">{mentor.mentor_name}</div>
-                  </CardTitle>
-                </CardHeader>
-                <CardContent className="space-y-3">
-                  <div className="text-center">
-                    <p className="text-3xl font-bold text-blue-600">{mentor.total_points?.toLocaleString()}</p>
-                    <p className="text-sm text-gray-600">Total Points</p>
-                  </div>
-                  <div className="grid grid-cols-2 gap-2 text-sm">
-                    <div className="text-center p-2 bg-white rounded-lg">
-                      <DollarSign className="h-4 w-4 mx-auto text-emerald-600" />
-                      <p className="font-semibold">${(mentor.total_net_deposit_usd || 0).toLocaleString()}</p>
-                      <p className="text-xs text-gray-500">Net Deposit</p>
+        {error ? (
+          <p className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">{/unknown function|not found|404/i.test(String(error?.message)) ? 'The leaderboard needs the server update (the API deploy).' : error.message}</p>
+        ) : isLoading ? (
+          <div className="flex items-center gap-2 py-10 text-sm text-slate-500"><Loader2 className="h-4 w-4 animate-spin" /> Ranking…</div>
+        ) : (
+          <>
+            {/* The top three */}
+            <div className="grid gap-4 md:grid-cols-3">
+              {top.map((r, i) => (
+                <Card key={r.id || r.team} className={cn('border-2', i === 0 ? 'border-amber-300 bg-amber-50/50' : i === 1 ? 'border-slate-300 bg-slate-50/60' : 'border-orange-200 bg-orange-50/40')}>
+                  <CardContent className="p-5">
+                    <div className="flex items-center gap-2">
+                      {i === 0 ? <Trophy className={cn('h-6 w-6', MEDAL[i])} /> : <Medal className={cn('h-6 w-6', MEDAL[i])} />}
+                      <span className="text-sm text-slate-500">#{r.rank}</span>
                     </div>
-                    <div className="text-center p-2 bg-white rounded-lg">
-                      <Users className="h-4 w-4 mx-auto text-blue-600" />
-                      <p className="font-semibold">{mentor.unique_depositing_students || 0}</p>
-                      <p className="text-xs text-gray-500">Students</p>
-                    </div>
-                  </div>
-                  {mentor.current_streak_weeks > 0 && (
-                    <div className="text-center p-2 bg-orange-50 rounded-lg">
-                      <Flame className="h-4 w-4 mx-auto text-orange-600" />
-                      <p className="font-semibold text-orange-600">{mentor.current_streak_weeks} weeks</p>
-                      <p className="text-xs text-gray-600">Current Streak</p>
-                    </div>
-                  )}
-                  <div className="flex justify-center pt-2">
-                    <BadgeDisplay badges={mentor.badges} />
-                  </div>
-                </CardContent>
-              </Card>
-            ))}
-          </div>
-        )}
-
-        {/* Full Leaderboard Table */}
-        <Card className="border-gray-200">
-          <CardHeader className="border-b border-gray-100 bg-slate-50/70">
-            <CardTitle className="text-lg font-semibold tracking-tight">Full Rankings</CardTitle>
-          </CardHeader>
-          <CardContent className="p-0">
-            {/* rank comes from the full list above, so every page shows the overall rank */}
-            <Paged items={rankedMentors}>{(pageMentors, bar) => (<>
-            <div className="overflow-x-auto">
-              <Table>
-                <TableHeader>
-                  <TableRow className="bg-gray-50">
-                    <TableHead className="font-semibold w-16">Rank</TableHead>
-                    <TableHead className="font-semibold">Mentor</TableHead>
-                    <TableHead className="font-semibold text-right">Total Points</TableHead>
-                    <TableHead className="font-semibold text-right">Deposit Points</TableHead>
-                    <TableHead className="font-semibold text-right">Student Points</TableHead>
-                    <TableHead className="font-semibold text-right">Bonus Points</TableHead>
-                    <TableHead className="font-semibold text-right">Net Deposit</TableHead>
-                    <TableHead className="font-semibold text-right">Students</TableHead>
-                    <TableHead className="font-semibold text-center">Streak</TableHead>
-                    <TableHead className="font-semibold">Badges</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {rankedMentors.length === 0 ? (
-                    <TableRow>
-                      <TableCell colSpan={10} className="text-center py-8 text-gray-500">
-                        No leaderboard data yet. Click "Recalculate All" to generate rankings.
-                      </TableCell>
-                    </TableRow>
-                  ) : (
-                    pageMentors.map((mentor) => (
-                      <TableRow 
-                        key={mentor.id} 
-                        className={`hover:bg-gray-50 transition-colors ${mentor.mentor_id === currentUser.id ? 'bg-blue-50' : ''}`}
-                      >
-                        <TableCell className="font-bold">
-                          <div className="flex items-center gap-2">
-                            {getRankIcon(mentor.rank)}
-                            #{mentor.rank}
-                          </div>
-                        </TableCell>
-                        <TableCell className="font-medium">{mentor.mentor_name}</TableCell>
-                        <TableCell className="text-right font-bold text-blue-600">
-                          {mentor.total_points?.toLocaleString() || 0}
-                        </TableCell>
-                        <TableCell className="text-right">{mentor.deposit_points?.toLocaleString() || 0}</TableCell>
-                        <TableCell className="text-right">{mentor.student_points?.toLocaleString() || 0}</TableCell>
-                        <TableCell className="text-right">{mentor.bonus_points?.toLocaleString() || 0}</TableCell>
-                        <TableCell className="text-right font-semibold text-emerald-600">
-                          ${mentor.total_net_deposit_usd?.toLocaleString() || 0}
-                        </TableCell>
-                        <TableCell className="text-right font-semibold">{mentor.unique_depositing_students || 0}</TableCell>
-                        <TableCell className="text-center">
-                          {mentor.current_streak_weeks > 0 ? (
-                            <div className="inline-flex items-center gap-1 px-2 py-1 bg-orange-100 text-orange-800 rounded-full text-sm">
-                              <Flame className="h-3 w-3" />
-                              {mentor.current_streak_weeks}w
-                            </div>
-                          ) : (
-                            <span className="text-gray-400">-</span>
-                          )}
-                        </TableCell>
-                        <TableCell>
-                          <BadgeDisplay badges={mentor.badges} size="small" />
-                        </TableCell>
-                      </TableRow>
-                    ))
-                  )}
-                </TableBody>
-              </Table>
+                    <p className="mt-2 text-lg font-bold text-brand-navy">{view === 'cs' ? r.name : r.team}</p>
+                    <p className="text-xs text-slate-500">{view === 'cs' ? r.team : `${r.cs_count} CS · ${r.location === 'bangalore' ? 'Bangalore' : 'Dubai'}`}</p>
+                    <p className="mt-3 text-2xl font-bold text-slate-900">{AED(r.collected_aed)}</p>
+                    <p className="text-xs text-slate-500">{r.payments} payment{r.payments === 1 ? '' : 's'} · commission {AED(r.commission_aed)}</p>
+                  </CardContent>
+                </Card>
+              ))}
             </div>
-            <TablePagination {...bar} />
-            </>)}</Paged>
-          </CardContent>
-        </Card>
 
-        {/* Points & Badge Guide Dialog */}
-        <Dialog open={showGuide} onOpenChange={setShowGuide}>
-          <DialogContent className="max-w-5xl max-h-[90vh] overflow-y-auto">
-            <DialogHeader>
-              <DialogTitle className="text-2xl flex items-center gap-2">
-                <Trophy className="h-6 w-6 text-yellow-500" />
-                Points & Badge System Guide
-              </DialogTitle>
-            </DialogHeader>
-            <PointsGuide settings={settings} />
-          </DialogContent>
-        </Dialog>
+            <Card className="overflow-hidden">
+              <CardContent className="p-0">
+                <div className="overflow-x-auto">
+                  <table className="w-full text-sm">
+                    <thead className="bg-slate-50 text-left text-[11px] uppercase tracking-wider text-slate-500">
+                      <tr>
+                        <th className="px-4 py-3 font-semibold">Rank</th>
+                        <th className="px-4 py-3 font-semibold">{view === 'cs' ? 'CS' : 'Team'}</th>
+                        <th className="px-4 py-3 font-semibold">{view === 'cs' ? 'Team' : 'CSs'}</th>
+                        <th className="px-4 py-3 text-right font-semibold">Collected</th>
+                        <th className="px-4 py-3 text-right font-semibold">Payments</th>
+                        <th className="px-4 py-3 text-right font-semibold">Commission</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100">
+                      {!list.length && <tr><td colSpan={6} className="px-4 py-10 text-center text-slate-400">Nobody to rank yet.</td></tr>}
+                      {list.map((r) => (
+                        <tr key={r.id || r.team} className={cn(view === 'cs' && r.id === me?.id ? 'bg-blue-50/70' : 'hover:bg-slate-50')}>
+                          <td className="px-4 py-2.5 font-semibold text-slate-700">#{r.rank}</td>
+                          <td className="px-4 py-2.5 font-medium text-slate-900">{view === 'cs' ? r.name : r.team}{view === 'cs' && r.id === me?.id && <span className="ml-1.5 text-xs text-blue-700">(you)</span>}</td>
+                          <td className="px-4 py-2.5 text-slate-600">{view === 'cs' ? r.team : <span className="inline-flex items-center gap-1"><Users className="h-3.5 w-3.5" />{r.cs_count} · {r.location === 'bangalore' ? 'Bangalore' : 'Dubai'}</span>}</td>
+                          <td className="px-4 py-2.5 text-right font-semibold text-slate-900">{AED(r.collected_aed)}</td>
+                          <td className="px-4 py-2.5 text-right text-slate-700">{r.payments}</td>
+                          <td className="px-4 py-2.5 text-right text-emerald-700">{AED(r.commission_aed)}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </CardContent>
+            </Card>
+          </>
+        )}
       </div>
     </div>
   );

@@ -38,7 +38,7 @@ import { getNotOnboarded } from "./notOnboarded";
 import { getBalancePayments, recordBalancePayment } from "./balancePayments";
 import { resubmitSalesBonus } from "./salesBonus";
 import { getBonusApprovals } from "./bonusApprovals";
-import { getCoursePriceList, saveCoursePriceList, getStudentCourses, setStudentCourses, startCourseUpgrade, cancelCourseUpgrade, listCourseUpgrades, recordCoursePayment, getUpgradeLmsPlan, applyUpgradeLms } from "./courseUpgrades";
+import { getCoursePriceList, saveCoursePriceList, getStudentCourses, setStudentCourses, startCourseUpgrade, cancelCourseUpgrade, listCourseUpgrades, recordCoursePayment, getUpgradeLmsPlan, applyUpgradeLms, listCoursePaymentRequests } from "./courseUpgrades";
 import { getStudentClasses } from "./lmsClasses";
 import { getStudentLmsSupport, getLmsSupportTickets, getLmsSupportTicketCount, answerLmsTicket, resolveLmsTicket } from "./lmsSupport";
 import {
@@ -48,6 +48,7 @@ import {
 import { getSalesBonusToSend, sendSalesBonusCredit } from "./salesBonusSend";
 import { getCreditRequestOptions, raiseCreditRequest, listCreditRequests, decideCreditRequest } from "./creditRequests";
 import { getCourseCommissionSummary } from "./courseCommissionSummary";
+import { getCsLeaderboard } from "./csLeaderboard";
 import { getLmsCourseAccess, giveLmsCourses, setLmsModuleAccess } from "./lmsCourseAccess";
 import { getClassCompletions } from "./classCompletions";
 import { getMyTeamCsIds } from "./myTeam";
@@ -179,6 +180,10 @@ const AUTHED: Record<string, AuthedHandler> = {
   decideCreditRequest,
   // A CS's / CS Manager's course upgradation summary on Funding Activities (courseCommissionSummary.ts)
   getCourseCommissionSummary,
+  // The CS and team leaderboards (csLeaderboard.ts)
+  getCsLeaderboard,
+  // The bonus course payments, on the Course Upgrades page (courseUpgrades.ts)
+  listCoursePaymentRequests,
   // A student's own LMS, read-only — from LMS Requests and the student page
   viewStudentInLms,
   // Their LMS courses: put on Forex courses, modules opened or locked (lmsCourseAccess.ts)

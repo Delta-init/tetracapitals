@@ -187,8 +187,6 @@ export default function Layout({ children, currentPageName }) {
     if (item.name === 'FundingRequests' && currentUser?.app_role === 'cs_manager') return true;
     // Every CS and CS Manager sees the Leaderboard (2026-10-11), whatever their role's page list says.
     if (item.name === 'Leaderboard' && ['cs', 'cs_manager'].includes(currentUser?.app_role)) return true;
-    // …and Not Credited Yet (2026-10-13), to raise a bonus not credited and see the answer.
-    if (item.name === 'NotCreditedYet' && ['cs', 'cs_manager', 'admin'].includes(currentUser?.app_role)) return true;
     // …and Personnel for CS Managers (2026-10-13): the CS accounts, to View as.
     if (item.name === 'Personnel' && currentUser?.app_role === 'cs_manager') return true;
     if (Array.isArray(allowedPages)) return allowedPages.includes(item.sameAccessAs || item.name);
@@ -251,8 +249,11 @@ export default function Layout({ children, currentPageName }) {
       // Not decided yet (2026-10-13) — a CS Manager every CS's, anyone else their own.
       { n: navCounts?.funding_pending, cls: 'bg-amber-400 text-brand-navy', title: 'funding requests not decided yet' },
     ],
-    NotCreditedYet: [{ n: navCounts?.credit_requests_open, cls: 'bg-amber-400 text-brand-navy', title: 'Bonuses not credited yet, waiting for you' }],
-    BonusApprovals: [{ n: navCounts?.bonus_approvals_pending, cls: 'bg-amber-400 text-brand-navy', title: 'MT5 deposits, withdrawals and bonuses waiting for your approval' }],
+    BonusApprovals: [
+      { n: navCounts?.bonus_approvals_pending, cls: 'bg-amber-400 text-brand-navy', title: 'MT5 deposits, withdrawals and bonuses waiting for your approval' },
+      // Not credited — its tab here (2026-10-13)
+      { n: navCounts?.credit_requests_open, cls: 'bg-rose-600 text-white', title: 'Bonuses not credited yet, waiting for you' },
+    ],
     SupportTickets: [
       { n: ticketCount?.open, cls: 'bg-amber-400 text-brand-navy', title: 'support tickets waiting for an answer' },
       { n: ticketCount?.waiting, cls: 'bg-sky-400 text-brand-navy', title: 'support tickets waiting on the student' },
