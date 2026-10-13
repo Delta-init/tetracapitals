@@ -153,7 +153,8 @@ export function CurrencyAmount({ id = 'amount', label, amount, currency, onAmoun
           <SelectTrigger className="w-24 shrink-0" aria-label="Currency"><SelectValue /></SelectTrigger>
           <SelectContent>
             <SelectItem value="AED">AED</SelectItem>
-            <SelectItem value="USD">USD</SelectItem>
+            {/* No USD to pick (the user, 2026-10-13) — only an older request already in USD keeps it */}
+            {currency === 'USD' && <SelectItem value="USD">USD</SelectItem>}
             <SelectItem value="INR">INR</SelectItem>
           </SelectContent>
         </Select>
@@ -274,7 +275,8 @@ const paymentsFrom = (tx) => {
 
 export default function FundingRequestForm({ students, allStudents = [], currentUser, onSubmit, onCancel, isSubmitting, from = null }) {
   const [formData, setFormData] = useState(() => (from ? startFrom(from) : {
-    type: 'DEPOSIT',
+    // A CS raises bonuses only (the user, 2026-10-13): it starts on Bonus for them.
+    type: currentUser?.app_role === 'cs' ? 'BONUS' : 'DEPOSIT',
     student_id: '',
     amount: '',       // as typed, in `currency`
     currency: 'AED',  // AED, USD or INR — AED to start (the user, 2026-10-12), whatever the type and payment
@@ -558,8 +560,9 @@ export default function FundingRequestForm({ students, allStudents = [], current
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="DEPOSIT">Deposit</SelectItem>
-                <SelectItem value="WITHDRAWAL">Withdrawal</SelectItem>
+                {/* Deposit and Withdrawal: not for a CS (the user, 2026-10-13) — everyone else as before */}
+                {currentUser?.app_role !== 'cs' && <SelectItem value="DEPOSIT">Deposit</SelectItem>}
+                {currentUser?.app_role !== 'cs' && <SelectItem value="WITHDRAWAL">Withdrawal</SelectItem>}
                 <SelectItem value="BONUS">Bonus</SelectItem>
                 {/* Course Upgrade is hidden here for now (the user, 2026-10-08) — upgrades are done on the student's Courses tab. */}
               </SelectContent>
@@ -574,7 +577,8 @@ export default function FundingRequestForm({ students, allStudents = [], current
               label="Student"
               required
             />
-            {isMentor && (
+            {/* Not for a CS or a CS Manager (the user, 2026-10-13) */}
+            {isMentor && !['cs', 'cs_manager'].includes(currentUser?.app_role) && (
               <button
                 type="button"
                 onClick={() => setShowCoManageModal(true)}
@@ -651,7 +655,8 @@ export default function FundingRequestForm({ students, allStudents = [], current
                   <SelectTrigger className="h-8 w-24" aria-label="Currency"><SelectValue /></SelectTrigger>
                   <SelectContent>
                     <SelectItem value="AED">AED</SelectItem>
-                    <SelectItem value="USD">USD</SelectItem>
+                    {/* No USD to pick (the user, 2026-10-13) — only an older request already in USD keeps it */}
+                    {formData.currency === 'USD' && <SelectItem value="USD">USD</SelectItem>}
                     <SelectItem value="INR">INR</SelectItem>
                   </SelectContent>
                 </Select>
