@@ -97,13 +97,10 @@ export default function LocationTotals() {
               }}
             />
             <LocationCard
-              title="Course Upgrade Revenue" icon={GraduationCap} color="violet" fmt={aed} delay={0.17}
+              title="Course Upgradation Revenue" icon={GraduationCap} color="violet" fmt={aed} delay={0.17}
               total={d.course.aed.total} dubai={d.course.aed.dubai} bangalore={d.course.aed.bangalore}
-              sub={{
-                total: `${usd(d.course.usd.total)} · ${d.course.count.toLocaleString()} payment${d.course.count === 1 ? '' : 's'} approved`,
-                dubai: usd(d.course.usd.dubai),
-                bangalore: usd(d.course.usd.bangalore),
-              }}
+              // Course payments and upgrade payments, in AED only, with how many (2026-10-13).
+              sub={{ total: `${d.course.count.toLocaleString()} course payment${d.course.count === 1 ? '' : 's'} approved` }}
             />
             <LocationCard
               title="Total Commission" icon={Award} color="cyan" fmt={usd} delay={0.24}

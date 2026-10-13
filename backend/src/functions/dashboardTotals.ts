@@ -11,8 +11,10 @@ import { currentLocationOf, type Location } from "../lib/location";
      deposits    approved deposits (USD), with withdrawals and the net —
                  by the student's location (their team's, else the academy
                  they came for; as the Students list's Location filter);
-     course      course-upgrade payments Delta finance approved (AED, and USD
-                 at the fixed 3.67) — by the student's location;
+     course      course payments approved — a Bonus request with a course, by
+                 the AED the student paid (the user, 2026-10-13: the figure was
+                 missing) — and course-upgrade payments Delta finance approved
+                 (AED, and USD at the fixed 3.67) — by the student's location;
      commission  every commission credit (USD) — by the team of the person
                  paid, a pool by its Chief's team, as the commission reports;
                  a pool counts until it is shared out, then its payouts do.
@@ -56,7 +58,7 @@ export async function getDashboardTotals(req: Request, user: AuthUser): Promise<
   const teamLocation = new Map(index.teams.map((t) => [t.id, t.location]));
   const personLocation = (id: unknown): Location => index.teamOf(String(id ?? ""))?.location ?? "dubai";
 
-  const [funding, payments, credits] = await Promise.all([
+  const [funding, payments, credits, coursePays] = await Promise.all([
     col("funding_transactions")
       .find({ status: "APPROVED", type: { $in: ["DEPOSIT", "WITHDRAWAL"] } }, { projection: { type: 1, amount_usd: 1, student_id: 1, approved_at: 1, requested_at: 1, created_date: 1 } })
       .toArray() as Promise<any[]>,
@@ -66,11 +68,16 @@ export async function getDashboardTotals(req: Request, user: AuthUser): Promise<
     col("commission_credits")
       .find({ $or: [{ is_pool: { $ne: true } }, { status: "pooled" }] }, { projection: { recipient_id: 1, pool_group_id: 1, is_pool: 1, commission_usd: 1, requested_at: 1, created_date: 1 } })
       .toArray() as Promise<any[]>,
+    col("funding_transactions")
+      .find({ status: "APPROVED", type: "BONUS", bonus_credit: { $in: [null, ""] }, "course_payment.product": { $exists: true } },
+        { projection: { student_id: 1, course_payment: 1, amount_aed: 1, approved_at: 1, requested_at: 1 } })
+      .toArray() as Promise<any[]>,
   ]);
 
   const fundingNow = funding.filter((t) => inPeriod(when(t.approved_at, t.requested_at, t.created_date)));
   const paymentsNow = payments.filter((p) => inPeriod(when(p.decided_at, p.paid_on, p.recorded_at)));
-  const ids = [...new Set([...fundingNow, ...paymentsNow].map((x) => String(x.student_id ?? "")).filter(Boolean))].map(toObjectId).filter(Boolean);
+  const coursePaysNow = coursePays.filter((t) => inPeriod(when(t.approved_at, t.requested_at)));
+  const ids = [...new Set([...fundingNow, ...paymentsNow, ...coursePaysNow].map((x) => String(x.student_id ?? "")).filter(Boolean))].map(toObjectId).filter(Boolean);
   const students = ids.length
     ? ((await col("students").find({ _id: { $in: ids as any[] } }, { projection: { team_id: 1, location: 1 } }).toArray()) as any[])
     : [];
@@ -87,6 +94,7 @@ export async function getDashboardTotals(req: Request, user: AuthUser): Promise<
 
   const courseAed = blank();
   for (const p of paymentsNow) courseAed[locOfStudent(p.student_id)] += Number(p.approved_amount_aed ?? p.amount_aed) || 0;
+  for (const t of coursePaysNow) courseAed[locOfStudent(t.student_id)] += Number(t.course_payment?.paid_today_aed) || Number(t.amount_aed) || 0;
 
   const commission = blank();
   for (const c of credits) {
@@ -100,7 +108,7 @@ export async function getDashboardTotals(req: Request, user: AuthUser): Promise<
     period,
     since: since ? new Date(since).toISOString() : null,
     deposits: { ...withTotal(deposits), count: depositCount, withdrawals: withTotal(withdrawals), net: withTotal(net) },
-    course: { aed: withTotal(courseAed), usd: withTotal(usd), count: paymentsNow.length },
+    course: { aed: withTotal(courseAed), usd: withTotal(usd), count: paymentsNow.length + coursePaysNow.length },
     commission: withTotal(commission),
     bangalore_teams: index.teams.filter((t) => t.location === "bangalore").length,
   });
