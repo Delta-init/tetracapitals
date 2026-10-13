@@ -99,8 +99,8 @@ export default function CourseCommissionSummary({ isManager = false }) {
           <div className="flex items-center gap-2 py-6 text-sm text-gray-500"><Loader2 className="h-4 w-4 animate-spin" /> Adding it up…</div>
         ) : (
           <div className="grid gap-4 md:grid-cols-3">
-            <Stat label="Collected" value={AED(c?.aed)} tone="text-gray-900">
-              <p className="mt-2 text-xs text-gray-400">course payments {AED(c?.course_payments_aed)} · upgrades {AED(c?.upgrades_aed)} · {c?.count ?? 0} payment{c?.count === 1 ? '' : 's'}</p>
+            <Stat label="Collected" value={AED(c?.course_payments_aed)} tone="text-gray-900">
+              <p className="mt-2 text-xs text-gray-400">{c?.count ?? 0} course payment{c?.count === 1 ? '' : 's'}</p>
               {c?.pending_count > 0 && <p className="mt-1 text-xs text-amber-700">+ {AED(c.pending_aed)} waiting approval ({c.pending_count})</p>}
             </Stat>
             <Stat label={isManager ? 'Your CS Manager commission' : 'Commission earned'} value={AED(earnedAed)} tone="text-emerald-600">
