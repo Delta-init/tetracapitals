@@ -41,6 +41,12 @@ export default function ProcessFundingDialog({ transaction, open, onClose, onPro
   const [alreadyCredited, setAlreadyCredited] = useState(false);
   const [alreadyNote, setAlreadyNote] = useState('');
   const mayMarkCredited = transaction?.type === 'BONUS' && transaction?.status === 'PENDING';
+  // A course payment's bonus (2026-10-13): the MT5 bonus to credit is the course's, not the request's amount — that is
+  // the payment, in USD, which reports and the commission use.
+  const coursePayment = transaction?.type === 'BONUS' ? transaction?.course_payment : null;
+  const mt5Bonus = coursePayment ? Number(coursePayment.bonus_usd) || 0 : null;
+  // The transaction ID finance's approval left on it — never the MT5 one: the broker admin types that.
+  const financeTxnId = transaction?.status === 'PENDING' && transaction?.finance_approval?.decision === 'approved' ? (transaction?.transaction_id || '') : '';
   const [withdrawalMentorId, setWithdrawalMentorId] = useState('');
 
   const { data: mt5Accounts = [] } = useQuery({
@@ -127,7 +133,7 @@ export default function ProcessFundingDialog({ transaction, open, onClose, onPro
         payment_method: transaction.payment_method || '',
         mt5_account_id: transaction.mt5_account_id || '',
         mt5_login: transaction.mt5_login || '',
-        transaction_id: transaction.transaction_id || '',
+        transaction_id: transaction.status === 'PENDING' && transaction.finance_approval?.decision === 'approved' ? '' : (transaction.transaction_id || ''),
         rejection_reason: transaction.rejection_reason || '',
         notes: transaction.notes || '',
         // Carry ALL existing tags through: tags[0] is the primary product and
@@ -184,6 +190,8 @@ export default function ProcessFundingDialog({ transaction, open, onClose, onPro
         ? (isCoManagedWithdrawal ? selectedWithdrawalMentor?.name : transaction.primary_mentor_name)
         : (transaction.initiating_mentor_name || undefined),
       status: 'APPROVED',
+      // Finance's ID, kept beside the MT5 one that replaces it.
+      ...(financeTxnId && formData.transaction_id !== financeTxnId ? { finance_transaction_id: financeTxnId } : {}),
       ...(credited ? {
         already_credited: { at: new Date().toISOString(), by_id: currentUser?.id || '', by_name: currentUser?.full_name || currentUser?.email || '', note: alreadyNote.trim().slice(0, 300) },
         notes: [formData.notes, `Already credited in MT5 — ${alreadyNote.trim()}`].filter(Boolean).join('\n'),
@@ -298,8 +306,22 @@ export default function ProcessFundingDialog({ transaction, open, onClose, onPro
             </div>
           </div>
 
+          {mt5Bonus !== null && (
+            <div className="rounded-lg border-2 border-emerald-300 bg-emerald-50 p-4">
+              <p className="text-sm font-medium text-emerald-800">MT5 bonus to credit</p>
+              <p className="text-2xl font-bold text-emerald-700">${mt5Bonus.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</p>
+              <p className="text-xs text-emerald-800/80">
+                {coursePayment.product || 'Course'} · {coursePayment.kind === 'partial' ? 'partial payment' : coursePayment.kind === 'full' ? 'full payment' : 'payment'}
+                {Number(coursePayment.paid_today_aed) > 0 ? ` of AED ${Number(coursePayment.paid_today_aed).toLocaleString('en-US')}` : ''}
+                {Number(coursePayment.hold_aed) > 0 ? ` · AED ${Number(coursePayment.hold_aed).toLocaleString('en-US')} on hold` : ''}
+                {mt5Bonus === 0 ? ' — no bonus to credit yet' : ''}
+              </p>
+            </div>
+          )}
+
           <div className="space-y-2 bg-blue-50 p-4 rounded-lg border-2 border-blue-200">
-            <Label htmlFor="amount_usd" className="text-base font-semibold">Amount (USD) - Editable</Label>
+            <Label htmlFor="amount_usd" className="text-base font-semibold">{mt5Bonus !== null ? 'Payment received (USD) - Editable' : 'Amount (USD) - Editable'}</Label>
+            {mt5Bonus !== null && <p className="text-xs text-slate-500">What the student paid, in USD — used for reports and the commission, not what you credit in MT5.</p>}
             <Input
               id="amount_usd"
               type="number"
@@ -440,6 +462,7 @@ export default function ProcessFundingDialog({ transaction, open, onClose, onPro
                 placeholder="Enter unique transaction ID"
                 className={transactionIdError ? 'border-red-500' : ''}
               />
+              {financeTxnId && <p className="text-xs text-slate-500">Finance's ID: {financeTxnId} — type the MT5 transaction ID here.</p>}
               {transactionIdError && (
                 <p className="text-sm text-red-600">{transactionIdError}</p>
               )}
