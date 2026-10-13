@@ -140,18 +140,16 @@ const EXPORT_COLUMNS = [
   { header: 'MT5 login', value: t => t.mt5_login },
   { header: 'Amount to credit USD', type: 'number', value: t => bonusUsdOf(t) },
   { header: 'Original amount', value: t => original(t) },
-  { header: 'Collected by counsellor', value: t => paidLines(t).map(l => l.collected || `Paid ${l.paid}`).join('; ') || (receivedOf(t) ? `Received ${receivedOf(t).received}${receivedOf(t).method ? ` · ${receivedOf(t).method}` : ''}` : '') },
+  { header: 'Paid by the student', value: t => (receivedOf(t) ? `Received ${receivedOf(t).received}${receivedOf(t).method ? ` · ${receivedOf(t).method}` : ''}` : paidLines(t).map(l => (l.collected ? `Collected by counsellor ${l.collected}` : `Paid ${l.paid}`)).join('; ')) },
   { header: 'On hold', value: t => receivedOf(t)?.hold || '' },
   { header: 'Balance', value: t => receivedOf(t)?.balance || '' },
   { header: 'Recorded against invoice', value: t => paidLines(t).map(l => l.recorded || '').filter(Boolean).join('; ') },
   { header: 'Payment', value: t => methodsText(t) },
   { header: 'Product', value: t => [...(t.tags || []), ...(t.course && !(t.tags || []).includes(t.course) ? [t.course] : [])].join('; ') },
-  { header: 'LMS courses now', width: 40, value: t => (t.student?.lms_courses || []).map(c => `${c.title} (${c.status === 'active' ? `${Math.round(c.progress)}%` : c.status})`).join('; ') },
   { header: 'Finance invoices', width: 40, value: t => [t.sales_close?.invoice_number, ...(t.student?.invoices || []).filter(f => f.invoice_number !== t.sales_close?.invoice_number).map(f => `${f.invoice_number} ${f.currency} ${f.fee}${f.balance > 0 ? ` owes ${f.balance}` : ''}`)].filter(Boolean).join('; ') },
   { header: 'Source', value: t => sourceLabel(t) },
   { header: 'Raised by', value: t => t.resubmitted_by_name || t.requested_by_name || '' },
   { header: 'Sold by', value: t => (t.source === 'sales_close' ? (t.student?.closed_by || []).map(c => c.name).join('; ') : '') },
-  { header: 'User ID', value: t => t.user_id },
   { header: 'Txn ID', value: t => t.transaction_id },
   { header: 'Already credited', value: t => (t.already_credited?.at ? `Yes — ${t.already_credited.note || ''} (${t.already_credited.by_name || ''})` : '') },
   { header: 'Welcome', value: t => (t.student?.onboarded ? 'Sent' : 'Not yet') },
@@ -378,8 +376,8 @@ export default function BonusApprovals() {
                         <tr className="border-b bg-slate-50/80">
                           {/* The Funding Requests page's columns (but Added by), and what matters for an MT5 credit (2026-10-12) */}
                           <TH>Requested</TH><TH>Type</TH><TH>Status</TH><TH>Student</TH><TH>CS</TH><TH>Meeting by</TH><TH>MT5 login</TH>
-                          <TH>Amount to credit</TH><TH>Paid by the student</TH><TH>Product</TH><TH>LMS courses now</TH><TH>Finance invoice</TH><TH>From · sold by</TH>
-                          <TH>User ID</TH><TH>Txn ID</TH><TH>Receipt</TH><TH>Welcome</TH>
+                          <TH>Amount to credit</TH><TH>Paid by the student</TH><TH>Product</TH><TH>Finance invoice</TH><TH>From · sold by</TH>
+                          <TH>Txn ID</TH><TH>Welcome</TH>
                           <th className={`${STICKY_END} whitespace-nowrap bg-slate-50 px-3 py-3 text-left text-[11px] font-semibold uppercase tracking-wider text-slate-500`}>
                             {tab === 'pending' ? '' : tab === 'returned' ? 'Sent back' : 'Decided'}
                           </th>
@@ -436,31 +434,33 @@ export default function BonusApprovals() {
                             </td>
                             {/* What the student paid — the counsellor's collection and what accounts recorded — beside the bonus, never mixed */}
                             <td className="min-w-[180px] px-3 py-2.5 text-xs">
-                              {paidLines(t).length ? paidLines(t).map(l => (
-                                <div key={l.key} className="mb-1 last:mb-0">
-                                  {paidLines(t).length > 1 && <div className="font-mono text-[11px] text-slate-400">{l.key}</div>}
-                                  {l.collected ? <div className="text-slate-800">Collected by counsellor <b>{l.collected}</b></div> : <div className="text-slate-800">Paid <b>{l.paid}</b></div>}
-                                  {l.recorded && <div className="text-slate-500">Recorded {l.recorded}</div>}
-                                  <div className="text-slate-400">of {l.fee}{l.balance ? <span className="text-amber-700"> · owes {l.balance}</span> : ''}</div>
-                                </div>
-                              )) : receivedOf(t) ? (() => { const r = receivedOf(t); return (
+                              {/* Direct from CS portal: what this request says was received (2026-10-13) — not the student's other
+                                  finance invoices, which may be another course's; a sales close: the counsellor's collection */}
+                              {receivedOf(t) ? (() => { const r = receivedOf(t); return (
                                 <div>
                                   <div className="text-slate-800">Received <b>{r.received}{r.method ? ` · ${r.method}` : ''}</b></div>
                                   {r.kind && <div className="text-slate-500">{r.kind}{r.before ? ` · paid before ${r.before}` : ''}</div>}
                                   {r.hold && <div className="text-amber-700">On hold {r.hold}</div>}
                                   {r.balance && <div className="text-slate-500">Balance {r.balance}</div>}
                                 </div>
-                              ); })() : <span className="text-slate-300">—</span>}
+                              ); })() : paidLines(t).length ? paidLines(t).map(l => (
+                                <div key={l.key} className="mb-1 last:mb-0">
+                                  {paidLines(t).length > 1 && <div className="font-mono text-[11px] text-slate-400">{l.key}</div>}
+                                  {l.collected ? <div className="text-slate-800">Collected by counsellor <b>{l.collected}</b></div> : <div className="text-slate-800">Paid <b>{l.paid}</b></div>}
+                                  {l.recorded && <div className="text-slate-500">Recorded {l.recorded}</div>}
+                                  <div className="text-slate-400">of {l.fee}{l.balance ? <span className="text-amber-700"> · owes {l.balance}</span> : ''}</div>
+                                </div>
+                              )) : <span className="text-slate-300">—</span>}
+                              {/* The receipts — the request's own, an upgrade's payments, or finance's for its invoice */}
+                              <div className="mt-1.5">
+                                <ReceiptsButton tx={receiptTxOf(t)} title={t.student?.full_name || t.student_name} />
+                                {receiptTxOf(t) !== t && <span className="ml-1.5 text-[11px] text-slate-400">{upgradeReceiptsOf(t) ? 'upgrade payments' : 'from finance'}</span>}
+                              </div>
                             </td>
                             <td className="min-w-[140px] px-3 py-2.5">
                               {t.tags?.length ? <TagChips tags={t.tags} /> : null}
                               {t.course && (!t.tags?.length || !t.tags.includes(t.course)) && <div className="mt-0.5 max-w-[220px] text-xs text-slate-500">{t.course}</div>}
                               {!t.tags?.length && !t.course && <span className="text-slate-300">—</span>}
-                            </td>
-                            <td className="min-w-[180px] px-3 py-2.5 text-xs">
-                              {t.student?.lms_courses?.length ? t.student.lms_courses.map((c) => (
-                                <div key={c.title} className="text-slate-700">{c.title}<span className="text-slate-400"> · {c.status === 'active' ? `${Math.round(c.progress)}%` : c.status}</span></div>
-                              )) : <span className="text-slate-400">Not on an LMS course</span>}
                             </td>
                             <td className="min-w-[160px] px-3 py-2.5 text-xs">
                               {t.sales_close?.invoice_number && <div className="font-mono font-medium text-slate-800">{t.sales_close.invoice_number}</div>}
@@ -484,12 +484,7 @@ export default function BonusApprovals() {
                                 </div>
                               )}
                             </td>
-                            <td className="whitespace-nowrap px-3 py-2.5 text-sm text-slate-600">{t.user_id || '—'}</td>
                             <td className="whitespace-nowrap px-3 py-2.5 font-mono text-sm text-slate-600">{t.transaction_id || '—'}</td>
-                            <td className="whitespace-nowrap px-3 py-2.5 text-sm">
-                              <ReceiptsButton tx={receiptTxOf(t)} title={t.student?.full_name || t.student_name} />
-                              {receiptTxOf(t) !== t && <div className="mt-0.5 text-[11px] text-slate-400">{upgradeReceiptsOf(t) ? 'upgrade payments' : 'from finance'}</div>}
-                            </td>
                             <td className="whitespace-nowrap px-3 py-2.5 text-xs">
                               {t.student?.onboarded
                                 ? <span className="text-emerald-700">Sent {when(t.student.onboarded_at)}</span>
