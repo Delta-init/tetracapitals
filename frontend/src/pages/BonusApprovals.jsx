@@ -9,7 +9,9 @@ import StatsCard from '@/components/dashboard/StatsCard';
 import { Card, CardContent, CardHeader } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { CheckCircle2, Download, Gift, Hourglass, Landmark, Loader2, Search, Undo2, XCircle } from 'lucide-react';
+import { Label } from '@/components/ui/label';
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { CheckCircle2, Download, Gift, Hourglass, Landmark, Loader2, Pencil, Search, Undo2, XCircle } from 'lucide-react';
 import { downloadExcel } from '@/components/utils/excelExport';
 import { CopyText, SendBackDialog, FIELDS } from '@/components/funding/corrections';
 import { getEffectiveUser } from '@/components/utils/ImpersonationContext';
@@ -195,6 +197,7 @@ export default function BonusApprovals() {
   const clearFilters = () => { setFrom(''); setTo(''); setCsF('all'); setSource('all'); setMt5F('all'); setEmailF('all'); setWelcomeF('all'); };
   const [deciding, setDeciding] = useState(null);
   const [sendingBack, setSendingBack] = useState(null);
+  const [editingTxn, setEditingTxn] = useState(null);
   const [exporting, setExporting] = useState(false);
 
   // The same as the Funding Requests page: the decision, the audit log, then the commission credit.
@@ -507,7 +510,22 @@ export default function BonusApprovals() {
                                   <div className="text-slate-600">{when(t.approved_at)}</div>
                                   <div className="text-slate-400">{t.approved_by_name || ''}</div>
                                   {tab === 'rejected' && t.rejection_reason && <div className="mt-0.5 max-w-[220px] whitespace-normal text-rose-700">{t.rejection_reason}</div>}
-                                  {tab === 'approved' && t.transaction_id && <div className="font-mono text-slate-400">{t.transaction_id}</div>}
+                                  {tab === 'approved' && (
+                                    <div className="flex items-center gap-1 font-mono text-slate-500">
+                                      {t.transaction_id || <span className="font-sans text-slate-400">No transaction ID</span>}
+                                      {/* Corrected after approval (2026-10-13) — every change kept */}
+                                      {allowed && (
+                                        <button type="button" title="Edit the transaction ID" onClick={() => setEditingTxn(t)} className="rounded p-0.5 text-slate-400 hover:bg-slate-100 hover:text-slate-700">
+                                          <Pencil className="h-3 w-3" />
+                                        </button>
+                                      )}
+                                    </div>
+                                  )}
+                                  {tab === 'approved' && t.transaction_id_changes?.length > 0 && (
+                                    <div className="text-[11px] text-slate-400" title={t.transaction_id_changes.map(c => `${c.from || 'none'} → ${c.to} · ${c.by_name} · ${String(c.at).slice(0, 10)}${c.note ? ` · ${c.note}` : ''}`).join('\n')}>
+                                      Changed from {t.transaction_id_changes[t.transaction_id_changes.length - 1].from || 'none'}
+                                    </div>
+                                  )}
                                   {tab === 'approved' && t.already_credited?.at && (
                                     <div className="mt-0.5 max-w-[220px] whitespace-normal">
                                       <span className="rounded-full border border-emerald-200 bg-emerald-50 px-1.5 py-0.5 text-[10px] font-semibold text-emerald-700">Already credited</span>
@@ -531,6 +549,8 @@ export default function BonusApprovals() {
       </div>
 
       {sendingBack && <SendBackDialog tx={sendingBack} onClose={() => setSendingBack(null)} />}
+
+      {editingTxn && <EditTxnDialog tx={editingTxn} onClose={() => setEditingTxn(null)} onDone={() => { setEditingTxn(null); queryClient.invalidateQueries({ queryKey: ['bonus-approvals'] }); queryClient.invalidateQueries({ queryKey: ['funding-transactions'] }); }} />}
       <ProcessFundingDialog
         extraReceipts={deciding ? extraReceiptsOf(deciding) : null}
         transaction={deciding}
@@ -540,5 +560,43 @@ export default function BonusApprovals() {
         onProcess={onProcess}
       />
     </div>
+  );
+}
+
+/** Edit an approved request's transaction ID — unique; the change is kept (backend setFundingTransactionId). */
+function EditTxnDialog({ tx, onClose, onDone }) {
+  const [value, setValue] = useState(tx.transaction_id || '');
+  const [note, setNote] = useState('');
+  const [busy, setBusy] = useState(false);
+  const save = async () => {
+    setBusy(true);
+    try {
+      await base44.functions.invoke('setFundingTransactionId', { id: tx.id, transactionId: value.trim(), note: note.trim() });
+      toast.success(`Transaction ID changed to ${value.trim()}`);
+      onDone();
+    } catch (e) {
+      toast.error(/unknown function|not found|404/i.test(String(e?.message)) ? 'This needs the server update (the API deploy)' : (e?.message || "Couldn't change it"));
+      setBusy(false);
+    }
+  };
+  return (
+    <Dialog open onOpenChange={(o) => !o && !busy && onClose()}>
+      <DialogContent className="max-w-md">
+        <DialogHeader>
+          <DialogTitle>Edit transaction ID</DialogTitle>
+          <DialogDescription>
+            {tx.student?.full_name || tx.student_name} · {tx.type} · approved {tx.approved_at ? new Date(tx.approved_at).toLocaleDateString('en-GB') : ''} by {tx.approved_by_name || '—'}. Now: <b className="font-mono">{tx.transaction_id || 'none'}</b>
+          </DialogDescription>
+        </DialogHeader>
+        <div className="space-y-3 text-sm">
+          <div className="space-y-1.5"><Label>New transaction ID *</Label><Input value={value} onChange={(e) => setValue(e.target.value)} className="font-mono" autoFocus /></div>
+          <div className="space-y-1.5"><Label>Why (optional)</Label><Input value={note} onChange={(e) => setNote(e.target.value)} placeholder="e.g. typed finance's ID by mistake" /></div>
+        </div>
+        <DialogFooter>
+          <Button variant="ghost" onClick={onClose} disabled={busy}>Cancel</Button>
+          <Button onClick={save} disabled={busy || !value.trim() || value.trim() === (tx.transaction_id || '')}>{busy && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}Save</Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }

@@ -138,3 +138,35 @@ export async function correctFundingRequest(req: Request, user: AuthUser): Promi
   });
   return json({ ok: true, corrected });
 }
+
+/**
+ * POST /api/functions/setFundingTransactionId { id, transactionId, note? } (the user, 2026-10-13) — a broker admin or a
+ * Super Admin corrects the transaction ID of an approved deposit, withdrawal or bonus on MT5 Approvals. Unique across
+ * requests (and Not credited yet answers); each change kept in `transaction_id_changes` and the student's history.
+ */
+export async function setFundingTransactionId(req: Request, user: AuthUser): Promise<Response> {
+  if (!BONUS_APPROVERS.includes(user.app_role)) return forbidden("Only a broker admin or a Super Admin changes a transaction ID");
+  const body: any = await req.json().catch(() => ({}));
+  if (!ObjectId.isValid(String(body?.id ?? ""))) return error("id is required", 400);
+  const txnId = String(body?.transactionId ?? "").trim().slice(0, 100);
+  if (!txnId) return error("The transaction ID is required", 400);
+  const note = String(body?.note ?? "").trim().slice(0, 300);
+  const tx: any = await col("funding_transactions").findOne({ _id: new ObjectId(String(body.id)) });
+  if (!tx) return notFound();
+  if (tx.status !== "APPROVED") return error("Only an approved request's transaction ID is changed here", 409);
+  if (String(tx.transaction_id ?? "") === txnId) return json({ ok: true, unchanged: true });
+  const taken = (await col("funding_transactions").findOne({ transaction_id: txnId, _id: { $ne: tx._id } }, { projection: { student_code: 1 } }))
+    || (await col("credit_requests").findOne({ "decided.transaction_id": txnId }, { projection: { student_code: 1 } }));
+  if (taken) return error(`That transaction ID is used already${(taken as any).student_code ? ` (${(taken as any).student_code})` : ""}`, 409);
+  const now = new Date().toISOString();
+  const change = { at: now, by_id: user.id, by_name: who(user), from: String(tx.transaction_id ?? ""), to: txnId, note };
+  const res = await col("funding_transactions").updateOne({ _id: tx._id, status: "APPROVED", transaction_id: tx.transaction_id ?? null }, {
+    $set: { transaction_id: txnId, updated_date: now }, $push: { transaction_id_changes: change } as any,
+  });
+  if (!res.modifiedCount) return error("This request changed meanwhile — open the page again", 409);
+  if (tx.student_id) {
+    await recordHistory([{ student_id: String(tx.student_id), at: now, type: "funding_corrected", by_id: user.id, by_name: who(user),
+      text: `${tx.type} of $${Number(tx.amount_usd || 0).toLocaleString("en-US")}: transaction ID changed from ${change.from || "none"} to ${txnId}${note ? ` (${note})` : ""}`.slice(0, 400) } as any]);
+  }
+  return json({ ok: true, transaction_id: txnId });
+}
