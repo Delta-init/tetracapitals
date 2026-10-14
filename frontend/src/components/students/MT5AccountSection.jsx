@@ -10,7 +10,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "
 import { Badge } from "@/components/ui/badge";
 import { Plus, CheckCircle } from "lucide-react";
 import { canCreateMT5Account } from "../utils/StudentAccessControl";
-import { useStudentMt5 } from "./mt5Accounts";
+import { useStudentMt5, MT5_LOGIN, mt5LoginOf } from "./mt5Accounts";
 import { toast } from "sonner";
 
 export default function MT5AccountSection({ student, currentUser }) {
@@ -54,9 +54,16 @@ export default function MT5AccountSection({ student, currentUser }) {
     });
   };
 
+  // A login is its number, 4–15 digits, and one student's (2026-10-14) — their first is the primary one.
+  const login = mt5LoginOf(formData.mt5_login);
+  const loginError = !login ? '' : !MT5_LOGIN.test(login) ? 'The MT5 login is its number — 4 to 15 digits'
+    : mt5Accounts.some(a => String(a.mt5_login) === login) ? 'Already saved for this student' : '';
   const handleSubmit = () => {
+    if (!login || loginError) return;
     const dataToSave = {
       ...formData,
+      mt5_login: login,
+      is_primary: formData.is_primary || mt5Accounts.length === 0,
       student_id: student.id,
       student_name: student.full_name,
       student_code: student.student_code
@@ -64,7 +71,7 @@ export default function MT5AccountSection({ student, currentUser }) {
     createMutation.mutate(dataToSave);
   };
 
-  const canCreate = canCreateMT5Account(currentUser?.role);
+  const canCreate = canCreateMT5Account(currentUser);
 
   return (
     <Card className="border-gray-200">
@@ -163,7 +170,10 @@ export default function MT5AccountSection({ student, currentUser }) {
                 value={formData.mt5_login}
                 onChange={(e) => setFormData({ ...formData, mt5_login: e.target.value })}
                 placeholder="Enter MT5 login ID"
+                inputMode="numeric"
               />
+              {loginError && <p className="text-xs text-red-600">{loginError}</p>}
+              {!loginError && mt5Accounts.length === 0 && <p className="text-xs text-gray-500">Their first MT5 account — saved as the primary one.</p>}
             </div>
 
             <div className="space-y-2">
@@ -222,7 +232,7 @@ export default function MT5AccountSection({ student, currentUser }) {
             </Button>
             <Button
               onClick={handleSubmit}
-              disabled={createMutation.isPending || !formData.mt5_login}
+              disabled={createMutation.isPending || !login || !!loginError}
               className="bg-blue-600 hover:bg-blue-700"
             >
               {createMutation.isPending ? 'Adding...' : 'Add Account'}

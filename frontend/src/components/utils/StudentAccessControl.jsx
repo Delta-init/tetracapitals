@@ -1,5 +1,5 @@
 // Utility functions for student access control based on user role
-import { isMentorRole, getScope, downlineIds } from './roles';
+import { isMentorRole, getScope, downlineIds, readsClosedOnly } from './roles';
 
 export const canSubmitStudentRequest = (userRole) => {
   return ['super_admin', 'admin', 'broker_admin', 'academic_head', 'academic_admin'].includes(userRole)
@@ -17,8 +17,12 @@ export const canDeleteStudent = (userRole) => {
   return ['super_admin', 'admin'].includes(userRole);
 };
 
-export const canCreateMT5Account = (userRole) => {
-  return ['super_admin', 'admin', 'broker_admin'].includes(userRole);
+/** Adding a student's MT5 account on their page (the user, 2026-10-14): anyone who opens it — CSs, CS Managers,
+ *  mentors, admins, broker admins — not the Sales role, which only reads the students it closed. Takes the user. */
+export const canCreateMT5Account = (user) => {
+  if (!user) return false;
+  if (readsClosedOnly(user)) return false;
+  return ['super_admin', 'admin', 'broker_admin'].includes(user.app_role) || isMentorRole(user.app_role);
 };
 
 export const canEditMT5Account = (userRole) => {
