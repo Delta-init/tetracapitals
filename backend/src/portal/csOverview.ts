@@ -5,6 +5,7 @@ import { notOnboardedFilter, newFromFinanceFilter } from "../students/onboarding
 import { openFollowupsFilter, followupsDueTodayFilter, followupsOverdueFilter } from "../functions/navCounts";
 import { owingFilter, owingFeesOf, dueStateOf, uaeDay } from "../finance/balanceDue";
 import { bonusPendingOf, idsWithBonusPending, type BonusPending } from "../students/bonusPending";
+import { blankFunding, fundingFor, type FundingSummary } from "./csFunding";
 
 /* ────────────────────────────────────────────────────────────────────────────
    GET /api/v1/service/cs-overview[?from&to]  and  /service/cs-overview/:userId
@@ -23,7 +24,11 @@ import { bonusPendingOf, idsWithBonusPending, type BonusPending } from "../stude
    started them, else the student's CS: those started in the period, and the
    AED finance approved on any in the period. `from`/`to` are instants (Root
    cuts them in Gulf time) and bound only deposits, commission and upgrades.
-   Read-only.
+
+   And (2026-10-14) funding requests — the period's and every one still
+   waiting, where each is paused, USD and AED, the commission it earned
+   (portal/csFunding.ts) — each CS's counts, and the recent course upgrades
+   with who started them, for the CSEs page itself. Read-only.
 ──────────────────────────────────────────────────────────────────────────── */
 
 export const UPCOMING_DAYS = 7;
@@ -166,17 +171,39 @@ const personOf = (u: any) => ({
 
 /** Every CS with anything: students, deposits or commission in the period, or anything waiting. */
 export async function csOverview(period: Period) {
-  const g = await gather(period);
+  const [g, funding] = await Promise.all([gather(period), fundingFor(period)]);
+  // A CS with only a funding request waiting still has a row.
+  for (const id of funding.byCs.keys()) if (!g.buckets.has(id)) g.buckets.set(id, blank());
   const ids = [...g.buckets.keys()].filter((id) => id !== TEAM);
   const users = (await col("users").find({ _id: { $in: ids.map((i) => toObjectId(i)).filter(Boolean) as any[] } },
     { projection: { full_name: 1, email: 1, app_role: 1, status: 1, team_name: 1 } }).toArray()) as any[];
   const userOf = new Map(users.map((u) => [String(u._id), u]));
   const rows = ids
     .filter((id) => userOf.has(id))
-    .map((id) => ({ ...personOf(userOf.get(id)), ...g.buckets.get(id)! }))
+    .map((id) => ({ ...personOf(userOf.get(id)), ...g.buckets.get(id)!, funding: funding.byCs.get(id) ?? blankFunding() }))
     .sort((a, b) => b.students - a.students || a.name.localeCompare(b.name));
+  // The period's course upgrades (started, or paid on), newest first, with who started them.
+  const recentUpgrades = g.upgrades
+    .filter((u) => g.upgradesIn.includes(u) || g.upgradePaid.has(String(u._id)))
+    .map((u) => {
+      const s = g.studentById.get(String(u.student_id));
+      const owner = g.upgradeOwner.get(String(u._id)) ?? "";
+      return {
+        studentId: String(u.student_id ?? ""), student: String(s?.full_name ?? ""), code: String(s?.student_code ?? ""),
+        course: String(u.course ?? ""), plan: String(u.plan ?? ""), status: String(u.status ?? ""),
+        dueAed: Number(u.quote?.dueAed) || 0, paidAed: g.upgradePaid.get(String(u._id)) ?? 0, at: String(u.created_at ?? ""),
+        csId: owner, cs: String(u.created_by_name || userOf.get(owner)?.full_name || ""),
+      };
+    })
+    .sort((a, b) => b.at.localeCompare(a.at))
+    .slice(0, 100);
   // The team's figures: each student once, however many CSs share them (rows added up would count those twice).
-  return { today: g.today, upcomingDays: UPCOMING_DAYS, period, rows, totals: g.buckets.get(TEAM) ?? blank() };
+  return {
+    today: g.today, upcomingDays: UPCOMING_DAYS, period, rows,
+    totals: { ...(g.buckets.get(TEAM) ?? blank()), funding: funding.team as FundingSummary },
+    funding: { rows: funding.rows, total: funding.total },
+    recentUpgrades,
+  };
 }
 
 /** One CS: the figures, and the lists behind them. Null for nobody here. */
@@ -185,7 +212,7 @@ export async function csDetail(userId: string, period: Period) {
   if (!oid) return null;
   const u = await col("users").findOne({ _id: oid }, { projection: { full_name: 1, email: 1, app_role: 1, status: 1, team_name: 1 } });
   if (!u) return null;
-  const g = await gather(period, userId);
+  const [g, funding] = await Promise.all([gather(period, userId), fundingFor(period, userId)]);
   // Deposits and commission can be on another CS's student: their names too.
   // Upgrades started in the period, or paid on in it.
   const upgrades = g.upgrades.filter((u) => g.upgradesIn.includes(u) || g.upgradePaid.has(String(u._id)));
@@ -212,7 +239,8 @@ export async function csDetail(userId: string, period: Period) {
     today: g.today,
     upcomingDays: UPCOMING_DAYS,
     period,
-    summary: g.buckets.get(userId) ?? blank(),
+    summary: { ...(g.buckets.get(userId) ?? blank()), funding: funding.byCs.get(userId) ?? blankFunding() },
+    funding: { rows: funding.rows, total: funding.total },
     followups: g.followups
       .filter((f) => g.studentById.has(String(f.student_id)))
       .map((f) => ({ ...nameOf(String(f.student_id)), stage: String(f.stage ?? ""), title: String(f.title ?? ""), due: String(f.next_followup_date ?? ""),
