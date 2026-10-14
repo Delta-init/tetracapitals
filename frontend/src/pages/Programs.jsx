@@ -32,7 +32,15 @@ export default function Programs() {
   const [creating, setCreating] = useState(false);
   const [open, setOpen] = useState(null);
   const [showStopped, setShowStopped] = useState(false);
-  const list = (data?.programs ?? []).filter(p => showStopped || p.status === 'active');
+  // A program's team (the user, 2026-10-14) — kept by the portal, picked when it is made.
+  const [teamFilter, setTeamFilter] = useState('all');
+  const teamsSeen = useMemo(() => {
+    const m = new Map();
+    for (const p of data?.programs ?? []) if (p.team?.id) m.set(p.team.id, p.team.name);
+    return [...m].map(([id, name]) => ({ id, name })).sort((a, b) => a.name.localeCompare(b.name));
+  }, [data]);
+  const list = (data?.programs ?? []).filter(p => (showStopped || p.status === 'active')
+    && (teamFilter === 'all' || (teamFilter === 'none' ? !p.team : p.team?.id === teamFilter)));
 
   return (
     <div className="space-y-6">
@@ -43,12 +51,19 @@ export default function Programs() {
         </div>
         {data?.canCreate && <Button onClick={() => setCreating(true)} className="bg-blue-600 hover:bg-blue-700"><Plus className="mr-1 h-4 w-4" />New program</Button>}
       </div>
-      <label className="flex items-center gap-2 text-sm text-gray-600"><input type="checkbox" checked={showStopped} onChange={e => setShowStopped(e.target.checked)} />Show stopped</label>
+      <div className="flex flex-wrap items-center gap-3">
+        <select aria-label="Team" className="rounded-md border bg-white px-3 py-1.5 text-sm" value={teamFilter} onChange={e => setTeamFilter(e.target.value)}>
+          <option value="all">Every team</option>
+          {teamsSeen.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
+          <option value="none">No team</option>
+        </select>
+        <label className="flex items-center gap-2 text-sm text-gray-600"><input type="checkbox" checked={showStopped} onChange={e => setShowStopped(e.target.checked)} />Show stopped</label>
+      </div>
       {isLoading && <div className="space-y-3">{[0, 1].map(i => <Skeleton key={i} className="h-24 w-full" />)}</div>}
       {error && <p className="text-sm text-red-600">{errText(error)}</p>}
       {list.map(p => <ProgramCard key={p.id} p={p} open={open === p.id} onToggle={() => setOpen(open === p.id ? null : p.id)} />)}
       {!isLoading && !error && !list.length && <Card><CardContent className="py-10 text-center text-sm text-gray-500">No programs yet{data?.canCreate ? ' — make one with “New program”.' : '.'}</CardContent></Card>}
-      {creating && <ProgramDialog onClose={() => setCreating(false)} />}
+      {creating && <ProgramDialog teams={data?.teams ?? []} onClose={() => setCreating(false)} />}
     </div>
   );
 }
@@ -80,7 +95,7 @@ function ProgramCard({ p, open, onToggle }) {
               {p.status === 'stopped' && <Badge variant="secondary" className="ml-2">stopped</Badge>}
             </p>
             <p className="mt-1 flex items-center gap-1.5 text-xs text-gray-500"><Repeat className="h-3.5 w-3.5" />{repeatText(p)} · {p.durationMins} min · until {p.endDate} · {p.isOnline ? 'online' : p.location}</p>
-            <p className="mt-0.5 text-xs text-gray-400">Made by {p.createdByName || p.createdByEmail || 'the LMS'}{p.source === 'lms' ? ' (in the LMS)' : ''}</p>
+            <p className="mt-0.5 text-xs text-gray-400">{p.team ? <Badge variant="outline" className="mr-1.5 border-blue-200 bg-blue-50 px-1.5 py-0 text-[10px] text-blue-700">{p.team.name}</Badge> : null}Made by {p.createdByName || p.createdByEmail || 'the LMS'}{p.source === 'lms' ? ' (in the LMS)' : ''}</p>
           </div>
           <div className="text-right text-xs text-gray-600">
             <p className="font-medium text-gray-800">{p.mentor?.name ?? '—'}</p>
@@ -127,13 +142,13 @@ function ProgramCard({ p, open, onToggle }) {
 }
 
 /* Your (team's) students first; "Any CS's student" searches everyone, to add one by one. */
-function StudentPicker({ onPick, exclude = [] }) {
+function StudentPicker({ onPick, exclude = [], team = '' }) {
   const [q, setQ] = useState('');
   const [everyone, setEveryone] = useState(false);
   const enabled = everyone ? q.trim().length >= 2 : true;
   const { data, isFetching } = useQuery({
-    queryKey: ['program-students', q.trim(), everyone], enabled, staleTime: 30_000,
-    queryFn: () => fn('searchProgramStudents', { q: q.trim(), everyone }),
+    queryKey: ['program-students', q.trim(), everyone, team], enabled, staleTime: 30_000,
+    queryFn: () => fn('searchProgramStudents', { q: q.trim(), everyone, ...(team ? { team } : {}) }),
   });
   const hits = (data?.students ?? []).filter(s => !exclude.includes(s.email)).slice(0, 30);
   return (
@@ -141,14 +156,14 @@ function StudentPicker({ onPick, exclude = [] }) {
       <div className="flex gap-2">
         <div className="relative flex-1">
           <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-gray-400" />
-          <Input value={q} onChange={e => setQ(e.target.value)} placeholder={everyone ? 'Any CS’s student — name, email or code…' : 'Your students — name, email or code…'} className="pl-8" />
+          <Input value={q} onChange={e => setQ(e.target.value)} placeholder={everyone ? 'Any CS’s student — name, email or code…' : team ? 'The team’s students — name, email or code…' : 'Your students — name, email or code…'} className="pl-8" />
         </div>
-        <Button type="button" size="sm" variant={everyone ? 'default' : 'outline'} onClick={() => setEveryone(v => !v)} className="whitespace-nowrap">{everyone ? 'Any CS’s student' : 'Only mine'}</Button>
+        <Button type="button" size="sm" variant={everyone ? 'default' : 'outline'} onClick={() => setEveryone(v => !v)} className="whitespace-nowrap">{everyone ? 'Any CS’s student' : team ? 'Only the team' : 'Only mine'}</Button>
       </div>
       {enabled && (
         <div className="max-h-48 overflow-auto rounded-md border">
           {isFetching && <p className="flex items-center gap-1 px-3 py-2 text-xs text-gray-500"><Loader2 className="h-3 w-3 animate-spin" />Searching…</p>}
-          {!isFetching && !hits.length && <p className="px-3 py-2 text-xs text-gray-500">{everyone ? 'No student found' : 'None of your students match — try “Any CS’s student”.'}</p>}
+          {!isFetching && !hits.length && <p className="px-3 py-2 text-xs text-gray-500">{everyone ? 'No student found' : team ? 'None of the team’s students match — try “Any CS’s student”.' : 'None of your students match — try “Any CS’s student”.'}</p>}
           {hits.map(s => (
             <button key={s.id} type="button" onClick={() => { onPick(s); setQ(''); }} className="flex w-full items-center justify-between px-3 py-2 text-left text-sm hover:bg-gray-50">
               <span>{s.name} <span className="text-xs text-gray-500">{s.code} · {s.email}{!s.yours && s.csName ? ` · CS ${s.csName}` : ''}</span></span>
@@ -161,7 +176,7 @@ function StudentPicker({ onPick, exclude = [] }) {
   );
 }
 
-function ProgramDialog({ program, onClose }) {
+function ProgramDialog({ program, onClose, teams = [] }) {
   const today = new Date().toLocaleDateString('en-CA', { timeZone: TZ });
   const { data: sched } = useQuery({
     queryKey: ['program-mentors'], staleTime: 5 * 60_000, enabled: !program,
@@ -177,6 +192,22 @@ function ProgramDialog({ program, onClose }) {
     isOnline: program?.isOnline ?? true, location: program?.location ?? '',
   });
   const [students, setStudents] = useState([]);
+  // The team it is for — their own (the first they may pick) to start (2026-10-14).
+  const [team, setTeam] = useState(teams[0]?.id ?? '');
+  const [adding, setAdding] = useState(false);
+  const addAll = async () => {
+    setAdding(true);
+    try {
+      const r = await fn('searchProgramStudents', { q: '', team, enrolledOnly: true });
+      const found = r?.students ?? [];
+      setStudents(xs => { const have = new Set(xs.map(x => x.email)); return [...xs, ...found.filter(x => !have.has(x.email))]; });
+      toast.success(found.length ? `${found.length} enrolled student${found.length === 1 ? '' : 's'} of the team added` : 'The team has no students with an LMS account');
+    } catch (e) {
+      toast.error(errText(e));
+    } finally {
+      setAdding(false);
+    }
+  };
   const set = (k, v) => setF(x => ({ ...x, [k]: v }));
   const busy = create.isPending || reschedule.isPending;
   const ready = f.title.trim().length >= 3 && f.endDate && (f.repeat === 'monthly' || f.weekdays.length) && (f.isOnline || f.location.trim().length >= 2) && (program || (f.mentorEmail && students.length));
@@ -184,7 +215,7 @@ function ProgramDialog({ program, onClose }) {
     const sched = { repeat: f.repeat, weekdays: f.repeat === 'weekly' ? f.weekdays : [], monthDay: f.repeat === 'monthly' && f.monthDay !== '' ? Number(f.monthDay) : null, startDate: f.startDate, endDate: f.endDate, time: f.time, durationMins: Number(f.durationMins), title: f.title.trim(), description: f.description.trim(), isOnline: f.isOnline, location: f.location.trim() };
     const m = program
       ? reschedule.mutateAsync({ id: program.id, ...sched })
-      : create.mutateAsync({ ...sched, mentorEmail: f.mentorEmail, studentEmails: students.map(s => s.email) });
+      : create.mutateAsync({ ...sched, mentorEmail: f.mentorEmail, studentEmails: students.map(s => s.email), ...(team ? { team } : {}) });
     m.then(onClose).catch(() => {});
   };
   return (
@@ -197,6 +228,13 @@ function ProgramDialog({ program, onClose }) {
         <div className="space-y-3">
           <div><Label>Title</Label><Input value={f.title} onChange={e => set('title', e.target.value)} placeholder="e.g. Weekly trade review" /></div>
           <div><Label>What it is (optional)</Label><Input value={f.description} onChange={e => set('description', e.target.value)} /></div>
+          {!program && teams.length > 0 && (
+            <div><Label>Team</Label>
+              <select className="mt-1 w-full rounded-md border px-3 py-2 text-sm" value={team} onChange={e => setTeam(e.target.value)}>
+                {teams.map(t => <option key={t.id} value={t.id}>{t.name}{t.location === 'bangalore' ? ' · Bangalore' : ''}</option>)}
+              </select>
+            </div>
+          )}
           {!program && (
             <div><Label>Mentor</Label>
               <select className="mt-1 w-full rounded-md border px-3 py-2 text-sm" value={f.mentorEmail} onChange={e => set('mentorEmail', e.target.value)}>
@@ -227,11 +265,14 @@ function ProgramDialog({ program, onClose }) {
           {!f.isOnline && <Input value={f.location} onChange={e => set('location', e.target.value)} placeholder="Where — room or office" />}
           {!program && (
             <div>
-              <Label>Students — only they see it</Label>
+              <div className="flex items-center justify-between gap-2">
+                <Label>Students — only they see it</Label>
+                {team && <Button type="button" size="sm" variant="outline" className="h-7 text-xs" disabled={adding} onClick={addAll}>{adding ? <Loader2 className="mr-1 h-3 w-3 animate-spin" /> : <UserPlus className="mr-1 h-3 w-3" />}Add all the team's enrolled</Button>}
+              </div>
               <div className="my-1.5 flex flex-wrap gap-1.5">
                 {students.map(s => <span key={s.email} className="flex items-center gap-1 rounded-full bg-blue-50 px-2.5 py-1 text-xs text-blue-800">{s.name}{!s.yours && s.csName ? <span className="text-blue-400">· {s.csName}</span> : null}<button type="button" aria-label={`Remove ${s.name}`} onClick={() => setStudents(students.filter(x => x.email !== s.email))}><X className="h-3 w-3" /></button></span>)}
               </div>
-              <StudentPicker exclude={students.map(s => s.email)} onPick={s => setStudents(xs => xs.some(x => x.email === s.email) ? xs : [...xs, s])} />
+              <StudentPicker team={team} exclude={students.map(s => s.email)} onPick={s => setStudents(xs => xs.some(x => x.email === s.email) ? xs : [...xs, s])} />
             </div>
           )}
         </div>

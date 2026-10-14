@@ -3,6 +3,7 @@ import { json, error, forbidden } from "../lib/response";
 import type { AuthUser } from "../auth/middleware";
 import { callLms, LmsError } from "../lib/lms";
 import { visibleMentorIds, studentsOf, isStudentOf } from "../students/followups";
+import { teamIndex, csManagerReach } from "../lib/userLocation";
 
 /* ────────────────────────────────────────────────────────────────────────────
    Programs (the user, 2026-10-09) — a live class in the LMS repeating weekly or
@@ -18,7 +19,36 @@ import { visibleMentorIds, studentsOf, isStudentOf } from "../students/followups
      it; a Super Admin every one;
    - change or stop one: who made it, or a Super Admin.
    Who made it is always the signed-in person — never taken from the request.
+
+   A team (the user, 2026-10-14): the program is made for one of the teams the
+   maker may pick — a CS their own, a Chief Mentor their team(s), a CS Manager
+   their location's, a Super Admin any — and its students list that team's,
+   with "Add all" for its enrolled ones. The LMS has no team on a program, so
+   the portal keeps it (program_teams: program_id → team).
 ──────────────────────────────────────────────────────────────────────────── */
+
+const PROGRAM_TEAMS = "program_teams";
+
+/** The teams this person may make a program for: [{ id, name, location }]. */
+async function pickableTeams(user: AuthUser): Promise<{ id: string; name: string; location: string }[]> {
+  const idx = await teamIndex();
+  let allowed: Set<string> | null;
+  if (isSuper(user)) allowed = null;
+  else {
+    const reach = await csManagerReach(user);
+    allowed = reach ? new Set(reach.ids) : await visibleMentorIds(user);
+  }
+  const ids = new Set<string>();
+  if (allowed === null) for (const t of idx.teams) ids.add(t.id);
+  else for (const id of allowed) { const t = idx.teamOf(id); if (t) ids.add(t.id); }
+  return idx.teams.filter((t) => ids.has(t.id)).map((t) => ({ id: t.id, name: t.name, location: t.location })).sort((a, b) => a.name.localeCompare(b.name));
+}
+
+/** Everyone on a team (its staff), to find its students by. */
+async function teamStaffIds(teamId: string): Promise<string[]> {
+  const idx = await teamIndex();
+  return [...idx.userById.keys()].filter((id) => idx.teamOf(id)?.id === teamId);
+}
 
 const MAKERS = new Set(["cs", "cs_manager", "chief_mentor", "super_admin"]);
 const str = (v: unknown, max = 2000) => String(v ?? "").trim().slice(0, max);
@@ -69,20 +99,22 @@ async function loadOne(id: string, user: AuthUser) {
   return { program: one, mine };
 }
 
-/** POST /api/functions/listPrograms → { programs, canCreate } */
+/** POST /api/functions/listPrograms → { programs (each with team), canCreate, teams: the ones this person may pick } */
 export async function listPrograms(_req: Request, user: AuthUser): Promise<Response> {
   return lms(async () => {
     const all: any[] = (await callLms("/programs", { verb: "list its programs" })) as any[];
     const mine = await visibleMentorIds(user);
     const me = String(user.email ?? "").toLowerCase();
     const decorated = await decorate(all, user, mine);
-    const programs = mine === null ? decorated : decorated.filter((p) => String(p.createdByEmail ?? "").toLowerCase() === me || p.students.some((s: any) => s.yours));
-    return { programs, canCreate: MAKERS.has(user.app_role) };
+    const shown = mine === null ? decorated : decorated.filter((p) => String(p.createdByEmail ?? "").toLowerCase() === me || p.students.some((s: any) => s.yours));
+    const teamOf = new Map(((await col(PROGRAM_TEAMS).find({ program_id: { $in: shown.map((p) => String(p.id)) } }).toArray()) as any[]).map((t) => [t.program_id, { id: t.team_id, name: t.team_name }]));
+    const programs = shown.map((p) => ({ ...p, team: teamOf.get(String(p.id)) ?? null }));
+    return { programs, canCreate: MAKERS.has(user.app_role), teams: MAKERS.has(user.app_role) ? await pickableTeams(user) : [] };
   });
 }
 
 /**
- * POST /api/functions/searchProgramStudents { q, everyone? } → students with an email: this person's (team's) by
+ * POST /api/functions/searchProgramStudents { q, everyone?, team?, enrolledOnly? } → students with an email: this person's (team's) by
  * default, anyone's with `everyone` — to add another CS's student one by one.
  */
 export async function searchProgramStudents(req: Request, user: AuthUser): Promise<Response> {
@@ -93,7 +125,14 @@ export async function searchProgramStudents(req: Request, user: AuthUser): Promi
   const and: Record<string, unknown>[] = [{ email: { $nin: [null, ""] } }];
   if (q.length >= 2) and.push({ $or: [{ full_name: new RegExp(esc(q), "i") }, { email: new RegExp(esc(q), "i") }, { student_code: new RegExp(`^${esc(q)}`, "i") }] });
   else if (body?.everyone) return json({ students: [] });
-  if (!body?.everyone && mine !== null) and.push(studentsOf(mine));
+  const team = str(body?.team, 40);
+  if (!body?.everyone && team) {
+    // That team's students — a team they may pick.
+    if (!(await pickableTeams(user)).some((t) => t.id === team)) return forbidden();
+    and.push(studentsOf(new Set(await teamStaffIds(team))));
+  } else if (!body?.everyone && mine !== null) and.push(studentsOf(mine));
+  // "Add all": only those with an LMS account — the others can't join its classes.
+  if (body?.enrolledOnly) and.push({ "lms_account.exists": true });
   const rows = (await col("students").find({ $and: and }, { projection: { full_name: 1, email: 1, student_code: 1, primary_mentor_id: 1, primary_mentor_name: 1, common_cs: 1 } }).sort({ full_name: 1 }).limit(body?.everyone ? 20 : 300).toArray()) as any[];
   return json({
     students: rows.map((s) => ({ id: String(s._id), name: s.full_name ?? "", email: String(s.email).toLowerCase(), code: s.student_code ?? "", csName: s.primary_mentor_name ?? "", yours: mine === null || isStudentOf(s, mine) })),
@@ -115,7 +154,7 @@ const scheduleOf = (b: any) => ({
 });
 const emailsOf = (v: unknown) => [...new Set((Array.isArray(v) ? v : []).map((e) => str(e, 200).toLowerCase()).filter((e) => e.includes("@")))];
 
-/** POST /api/functions/createProgram { title, mentorEmail, repeat, weekdays|monthDay, startDate, endDate, time, durationMins, isOnline, location, studentEmails } */
+/** POST /api/functions/createProgram { title, mentorEmail, team?, repeat, weekdays|monthDay, startDate, endDate, time, durationMins, isOnline, location, studentEmails } */
 export async function createProgram(req: Request, user: AuthUser): Promise<Response> {
   if (!MAKERS.has(user.app_role)) return forbidden();
   const body: any = await req.json().catch(() => ({}));
@@ -123,13 +162,21 @@ export async function createProgram(req: Request, user: AuthUser): Promise<Respo
   if (!students.length) return error("Add at least one student", 400);
   const mentorEmail = str(body?.mentorEmail, 200).toLowerCase();
   if (!mentorEmail) return error("Pick the mentor who takes it", 400);
+  const teamId = str(body?.team, 40);
+  const team = teamId ? (await pickableTeams(user)).find((t) => t.id === teamId) : null;
+  if (teamId && !team) return error("That team isn't one you can make a program for", 403);
   return lms(async () => {
     const made: any = await callLms("/programs", {
       method: "POST", verb: "make the program",
       body: { ...scheduleOf(body), mentorEmail, students, actorEmail: user.email, actorName: user.full_name || user.email },
     });
     const [one] = await decorate([made], user, await visibleMentorIds(user));
-    return { ...one, missing: made?.missing ?? [] };
+    if (team && made?.id) {
+      await col(PROGRAM_TEAMS).updateOne({ program_id: String(made.id) }, { $set: {
+        program_id: String(made.id), team_id: team.id, team_name: team.name, set_by_id: user.id, set_by_name: user.full_name || user.email, set_at: new Date().toISOString(),
+      } }, { upsert: true });
+    }
+    return { ...one, team: team ? { id: team.id, name: team.name } : null, missing: made?.missing ?? [] };
   });
 }
 
