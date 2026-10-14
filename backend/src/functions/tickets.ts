@@ -2,6 +2,7 @@ import { col } from "../db";
 import { json, error } from "../lib/response";
 import { serialize, serializeMany, toObjectId } from "../lib/id";
 import type { AuthUser } from "../auth/middleware";
+import { teamIndex, locationOfUser } from "../lib/userLocation";
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
@@ -88,18 +89,23 @@ export async function checkTicketEscalation(): Promise<Response> {
 
 /** Send role-based ticket notification. */
 export async function sendTicketNotification(req: Request, _user: AuthUser): Promise<Response> {
+  // CS Managers of the raiser's location only (2026-10-14): Dubai's tickets to Doney, Bangalore's to ambili B.
+  const idx = await teamIndex();
+  const raiserLocation = await locationOfUser(_user.id, idx);
   const body: any = await req.json().catch(() => null);
   if (!body) return error("Body required", 400);
   const { title, message, type, assignedToRole, assignedToId, referenceId } = body;
   const allUsers = serializeMany(
     await col("users").find({}, { projection: { password_hash: 0 } }).toArray(),
   );
+  const managersHere = new Set<string>();
+  for (const u of allUsers as any[]) if (u.app_role === "cs_manager" && (await locationOfUser(u.id, idx)) === raiserLocation) managersHere.add(u.id);
   const targets = allUsers.filter((u: any) => {
     if (u.app_role === "super_admin") return true;
     if (assignedToId && u.id === assignedToId) return true;
     if (!assignedToId && assignedToRole && u.app_role === assignedToRole) return true;
     // The Academic Head's tickets go to every CS Manager too (the user, 2026-10-13).
-    if (assignedToRole === "academic_head" && u.app_role === "cs_manager" && u.status !== "inactive") return true;
+    if (assignedToRole === "academic_head" && u.app_role === "cs_manager" && u.status !== "inactive" && managersHere.has(u.id)) return true;
     return false;
   });
   const seen = new Set<string>();

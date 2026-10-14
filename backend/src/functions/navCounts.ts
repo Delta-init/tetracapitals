@@ -10,6 +10,7 @@ import { decidableMt5Filter } from "./bonusApprovals";
 import { needsCorrectionFilter, NEEDS_CORRECTION_ALL } from "./fundingCorrections";
 import { BONUS_APPROVERS } from "../finance/funding";
 import { openCreditRequests } from "./creditRequests";
+import { csManagerReach, fundingOfIds } from "../lib/userLocation";
 
 /* The filters behind each number — shared with the Root portal's Pending page (portal/pending.ts), so the two never
    drift apart. A `forId` narrows one to that person, as their own sidebar has it. */
@@ -52,6 +53,8 @@ export const paymentLinksUnseenFilter = (status: "approved" | "rejected", forId?
 export async function getNavCounts(_req: Request, user: AuthUser): Promise<Response> {
   const today = businessToday();
   const visible = await visibleMentorIds(user);
+  // A CS Manager's funding counts: their own location's (lib/userLocation.ts, 2026-10-14).
+  const csReach = await csManagerReach(user);
   const open: Record<string, any> = openFollowupsFilter();
   let ids: string[] | null = null;
   if (visible) {
@@ -79,13 +82,13 @@ export async function getNavCounts(_req: Request, user: AuthUser): Promise<Respo
     Promise.resolve(0),
     // Funding requests a broker admin sent back to them to correct (fundingCorrections.ts).
     // …and by accounts, to correct and send again (2026-10-13).
-    col("funding_transactions").countDocuments(user.app_role === "cs_manager" ? NEEDS_CORRECTION_ALL : needsCorrectionFilter(user.id)),
+    col("funding_transactions").countDocuments(user.app_role === "cs_manager" ? { $and: [NEEDS_CORRECTION_ALL, fundingOfIds(csReach?.ids ?? [])] } : needsCorrectionFilter(user.id)),
   ]);
   // Bonus not credited, waiting for a broker admin (creditRequests.ts).
   const creditOpen = BONUS_APPROVERS.includes(user.app_role) ? await openCreditRequests() : 0;
   // Funding Activities: requests not decided yet (2026-10-13) — a CS Manager every CS's, anyone else the ones they raised.
   const fundingPending = await col("funding_transactions").countDocuments(user.app_role === "cs_manager"
-    ? { status: "PENDING", bonus_credit: { $in: [null, ""] } }
+    ? { status: "PENDING", bonus_credit: { $in: [null, ""] }, ...fundingOfIds(csReach?.ids ?? []) }
     : { status: "PENDING", bonus_credit: { $in: [null, ""] }, $or: [{ requested_by_id: user.id }, { initiating_mentor_id: user.id }, { created_by: user.id }] });
   return json({
     credit_requests_open: creditOpen, funding_pending: fundingPending,

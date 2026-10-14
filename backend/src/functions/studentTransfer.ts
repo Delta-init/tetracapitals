@@ -5,6 +5,7 @@ import type { AuthUser } from "../auth/middleware";
 import { prepareStudentUpdate, recordHistory } from "../students/history";
 import { notifyStudentsGiven } from "../lib/notify";
 import { isMentorRole } from "../lib/roles";
+import { csManagerReach, fundingOfIds, studentsOfIds } from "../lib/userLocation";
 
 /* ────────────────────────────────────────────────────────────────────────────
    Transfer (the Students page's "Transfer N"): a student moved to someone on a
@@ -22,12 +23,14 @@ export const mayTransfer = (user: AuthUser) => ["super_admin", "admin", "cs_mana
  */
 export async function getTransferPeople(_req: Request, user: AuthUser): Promise<Response> {
   if (!mayTransfer(user)) return forbidden();
+  // A CS Manager moves students within their own location only (2026-10-14).
+  const reach = await csManagerReach(user);
   const docs = (await col("users")
     .find({}, { projection: { full_name: 1, email: 1, app_role: 1, up_head_id: 1, team_name: 1, team_location: 1, status: 1, all_teams_cs_manager: 1 } })
     .toArray()) as any[];
   return json({
     users: docs
-      .filter((u) => isMentorRole(u.app_role))
+      .filter((u) => isMentorRole(u.app_role) && (!reach || reach.ids.includes(String(u._id))))
       .map((u) => ({
         id: String(u._id), full_name: u.full_name ?? "", email: u.email ?? "", app_role: u.app_role, up_head_id: u.up_head_id ?? "",
         team_name: u.team_name ?? "", team_location: u.team_location ?? "", status: u.status ?? "", all_teams_cs_manager: u.all_teams_cs_manager === true,
@@ -51,6 +54,10 @@ export async function transferStudent(req: Request, user: AuthUser): Promise<Res
   if (!to || !isMentorRole(to.app_role)) return error("Pick someone on a team", 400);
   if (to.status === "inactive") return error(`${to.full_name || "That person"} is switched off — pick someone else`, 400);
   if (String(student.primary_mentor_id ?? "") === String(to._id)) return json({ unchanged: true });
+  // A CS Manager: their location's students, to their location's people (2026-10-14).
+  const reach = await csManagerReach(user);
+  if (reach && (!reach.ids.includes(String(to._id)) || (student.primary_mentor_id && !reach.ids.includes(String(student.primary_mentor_id)))))
+    return forbidden("A CS Manager moves students within their own location (Dubai or Bangalore)");
 
   const data: Record<string, any> = {
     primary_mentor_id: String(to._id),

@@ -8,6 +8,7 @@ import { recordHistory } from "../students/history";
 import { creditCommissionFor } from "../functions/creditCommission";
 import { recomputeCoMentorContribution } from "../functions/referrals";
 import { notify } from "../lib/notify";
+import { csManagerReach } from "../lib/userLocation";
 
 /* ────────────────────────────────────────────────────────────────────────────
    Bonus requests are approved in Delta finance first.
@@ -113,6 +114,10 @@ export async function claimResubmit(data: Record<string, any>, user: { id: strin
   if (old.resubmitted_as) return { status: 409, message: "This request has already been corrected and sent again" };
   const theirs = [old.requested_by_id, old.initiating_mentor_id, old.created_by].map((v) => String(v ?? "")).includes(user.id);
   if (!theirs && !MAY_RESEND_ANY.includes(user.app_role)) return { status: 403, message: "Only whoever made this request, a CS Manager or an admin, can send it again" };
+  // A CS Manager: their own location's requests (2026-10-14).
+  const reach = !theirs ? await csManagerReach(user) : null;
+  if (reach && ![old.primary_mentor_id, old.initiating_mentor_id, old.requested_by_id].some((v) => reach.ids.includes(String(v ?? ""))))
+    return { status: 403, message: "That request is another location's — its own CS Manager corrects it" };
   const id = new ObjectId();
   const claimed = await col("funding_transactions").updateOne(
     { _id: old._id, status: "REJECTED", resubmitted_as: { $in: [null, ""] } },

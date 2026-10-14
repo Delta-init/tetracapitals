@@ -3,6 +3,8 @@ import { json, forbidden } from "../lib/response";
 import type { AuthUser } from "../auth/middleware";
 import { loadTeams } from "../students/teams";
 import { seesClosedOnly } from "../students/closedBy";
+import { isMentorRole } from "../lib/roles";
+import { locationOfUser } from "../lib/userLocation";
 
 /* ────────────────────────────────────────────────────────────────────────────
    The leaderboard (the user, 2026-10-13): CSs only — no mentors — ranked by
@@ -10,6 +12,8 @@ import { seesClosedOnly } from "../students/closedBy";
    never a sales close) in the period, with how many and the commission they
    earned; filtered by team; and the teams ranked the same way, their CSs
    added up. Everyone who sees the page sees it all.
+   Dubai and Bangalore each have their own (the user, 2026-10-14): a CS,
+   CS Manager or mentor sees their own location's; admins pick one.
 ──────────────────────────────────────────────────────────────────────────── */
 
 const AED_PER_USD = 3.67;
@@ -17,7 +21,8 @@ const round = (n: number) => Math.round(n * 100) / 100;
 const iso = (v: unknown) => { const d = new Date(String(v ?? "")); return v && !Number.isNaN(d.getTime()) ? d.toISOString() : null; };
 
 /**
- * POST /api/functions/getCsLeaderboard { from?, to? } (ISO; `to` not included)
+ * POST /api/functions/getCsLeaderboard { from?, to?, location? } (ISO; `to` not included) — `location` for admins only
+ * → also { location, locked }: the board's location, and whether this person is held to it
  * → { cs: [{ id, name, team_id, team, location, collected_aed, payments, commission_aed, rank }], teams: [{ id, team, location, collected_aed, payments, commission_aed, cs_count, rank }] }
  */
 export async function getCsLeaderboard(req: Request, user: AuthUser): Promise<Response> {
@@ -28,7 +33,10 @@ export async function getCsLeaderboard(req: Request, user: AuthUser): Promise<Re
   const ranged = Object.keys(range).length > 0;
 
   const index = await loadTeams();
-  const people = (await col("users").find({ app_role: "cs", status: { $ne: "inactive" } }, { projection: { full_name: 1 } }).toArray()) as any[];
+  const locked = isMentorRole(user.app_role);
+  const location = locked ? await locationOfUser(user.id, index) : body?.location === "bangalore" ? "bangalore" : "dubai";
+  const all = (await col("users").find({ app_role: "cs", status: { $ne: "inactive" } }, { projection: { full_name: 1 } }).toArray()) as any[];
+  const people = all.filter((u) => (index.teamOf(String(u._id))?.location ?? "dubai") === location);
   const row = new Map(people.map((u) => {
     const team = index.teamOf(String(u._id));
     return [String(u._id), { id: String(u._id), name: String(u.full_name ?? "").trim(), team_id: team?.id ?? "", team: team?.name ?? "No team", location: team?.location ?? "dubai", collected_aed: 0, payments: 0, commission_aed: 0 }];
@@ -61,5 +69,5 @@ export async function getCsLeaderboard(req: Request, user: AuthUser): Promise<Re
     t.collected_aed += r.collected_aed; t.payments += r.payments; t.commission_aed += r.commission_aed; t.cs_count += 1;
     teams.set(k, t);
   }
-  return json({ cs, teams: rank([...teams.values()].map((t) => ({ ...t, collected_aed: round(t.collected_aed), commission_aed: round(t.commission_aed) }))) });
+  return json({ location, locked, cs, teams: rank([...teams.values()].map((t) => ({ ...t, collected_aed: round(t.collected_aed), commission_aed: round(t.commission_aed) }))) });
 }

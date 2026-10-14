@@ -6,6 +6,7 @@ import { isAdmin, visibleMentorIds } from "../students/followups";
 import { seesClosedOnly } from "../students/closedBy";
 import { loadTeams, type TeamIndex } from "../students/teams";
 import { bonusStageOf, notSentOf } from "../students/bonusPending";
+import { csManagerReach } from "../lib/userLocation";
 
 /* ────────────────────────────────────────────────────────────────────────────
    The Reports section (the user, 2026-10-11): each report added up here, for
@@ -60,6 +61,8 @@ export interface ReportCtx {
   /** Whose rows this person may see — null: everyone. */
   reach: Set<string> | null;
   location: "dubai" | "bangalore" | null;
+  /** A CS Manager's own location — their reports never show the other one (2026-10-14). */
+  lockedLocation: "dubai" | "bangalore" | null;
   team: string;
   cs: string;
 }
@@ -87,12 +90,15 @@ export async function reportCtx(body: any, user: AuthUser): Promise<ReportCtx | 
   if (await seesClosedOnly(user)) return forbidden();
   const range = rangeOf(body);
   if (typeof range === "string") return error(range, 400);
-  const reach = isAdmin(user) || user.app_role === "cs_manager" ? null : await visibleMentorIds(user);
+  // A CS Manager: everyone in their own location — Dubai or Bangalore, never both (the user, 2026-10-14).
+  const manager = await csManagerReach(user);
+  const reach = manager ? new Set(manager.ids) : isAdmin(user) ? null : await visibleMentorIds(user);
   return {
     ...range,
     index: await loadTeams(),
     reach,
-    location: body?.location === "dubai" || body?.location === "bangalore" ? body.location : null,
+    lockedLocation: manager?.location ?? null,
+    location: manager ? manager.location : body?.location === "dubai" || body?.location === "bangalore" ? body.location : null,
     team: String(body?.team ?? "").slice(0, 40),
     cs: String(body?.cs ?? "").slice(0, 40),
   };
@@ -156,7 +162,8 @@ const meta = (ctx: ReportCtx) => ({
   period: ctx.period,
   since: ctx.since ? new Date(ctx.since).toISOString() : null,
   until: ctx.until < Number.MAX_SAFE_INTEGER ? new Date(ctx.until).toISOString() : null,
-  scope: ctx.reach ? (ctx.reach.size > 1 ? "team" : "own") : "all",
+  scope: ctx.lockedLocation ? "location" : ctx.reach ? (ctx.reach.size > 1 ? "team" : "own") : "all",
+  locked_location: ctx.lockedLocation,
 });
 
 /**
@@ -297,5 +304,5 @@ export async function getReportFilters(req: Request, user: AuthUser): Promise<Re
     .sort((a, b) => a.name.localeCompare(b.name));
   const teamIds = new Set(people.map((p) => p.team_id).filter(Boolean));
   const teams = ctx.index.teams.filter((t) => !ctx.reach || teamIds.has(t.id)).map((t) => ({ id: t.id, name: t.name, location: t.location }));
-  return json({ scope: meta(ctx).scope, teams, people });
+  return json({ scope: meta(ctx).scope, locked_location: ctx.lockedLocation, teams, people });
 }

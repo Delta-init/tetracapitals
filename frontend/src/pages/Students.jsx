@@ -31,7 +31,7 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigge
 import { downloadExcel } from "@/components/utils/excelExport";
 import TransferStudentsDialog from "../components/students/TransferStudentsDialog";
 import { CallButton } from "@/components/followups/CallFlow";
-import { listTeams, LOCATIONS, locationLabel, studentLocationOf } from "@/components/utils/teams";
+import { listTeams, LOCATIONS, locationLabel, studentLocationOf, userLocationIn, teamLocationOf } from "@/components/utils/teams";
 import { BangaloreBadge } from "@/components/common/LocationFilter";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -562,7 +562,9 @@ export default function Students() {
     navigate(`${createPageUrl('StudentDetail')}?id=${id}`);
   };
   const courseOptions = { courses: listOptions?.courses || [], products: listOptions?.products || [] };
-  const teamOptions = listTeams(users);
+  // A CS Manager: their own location's teams only (2026-10-14).
+  const myLocation = currentUser?.app_role === 'cs_manager' ? userLocationIn(users, currentUser.id) : null;
+  const teamOptions = listTeams(users).filter(t => !myLocation || teamLocationOf(t.leader) === myLocation);
   const canDelete = canDeleteStudent(currentUser.app_role);
   
   const getStatusColor = (status) => {
@@ -873,17 +875,17 @@ export default function Students() {
                 </>
               )}
 
-              {/* Admin Filters */}
-              {['super_admin', 'broker_admin'].includes(currentUser.app_role) && (activeTab === 'all' || activeTab === 'open_pool') && (
+              {/* Admin Filters — CS Managers too, on All Students: their own location's teams and CSs (the user, 2026-10-14) */}
+              {(['super_admin', 'broker_admin'].includes(currentUser.app_role) || (currentUser.app_role === 'cs_manager' && activeTab === 'all')) && (activeTab === 'all' || activeTab === 'open_pool') && (
                 <>
                   {/* Mentor Filter */}
                   {activeTab === 'all' && (
                     <Select value={filterMentor} onValueChange={setFilterMentor}>
                       <SelectTrigger className="w-48">
-                        <SelectValue placeholder="Filter by Mentor" />
+                        <SelectValue placeholder="Filter by CS" />
                       </SelectTrigger>
                       <SelectContent>
-                        <SelectItem value="all">All Mentors</SelectItem>
+                        <SelectItem value="all">{currentUser.app_role === 'cs_manager' ? 'All CSs' : 'All Mentors'}</SelectItem>
                         {uniqueMentors.map((mentor) => (
                           <SelectItem key={mentor} value={mentor}>
                             {mentor}
@@ -907,8 +909,8 @@ export default function Students() {
 
 
 
-                  {/* Location — Dubai / Bangalore, by the student's team */}
-                  <Select value={filterLocation} onValueChange={setFilterLocation}>
+                  {/* Location — Dubai / Bangalore, by the student's team; a CS Manager sees only their own */}
+                  {currentUser.app_role !== 'cs_manager' && <Select value={filterLocation} onValueChange={setFilterLocation}>
                     <SelectTrigger className="w-36">
                       <SelectValue placeholder="Location" />
                     </SelectTrigger>
@@ -916,7 +918,7 @@ export default function Students() {
                       <SelectItem value="all">All locations</SelectItem>
                       {LOCATIONS.map(l => <SelectItem key={l.value} value={l.value}>{l.label}</SelectItem>)}
                     </SelectContent>
-                  </Select>
+                  </Select>}
                   {/* Team Filter */}
                   <Select value={filterTeam} onValueChange={setFilterTeam}>
                     <SelectTrigger className="w-44">

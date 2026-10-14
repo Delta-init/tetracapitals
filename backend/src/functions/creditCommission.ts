@@ -2,6 +2,7 @@ import { col } from "../db";
 import { json, error } from "../lib/response";
 import { toObjectId } from "../lib/id";
 import type { AuthUser } from "../auth/middleware";
+import { locationOfUser } from "../lib/userLocation";
 
 /**
  * POST /api/functions/creditCommission
@@ -121,7 +122,9 @@ export async function creditCommissionFor(txId: string, opts: { preview?: boolea
     };
     const me = initiator._id.toString();
     const team = teamChief ? staff.filter((u) => u._id.toString() !== me && !u.all_teams_cs_manager && chiefOf(u) === teamChief._id.toString()) : line.slice(1);
-    const overAll = staff.find((u) => u.app_role === "cs_manager" && u.all_teams_cs_manager === true);
+    // The CS Manager over every team: only for their own location's CSs (the user, 2026-10-14 — Doney Dubai's, not Bangalore's).
+    let overAll = staff.find((u) => u.app_role === "cs_manager" && u.all_teams_cs_manager === true);
+    if (overAll && (await locationOfUser(overAll._id.toString())) !== (await locationOfUser(me))) overAll = undefined;
     chain = roles.map((role: string | null, i: number) => {
       if (i === 0) return [initiator];
       if (role === "chief_mentor") return teamChief ? [teamChief] : [];

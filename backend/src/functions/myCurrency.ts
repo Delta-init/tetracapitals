@@ -1,8 +1,7 @@
 import { json } from "../lib/response";
 import type { AuthUser } from "../auth/middleware";
 import { isMentorRole } from "../lib/roles";
-import { loadTeams } from "../students/teams";
-import { isAllTeamsCsManager } from "../lib/scope";
+import { locationOfUser } from "../lib/userLocation";
 
 /**
  * POST /api/functions/getMyCurrency → { location: "dubai" | "bangalore", currency: "AED" | "INR" }
@@ -12,9 +11,7 @@ import { isAllTeamsCsManager } from "../lib/scope";
  */
 export async function getMyCurrency(_req: Request, user: AuthUser): Promise<Response> {
   if (!isMentorRole(user.app_role)) return json({ location: "dubai", currency: "AED" });
-  const index = await loadTeams();
-  if (isAllTeamsCsManager(index.userById.get(String(user.id)))) return json({ location: "dubai", currency: "AED" });
-  const team = index.teamOf(user.id);
-  const location = team?.location === "bangalore" ? "bangalore" : "dubai";
+  // The same rule that keeps Dubai and Bangalore apart (lib/userLocation.ts) — the CS Manager over every team by their own.
+  const location = await locationOfUser(user.id);
   return json({ location, currency: location === "bangalore" ? "INR" : "AED" });
 }

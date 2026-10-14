@@ -273,7 +273,7 @@ export default function Tickets() {
     );
   }
 
-  let visibleTickets = filterTicketsByRole(currentUser, tickets);
+  let visibleTickets = filterTicketsByRole(currentUser, tickets, allUsers);
   if (filterStatus !== 'all') visibleTickets = visibleTickets.filter(t => t.status === filterStatus);
   if (filterPriority !== 'all') visibleTickets = visibleTickets.filter(t => t.priority === filterPriority);
   if (filterCategory !== 'all') visibleTickets = visibleTickets.filter(t => t.category === filterCategory);

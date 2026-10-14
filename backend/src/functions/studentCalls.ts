@@ -6,6 +6,7 @@ import type { AuthUser } from "../auth/middleware";
 import { isAdmin, visibleMentorIds, isStudentOf, studentsOf } from "../students/followups";
 import { closedBy, seesClosedOnly, theirStudents } from "../students/closedBy";
 import { threecxConfigured, threecxFetch, threecxJson, threecxPost } from "../lib/threecx";
+import { csManagerReach, studentsOfIds } from "../lib/userLocation";
 import {
   CALLS, BACKFILL_DAYS, LINK_TTL_S, getCallSettings, syncCalls, syncExtensions, recordingPath, recordingSource, recordingCount,
   callLogPath, groupRows, parseCall, studentsByPhone, phoneKey,
@@ -23,7 +24,12 @@ const message = (err: unknown) => (err instanceof Error ? err.message : String(e
  * ones too) — whoever took the call. Plus any call they took themselves.
  */
 async function studentScopeFilter(user: AuthUser): Promise<Record<string, any> | null> {
-  if (user.app_role === "cs_manager") return null;
+  // A CS Manager: their own location's students (2026-10-14).
+  const reach = await csManagerReach(user);
+  if (reach) {
+    const students = await col("students").find(studentsOfIds(reach.ids), { projection: { _id: 1 } }).toArray();
+    return { $or: [{ student_id: { $in: students.map((s: any) => String(s._id)) } }, { user_id: user.id }] };
+  }
   const visible = await visibleMentorIds(user);
   if (!visible) return null;
   const students = await col("students").find(await theirStudents(user, studentsOf(visible)), { projection: { _id: 1 } }).toArray();
@@ -37,7 +43,8 @@ async function studentScopeFilter(user: AuthUser): Promise<Record<string, any> |
  * (missed, an extension matched to no one) only for those who see everyone.
  */
 async function takenByIds(user: AuthUser): Promise<Set<string> | null> {
-  if (user.app_role === "cs_manager") return null;
+  const reach = await csManagerReach(user);
+  if (reach) return new Set(reach.ids);
   return visibleMentorIds(user);
 }
 

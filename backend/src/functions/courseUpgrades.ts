@@ -12,6 +12,7 @@ import { modulesFor, paidShareOf } from "../courses/upgradeLms";
 import { courseBalancesOf } from "../courses/courseBalance";
 import { callLms, lmsConfigured } from "../lib/lms";
 import { lmsStudentFor, lmsRefusal, lmsLacksRoute, byOf, NOT_LINKED } from "./lmsEnrolmentRequests";
+import { csManagerReach, studentsOfIds } from "../lib/userLocation";
 
 /*
  * CSE course upgrades (the user, 2026-10-07) — phase 2: the price list, each
@@ -487,7 +488,12 @@ export async function listCoursePaymentRequests(req: Request, user: AuthUser): P
   const status = ["pending", "approved", "rejected", "all"].includes(body?.status) ? body.status : "all";
   const filter: Record<string, any> = { type: "BONUS", bonus_credit: { $in: [null, ""] }, "course_payment.product": { $exists: true } };
   if (status !== "all") filter.status = status.toUpperCase();
-  if (user.app_role !== "cs_manager") {
+  const reach = await csManagerReach(user);
+  if (reach) {
+    // A CS Manager: their own location's (2026-10-14).
+    const theirs = ((await col("students").find(studentsOfIds(reach.ids), { projection: { _id: 1 } }).toArray()) as any[]).map((s) => String(s._id));
+    filter.$or = [{ student_id: { $in: theirs } }, { initiating_mentor_id: { $in: reach.ids } }, { requested_by_id: { $in: reach.ids } }];
+  } else {
     const visible = await visibleMentorIds(user);
     if (visible) {
       const theirs = ((await col("students").find(studentsOf(visible), { projection: { _id: 1 } }).toArray()) as any[]).map((s) => String(s._id));

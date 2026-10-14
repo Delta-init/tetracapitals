@@ -9,6 +9,7 @@ import { MT5_LOGIN, mt5LoginOf, mt5Of, mt5Owner, keepMt5 } from "../students/mt5
 import { BONUS_APPROVERS, withFinance } from "../finance/funding";
 import { creditCommissionFor } from "./creditCommission";
 import { notify } from "../lib/notify";
+import { csManagerReach, fundingOfIds, studentsOfIds } from "../lib/userLocation";
 
 /* ────────────────────────────────────────────────────────────────────────────
    Not credited yet (the user, 2026-10-13): a CS, a CS Manager or a Super
@@ -39,6 +40,13 @@ const isLink = (v: unknown) => /^https?:\/\//i.test(String(v ?? ""));
 const cents = (n: number) => Math.round(n * 100) / 100;
 const moneyText = (amount: number, currency: string) => (currency === "USD" ? `$${amount.toLocaleString("en-US")}` : `${currency} ${amount.toLocaleString("en-US")}`);
 
+/** For a CS Manager: whether this student is in their location (lib/userLocation.ts, 2026-10-14); true for anyone else. */
+async function inMyLocation(user: AuthUser, student: any): Promise<boolean> {
+  const reach = await csManagerReach(user);
+  if (!reach) return true;
+  const ids = new Set(reach.ids);
+  return ids.has(String(student?.primary_mentor_id ?? "")) || (Array.isArray(student?.common_cs) ? student.common_cs : []).some((c: any) => ids.has(String(c?.id ?? "")));
+}
 const mayRaise = (user: AuthUser, student: any) => RAISE_ANY.includes(user.app_role) || (user.app_role === "cs" && canWorkOn(user, student));
 const mayDecide = (user: AuthUser) => BONUS_APPROVERS.includes(user.app_role);
 
@@ -63,7 +71,7 @@ export async function getCreditRequestOptions(req: Request, user: AuthUser): Pro
   if (!oid) return error("studentId is required", 400);
   const student: any = await col("students").findOne({ _id: oid }, { projection: { primary_mentor_id: 1, common_cs: 1, full_name: 1 } });
   if (!student) return notFound();
-  if (!mayRaise(user, student)) return forbidden("Only the student's CS, a CS Manager or a Super Admin raises it");
+  if (!mayRaise(user, student) || !(await inMyLocation(user, student))) return forbidden("Only the student's CS, a CS Manager or a Super Admin raises it");
   const txs = (await col("funding_transactions").find({ student_id: String(oid), type: "BONUS" }).sort({ requested_at: -1 }).limit(25).toArray()) as any[];
   const open = (await col(COLL).find({ student_id: String(oid), status: "open" }, { projection: { funding_tx_id: 1, mt5_login: 1 } }).toArray()) as any[];
   return json({ bonuses: txs.map(txCard), mt5: await mt5Of(String(oid)), open: open.map((o) => ({ funding_tx_id: o.funding_tx_id ?? "", mt5_login: o.mt5_login })) });
@@ -79,7 +87,7 @@ export async function raiseCreditRequest(req: Request, user: AuthUser): Promise<
   if (!oid) return error("Pick the student", 400);
   const student: any = await col("students").findOne({ _id: oid }, { projection: { full_name: 1, student_code: 1, primary_mentor_id: 1, primary_mentor_name: 1, team_name: 1, common_cs: 1 } });
   if (!student) return notFound("That student wasn't found");
-  if (!mayRaise(user, student)) return forbidden("Only the student's CS, a CS Manager or a Super Admin raises it");
+  if (!mayRaise(user, student) || !(await inMyLocation(user, student))) return forbidden("Only the student's CS, a CS Manager or a Super Admin raises it");
   const login = mt5LoginOf(body?.mt5Login);
   if (!MT5_LOGIN.test(login)) return error("The MT5 login is its number — digits only", 400);
   const owner = await mt5Owner(login);
@@ -129,7 +137,10 @@ export async function listCreditRequests(req: Request, user: AuthUser): Promise<
   const body: any = await req.json().catch(() => ({}));
   const all = SEE_ALL.includes(user.app_role);
   if (!all && user.app_role !== "cs") return forbidden();
-  const scope: Record<string, any> = all ? {} : { $or: [{ raised_by_id: user.id }, { cs_id: user.id }] };
+  // A CS Manager: their own location's (2026-10-14).
+  const reach = await csManagerReach(user);
+  const scope: Record<string, any> = reach ? { $or: [{ cs_id: { $in: reach.ids } }, { raised_by_id: { $in: reach.ids } }] }
+    : all ? {} : { $or: [{ raised_by_id: user.id }, { cs_id: user.id }] };
   const status = (STATUSES as readonly string[]).includes(String(body?.status)) ? String(body.status) : body?.status === "all" ? "" : "open";
   const parts: Record<string, any>[] = [scope];
   if (status) parts.push({ status });

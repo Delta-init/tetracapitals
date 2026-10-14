@@ -1,6 +1,7 @@
 import { col } from "../db";
 import type { AuthUser } from "../auth/middleware";
 import { isAdminRole, isCustomRole } from "./roles";
+import { teamIndex, locationOfUser, csManagerReach, studentsOfIds, fundingOfIds } from "./userLocation";
 
 /**
  * Row-level data-scope enforcement.
@@ -105,7 +106,13 @@ export async function getDownlineIds(userId: string): Promise<string[]> {
   }
   // A CS Manager over every team (the user, 2026-10-07): every CS is below them too, wherever their own chain goes.
   const me: any = (users as any[]).find((u) => String(u._id) === userId);
-  const everyCs = isAllTeamsCsManager(me) ? (users as any[]).filter((u) => u.app_role === "cs").map((u) => String(u._id)) : [];
+  // Only their location's (the user, 2026-10-14): Doney Dubai's CSs, not Bangalore's.
+  let everyCs: string[] = [];
+  if (isAllTeamsCsManager(me)) {
+    const idx = await teamIndex();
+    const mine = await locationOfUser(userId, idx);
+    for (const u of users as any[]) if (u.app_role === "cs" && (await locationOfUser(String(u._id), idx)) === mine) everyCs.push(String(u._id));
+  }
   const result = new Set<string>([userId, ...everyCs]);
   const queue = [userId, ...everyCs];
   while (queue.length) {
@@ -130,7 +137,12 @@ export async function buildScopeFilter(
 ): Promise<Record<string, any> | null> {
   // Every CS Manager reads every student and every funding request, in all teams (the user, 2026-10-09) — to read:
   // what they may change is decided by role, not by this.
-  if (user.app_role === "cs_manager" && CS_MANAGER_READS_ALL.has(entityName)) return null;
+  // Their own location's only (the user, 2026-10-14): Dubai's CS Manager never Bangalore's students, and the other way.
+  if (user.app_role === "cs_manager" && CS_MANAGER_READS_ALL.has(entityName)) {
+    const reach = await csManagerReach(user);
+    if (!reach) return null;
+    return entityName === "FundingTransaction" ? fundingOfIds(reach.ids) : entityName === "Student" ? studentsOfIds(reach.ids) : null;
+  }
   const commission = COMMISSION_FIELDS[entityName];
   const general = OWN_FIELDS[entityName];
   const custom = isCustomRole(user.app_role);

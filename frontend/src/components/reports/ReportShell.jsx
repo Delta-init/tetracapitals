@@ -128,10 +128,15 @@ export default function ReportShell({ title, description, fn, body = {}, cards, 
               <Input type="date" value={to} min={from || undefined} onChange={(e) => setTo(e.target.value)} className="h-9 w-40" aria-label="To" />
             </>
           )}
+          {/* A CS Manager's reports are their own location's only (2026-10-14) — no picking the other one */}
+          {filters.data?.locked_location ? (
+            <span className="rounded-md border border-amber-200 bg-amber-50 px-2.5 py-1.5 text-xs font-medium text-amber-800">{filters.data.locked_location === 'bangalore' ? 'Bangalore' : 'Dubai'} only</span>
+          ) : (
           <Select value={location} onValueChange={(v) => v && setLocation(v)}>
             <SelectTrigger className="h-9 w-36"><SelectValue /></SelectTrigger>
             <SelectContent><SelectItem value="all">All locations</SelectItem><SelectItem value="dubai">Dubai</SelectItem><SelectItem value="bangalore">Bangalore</SelectItem></SelectContent>
           </Select>
+          )}
           {filters.data?.scope !== 'own' && (
             <>
               <Select value={team} onValueChange={(v) => { if (v) { setTeam(v); setCs('all'); } }}>
@@ -150,7 +155,7 @@ export default function ReportShell({ title, description, fn, body = {}, cards, 
               </Select>
             </>
           )}
-          {d?.scope && d.scope !== 'all' && <span className="ml-auto text-xs text-slate-500">{d.scope === 'own' ? 'Your own figures' : 'You and your team'}</span>}
+          {d?.scope && d.scope !== 'all' && <span className="ml-auto text-xs text-slate-500">{d.scope === 'own' ? 'Your own figures' : d.scope === 'location' ? `Everyone in ${d.locked_location === 'bangalore' ? 'Bangalore' : 'Dubai'}` : 'You and your team'}</span>}
         </div>
 
         {!ready ? <p className="text-sm text-slate-500">Pick a from and a to date.</p>

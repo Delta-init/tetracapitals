@@ -42,10 +42,12 @@ export default function Leaderboard() {
   const [from, setFrom] = useState('');
   const [to, setTo] = useState('');
   const [team, setTeam] = useState('all');
+  // Dubai and Bangalore each have their own board (2026-10-14): staff see their own; admins pick.
+  const [place, setPlace] = useState('dubai');
   const [a, b] = period === 'custom' ? [from, to] : PERIODS.find(p => p.key === period).range();
   const { data, isLoading, error } = useQuery({
-    queryKey: ['cs-leaderboard', a, b],
-    queryFn: async () => (await base44.functions.invoke('getCsLeaderboard', { from: dubaiStart(a), to: dubaiStart(b, 1) })).data,
+    queryKey: ['cs-leaderboard', a, b, place],
+    queryFn: async () => (await base44.functions.invoke('getCsLeaderboard', { from: dubaiStart(a), to: dubaiStart(b, 1), location: place })).data,
     retry: false,
   });
   const teams = data?.teams || [];
@@ -57,7 +59,7 @@ export default function Leaderboard() {
     <div className="min-h-screen p-4 sm:p-6">
       <div className="mx-auto max-w-6xl space-y-5">
         <div>
-          <PageTitle eyebrow="Overview" icon={Trophy}>Leaderboard</PageTitle>
+          <PageTitle eyebrow="Overview" icon={Trophy}>Leaderboard{data?.location && <span className="ml-2 align-middle text-base font-medium text-slate-500">· {data.location === 'bangalore' ? 'Bangalore' : 'Dubai'}</span>}</PageTitle>
           <p className="mt-2 text-sm text-slate-500">CSs ranked by the course payments they collected — approved, in {displayCurrency()} — with the commission they earned. Teams are their CSs added up.</p>
         </div>
 
@@ -68,6 +70,14 @@ export default function Leaderboard() {
                 className={cn('rounded-full px-3 py-1.5 text-sm font-medium', view === k ? 'bg-brand-navy text-white' : 'text-slate-600 hover:bg-slate-50')}>{l}</button>
             ))}
           </div>
+          {data && !data.locked && (
+            <div className="flex rounded-full border border-slate-200 bg-white p-0.5">
+              {[['dubai', 'Dubai'], ['bangalore', 'Bangalore']].map(([k, l]) => (
+                <button key={k} type="button" onClick={() => { setPlace(k); setTeam('all'); }}
+                  className={cn('rounded-full px-3 py-1.5 text-sm font-medium', place === k ? 'bg-amber-500 text-white' : 'text-slate-600 hover:bg-slate-50')}>{l}</button>
+              ))}
+            </div>
+          )}
           {view === 'cs' && teams.length > 1 && (
             <Select value={team} onValueChange={setTeam}>
               <SelectTrigger className="h-9 w-48 bg-white"><SelectValue /></SelectTrigger>

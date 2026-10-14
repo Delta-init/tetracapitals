@@ -6,6 +6,7 @@ import { canWorkOn } from "../students/followups";
 import { recordHistory } from "../students/history";
 import { MT5_LOGIN, mt5LoginOf, mt5Of, mt5Owner, keepMt5 } from "../students/mt5";
 import { salesBonusOf, raiseSalesBonusCredits } from "./studentFollowups";
+import { csManagerReach } from "../lib/userLocation";
 
 /* ────────────────────────────────────────────────────────────────────────────
    Send a sales-close bonus for credit from its badge (the user, 2026-10-12).
@@ -24,7 +25,12 @@ import { salesBonusOf, raiseSalesBonusCredits } from "./studentFollowups";
 const AED_PER_USD = 3.67;
 const who = (u: AuthUser) => u.full_name || u.email || "somebody";
 const isLink = (v: unknown) => /^https?:\/\//i.test(String(v ?? ""));
-const mayFor = (user: AuthUser, student: any) => user.app_role === "cs_manager" || canWorkOn(user, student);
+// A CS Manager: their own location's students (2026-10-14).
+const mayFor = async (user: AuthUser, student: any) => {
+  const reach = await csManagerReach(user);
+  if (reach) return [student?.primary_mentor_id, ...(student?.common_cs ?? []).map((c: any) => c?.id)].some((id) => reach.ids.includes(String(id ?? "")));
+  return canWorkOn(user, student);
+};
 
 /** The bonuses given at the close and not sent yet, each with what finance sent for its invoice. */
 async function waiting(student: any) {
@@ -68,7 +74,7 @@ async function studentFor(body: any, user: AuthUser): Promise<any | Response> {
   if (!oid) return error("studentId is required", 400);
   const student: any = await col("students").findOne({ _id: oid });
   if (!student) return notFound();
-  if (!mayFor(user, student)) return forbidden("Only the student's CS, a CS Manager or an admin sends their bonus");
+  if (!(await mayFor(user, student))) return forbidden("Only the student's CS, a CS Manager or an admin sends their bonus");
   return student;
 }
 

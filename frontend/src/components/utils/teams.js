@@ -33,6 +33,14 @@ export function locationByUser(users = []) {
   return out;
 }
 
+/** Somebody's location, as the server decides it (backend lib/userLocation.ts, 2026-10-14): their team's; the CS Manager
+ *  over every team by their own `team_location` (unset Dubai). */
+export function userLocationIn(users = [], userId) {
+  const me = users.find(u => u.id === userId);
+  if (me && me.app_role === 'cs_manager' && me.all_teams_cs_manager === true) return teamLocationOf(me);
+  return locationByUser(users)[userId] || 'dubai';
+}
+
 export function teamRootId(user, byId) {
   let cur = user;
   const seen = new Set();

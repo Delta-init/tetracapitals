@@ -4,6 +4,7 @@ import { toObjectId } from "../lib/id";
 import type { AuthUser } from "../auth/middleware";
 import { isMentorRole } from "../lib/roles";
 import { visibleMentorIds } from "../students/followups";
+import { csManagerReach } from "../lib/userLocation";
 
 /* ────────────────────────────────────────────────────────────────────────────
    Course upgradation — a CS's and CS Manager's commission summary on Funding
@@ -54,9 +55,11 @@ export async function getCourseCommissionSummary(req: Request, user: AuthUser): 
   const from = iso(body?.from), to = iso(body?.to);
   const range = { ...(from ? { $gte: from } : {}), ...(to ? { $lt: to } : {}) };
   const ranged = Object.keys(range).length > 0;
-  const all = SEE_ALL.includes(user.app_role);
+  // A CS Manager: every CS in their own location (2026-10-14) — not the other location's.
+  const reach = await csManagerReach(user);
+  const all = !reach && SEE_ALL.includes(user.app_role);
   // A mentor (not a CS): theirs and their students' — a Chief Mentor their whole team's.
-  const ids = all || user.app_role === "cs" ? [user.id] : [...((await visibleMentorIds(user)) ?? new Set([user.id]))];
+  const ids = reach ? reach.ids : all || user.app_role === "cs" ? [user.id] : [...((await visibleMentorIds(user)) ?? new Set([user.id]))];
   const mine = all ? {} : user.app_role === "cs"
     ? { $or: [{ initiating_mentor_id: user.id }, { requested_by_id: user.id }] }
     : { $or: [{ initiating_mentor_id: { $in: ids } }, { requested_by_id: { $in: ids } }, { primary_mentor_id: { $in: ids } }] };

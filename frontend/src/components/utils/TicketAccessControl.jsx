@@ -1,3 +1,4 @@
+import { userLocationIn } from './teams';
 // Ticket Access Control Utility
 import { isMentorRole } from './roles';
 
@@ -20,19 +21,24 @@ export function canCloseTicket(userRole, userId, ticket) {
   return userId === ticket.created_by_id;
 }
 
-export function canViewTicket(user, ticket) {
+/** `users` (optional): everyone — a CS Manager sees only their own location's Academic Head tickets (2026-10-14). */
+export function canViewTicket(user, ticket, users = []) {
   const role = user.app_role;
   if (['super_admin', 'admin'].includes(role)) return true;
   if (role === 'academic_head') return ticket.assigned_to_role === 'academic_head';
-  if (role === 'cs_manager') return ticket.assigned_to_role === 'academic_head' || ticket.created_by_id === user.id;
+  if (role === 'cs_manager') {
+    if (ticket.created_by_id === user.id) return true;
+    if (ticket.assigned_to_role !== 'academic_head') return false;
+    return !users.length || userLocationIn(users, ticket.created_by_id) === userLocationIn(users, user.id);
+  }
   if (role === 'finance_admin') return ticket.assigned_to_role === 'finance_admin';
   if (role === 'broker_admin') return ticket.assigned_to_role === 'broker_admin';
   // Mentors and others see only their own
   return ticket.created_by_id === user.id;
 }
 
-export function filterTicketsByRole(user, tickets) {
-  return tickets.filter(t => canViewTicket(user, t));
+export function filterTicketsByRole(user, tickets, users = []) {
+  return tickets.filter(t => canViewTicket(user, t, users));
 }
 
 export function getAutoAssignRole(category) {

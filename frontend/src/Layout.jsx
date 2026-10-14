@@ -11,6 +11,7 @@ import NotificationBell from './components/utils/NotificationBell';
 import { getEffectiveUser } from './components/utils/ImpersonationContext';
 import { displayCurrency, setDisplayCurrency } from './components/utils/displayCurrency';
 import { locationByUser, isAllTeamsCsManager } from './components/utils/teams';
+import { filterTicketsByRole } from './components/utils/TicketAccessControl';
 import { EASE } from '@/components/motion';
 import { NAV_ITEMS, NAV_GROUPS, NESTED_GROUPS, GROUP_OF, ROLE_HOME, ROLE_ONLY_PAGES, humanize, pageBlockedFor } from '@/components/utils/navigation';
 import { readsClosedOnly } from '@/components/utils/roles';
@@ -149,7 +150,9 @@ export default function Layout({ children, currentPageName }) {
         if (['super_admin', 'academic_admin', 'broker_admin', 'chief_mentor', 'senior_mentor', 'junior_mentor'].includes(role)) {
           pendingTickets = tickets.filter(t => ['open', 'in_progress'].includes(t.status)).length;
         } else if (role === 'cs_manager') {
-          pendingTickets = tickets.filter(t => t.assigned_to_role === 'academic_head' && ['open', 'in_progress'].includes(t.status)).length;
+          // Their own location's only (2026-10-14).
+          const people = await base44.entities.User.list().catch(() => []);
+          pendingTickets = filterTicketsByRole(currentUser, tickets, people || []).filter(t => t.created_by_id !== currentUser.id && ['open', 'in_progress'].includes(t.status)).length;
         }
 
         // Count pending retention assignments

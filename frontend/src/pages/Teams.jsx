@@ -18,7 +18,7 @@ import TeamDialog from '@/components/teams/TeamDialog';
 import { logAction } from '@/components/utils/AuditLogger';
 import { getEffectiveUser } from '@/components/utils/ImpersonationContext';
 import { isMentorRole } from '@/components/utils/roles';
-import { teamRootId, isAllTeamsCsManager, LOCATIONS, teamLocationOf, locationLabel } from '@/components/utils/teams';
+import { teamRootId, isAllTeamsCsManager, LOCATIONS, teamLocationOf, locationLabel, userLocationIn } from '@/components/utils/teams';
 
 // Admin roles that may see EVERY team (not just their own).
 const ADMIN_VIEWERS = ['super_admin', 'admin', 'broker_admin', 'academic_head', 'academic_admin', 'admin_supervisor', 'finance_admin'];
@@ -79,7 +79,8 @@ export default function Teams() {
       // A lone person with nobody under them isn't a team yet — bucket them as
       // "unassigned" — unless the team was named (created empty on purpose).
       if (members.length === 1 && !root?.team_name) { unassigned.push(members[0]); continue; }
-      members.push(...overAll);
+      // Over every team — of their own location (2026-10-14: Doney in Dubai's teams, not Bangalore's).
+      members.push(...overAll.filter(m => teamLocationOf(m) === teamLocationOf(root)));
       members.sort((a, b) => (tierIndex(a.app_role) - tierIndex(b.app_role)) || String(a.full_name || '').localeCompare(String(b.full_name || '')));
       teams.push({ rootId: rid, name: root?.team_name || root?.full_name || '—', root, members, location: teamLocationOf(root) });
     }
@@ -92,6 +93,11 @@ export default function Teams() {
       // Non-admins: only the team they belong to. A Chief roots their own team.
       const myRoot = rootOf(currentUser);
       return { teams: teams.filter(t => t.rootId === myRoot), unassigned: [], isAdmin };
+    }
+    // A CS Manager: their own location's teams only (2026-10-14).
+    if (!isAdmin && currentUser?.app_role === 'cs_manager') {
+      const mine = userLocationIn(users, currentUser.id);
+      return { teams: teams.filter(t => t.location === mine), unassigned: [], isAdmin };
     }
     return { teams, unassigned, isAdmin };
   }, [users, currentUser]);

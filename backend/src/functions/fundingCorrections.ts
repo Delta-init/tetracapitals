@@ -7,6 +7,7 @@ import { canWorkOn } from "../students/followups";
 import { recordHistory } from "../students/history";
 import { MT5_LOGIN, mt5LoginOf, mt5Owner, keepMt5 } from "../students/mt5";
 import { notify } from "../lib/notify";
+import { csManagerReach } from "../lib/userLocation";
 
 /* ────────────────────────────────────────────────────────────────────────────
    Sent back for correction (the user, 2026-10-12): on MT5 Approvals a broker
@@ -107,7 +108,9 @@ export async function correctFundingRequest(req: Request, user: AuthUser): Promi
   const student: any = tx.student_id && ObjectId.isValid(String(tx.student_id)) ? await col("students").findOne({ _id: new ObjectId(String(tx.student_id)) }) : null;
   const mine = [tx.requested_by_id, tx.initiating_mentor_id].map(String).includes(user.id);
   // A CS Manager corrects any CS's (the user, 2026-10-12) — they create and correct, never approve or reject.
-  if (!mine && user.app_role !== "cs_manager" && !(student && canWorkOn(user, student))) return forbidden("Only whoever raised it, the student's CS, a CS Manager or the people above them correct it");
+  const reach = await csManagerReach(user);
+  const managerOk = !!reach && [tx.primary_mentor_id, tx.initiating_mentor_id, tx.requested_by_id].some((id) => reach.ids.includes(String(id ?? "")));
+  if (!mine && !managerOk && !(student && canWorkOn(user, student))) return forbidden("Only whoever raised it, the student's CS, a CS Manager or the people above them correct it");
 
   const now = new Date().toISOString();
   const changed: string[] = [];

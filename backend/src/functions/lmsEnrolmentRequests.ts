@@ -13,6 +13,7 @@ import { nextStudentCode } from "../lib/studentCode";
 import { locationOf } from "../lib/location";
 import { lmsEnrolledFields } from "../students/lmsEnrolment";
 import { mayTransfer } from "./studentTransfer";
+import { csManagerReach } from "../lib/userLocation";
 
 /* ────────────────────────────────────────────────────────────────────────────
    LMS enrolment requests (the user, 2026-10-06): the LMS admin's Requests page —
@@ -74,6 +75,15 @@ const studentCard = (s: any, user?: AuthUser) =>
     id: String(s._id), name: str(s.full_name), code: str(s.student_code, 40), cs: str(s.primary_mentor_name), team: str(s.team_name),
     yours: !!user && isStudentOf(s, new Set([user.id])), unassigned: unassigned(s),
   } : null;
+
+/** A CS Manager's own location's CSs (2026-10-14); null for anyone else — whose students are theirs to see here. */
+const managerIds = async (user: AuthUser): Promise<Set<string> | null> => {
+  const reach = await csManagerReach(user);
+  return reach ? new Set(reach.ids) : null;
+};
+/** A linked student in the other location — a CS Manager doesn't see their request. Unlinked applicants show. */
+const otherLocation = (ids: Set<string> | null, s: any) =>
+  !!ids && !!s && !!s.primary_mentor_id && !ids.has(String(s.primary_mentor_id)) && !(s.common_cs ?? []).some((c: any) => ids.has(String(c?.id ?? "")));
 
 /** The students in `scope` with an email, one an address. */
 async function studentsByEmail(scope: Record<string, any> | null): Promise<Map<string, any>> {
@@ -183,8 +193,10 @@ export async function getLmsEnrolmentRequests(req: Request, user: AuthUser): Pro
       if (here === "all") {
         const r = await ask({ ...filters, status, page, perPage: PAGE, ...(onlyEmail ? { emails: [onlyEmail] } : {}) });
         for (const p of r?.programs ?? []) programs.add(String(p));
-        const requests = r?.requests ?? [];
-        const byEmail = await studentsWithEmails(requests.map((q) => emailOf(q.email)).filter(Boolean));
+        const mgr = await managerIds(user);
+        const raw = r?.requests ?? [];
+        const byEmail = await studentsWithEmails(raw.map((q) => emailOf(q.email)).filter(Boolean));
+        const requests = raw.filter((q) => !otherLocation(mgr, byEmail.get(emailOf(q.email))));
         return json({
           configured: true, available: true, reach, canAssign: empty.canAssign, page, perPage: PAGE, total: Number(r?.total ?? 0), programs: [...programs],
           requests: requests.map((q) => ({ ...q, student: studentCard(byEmail.get(emailOf(q.email)), user) })),
@@ -206,9 +218,10 @@ export async function getLmsEnrolmentRequests(req: Request, user: AuthUser): Pro
       found = await requestsOf(emails, status, filters, programs);
     }
     const byEmail = await studentsWithEmails([...new Set(found.map((q) => emailOf(q.email)).filter(Boolean))]);
+    const mgr = await managerIds(user);
     const rows = found
       .map((q) => ({ q, s: byEmail.get(emailOf(q.email)) ?? null }))
-      .filter(({ s }) => hereMatches(here, s))
+      .filter(({ s }) => hereMatches(here, s) && !otherLocation(mgr, s))
       .sort((a, b) => String(b.q.appliedAt ?? "").localeCompare(String(a.q.appliedAt ?? "")));
     return json({
       configured: true, available: true, reach, canAssign: empty.canAssign, page, perPage: PAGE, total: rows.length,
@@ -271,8 +284,9 @@ async function requestFor(body: any, user: AuthUser): Promise<{ userId: string; 
   const scope = reach === "all" ? null : await theirStudents(user);
   const match = { email: { $regex: `^\\s*${escapeRe(email)}\\s*$`, $options: "i" } };
   const student: any = await col("students").findOne(scope ? { $and: [scope, match] } : match, { projection: STUDENT_FIELDS });
-  // A CS decides only their own students' requests.
+  // A CS decides only their own students' requests; a CS Manager only their own location's (2026-10-14).
   if (reach === "own" && !student) return forbidden();
+  if (otherLocation(await managerIds(user), student)) return forbidden();
   return { userId, email, student };
 }
 
@@ -497,6 +511,8 @@ export async function assignLmsApplicant(req: Request, user: AuthUser): Promise<
   const to: any = await col("users").findOne({ _id: tid }, { projection: { full_name: 1, app_role: 1, status: 1, team_location: 1 } });
   if (!to || !isMentorRole(to.app_role)) return error("Pick someone on a team", 400);
   if (to.status === "inactive") return error(`${to.full_name || "That person"} is switched off — pick someone else`, 400);
+  const mgr = await managerIds(user);
+  if (mgr && !mgr.has(String(to._id))) return error("A CS Manager gives applicants to their own location's CSs", 403);
   const now = new Date().toISOString();
   const data: Record<string, any> = { primary_mentor_id: String(to._id), primary_mentor_name: to.full_name ?? "", assignment_status: "assigned", updated_date: now };
 

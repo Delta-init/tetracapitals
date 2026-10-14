@@ -4,6 +4,7 @@ import { toObjectId } from "../lib/id";
 import type { AuthUser } from "../auth/middleware";
 import { isMentorRole } from "../lib/roles";
 import { isAdmin, canWorkOn, visibleMentorIds, isStudentOf } from "../students/followups";
+import { csManagerReach } from "../lib/userLocation";
 
 /* ────────────────────────────────────────────────────────────────────────────
    Removing one of a student's MT5 accounts from their page (the user,
@@ -23,7 +24,9 @@ export async function removeStudentMt5(req: Request, user: AuthUser): Promise<Re
   const sid = toObjectId(String(account.student_id ?? ""));
   const student: any = sid ? await col("students").findOne({ _id: sid as any }, { projection: { primary_mentor_id: 1, common_cs: 1, full_name: 1 } }) : null;
 
-  let allowed = isAdmin(user) || user.app_role === "broker_admin" || user.app_role === "cs_manager";
+  const reach = await csManagerReach(user);
+  let allowed = isAdmin(user) || user.app_role === "broker_admin"
+    || (!!reach && !!student && [student.primary_mentor_id, ...(student.common_cs ?? []).map((c: any) => c?.id)].some((id) => reach.ids.includes(String(id ?? ""))));
   if (!allowed && isMentorRole(user.app_role) && student) {
     const visible = await visibleMentorIds(user);
     allowed = canWorkOn(user, student) || (visible ? isStudentOf(student, visible) : false);
