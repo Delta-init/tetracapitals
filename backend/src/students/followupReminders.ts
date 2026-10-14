@@ -8,6 +8,7 @@ import { isMentorRole } from "../lib/roles";
 import { isAllTeamsCsManager } from "../lib/scope";
 import { CLOSED_STAGES, followupStatus } from "./followups";
 import { loadTeams, type TeamIndex } from "./teams";
+import { IS_STUDENT, OF_A_STUDENT } from "./notStudent";
 
 /* ────────────────────────────────────────────────────────────────────────────
    Follow-up reminder emails. Every day at 10:00 UAE time, everyone whose
@@ -150,7 +151,7 @@ const byUrgency = (a: Item, b: Item) =>
 async function collectDigests(date: string, mentorId?: string): Promise<Digest[]> {
   const followups = (await col("student_followups")
     .find(
-      { stage: { $nin: [...CLOSED_STAGES] }, next_followup_date: { $gt: "", $lte: addDays(date, 1) } },
+      { stage: { $nin: [...CLOSED_STAGES] }, ...OF_A_STUDENT, next_followup_date: { $gt: "", $lte: addDays(date, 1) } },
       { projection: { student_id: 1, target_outcome: 1, stage: 1, next_followup_date: 1, client_said: 1 } },
     )
     .toArray()) as any[];
@@ -266,6 +267,7 @@ async function collectAlerts(date: string, only?: { leaderId: string; followupId
     next_followup_date: { $gte: addDays(date, -ALERT_WINDOW_DAYS), $lt: date },
   };
   if (only) filter._id = { $in: only.followupIds.map(toObjectId).filter(Boolean) };
+  filter.student_not_student = { $ne: true };
   const followups = (await col("student_followups")
     .find(filter, { projection: { student_id: 1, target_outcome: 1, stage: 1, next_followup_date: 1, client_said: 1, leader_alert: 1 } })
     .toArray()) as any[];

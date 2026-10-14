@@ -13,6 +13,7 @@ import { businessToday } from "../students/followups";
 import { loadTeams } from "../students/teams";
 import { LOCATIONS, currentLocationOf } from "../lib/location";
 import { bonusPendingOf, idsWithBonusPending } from "../students/bonusPending";
+import { IS_STUDENT, OF_A_STUDENT } from "../students/notStudent";
 const BONUS_FILTERS = ["pending", "sent_back", "needs_call", "with_finance", "waiting_broker"];
 
 /* ────────────────────────────────────────────────────────────────────────────
@@ -253,7 +254,8 @@ export async function listStudents(req: Request, user: AuthUser): Promise<Respon
 
   const scope = await buildScopeFilter(user, "Student");
   const takesFilters = tab !== "co_managed" && tab !== "admin_co_managed";
-  const query = and(scope, await tabFilter(user, tab), ...(takesFilters ? await filters(user, tab, body?.filters) : []));
+  // Not a student (students/notStudent.ts): never on this page — on Inactive students only.
+  const query = and(scope, IS_STUDENT, await tabFilter(user, tab), ...(takesFilters ? await filters(user, tab, body?.filters) : []));
 
   const result = await pageOf("students", query, { created_date: -1, _id: -1 }, body);
   const balances = await courseBalancesOf(result.rows.map((r: any) => String(r.id)));
@@ -268,7 +270,7 @@ export async function listStudents(req: Request, user: AuthUser): Promise<Respon
   for (const r of result.rows as any[]) r.bonus_pending = bonuses.get(String(r.id)) ?? null;
 
   const counts: Record<string, number> = {
-    new_for_me: await col("students").countDocuments(and(scope, { new_for_id: user.id, primary_mentor_id: user.id })),
+    new_for_me: await col("students").countDocuments(and(scope, IS_STUDENT, { new_for_id: user.id, primary_mentor_id: user.id })),
   };
   if (tabs.includes("co_managed")) counts.co_managed = await col("students").countDocuments(and(scope, coMentorIs(user.id)));
   if (tabs.includes("admin_co_managed")) counts.admin_co_managed = await col("students").countDocuments(and(scope, hasCoMentors));

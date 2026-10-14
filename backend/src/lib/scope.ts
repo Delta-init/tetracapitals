@@ -139,6 +139,9 @@ export async function buildScopeFilter(
   // what they may change is decided by role, not by this.
   // Their own location's only (the user, 2026-10-14): Dubai's CS Manager never Bangalore's students, and the other way.
   if (user.app_role === "cs_manager" && CS_MANAGER_READS_ALL.has(entityName)) {
+    // The CS Manager over every team (Doney) sees every student, both locations — the Students page starts on his own
+    // (the user, 2026-10-14); funding requests stay his location's.
+    if (entityName === "Student" && isAllTeamsCsManager(user)) return null;
     const reach = await csManagerReach(user);
     if (!reach) return null;
     return entityName === "FundingTransaction" ? fundingOfIds(reach.ids) : entityName === "Student" ? studentsOfIds(reach.ids) : null;

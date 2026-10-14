@@ -51,6 +51,7 @@ import { getCourseCommissionSummary } from "./courseCommissionSummary";
 import { getCsLeaderboard } from "./csLeaderboard";
 import { getMyCurrency } from "./myCurrency";
 import { removeStudentMt5 } from "./studentMt5";
+import { markNotStudent, unmarkNotStudent, listNotStudents } from "./notStudent";
 import { getLmsCourseAccess, giveLmsCourses, setLmsModuleAccess } from "./lmsCourseAccess";
 import { getClassCompletions } from "./classCompletions";
 import { getMyTeamCsIds } from "./myTeam";
@@ -186,6 +187,9 @@ const AUTHED: Record<string, AuthedHandler> = {
   getCsLeaderboard,
   getMyCurrency,
   removeStudentMt5,
+  markNotStudent,
+  unmarkNotStudent,
+  listNotStudents,
   // The bonus course payments, on the Course Upgrades page (courseUpgrades.ts)
   listCoursePaymentRequests,
   // A student's own LMS, read-only — from LMS Requests and the student page

@@ -5,6 +5,7 @@ import { mailConfigured, sendMail } from "../lib/mailer";
 import { notify, type Notice } from "../lib/notify";
 import { leadersOf } from "./followupReminders";
 import { loadTeams } from "./teams";
+import { IS_STUDENT, OF_A_STUDENT } from "./notStudent";
 
 /* ────────────────────────────────────────────────────────────────────────────
    New students from finance, waiting to be onboarded (the user, 2026-10-03).
@@ -60,7 +61,7 @@ export const NOT_ONBOARDED_SINCE = new Date("2026-09-25T00:00:00+04:00").toISOSt
 export function notOnboardedFilter(lateAt?: number): Record<string, any> {
   const created: Record<string, unknown> = { $type: "string", $gte: NOT_ONBOARDED_SINCE };
   if (lateAt !== undefined) created.$lte = new Date(lateAt - WAIT_MS).toISOString();
-  return { onboarded: { $ne: true }, status: { $ne: "INACTIVE" }, created_date: created };
+  return { onboarded: { $ne: true }, status: { $ne: "INACTIVE" }, ...IS_STUDENT, created_date: created };
 }
 
 /** Of those, the new ones from finance — what the alerts are about, and what turns the sidebar's number red. */

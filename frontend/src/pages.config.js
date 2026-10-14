@@ -111,6 +111,7 @@ import FundingRequestReport from './pages/FundingRequestReport';
 import BonusReport from './pages/BonusReport';
 import ZohoInvoices from './pages/ZohoInvoices';
 import NotOnboarded from './pages/NotOnboarded';
+import InactiveStudents from './pages/InactiveStudents';
 import BalancePayments from './pages/BalancePayments';
 import BonusApprovals from './pages/BonusApprovals';
 import NotCreditedYet from './pages/NotCreditedYet';
@@ -164,6 +165,7 @@ export const PAGES = {
     "StudentFollowups": StudentFollowups,
     "OverdueFollowups": OverdueFollowups,
     "NotOnboarded": NotOnboarded,
+    "InactiveStudents": InactiveStudents,
     "BalancePayments": BalancePayments,
     "BonusApprovals": BonusApprovals,
     "NotCreditedYet": NotCreditedYet,

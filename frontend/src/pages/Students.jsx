@@ -22,6 +22,7 @@ import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import StudentForm from "../components/students/StudentForm";
 import { EditDetailsButton } from '@/components/students/EditDetails';
+import StudentRowExtras from '@/components/students/StudentRowExtras';
 import StudentRequestForm from "../components/students/StudentRequestForm";
 import BulkImportStudentsDialog from "../components/students/BulkImportStudentsDialog";
 import { isMentorRole as isMentorTier, getScope, readsClosedOnly } from "@/components/utils/roles";
@@ -31,7 +32,7 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigge
 import { downloadExcel } from "@/components/utils/excelExport";
 import TransferStudentsDialog from "../components/students/TransferStudentsDialog";
 import { CallButton } from "@/components/followups/CallFlow";
-import { listTeams, LOCATIONS, locationLabel, studentLocationOf, userLocationIn, teamLocationOf } from "@/components/utils/teams";
+import { listTeams, LOCATIONS, locationLabel, studentLocationOf, userLocationIn, teamLocationOf, isAllTeamsCsManager } from "@/components/utils/teams";
 import { BangaloreBadge } from "@/components/common/LocationFilter";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -147,7 +148,9 @@ export default function Students() {
   const setOnlyNew = (v) => setNewParam((prev) => ((typeof v === 'function' ? v(prev === '1') : v) ? '1' : ''));
   const [filterLevel, setFilterLevel] = useUrlState('level');
   const [filterTeam, setFilterTeam] = useUrlState('team');
-  const [filterLocation, setFilterLocation] = useUrlState('location');   // Dubai / Bangalore — by their team (2026-10-10)
+  // Dubai / Bangalore — by their team (2026-10-10). The CS Manager over every team sees every student, starting on his own
+  // location (the user, 2026-10-14).
+  const [filterLocation, setFilterLocation] = useUrlState('location', isAllTeamsCsManager(currentUser) ? teamLocationOf(currentUser) : 'all');
   const [filterCourse, setFilterCourse] = useUrlState('course');
   const navigate = useNavigate();
   const [showTransferDialog, setShowTransferDialog] = useState(false);
@@ -563,7 +566,9 @@ export default function Students() {
   };
   const courseOptions = { courses: listOptions?.courses || [], products: listOptions?.products || [] };
   // A CS Manager: their own location's teams only (2026-10-14).
-  const myLocation = currentUser?.app_role === 'cs_manager' ? userLocationIn(users, currentUser.id) : null;
+  const myLocation = currentUser?.app_role === 'cs_manager'
+    ? (isAllTeamsCsManager(currentUser) ? (filterLocation !== 'all' ? filterLocation : null) : userLocationIn(users, currentUser.id))
+    : null;
   const teamOptions = listTeams(users).filter(t => !myLocation || teamLocationOf(t.leader) === myLocation);
   const canDelete = canDeleteStudent(currentUser.app_role);
   
@@ -910,7 +915,7 @@ export default function Students() {
 
 
                   {/* Location — Dubai / Bangalore, by the student's team; a CS Manager sees only their own */}
-                  {currentUser.app_role !== 'cs_manager' && <Select value={filterLocation} onValueChange={setFilterLocation}>
+                  {(currentUser.app_role !== 'cs_manager' || isAllTeamsCsManager(currentUser)) && <Select value={filterLocation} onValueChange={setFilterLocation}>
                     <SelectTrigger className="w-36">
                       <SelectValue placeholder="Location" />
                     </SelectTrigger>
@@ -1043,6 +1048,7 @@ export default function Students() {
                               <div className="flex justify-end gap-1">
                                 <CallButton variant="icon" student={student} />
                                 <EditDetailsButton student={student} currentUser={currentUser} />
+                                <StudentRowExtras student={student} currentUser={currentUser} />
                                 <Link to={createPageUrl('StudentDetail') + '?id=' + student.id}>
                                   <Button size="sm" variant="ghost" className="h-8 w-8 p-0" title="View">
                                     <Eye className="h-4 w-4" />
@@ -1144,6 +1150,7 @@ export default function Students() {
                            <div className="flex justify-end gap-1">
                              <CallButton variant="icon" student={student} />
                              <EditDetailsButton student={student} currentUser={currentUser} />
+                             <StudentRowExtras student={student} currentUser={currentUser} />
                              <Link to={createPageUrl('StudentDetail') + '?id=' + student.id}>
                                <Button size="sm" variant="ghost" className="h-8 w-8 p-0" title="View">
                                  <Eye className="h-4 w-4" />
@@ -1272,6 +1279,7 @@ export default function Students() {
                             <div className="flex justify-end gap-1">
                               <CallButton variant="icon" student={student} />
                               <EditDetailsButton student={student} currentUser={currentUser} />
+                              <StudentRowExtras student={student} currentUser={currentUser} />
                               <Link to={createPageUrl('StudentDetail') + '?id=' + student.id}>
                                 <Button size="sm" variant="ghost" className="h-8 w-8 p-0" title="View">
                                   <Eye className="h-4 w-4" />
@@ -1371,6 +1379,7 @@ export default function Students() {
                           <div className="flex justify-end gap-2">
                             <CallButton variant="icon" student={student} />
                             <EditDetailsButton student={student} currentUser={currentUser} />
+                            <StudentRowExtras student={student} currentUser={currentUser} />
                             <Link to={createPageUrl('StudentDetail') + '?id=' + student.id}>
                               <Button size="sm" variant="ghost" className="h-8 w-8 p-0" title="View">
                                 <Eye className="h-4 w-4" />
@@ -1481,6 +1490,7 @@ export default function Students() {
                         <div className="flex justify-end gap-1">
                           <CallButton variant="icon" student={student} />
                           <EditDetailsButton student={student} currentUser={currentUser} />
+                          <StudentRowExtras student={student} currentUser={currentUser} />
                           <Link to={createPageUrl('StudentDetail') + '?id=' + student.id}>
                             <Button size="sm" variant="ghost" className="h-8 w-8 p-0" title="View">
                               <Eye className="h-4 w-4" />

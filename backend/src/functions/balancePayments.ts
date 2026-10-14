@@ -6,6 +6,7 @@ import { visibleMentorIds, studentsOf, canWorkOn } from "../students/followups";
 import { theirStudents } from "../students/closedBy";
 import { courseBalancesOf } from "../courses/courseBalance";
 import { CLOSED_FEE_STATUSES } from "../finance/balanceDue";
+import { IS_STUDENT, OF_A_STUDENT } from "../students/notStudent";
 
 /*
  * The Balance payments page (the user, 2026-10-11; changed 2026-10-13): every student in the viewer's scope who still
@@ -73,7 +74,7 @@ export async function getBalancePayments(req: Request, user: AuthUser): Promise<
     ],
   };
   const students = (await col("students")
-    .find(mine ? { $and: [owing, mine] } : owing, { projection: PROJECTION })
+    .find(mine ? { $and: [owing, mine, IS_STUDENT] } : { $and: [owing, IS_STUDENT] }, { projection: PROJECTION })
     .limit(5000)
     .toArray()) as any[];
   const balances = await courseBalancesOf(students.map((s) => String(s._id)));

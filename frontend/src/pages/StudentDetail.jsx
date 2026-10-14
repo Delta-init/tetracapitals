@@ -13,11 +13,12 @@ import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import {
   ArrowLeft, CalendarPlus, Edit, IdCard, ListChecks, Phone, MessageCircle, Wallet, GraduationCap,
   Presentation, LifeBuoy, Link2, CandlestickChart, History as HistoryIcon,
-  FileCheck,
+  FileCheck, UserX
 } from "lucide-react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { createPageUrl } from "../utils";
 import StudentForm from "../components/students/StudentForm";
+import { NotStudentDialog, mayMarkNotStudent } from "@/components/students/StudentRowExtras";
 import { EditDetailsButton } from "@/components/students/EditDetails";
 import MT5AccountSection from "../components/students/MT5AccountSection";
 import { Mt5Logins } from "../components/students/mt5Accounts";
@@ -77,6 +78,7 @@ export default function StudentDetail() {
   const backToList = (e) => { if ((window.history.state?.idx ?? 0) > 0) { e.preventDefault(); navigate(-1); } };
   const [currentUser, setCurrentUser] = useState(null);
   const [showEditDialog, setShowEditDialog] = useState(false);
+  const [notStudentOpen, setNotStudentOpen] = useState(false);
   const urlParams = new URLSearchParams(window.location.search);
   const studentId = urlParams.get('id');
 
@@ -209,7 +211,7 @@ export default function StudentDetail() {
 
   if (!student) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100 p-6">
+      <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100 p-3 sm:p-6">
         <div className="max-w-4xl mx-auto">
           <Card>
             <CardContent className="p-12 text-center">
@@ -254,7 +256,7 @@ export default function StudentDetail() {
   }
   if (isMentorRole && !hasAccess) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100 p-6">
+      <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100 p-3 sm:p-6">
         <div className="max-w-4xl mx-auto">
           <Card>
             <CardContent className="p-12 text-center">
@@ -295,8 +297,9 @@ export default function StudentDetail() {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100 p-6">
-      <div className="max-w-5xl mx-auto space-y-6">
+    <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100 p-3 sm:p-6">
+      {/* On a phone (the user, 2026-10-14): tighter padding, and every card's p-6 a little lighter */}
+      <div className="max-w-5xl mx-auto min-w-0 space-y-4 sm:space-y-6 max-sm:[&_.p-6]:p-4">
         {/* Header — stays above every tab */}
         <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
           <div className="flex min-w-0 items-start gap-3 sm:gap-4">
@@ -346,6 +349,12 @@ export default function StudentDetail() {
             {mayActInLms(currentUser, student, teamIds) && student.email && (
               <ViewInLmsButton studentId={student.id} name={displayStudent.full_name} className="h-9" mode="write" />
             )}
+            {/* Not a student (2026-10-14): off every list, onto Inactive students */}
+            {!salesOnly && !student.not_student && mayMarkNotStudent(currentUser, student) && (
+              <Button variant="outline" className="h-9 text-gray-600 hover:bg-red-50 hover:text-red-700" onClick={() => setNotStudentOpen(true)}>
+                <UserX className="mr-2 h-4 w-4" />Not a student
+              </Button>
+            )}
             {canEdit ? (
               <Button onClick={() => setShowEditDialog(true)} className="bg-blue-600 hover:bg-blue-700">
                 <Edit className="h-4 w-4 mr-2" />
@@ -357,6 +366,15 @@ export default function StudentDetail() {
             )}
           </div>
         </div>
+
+        {student.not_student && (
+          <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800">
+            <p className="font-semibold">Marked not a student{student.not_student_by_name ? ` by ${student.not_student_by_name}` : ''}{student.not_student_at ? ` on ${new Date(student.not_student_at).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}` : ''}</p>
+            {student.not_student_reason && <p className="mt-0.5">{student.not_student_reason}</p>}
+            <p className="mt-1 text-xs text-red-700">They show only on <Link className="underline" to={createPageUrl('InactiveStudents')}>Inactive students</Link>, where a CS Manager or admin can mark them a student again.</p>
+          </div>
+        )}
+        <NotStudentDialog student={student} open={notStudentOpen} onOpenChange={setNotStudentOpen} />
 
         <Tabs ref={rootRef} value={tab} onValueChange={changeTab}>
           {/* One tab per part of the student — it sticks under the top bar. On a phone or tablet it scrolls sideways;
@@ -379,9 +397,9 @@ export default function StudentDetail() {
             {/* Student Information Card */}
             <Card className="border-gray-200">
               <CardHeader className="border-b border-gray-100 bg-slate-50/70">
-                <div className="flex items-center justify-between">
-                  <CardTitle className="text-xl font-semibold tracking-tight">Student Information</CardTitle>
-                  <div className="flex items-center gap-2">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <CardTitle className="text-lg font-semibold tracking-tight sm:text-xl">Student Information</CardTitle>
+                  <div className="flex flex-wrap items-center gap-2">
                     <span className="text-xs text-slate-500">Priority</span>
                     <PriorityPicker student={displayStudent} currentUser={currentUser} />
                     <span className="text-xs text-slate-500">Language</span>
@@ -393,7 +411,7 @@ export default function StudentDetail() {
                 </div>
               </CardHeader>
               <CardContent className="p-6">
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div className="grid grid-cols-1 gap-4 sm:gap-6 md:grid-cols-2">
                   <div>
                     <label className="text-sm font-medium text-gray-500">Full Name</label>
                     <p className="mt-1 text-base font-semibold text-gray-900">
@@ -410,7 +428,7 @@ export default function StudentDetail() {
 
                   <div>
                     <label className="text-sm font-medium text-gray-500">Phone</label>
-                    <p className="mt-1 text-base font-mono text-gray-900">
+                    <p className="mt-1 break-all text-base font-mono text-gray-900">
                       {displayStudent.phone}
                     </p>
                   </div>

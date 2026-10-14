@@ -1,6 +1,7 @@
 import { col } from "../db";
 import { notify } from "../lib/notify";
 import { toObjectId } from "../lib/id";
+import { IS_STUDENT, OF_A_STUDENT } from "./notStudent";
 
 /* ────────────────────────────────────────────────────────────────────────────
    Class completions: a student attended a live class in the Delta LMS that is
@@ -138,7 +139,7 @@ export async function settleCalls(docs: any[]): Promise<any[]> {
 /** These students' completions — told, and not called yet — that wait for a call (null: everyone's). */
 export async function callNeeded(studentIds: string[] | null): Promise<any[]> {
   const docs = (await col(COMPLETIONS).find({
-    notified_at: { $exists: true }, called_at: { $exists: false },
+    notified_at: { $exists: true }, called_at: { $exists: false }, ...OF_A_STUDENT,
     ...(studentIds ? { student_id: { $in: studentIds } } : {}),
   } as any).limit(2000).toArray()) as any[];
   if (!docs.length) return [];

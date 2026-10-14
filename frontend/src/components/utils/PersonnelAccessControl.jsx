@@ -1,3 +1,4 @@
+import { userLocationIn } from './teams';
 // Utility functions for personnel/user management access control
 
 export const canViewPersonnel = (userRole) => {
@@ -32,8 +33,10 @@ export const filterPersonnelByRole = (currentUser, allUsers) => {
   }
   
   // CS Manager: the CS accounts — to View as any of them (the server allows any active CS)
+  // …their own location's (2026-10-14: Doney Dubai's, ambili B Bangalore's).
   if (role === 'cs_manager') {
-    return allUsers.filter(u => String(u.app_role || u.data?.app_role || '').toLowerCase() === 'cs');
+    const mine = userLocationIn(allUsers, currentUser.id);
+    return allUsers.filter(u => String(u.app_role || u.data?.app_role || '').toLowerCase() === 'cs' && userLocationIn(allUsers, u.id) === mine);
   }
 
   // Admin Supervisor can only see academic_admin users

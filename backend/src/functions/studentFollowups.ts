@@ -119,6 +119,8 @@ export async function getFollowups(req: Request, user: AuthUser): Promise<Respon
       .toArray()) as any[];
     followFilter.student_id = { $in: students.map((s) => String(s._id)) };
   }
+  // The Follow-ups lists leave out anyone marked not a student (students/notStudent.ts); their own page still shows them.
+  if (!studentId) followFilter.student_not_student = { $ne: true };
   const followups = (await col("student_followups").find(followFilter).sort({ next_followup_date: 1 }).toArray()) as any[];
   if (!visible && !studentId) {
     const ids = [...new Set(followups.map((f) => f.student_id))].map(toObjectId).filter(Boolean);

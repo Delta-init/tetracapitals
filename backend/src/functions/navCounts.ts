@@ -11,6 +11,7 @@ import { needsCorrectionFilter, NEEDS_CORRECTION_ALL } from "./fundingCorrection
 import { BONUS_APPROVERS } from "../finance/funding";
 import { openCreditRequests } from "./creditRequests";
 import { csManagerReach, fundingOfIds } from "../lib/userLocation";
+import { IS_STUDENT, OF_A_STUDENT } from "../students/notStudent";
 
 /* The filters behind each number — shared with the Root portal's Pending page (portal/pending.ts), so the two never
    drift apart. A `forId` narrows one to that person, as their own sidebar has it. */
@@ -21,7 +22,8 @@ export const newStudentsFilter = (forId?: string): Record<string, any> =>
     ? { new_for_id: forId, primary_mentor_id: forId }
     : { new_for_id: { $type: "string", $ne: "" }, $expr: { $eq: ["$new_for_id", "$primary_mentor_id"] } };
 /** Follow-ups still open (not Converted / Lost). */
-export const openFollowupsFilter = (): Record<string, any> => ({ stage: { $nin: [...CLOSED_STAGES] } });
+// Not a student's (students/notStudent.ts) left out, as everywhere.
+export const openFollowupsFilter = (): Record<string, any> => ({ stage: { $nin: [...CLOSED_STAGES] }, ...OF_A_STUDENT });
 export const followupsDueTodayFilter = (today: string): Record<string, any> => ({ next_followup_date: today });
 export const followupsOverdueFilter = (today: string): Record<string, any> => ({ next_followup_date: { $gt: "", $lt: today } });
 /** Payment link requests waiting for a Super Admin. */

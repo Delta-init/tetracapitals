@@ -3,6 +3,7 @@ import { toObjectId } from "../lib/id";
 import { notify } from "../lib/notify";
 import { CLOSED_STAGES } from "./followups";
 import { uaeToday } from "./followupReminders";
+import { IS_STUDENT, OF_A_STUDENT } from "./notStudent";
 
 /* ────────────────────────────────────────────────────────────────────────────
    A follow-up with a time (the user, 2026-10-10): its CS — the student's
@@ -37,7 +38,7 @@ async function claim(id: unknown, which: "soon" | "now", key: string): Promise<b
 export async function timeReminderTick(now = Date.now()): Promise<number> {
   const today = uaeToday(now);
   const due = (await col("student_followups")
-    .find({ next_followup_date: today, next_followup_time: { $gt: "" }, stage: { $nin: [...CLOSED_STAGES] } })
+    .find({ next_followup_date: today, next_followup_time: { $gt: "" }, stage: { $nin: [...CLOSED_STAGES] }, ...OF_A_STUDENT })
     .toArray()) as any[];
   if (!due.length) return 0;
   const ids = [...new Set(due.map((f) => String(f.student_id)))].map(toObjectId).filter(Boolean);
