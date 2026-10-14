@@ -8,13 +8,15 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Badge } from "@/components/ui/badge";
-import { Plus, CheckCircle } from "lucide-react";
+import { Plus, CheckCircle, Pencil, Trash2 } from "lucide-react";
 import { canCreateMT5Account } from "../utils/StudentAccessControl";
 import { useStudentMt5, MT5_LOGIN, mt5LoginOf } from "./mt5Accounts";
 import { toast } from "sonner";
 
 export default function MT5AccountSection({ student, currentUser }) {
   const [showAddDialog, setShowAddDialog] = useState(false);
+  // Edit or remove one (the user, 2026-10-14): whoever may add — a login typed wrong.
+  const [editing, setEditing] = useState(null);
   const [formData, setFormData] = useState({
     mt5_login: '',
     platform: 'MT5',
@@ -44,6 +46,42 @@ export default function MT5AccountSection({ student, currentUser }) {
       : e?.message || 'Could not add the MT5 account'),
   });
 
+  const saveEdit = useMutation({
+    mutationFn: async (data) => {
+      await base44.entities.MT5Account.update(editing.id, data);
+      // One primary: the others lose it.
+      if (data.is_primary) {
+        for (const a of mt5Accounts) if (a.id !== editing.id && a.is_primary) await base44.entities.MT5Account.update(a.id, { is_primary: false });
+      }
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['mt5accounts'] });
+      setShowAddDialog(false); setEditing(null); resetForm();
+      toast.success('MT5 account updated');
+    },
+    onError: (e) => toast.error(/E11000|duplicate key/i.test(String(e?.message))
+      ? 'That MT5 login is already saved — for this student or another'
+      : e?.message || 'Could not update the MT5 account'),
+  });
+  const remove = useMutation({
+    mutationFn: async (account) => (await base44.functions.invoke('removeStudentMt5', { id: account.id })).data,
+    onSuccess: (r) => {
+      queryClient.invalidateQueries({ queryKey: ['mt5accounts'] });
+      toast.success(r?.primary ? `MT5 account removed — ${r.primary} is now the primary one` : 'MT5 account removed');
+    },
+    onError: (e) => toast.error(/unknown function|not found|404/i.test(String(e?.message))
+      ? 'Removing needs the server update (the API deploy)'
+      : e?.message || 'Could not remove the MT5 account'),
+  });
+  const startEdit = (a) => {
+    setEditing(a);
+    setFormData({ mt5_login: String(a.mt5_login ?? ''), platform: a.platform || 'MT5', account_type: a.account_type || 'LIVE', base_currency: a.base_currency || 'USD', is_primary: a.is_primary === true });
+    setShowAddDialog(true);
+  };
+  const askRemove = (a) => {
+    if (window.confirm(`Remove MT5 ${a.mt5_login} from ${student.full_name}?${a.is_primary ? ' It is the primary one — their oldest other account becomes primary.' : ''}`)) remove.mutate(a);
+  };
+
   const resetForm = () => {
     setFormData({
       mt5_login: '',
@@ -57,9 +95,13 @@ export default function MT5AccountSection({ student, currentUser }) {
   // A login is its number, 4–15 digits, and one student's (2026-10-14) — their first is the primary one.
   const login = mt5LoginOf(formData.mt5_login);
   const loginError = !login ? '' : !MT5_LOGIN.test(login) ? 'The MT5 login is its number — 4 to 15 digits'
-    : mt5Accounts.some(a => String(a.mt5_login) === login) ? 'Already saved for this student' : '';
+    : mt5Accounts.some(a => String(a.mt5_login) === login && a.id !== editing?.id) ? 'Already saved for this student' : '';
   const handleSubmit = () => {
     if (!login || loginError) return;
+    if (editing) {
+      saveEdit.mutate({ mt5_login: login, platform: formData.platform, account_type: formData.account_type, base_currency: formData.base_currency, is_primary: formData.is_primary });
+      return;
+    }
     const dataToSave = {
       ...formData,
       mt5_login: login,
@@ -149,6 +191,12 @@ export default function MT5AccountSection({ student, currentUser }) {
                       </div>
                     </div>
                   </div>
+                  {canCreate && (
+                    <div className="flex shrink-0 gap-1">
+                      <Button size="sm" variant="ghost" className="h-8 px-2" onClick={() => startEdit(account)} aria-label={`Edit MT5 ${account.mt5_login}`}><Pencil className="h-4 w-4" /></Button>
+                      <Button size="sm" variant="ghost" className="h-8 px-2 text-red-600 hover:bg-red-50 hover:text-red-700" disabled={remove.isPending} onClick={() => askRemove(account)} aria-label={`Remove MT5 ${account.mt5_login}`}><Trash2 className="h-4 w-4" /></Button>
+                    </div>
+                  )}
                 </div>
               </div>
             ))}
@@ -157,10 +205,10 @@ export default function MT5AccountSection({ student, currentUser }) {
       </CardContent>
 
       {/* Add MT5 Account Dialog */}
-      <Dialog open={showAddDialog} onOpenChange={setShowAddDialog}>
+      <Dialog open={showAddDialog} onOpenChange={(o) => { setShowAddDialog(o); if (!o) { setEditing(null); resetForm(); } }}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Add MT5 Account</DialogTitle>
+            <DialogTitle>{editing ? `Edit MT5 ${editing.mt5_login}` : 'Add MT5 Account'}</DialogTitle>
           </DialogHeader>
           <div className="space-y-4">
             <div className="space-y-2">
@@ -173,7 +221,7 @@ export default function MT5AccountSection({ student, currentUser }) {
                 inputMode="numeric"
               />
               {loginError && <p className="text-xs text-red-600">{loginError}</p>}
-              {!loginError && mt5Accounts.length === 0 && <p className="text-xs text-gray-500">Their first MT5 account — saved as the primary one.</p>}
+              {!loginError && !editing && mt5Accounts.length === 0 && <p className="text-xs text-gray-500">Their first MT5 account — saved as the primary one.</p>}
             </div>
 
             <div className="space-y-2">
@@ -227,15 +275,15 @@ export default function MT5AccountSection({ student, currentUser }) {
             </div>
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setShowAddDialog(false)}>
+            <Button variant="outline" onClick={() => { setShowAddDialog(false); setEditing(null); resetForm(); }}>
               Cancel
             </Button>
             <Button
               onClick={handleSubmit}
-              disabled={createMutation.isPending || !login || !!loginError}
+              disabled={createMutation.isPending || saveEdit.isPending || !login || !!loginError}
               className="bg-blue-600 hover:bg-blue-700"
             >
-              {createMutation.isPending ? 'Adding...' : 'Add Account'}
+              {editing ? (saveEdit.isPending ? 'Saving...' : 'Save') : createMutation.isPending ? 'Adding...' : 'Add Account'}
             </Button>
           </DialogFooter>
         </DialogContent>
