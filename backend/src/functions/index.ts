@@ -50,7 +50,7 @@ import { getCreditRequestOptions, raiseCreditRequest, listCreditRequests, decide
 import { getCourseCommissionSummary } from "./courseCommissionSummary";
 import { getCsLeaderboard } from "./csLeaderboard";
 import { getMyCurrency } from "./myCurrency";
-import { removeStudentMt5 } from "./studentMt5";
+import { removeStudentMt5, setPrimaryMt5 } from "./studentMt5";
 import { markNotStudent, unmarkNotStudent, listNotStudents } from "./notStudent";
 import { getLmsCourseAccess, giveLmsCourses, setLmsModuleAccess } from "./lmsCourseAccess";
 import { getClassCompletions } from "./classCompletions";
@@ -187,6 +187,7 @@ const AUTHED: Record<string, AuthedHandler> = {
   getCsLeaderboard,
   getMyCurrency,
   removeStudentMt5,
+  setPrimaryMt5,
   markNotStudent,
   unmarkNotStudent,
   listNotStudents,

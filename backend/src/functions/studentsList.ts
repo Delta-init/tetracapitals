@@ -214,6 +214,13 @@ async function filters(user: AuthUser, tab: Tab, f: any): Promise<Record<string,
   if (BONUS_FILTERS.includes(f?.bonus)) out.push({ _id: { $in: (await idsWithBonusPending(f.bonus)).map(toObjectId).filter(Boolean) } });
   const from = str(f?.from, 40), to = str(f?.to, 40);
   if (from && to) out.push({ created_date: { $gte: from, $lte: to } });
+  // Birthday (the user, 2026-10-14; the date of birth from the LMS — students/lmsEnrolment.ts): today, this week, this
+  // month or from–to (YYYY-MM-DD, the day and month only, whatever the year) — in Dubai days.
+  const bday = str(f?.birthday, 10);
+  if (["today", "week", "month", "range"].includes(bday)) {
+    const days = birthdayDays(bday, str(f?.bday_from, 10), str(f?.bday_to, 10));
+    if (days) out.push({ birth_md: { $in: days } });
+  }
   const status = str(f?.status);
   if (status && status !== "all") out.push({ status });
   const team = str(f?.team, 40);
@@ -340,4 +347,27 @@ export async function findStudentByEmail(req: Request, user: AuthUser): Promise<
     { projection: { full_name: 1, student_code: 1, primary_mentor_id: 1, common_cs: 1 } },
   );
   return json({ student: doc ? { id: String(doc._id), full_name: doc.full_name ?? "", student_code: doc.student_code ?? "", primary_mentor_id: doc.primary_mentor_id ?? "", common_cs: doc.common_cs ?? [] } : null });
+}
+
+/** The "MM-DD" days a Birthday filter covers — Dubai days, across a year end too; null when it can't tell. */
+export function birthdayDays(kind: string, fromDay: string, toDay: string): string[] | null {
+  const today = new Date(Date.now() + 4 * 3_600_000);
+  const day = (d: Date) => d.toISOString().slice(0, 10);
+  let a = day(today), b = a;
+  if (kind === "week") {
+    const wd = (today.getUTCDay() + 6) % 7;                       // Monday first
+    a = day(new Date(today.getTime() - wd * 86_400_000));
+    b = day(new Date(today.getTime() + (6 - wd) * 86_400_000));
+  } else if (kind === "month") {
+    a = `${day(today).slice(0, 8)}01`;
+    b = day(new Date(Date.UTC(today.getUTCFullYear(), today.getUTCMonth() + 1, 0)));
+  } else if (kind === "range") {
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(fromDay) || !/^\d{4}-\d{2}-\d{2}$/.test(toDay)) return null;
+    [a, b] = fromDay <= toDay ? [fromDay, toDay] : [toDay, fromDay];
+  }
+  const out = new Set<string>();
+  for (let t = Date.parse(`${a}T00:00:00Z`), end = Date.parse(`${b}T00:00:00Z`), n = 0; t <= end && n < 366; t += 86_400_000, n++) {
+    out.add(new Date(t).toISOString().slice(5, 10));
+  }
+  return [...out];
 }

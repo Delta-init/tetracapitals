@@ -63,6 +63,18 @@ export default function MT5AccountSection({ student, currentUser }) {
       ? 'That MT5 login is already saved — for this student or another'
       : e?.message || 'Could not update the MT5 account'),
   });
+  // Which one is primary, in one click (the user, 2026-10-14) — the old one loses it; kept in their history.
+  const makePrimary = useMutation({
+    mutationFn: async (account) => (await base44.functions.invoke('setPrimaryMt5', { id: account.id })).data,
+    onSuccess: (r) => {
+      queryClient.invalidateQueries({ queryKey: ['mt5accounts'] });
+      queryClient.invalidateQueries({ queryKey: ['student-mt5'] });
+      toast.success(`${r?.primary} is now the primary MT5${r?.was ? ` (was ${r.was})` : ''}`);
+    },
+    onError: (e) => toast.error(/unknown function|not found|404/i.test(String(e?.message))
+      ? 'This needs the server update (the API deploy)'
+      : e?.message || 'Could not change the primary MT5'),
+  });
   const remove = useMutation({
     mutationFn: async (account) => (await base44.functions.invoke('removeStudentMt5', { id: account.id })).data,
     onSuccess: (r) => {
@@ -192,7 +204,13 @@ export default function MT5AccountSection({ student, currentUser }) {
                     </div>
                   </div>
                   {canCreate && (
-                    <div className="flex shrink-0 gap-1">
+                    <div className="flex shrink-0 items-start gap-1">
+                      {!account.is_primary && (
+                        <Button size="sm" variant="outline" className="h-8 gap-1 px-2 text-xs" disabled={makePrimary.isPending}
+                          onClick={() => makePrimary.mutate(account)} title={`Make ${account.mt5_login} the primary MT5`}>
+                          <CheckCircle className="h-3.5 w-3.5" />Make primary
+                        </Button>
+                      )}
                       <Button size="sm" variant="ghost" className="h-8 px-2" onClick={() => startEdit(account)} aria-label={`Edit MT5 ${account.mt5_login}`}><Pencil className="h-4 w-4" /></Button>
                       <Button size="sm" variant="ghost" className="h-8 px-2 text-red-600 hover:bg-red-50 hover:text-red-700" disabled={remove.isPending} onClick={() => askRemove(account)} aria-label={`Remove MT5 ${account.mt5_login}`}><Trash2 className="h-4 w-4" /></Button>
                     </div>

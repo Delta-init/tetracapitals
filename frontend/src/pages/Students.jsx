@@ -5,6 +5,7 @@ import { LanguagePicker } from '@/components/students/languagePicker';
 import { LANGUAGES } from '@/components/students/languages';
 import { OnboardedSwitch } from '@/components/students/onboarding';
 import { BonusPendingBadge, bonusPendingText } from '@/components/students/bonusPending';
+import { BirthdayTag, birthdayText } from '@/components/students/Birthday';
 import { isStudentOf } from '@/components/students/common';
 import { StudentTagChips, tagNamesOf, useStudentTagCatalog } from '@/components/students/tags';
 import PageHeader from '@/components/common/PageHeader';
@@ -101,6 +102,7 @@ const EXPORT_COLUMNS = [
   { header: 'Enrolment', value: s => ENROLMENT[enrolmentOf(s)].label },
   { header: 'Priority', value: s => PRIORITY[priorityOf(s)].label },
   { header: 'Language', value: s => s.language },
+  { header: 'Birthday', value: s => birthdayText(s.birth_date) },
   // A bonus not decided yet: its amount and where it waits (components/students/bonusPending.jsx).
   { header: 'Bonus pending', width: 30, value: s => bonusPendingText(s.bonus_pending) },
   { header: 'Classes Attended', type: 'number', value: s => s.lms_classes?.attended },
@@ -142,6 +144,10 @@ export default function Students() {
   const [filterFollowup, setFilterFollowup] = useUrlState('followup');
   const [filterBalance, setFilterBalance] = useUrlState('balance');
   const [filterBonus, setFilterBonus] = useUrlState('bonus');   // Bonus pending — a bonus not decided yet (2026-10-10)
+  // Birthday — the date of birth from the LMS (2026-10-14): today, this week, this month or from–to.
+  const [filterBirthday, setFilterBirthday] = useUrlState('birthday');
+  const [bdayFrom, setBdayFrom] = useUrlState('bday_from', '');
+  const [bdayTo, setBdayTo] = useUrlState('bday_to', '');
   const [filterTag, setFilterTag] = useUrlState('tag');
   const [newParam, setNewParam] = useUrlState('new', '');
   const onlyNew = newParam === '1';
@@ -207,9 +213,10 @@ export default function Students() {
   const listFilters = useMemo(() => ({
     search: debouncedSearch, onlyNew, tag: filterTag, enrolment: filterEnrolment, priority: filterPriority, language: filterLanguage, onboarding: filterOnboarding, classes: filterClasses, followup: filterFollowup,
     course: filterCourse, balance: filterBalance, bonus: filterBonus,
+    birthday: filterBirthday, bday_from: bdayFrom, bday_to: bdayTo,
     from: dateRange ? new Date(dateRange.from).toISOString() : '', to: dateRange ? new Date(dateRange.to).toISOString() : '',
     status: filterStatus, team: filterTeam, level: filterLevel, mentor: filterMentor, location: filterLocation,
-  }), [debouncedSearch, onlyNew, filterTag, filterEnrolment, filterPriority, filterLanguage, filterOnboarding, filterClasses, filterFollowup, filterCourse, filterBalance, filterBonus, dateRange, filterStatus, filterTeam, filterLevel, filterMentor, filterLocation]);
+  }), [debouncedSearch, onlyNew, filterTag, filterEnrolment, filterPriority, filterLanguage, filterOnboarding, filterClasses, filterFollowup, filterCourse, filterBalance, filterBonus, filterBirthday, bdayFrom, bdayTo, dateRange, filterStatus, filterTeam, filterLevel, filterMentor, filterLocation]);
   const filtersKey = JSON.stringify(listFilters);
   // A new tab, search or filter starts at page 1 with nothing ticked — not the first time the list is known (the user
   // loading, or the address's own page coming back), which would throw away the page the address asked for.
@@ -844,6 +851,27 @@ export default function Students() {
                 </SelectContent>
               </Select>
 
+              {/* Birthday — from the LMS application's date of birth (2026-10-14) */}
+              <Select value={filterBirthday} onValueChange={(v) => v && setFilterBirthday(v)}>
+                <SelectTrigger className="w-full md:w-44">
+                  <SelectValue placeholder="Birthday" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">Any birthday</SelectItem>
+                  <SelectItem value="today">Birthday today</SelectItem>
+                  <SelectItem value="week">Birthday this week</SelectItem>
+                  <SelectItem value="month">Birthday this month</SelectItem>
+                  <SelectItem value="range">Birthday between…</SelectItem>
+                </SelectContent>
+              </Select>
+              {filterBirthday === 'range' && (
+                <div className="flex items-center gap-1 text-xs text-gray-500">
+                  <Input type="date" value={bdayFrom} onChange={(e) => setBdayFrom(e.target.value)} className="h-9 w-[140px] text-xs" aria-label="Birthday from" />
+                  to
+                  <Input type="date" value={bdayTo} onChange={(e) => setBdayTo(e.target.value)} className="h-9 w-[140px] text-xs" aria-label="Birthday to" />
+                </div>
+              )}
+
               <Select value={filterDateRange} onValueChange={setFilterDateRange}>
                 <SelectTrigger className="w-full md:w-40">
                   <SelectValue placeholder="Date added" />
@@ -1024,6 +1052,7 @@ export default function Students() {
                               <div className="font-medium text-slate-900">{student.full_name}<NewForYou student={student} me={currentUser.id} /></div>
                               {student.email && <div className="text-xs text-slate-500">{student.email}</div>}
                               <BonusPendingBadge info={student.bonus_pending} student={student} className="mt-1" />
+<BirthdayTag date={student.birth_date} className="mt-1 ml-1" />
                             </TableCell>
                             <TableCell className="text-sm font-mono">{student.phone}</TableCell>
                             <TableCell><PriorityPicker student={student} currentUser={currentUser} /></TableCell>
@@ -1126,6 +1155,7 @@ export default function Students() {
                            <div className="font-medium text-slate-900">{student.full_name}<NewForYou student={student} me={currentUser.id} /></div>
                            {student.email && <div className="text-xs text-slate-500">{student.email}</div>}
                            <BonusPendingBadge info={student.bonus_pending} student={student} className="mt-1" />
+<BirthdayTag date={student.birth_date} className="mt-1 ml-1" />
                          </TableCell>
                          <TableCell className="text-sm font-mono">{student.phone}</TableCell>
                          <TableCell><PriorityPicker student={student} currentUser={currentUser} /></TableCell>
@@ -1255,6 +1285,7 @@ export default function Students() {
                             <div className="font-medium text-slate-900">{student.full_name}<NewForYou student={student} me={currentUser.id} /></div>
                             {student.email && <div className="text-xs text-slate-500">{student.email}</div>}
                             <BonusPendingBadge info={student.bonus_pending} student={student} className="mt-1" />
+<BirthdayTag date={student.birth_date} className="mt-1 ml-1" />
                           </TableCell>
                           <TableCell className="text-sm font-mono">{student.phone}</TableCell>
                           <TableCell><PriorityPicker student={student} currentUser={currentUser} /></TableCell>
@@ -1357,6 +1388,7 @@ export default function Students() {
                           <div className="font-medium text-slate-900">{student.full_name}<NewForYou student={student} me={currentUser.id} /></div>
                           {student.email && <div className="text-xs text-slate-500">{student.email}</div>}
                           <BonusPendingBadge info={student.bonus_pending} student={student} className="mt-1" />
+<BirthdayTag date={student.birth_date} className="mt-1 ml-1" />
                         </TableCell>
                         <TableCell className="text-sm font-mono">{student.phone}</TableCell>
                         <TableCell><PriorityPicker student={student} currentUser={currentUser} /></TableCell>
@@ -1466,6 +1498,7 @@ export default function Students() {
                         <div className="font-medium text-slate-900">{student.full_name}<NewForYou student={student} me={currentUser.id} /></div>
                         {student.email && <div className="text-xs text-slate-500">{student.email}</div>}
                         <BonusPendingBadge info={student.bonus_pending} student={student} className="mt-1" />
+<BirthdayTag date={student.birth_date} className="mt-1 ml-1" />
                       </TableCell>
                       <TableCell className="text-sm font-mono">{student.phone}</TableCell>
                       <TableCell><PriorityPicker student={student} currentUser={currentUser} /></TableCell>
