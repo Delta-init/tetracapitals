@@ -10,6 +10,7 @@ import ImpersonationBanner from './components/utils/ImpersonationBanner';
 import NotificationBell from './components/utils/NotificationBell';
 import { getEffectiveUser } from './components/utils/ImpersonationContext';
 import { displayCurrency, setDisplayCurrency } from './components/utils/displayCurrency';
+import { locationByUser, isAllTeamsCsManager } from './components/utils/teams';
 import { EASE } from '@/components/motion';
 import { NAV_ITEMS, NAV_GROUPS, NESTED_GROUPS, GROUP_OF, ROLE_HOME, ROLE_ONLY_PAGES, humanize, pageBlockedFor } from '@/components/utils/navigation';
 import { readsClosedOnly } from '@/components/utils/roles';
@@ -85,7 +86,17 @@ export default function Layout({ children, currentPageName }) {
     if (!currentUser?.id) return;
     base44.functions.invoke('getMyCurrency', {})
       .then(r => setCurrency(setDisplayCurrency(r?.data?.currency)))
-      .catch(() => setCurrency(setDisplayCurrency('AED')));
+      // A server without getMyCurrency yet: their team's location from the people list, as the Teams page reads it.
+      .catch(async () => {
+        try {
+          const users = await base44.entities.User.list();
+          const me = (users || []).find(u => u.id === currentUser.id) || currentUser;
+          const bangalore = !isAllTeamsCsManager(me) && locationByUser(users || [])[currentUser.id] === 'bangalore';
+          setCurrency(setDisplayCurrency(bangalore ? 'INR' : 'AED'));
+        } catch {
+          setCurrency(setDisplayCurrency('AED'));
+        }
+      });
   }, [currentUser?.id]);
 
   // The Sales role's home is the students they closed, not the Dashboard (nothing there is theirs).
