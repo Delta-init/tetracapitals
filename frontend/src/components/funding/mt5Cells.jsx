@@ -1,3 +1,4 @@
+import { localFromAed, typedLocal } from '@/components/utils/displayCurrency';
 import { ReceiptsButton, methodsText, paymentsOf } from '@/components/funding/payments';
 
 /* ────────────────────────────────────────────────────────────────────────────
@@ -9,7 +10,8 @@ import { ReceiptsButton, methodsText, paymentsOf } from '@/components/funding/pa
 ──────────────────────────────────────────────────────────────────────────── */
 
 export const usdText = (n) => `$${Number(n || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
-export const aedText = (n) => `AED ${Number(n || 0).toLocaleString('en-US', { maximumFractionDigits: 2 })}`;
+/** An AED amount in the viewer's currency — INR on a Bangalore team (utils/displayCurrency.js, 2026-10-14). */
+export const aedText = (n) => localFromAed(n);
 /** A bonus's amount column is the MT5 bonus to credit, in USD only (the user, 2026-10-13): a course payment's bonus —
  *  not the payment — else the request's amount. */
 export const bonusUsdOf = (t) => (t.type === 'BONUS' && t.course_payment ? Number(t.course_payment.bonus_usd) || 0 : Number(t.amount_usd) || 0);
@@ -22,8 +24,8 @@ export const bonusLabel = (t) => (t.bonus_credit === 'sales_close' ? 'Sales-clos
 export const receivedOf = (t) => {
   if (t.type !== 'BONUS' || t.bonus_credit) return null;
   const cp = t.course_payment;
-  const amount = cp && Number(cp.paid_today_aed) > 0 ? aedText(cp.paid_today_aed)
-    : Number(t.amount_original) > 0 ? `${t.amount_currency === 'USD' ? usdText(t.amount_original) : `${t.amount_currency || 'AED'} ${Number(t.amount_original).toLocaleString('en-US', { maximumFractionDigits: 2 })}`}` : null;
+  const amount = typedLocal(t) || (cp && Number(cp.paid_today_aed) > 0 ? aedText(cp.paid_today_aed)
+    : Number(t.amount_original) > 0 ? `${t.amount_currency === 'USD' ? usdText(t.amount_original) : `${t.amount_currency || 'AED'} ${Number(t.amount_original).toLocaleString('en-US', { maximumFractionDigits: 2 })}`}` : null);
   if (!amount) return null;
   return {
     received: amount, method: methodsText(t),

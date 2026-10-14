@@ -1,3 +1,4 @@
+import { localFromUsd } from '@/components/utils/displayCurrency';
 import React, { useState, useEffect } from 'react';
 import PageHeader from '@/components/common/PageHeader';
 import { Paged, TablePagination } from '@/components/common/TablePagination';
@@ -566,7 +567,7 @@ export default function FundingRequests() {
           <StatsCard title="Pending Requests" value={pendingCount} icon={PendingIcon} color="amber" trend="Awaiting review" delay={0.05} />
           <StatsCard title="Approved" value={approvedCount} icon={ApprovedIcon} color="emerald" delay={0.12} />
           <StatsCard title="Rejected" value={rejectedCount} icon={RejectedIcon} color="red" delay={0.19} />
-          <StatsCard title="Pending Amount" value={`$${totalPendingAmount.toFixed(2)}`} trend={`AED ${(totalPendingAmount * 3.67).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`} icon={AmountIcon} color="cyan" delay={0.26} />
+          <StatsCard title="Pending Amount" value={`$${totalPendingAmount.toFixed(2)}`} trend={localFromUsd(totalPendingAmount, { decimals: true })} icon={AmountIcon} color="cyan" delay={0.26} />
         </div>
 
         {/* Filters */}

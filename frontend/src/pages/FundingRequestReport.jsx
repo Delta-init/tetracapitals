@@ -1,6 +1,7 @@
+import { localFromAed } from '@/components/utils/displayCurrency';
 import ReportShell, { num } from '@/components/reports/ReportShell';
 
-const aedOnly = (n) => `AED ${(Number(n) || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+const aedOnly = (n) => localFromAed(n, { decimals: true }); // INR on a Bangalore team (2026-10-14)
 // Fully in AED, as Funding Requests (the user, 2026-10-13): a deposit or withdrawal in AED, a course payment what the
 // student paid (a sales-close bonus has none — its money comes through finance).
 

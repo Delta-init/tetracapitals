@@ -1,3 +1,4 @@
+import { displayCurrency } from '@/components/utils/displayCurrency';
 import LmsModulesPreview from '@/components/students/LmsModulesPreview';
 import React, { useState } from 'react';
 import { useQuery, useQueryClient } from "@tanstack/react-query";
@@ -53,6 +54,8 @@ const cents = (n) => Math.round((Number(n) || 0) * 100) / 100;
 /* An amount typed in USD can come out a little off in AED ($544.95 × 3.67 = AED 1,999.97) — never short of the price,
    an instalment or the balance for that much. */
 const ROUNDING_AED = 1;
+/** A course price (AED) as the first payment, in the viewer's currency — INR on a Bangalore team (2026-10-14). */
+const priceTyped = (aed) => (displayCurrency() === 'INR' ? String(Math.round((Number(aed) || 0) / (AED_PER_USD * USD_PER_INR) * 100) / 100) : String(aed));
 const fmt = (n) => (Number(n) || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 export const aedText = (n) => `AED ${fmt(n)}`;
 export const usdText = (n) => `$${fmt(n)}`;
@@ -279,7 +282,7 @@ export default function FundingRequestForm({ students, allStudents = [], current
     type: currentUser?.app_role === 'cs' ? 'BONUS' : 'DEPOSIT',
     student_id: '',
     amount: '',       // as typed, in `currency`
-    currency: 'AED',  // AED, USD or INR — AED to start (the user, 2026-10-12), whatever the type and payment
+    currency: displayCurrency(),  // AED, USD or INR — AED to start (the user, 2026-10-12); INR on a Bangalore team (2026-10-14)
     payment_kind: '', // a Bonus: 'full' or 'partial' — asked once the course is picked
     payment_method: '',
     mt5_login: '',
@@ -332,11 +335,11 @@ export default function FundingRequestForm({ students, allStudents = [], current
   // amount was already typed (AED first, the user, 2026-10-12).
   const chooseKind = (k) => {
     if (k === 'full') {
-      setFormData(f => ({ ...f, payment_kind: k, ...(plan.price ? { currency: 'AED' } : {}) }));
-      if (plan.price) setAmounts(String(plan.priceMoney.aed));
+      setFormData(f => ({ ...f, payment_kind: k, ...(plan.price ? { currency: displayCurrency() } : {}) }));
+      if (plan.price) setAmounts(priceTyped(plan.priceMoney.aed));
     } else {
       const restart = formData.payment_kind === 'full' || !paymentsTotal(payments);
-      setFormData(f => ({ ...f, payment_kind: k, ...(restart ? { currency: 'AED' } : {}) }));
+      setFormData(f => ({ ...f, payment_kind: k, ...(restart ? { currency: displayCurrency() } : {}) }));
       if (restart) setAmounts('');
     }
   };
@@ -621,8 +624,8 @@ export default function FundingRequestForm({ students, allStudents = [], current
                   // Full payment only (no instalments): its price fills in the first payment. Otherwise full or partial
                   // is asked next.
                   const terms = coursePlan(picked0);
-                  setFormData({ ...formData, tags: allTags, payment_kind: '', currency: 'AED' });
-                  setAmounts(terms.instalments === 0 && terms.price ? String(terms.priceMoney.aed) : '');
+                  setFormData({ ...formData, tags: allTags, payment_kind: '', currency: displayCurrency() });
+                  setAmounts(terms.instalments === 0 && terms.price ? priceTyped(terms.priceMoney.aed) : '');
                 }}
               />
               {formData.tags.length > 1 && (

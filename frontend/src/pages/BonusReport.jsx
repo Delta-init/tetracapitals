@@ -1,6 +1,7 @@
+import { localFromAed } from '@/components/utils/displayCurrency';
 import ReportShell, { aed, num } from '@/components/reports/ReportShell';
 
-const aedOnly = (n) => `AED ${(Number(n) || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+const aedOnly = (n) => localFromAed(n, { decimals: true }); // INR on a Bangalore team (2026-10-14)
 
 /* Bonus report (the user, 2026-10-11): bonuses by where they stand — needs a connected call + MT5 (promised at a sales
    close, not sent yet), with finance, waiting for a broker admin, approved, rejected (backend functions/reports.ts

@@ -1,3 +1,4 @@
+import { localFromUsd } from '@/components/utils/displayCurrency';
 import { SentBackNotice } from '@/components/funding/corrections';
 import React, { useState, useEffect } from 'react';
 import { PageTitle } from '@/components/common/PageHeader';
@@ -40,7 +41,7 @@ import { format } from "date-fns";
 const AED_PER_USD = 3.67;
 const two = (n) => (n || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 /** A USD figure in AED only, at 3.67 (the user, 2026-10-14: mentors' commission in AED too). */
-const aedM = (n) => `AED ${two((Number(n) || 0) * AED_PER_USD)}`;
+const aedM = (n) => localFromUsd(n, { decimals: true }); // INR on a Bangalore team (2026-10-14)
 
 export default function MyFundingRequests() {
   const [currentUser, setCurrentUser] = useState(null);
@@ -559,7 +560,7 @@ export default function MyFundingRequests() {
                         <Award className="h-5 w-5 text-emerald-600" />
                       </div>
                       <p className="text-2xl font-bold text-emerald-600">{aedM(view.gross)}</p>
-                      <p className="text-xs text-gray-500 mt-1">level-based · capped at AED 91,750 ($25k)/client</p>
+                      <p className="text-xs text-gray-500 mt-1">level-based · capped at {localFromUsd(25000)} ($25k)/client</p>
                     </div>
 
                     <div className="bg-white rounded-lg p-4 border border-purple-100">

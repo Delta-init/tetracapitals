@@ -1,3 +1,4 @@
+import { localFromAed, displayCurrency } from '@/components/utils/displayCurrency';
 import LmsModulesPreview from '@/components/students/LmsModulesPreview';
 import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
@@ -20,7 +21,8 @@ import { ArrowUpCircle, BookOpen, CheckCircle2, GraduationCap, Loader2, Papercli
 
 /** The funding form's fixed rate (FundingRequestForm.jsx). */
 const AED_PER_USD = 3.67;
-export const aed = (n) => `AED ${Number(n || 0).toLocaleString('en-US')}`;
+/** In the viewer's currency — INR on a Bangalore team (2026-10-14). */
+export const aed = (n) => localFromAed(n);
 export const usd = (n) => `$${Number(n || 0).toLocaleString('en-US')}`;
 
 /** "2,750 + 7 × 2,000" — a payment schedule, short. */
@@ -291,7 +293,7 @@ const METHODS = ['Card', 'Cash', 'Bank transfer', 'Payment link', 'Tabby'];
 export function PaymentDialog({ upgrade, onClose, onSaved }) {
   const room = Math.max(0, upgrade.progress.balanceAed - upgrade.pendingAed);
   const [amount, setAmount] = useState(String(Math.min(upgrade.nextPaymentAed || room, room)));
-  const [currency, setCurrency] = useState('AED');
+  const [currency, setCurrency] = useState(displayCurrency()); // INR first on a Bangalore team (2026-10-14)
   const [method, setMethod] = useState('Card');
   const [paidOn, setPaidOn] = useState(new Date().toISOString().slice(0, 10));
   const [note, setNote] = useState('');
@@ -337,7 +339,7 @@ export function PaymentDialog({ upgrade, onClose, onSaved }) {
               </select>
               <Input type="number" min="0" value={amount} onChange={(e) => setAmount(e.target.value)} className="h-9" />
             </div>
-            {currency !== 'AED' && typed > 0 && <span className="text-xs text-muted-foreground">= {aed(aedAmount)}{aedAmount > room ? ` — more than the ${aed(room)} left` : ''}</span>}
+            {currency !== displayCurrency() && typed > 0 && <span className="text-xs text-muted-foreground">= {aed(aedAmount)}{aedAmount > room ? ` — more than the ${aed(room)} left` : ''}</span>}
           </div>
           <label className="block">Method
             <select value={method} onChange={(e) => setMethod(e.target.value)} className="mt-1 h-9 w-full rounded-md border bg-background px-2">

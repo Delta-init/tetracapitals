@@ -9,6 +9,7 @@ import { Card, CardContent } from '@/components/ui/card';
 import ImpersonationBanner from './components/utils/ImpersonationBanner';
 import NotificationBell from './components/utils/NotificationBell';
 import { getEffectiveUser } from './components/utils/ImpersonationContext';
+import { displayCurrency, setDisplayCurrency } from './components/utils/displayCurrency';
 import { EASE } from '@/components/motion';
 import { NAV_ITEMS, NAV_GROUPS, NESTED_GROUPS, GROUP_OF, ROLE_HOME, ROLE_ONLY_PAGES, humanize, pageBlockedFor } from '@/components/utils/navigation';
 import { readsClosedOnly } from '@/components/utils/roles';
@@ -76,6 +77,16 @@ export default function Layout({ children, currentPageName }) {
     };
     fetchUser();
   }, []);
+
+  // Money in the viewer's currency — INR on a Bangalore team, else AED (the user, 2026-10-14; utils/displayCurrency.js).
+  // The pages are drawn again under the new key when it changes.
+  const [currency, setCurrency] = useState(displayCurrency());
+  useEffect(() => {
+    if (!currentUser?.id) return;
+    base44.functions.invoke('getMyCurrency', {})
+      .then(r => setCurrency(setDisplayCurrency(r?.data?.currency)))
+      .catch(() => setCurrency(setDisplayCurrency('AED')));
+  }, [currentUser?.id]);
 
   // The Sales role's home is the students they closed, not the Dashboard (nothing there is theirs).
   const navigate = useNavigate();
@@ -587,7 +598,7 @@ export default function Layout({ children, currentPageName }) {
                     <Link to="/" className="inline-block text-sm font-medium text-blue-600 hover:underline">Go to the home page</Link>
                   </CardContent></Card>
                 </div>
-              ) : children}
+              ) : <div key={currency} className="contents">{children}</div>}
             </CallFlowProvider>
           </motion.div>
         </main>

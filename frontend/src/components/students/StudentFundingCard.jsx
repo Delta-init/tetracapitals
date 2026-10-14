@@ -1,3 +1,4 @@
+import { localFromAed } from '@/components/utils/displayCurrency';
 import { SentBackNotice } from '@/components/funding/corrections';
 import { useMemo, useState } from 'react';
 import { format } from 'date-fns';
@@ -173,7 +174,7 @@ function CourseBalanceBox({ studentId }) {
   });
   const owing = (data?.balances || []).filter((b) => b.balanceAed > 0);
   const total = owing.reduce((s, b) => s + b.balanceAed, 0);
-  const aed = (n) => `AED ${Number(n || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+  const aed = (n) => localFromAed(n, { decimals: true }); // INR on a Bangalore team (2026-10-14)
   return (
     <Card className="border-none bg-gradient-to-br from-amber-100 to-amber-200 text-amber-900 shadow-sm">
       <CardContent className="flex items-start justify-between p-4">

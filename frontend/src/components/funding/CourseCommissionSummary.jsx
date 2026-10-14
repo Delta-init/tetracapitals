@@ -1,3 +1,4 @@
+import { localFromAed } from '@/components/utils/displayCurrency';
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { base44 } from '@/api/base44Client';
@@ -18,7 +19,8 @@ import { cn } from '@/lib/utils';
    A CS Manager's figures are every CS's (backend functions/courseCommissionSummary.ts).
 ──────────────────────────────────────────────────────────────────────────── */
 
-const AED = (n) => `AED ${Number(n || 0).toLocaleString('en-US', { maximumFractionDigits: 2 })}`;
+/** In the viewer's currency — INR on a Bangalore team (2026-10-14). */
+const AED = (n) => localFromAed(n);
 /** A Dubai day (YYYY-MM-DD) as the instant it starts, `plus` days on. */
 const dubaiStart = (day, plus = 0) => {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(day || '')) return undefined;

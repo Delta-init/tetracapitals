@@ -1,3 +1,4 @@
+import { localFromAed } from '@/components/utils/displayCurrency';
 import React from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { motion } from 'framer-motion';
@@ -20,7 +21,7 @@ const PERIODS = [
   { value: 'year', label: 'This year' },
   { value: 'all', label: 'All time' },
 ];
-const aed = (n) => `AED ${(Number(n) || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+const aed = (n) => localFromAed(n, { decimals: true }); // INR on a Bangalore team (2026-10-14)
 /** A USD figure in AED at the fixed 3.67 — the dashboard is in AED only (the user, 2026-10-13). */
 const inAed = (n) => aed((Number(n) || 0) * 3.67);
 

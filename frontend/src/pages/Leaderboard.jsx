@@ -1,3 +1,4 @@
+import { localFromAed, displayCurrency } from '@/components/utils/displayCurrency';
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { base44 } from '@/api/base44Client';
@@ -17,7 +18,8 @@ import { cn } from '@/lib/utils';
    mentor points board is gone.)
 ──────────────────────────────────────────────────────────────────────────── */
 
-const AED = (n) => `AED ${Number(n || 0).toLocaleString('en-US', { maximumFractionDigits: 2 })}`;
+/** In the viewer's currency — INR on a Bangalore team (2026-10-14). */
+const AED = (n) => localFromAed(n);
 const dubaiDay = (ms = Date.now()) => new Date(ms).toLocaleDateString('en-CA', { timeZone: 'Asia/Dubai' });
 const dubaiStart = (day, plus = 0) => {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(day || '')) return undefined;
@@ -56,7 +58,7 @@ export default function Leaderboard() {
       <div className="mx-auto max-w-6xl space-y-5">
         <div>
           <PageTitle eyebrow="Overview" icon={Trophy}>Leaderboard</PageTitle>
-          <p className="mt-2 text-sm text-slate-500">CSs ranked by the course payments they collected — approved, in AED — with the commission they earned. Teams are their CSs added up.</p>
+          <p className="mt-2 text-sm text-slate-500">CSs ranked by the course payments they collected — approved, in {displayCurrency()} — with the commission they earned. Teams are their CSs added up.</p>
         </div>
 
         <div className="flex flex-wrap items-center gap-2">

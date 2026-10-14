@@ -1,3 +1,4 @@
+import { localFromUsd, localNumberFromAed, displayCurrency } from '@/components/utils/displayCurrency';
 import { useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { toast } from 'sonner';
@@ -23,7 +24,8 @@ import { downloadExcel } from '@/components/utils/excelExport';
 export const usd = (n) => `$${(Number(n) || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 /** The portal's fixed rate (2026-10-13: the reports show AED only — a USD figure at 3.67). */
 export const AED_PER_USD = 3.67;
-export const aed = (n) => `AED ${((Number(n) || 0) * AED_PER_USD).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+/** A USD figure in the viewer's currency — AED, or INR on a Bangalore team (2026-10-14). */
+export const aed = (n) => localFromUsd(n, { decimals: true });
 /** "$4,750.00 · AED 17,432.50" — for a line of text. */
 export const usdAed = (n) => `${usd(n)} · ${aed(n)}`;
 export const num = (n) => (Number(n) || 0).toLocaleString('en-US');
@@ -86,13 +88,13 @@ export default function ReportShell({ title, description, fn, body = {}, cards, 
     try {
       // A money column in AED only, at 3.67.
       const cols = [{ header: first.label }, ...(view === 'people' ? [{ header: 'Team' }] : []),
-        ...columns.map(c => ({ header: c.label, type: c.type ? 'number' : undefined }))];
+        ...columns.map(c => ({ header: c.type === 'money' ? c.label.replace('(AED)', `(${displayCurrency()})`) : c.label, type: c.type ? 'number' : undefined }))];
       const out = rows.map(r => [
         first.fmt ? first.fmt(r[first.key]) : r[first.key],
         ...(view === 'people' ? [r.team] : []),
         ...columns.flatMap(c => {
           const v = c.get ? c.get(r) : r[c.key];
-          if (c.type === 'money') return [v == null ? null : Math.round((Number(v) || 0) * AED_PER_USD * 100) / 100];
+          if (c.type === 'money') return [v == null ? null : localNumberFromAed((Number(v) || 0) * AED_PER_USD)];
           return [c.type ? (v ?? null) : (c.fmt ? c.fmt(v, r) : v)];
         }),
       ]);
@@ -185,7 +187,7 @@ export default function ReportShell({ title, description, fn, body = {}, cards, 
                         <thead className="bg-slate-50 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">
                           <tr>
                             <th className="px-4 py-2.5">{first.label}</th>
-                            {columns.map(c => <th key={c.label} className={`whitespace-nowrap px-4 py-2.5 ${c.type ? 'text-right' : ''} ${TONE[c.tone] || ''}`}>{c.label}</th>)}
+                            {columns.map(c => <th key={c.label} className={`whitespace-nowrap px-4 py-2.5 ${c.type ? 'text-right' : ''} ${TONE[c.tone] || ''}`}>{c.label.replace('(AED)', `(${displayCurrency()})`)}</th>)}
                           </tr>
                         </thead>
                         <tbody className="divide-y divide-slate-100">
