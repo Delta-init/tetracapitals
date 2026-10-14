@@ -54,6 +54,15 @@ const labelOf = (t: any) => {
   if (t.course_payment) return `Course payment bonus${t.course_payment.product ? ` · ${t.course_payment.product}` : ""}`;
   return "MT5 bonus";
 };
+/**
+ * Its amount in AED, as Funding Requests and the funding request report show it (fully in AED, 2026-10-13): what the
+ * student paid with it — a course payment's AED received, else the request's AED, else its USD at 3.67; a bonus
+ * credit (sales close, course upgrade) none: its money came through finance.
+ */
+const paidAedOf = (t: any): number => {
+  if (t.type === "BONUS" && t.bonus_credit) return 0;
+  return cents(Number(t.course_payment?.paid_today_aed) || Number(t.amount_aed) || (Number(t.amount_usd) || 0) * AED_PER_USD);
+};
 /** What the student paid with it, in AED (a course payment, or a bonus raised with a payment). */
 const receivedAedOf = (t: any): number => {
   if (t.type !== "BONUS" || t.bonus_credit) return 0;
@@ -100,7 +109,7 @@ export async function fundingFor(period: Period, only?: string) {
     { $and: [{ $or: [waitingQuery, ...inRange] }, mine] },
     {
       projection: {
-        type: 1, status: 1, amount_usd: 1, amount_original: 1, amount_currency: 1, course_payment: 1, bonus_credit: 1, course_upgrade: 1,
+        type: 1, status: 1, amount_usd: 1, amount_aed: 1, amount_original: 1, amount_currency: 1, course_payment: 1, bonus_credit: 1, course_upgrade: 1,
         student_id: 1, student_name: 1, student_code: 1, initiating_mentor_id: 1, initiating_mentor_name: 1, primary_mentor_id: 1, primary_mentor_name: 1,
         requested_at: 1, created_date: 1, approved_at: 1, rejected_at: 1, updated_date: 1, finance_approval: 1, returned: 1, resubmitted_as: 1, rejection_reason: 1,
       },
@@ -133,7 +142,7 @@ export async function fundingFor(period: Period, only?: string) {
     for (const s of [team, ...(owner ? [sum(owner)] : [])]) {
       if (raisedIn) s.raised++;
       if (WAITING.includes(stage)) {
-        s.pending++; s.pendingUsd = cents(s.pendingUsd + usd); s.pendingAed = aedOf(s.pendingUsd);
+        s.pending++; s.pendingUsd = cents(s.pendingUsd + usd); s.pendingAed = cents(s.pendingAed + paidAedOf(t));
         if (stage === "sent_back") s.sentBack++;
         else if (stage === "with_finance") s.withFinance++;
         else s.waitingBroker++;
@@ -151,8 +160,12 @@ export async function fundingFor(period: Period, only?: string) {
       csId: owner,
       cs: String((t.initiating_mentor_id ? t.initiating_mentor_name : t.primary_mentor_name) ?? ""),
       usd,
-      aed: aedOf(usd),
+      /** Fully in AED: what the student paid with it (0 for a bonus credit), and a bonus's MT5 bonus. */
+      aed: paidAedOf(t),
+      bonusAed: t.type === "BONUS" ? aedOf(usd) : 0,
       receivedAed: receivedAedOf(t),
+      /** Typed in rupees: shown as typed to Bangalore (as Funding Requests does). */
+      typedInr: t.amount_currency === "INR" && Number(t.amount_original) > 0 ? Number(t.amount_original) : 0,
       requestedAt: atOf(t),
       decidedAt: WAITING.includes(stage) ? "" : String(t.approved_at || t.rejected_at || t.finance_approval?.decided_at || t.updated_date || ""),
       commissionUsd: earned.get(String(t._id)) ?? 0,

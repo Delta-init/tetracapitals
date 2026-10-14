@@ -5,7 +5,9 @@ import { notOnboardedFilter, newFromFinanceFilter } from "../students/onboarding
 import { openFollowupsFilter, followupsDueTodayFilter, followupsOverdueFilter } from "../functions/navCounts";
 import { owingFilter, owingFeesOf, dueStateOf, uaeDay } from "../finance/balanceDue";
 import { bonusPendingOf, idsWithBonusPending, type BonusPending } from "../students/bonusPending";
-import { blankFunding, fundingFor, type FundingSummary } from "./csFunding";
+import { AED_PER_USD, blankFunding, fundingFor, type FundingSummary } from "./csFunding";
+import { loadTeams } from "../students/teams";
+import { isAllTeamsCsManager } from "../lib/scope";
 
 /* ────────────────────────────────────────────────────────────────────────────
    GET /api/v1/service/cs-overview[?from&to]  and  /service/cs-overview/:userId
@@ -28,7 +30,14 @@ import { blankFunding, fundingFor, type FundingSummary } from "./csFunding";
    And (2026-10-14) funding requests — the period's and every one still
    waiting, where each is paused, USD and AED, the commission it earned
    (portal/csFunding.ts) — each CS's counts, and the recent course upgrades
-   with who started them, for the CSEs page itself. Read-only.
+   with who started them, for the CSEs page itself.
+
+   Root shows it all in AED (the user, 2026-10-14) — and a Bangalore team's in
+   INR, apart: each CS's `location` (their team's, as getMyCurrency decides it:
+   a Bangalore team's CSs, CS Managers and mentors; the CS Manager over every
+   team is Dubai), the team's figures for each location too (a student's by
+   their CS's), and deposits in the AED they were recorded in (else USD at
+   3.67). Read-only.
 ──────────────────────────────────────────────────────────────────────────── */
 
 export const UPCOMING_DAYS = 7;
@@ -45,7 +54,7 @@ const TEAM = "*";
 
 interface Bucket {
   students: number;
-  deposits: { count: number; usd: number };
+  deposits: { count: number; usd: number; aed: number };
   commissionUsd: number;
   followupsToday: number;
   followupsOverdue: number;
@@ -58,11 +67,26 @@ interface Bucket {
   upgrades: { count: number; paidAed: number; payments: number };
 }
 const blank = (): Bucket => ({
-  students: 0, deposits: { count: 0, usd: 0 }, commissionUsd: 0, followupsToday: 0, followupsOverdue: 0,
+  students: 0, deposits: { count: 0, usd: 0, aed: 0 }, commissionUsd: 0, followupsToday: 0, followupsOverdue: 0,
   upcoming: { count: 0, amount: {} }, overdueDues: { count: 0, amount: {} }, balance: { students: 0, amount: {} },
   bonus: { clients: 0, usd: 0, needsCall: 0, withFinance: 0, waitingBroker: 0 }, notOnboarded: 0, notOnboardedLate: 0,
   upgrades: { count: 0, paidAed: 0, payments: 0 },
 });
+
+/** A deposit's AED: as recorded, else its USD at 3.67. */
+const depositAedOf = (t: any) => (Number(t?.amount_aed) > 0 ? Number(t.amount_aed) : cents((Number(t?.amount_usd) || 0) * AED_PER_USD));
+
+export type Location = "dubai" | "bangalore";
+export const LOCATIONS: Location[] = ["dubai", "bangalore"];
+/** Where each person is, as getMyCurrency decides it: a Bangalore team's people Bangalore; everyone else Dubai. */
+async function locations(): Promise<(id: string) => Location> {
+  const index = await loadTeams();
+  return (id: string) => {
+    const u = index.userById.get(String(id));
+    if (!u || isAllTeamsCsManager(u)) return "dubai";
+    return index.teamOf(id)?.location === "bangalore" ? "bangalore" : "dubai";
+  };
+}
 
 /** Everything both views need, for one CS or for all. */
 async function gather(period: Period, only?: string, now = Date.now()) {
@@ -81,7 +105,7 @@ async function gather(period: Period, only?: string, now = Date.now()) {
       $or: [followupsDueTodayFilter(today), followupsOverdueFilter(today)],
     }, { projection: { student_id: 1, stage: 1, next_followup_date: 1, title: 1, notes: 1 } }).toArray(),
     col("funding_transactions").find({ type: "DEPOSIT", status: "APPROVED", ...(only ? { $or: [{ initiating_mentor_id: only }, { primary_mentor_id: only }] } : {}) },
-      { projection: { amount_usd: 1, initiating_mentor_id: 1, primary_mentor_id: 1, approved_at: 1, requested_at: 1, created_date: 1, student_id: 1, student_name: 1 } }).toArray(),
+      { projection: { amount_usd: 1, amount_aed: 1, initiating_mentor_id: 1, primary_mentor_id: 1, approved_at: 1, requested_at: 1, created_date: 1, student_id: 1, student_name: 1 } }).toArray(),
     col("commission_credits").find({ is_pool: { $ne: true }, ...(only ? { recipient_id: only } : {}) },
       { projection: { recipient_id: 1, commission_usd: 1, requested_at: 1, created_date: 1, student_id: 1, level: 1, transaction_type: 1, status: 1 } }).toArray(),
     idsWithBonusPending("pending"),
@@ -96,8 +120,13 @@ async function gather(period: Period, only?: string, now = Date.now()) {
   const buckets = new Map<string, Bucket>();
   const b = (id: string) => buckets.get(id) ?? buckets.set(id, blank()).get(id)!;
   /** A student's CSs, and the team once (not on one CS's page). */
-  const csAnd = (s: any) => { const ids = csOf(s); return ids.length && !only ? [...ids, TEAM] : ids; };
-  const andTeam = (id: string) => (only ? [id] : [id, TEAM]);
+  const locOf = await locations();
+  /** A student's CSs, and the team once (not on one CS's page) — and their location's team, by their CS's. */
+  const csAnd = (s: any) => {
+    const ids = csOf(s);
+    return ids.length && !only ? [...ids, TEAM, TEAM + locOf(String(s?.primary_mentor_id || ids[0]))] : ids;
+  };
+  const andTeam = (id: string) => (only ? [id] : [id, TEAM, TEAM + locOf(id)]);
 
   for (const s of students as any[]) for (const id of csAnd(s)) b(id).students++;
   for (const s of notOnboarded as any[]) for (const id of csAnd(s)) {
@@ -135,7 +164,8 @@ async function gather(period: Period, only?: string, now = Date.now()) {
   for (const t of depositsIn) {
     const id = String(t.initiating_mentor_id || t.primary_mentor_id || "");
     if (!id || (only && id !== only)) continue;
-    for (const k of andTeam(id)) { b(k).deposits.count++; b(k).deposits.usd = cents(b(k).deposits.usd + (Number(t.amount_usd) || 0)); }
+    const aed = depositAedOf(t);
+    for (const k of andTeam(id)) { const x = b(k).deposits; x.count++; x.usd = cents(x.usd + (Number(t.amount_usd) || 0)); x.aed = cents(x.aed + aed); }
   }
   const creditsIn = (credits as any[]).filter((c) => inPeriod(String(c.requested_at || c.created_date || ""), period));
   for (const c of creditsIn) {
@@ -160,7 +190,7 @@ async function gather(period: Period, only?: string, now = Date.now()) {
     for (const k of andTeam(id)) { const x = b(k).upgrades; x.payments++; x.paidAed = cents(x.paidAed + aed); }
     upgradePaid.set(String(p.upgrade_id), cents((upgradePaid.get(String(p.upgrade_id)) ?? 0) + aed));
   }
-  return { today, dueToday, students: students as any[], studentById, owing: owing as any[], notOnboarded: notOnboarded as any[], lateIds,
+  return { locOf, today, dueToday, students: students as any[], studentById, owing: owing as any[], notOnboarded: notOnboarded as any[], lateIds,
     followups: followups as any[], depositsIn, creditsIn, bonusOf, buckets, upgrades: upgrades as any[], upgradesIn, upgradeOwner, upgradePaid };
 }
 
@@ -180,7 +210,7 @@ export async function csOverview(period: Period) {
   const userOf = new Map(users.map((u) => [String(u._id), u]));
   const rows = ids
     .filter((id) => userOf.has(id))
-    .map((id) => ({ ...personOf(userOf.get(id)), ...g.buckets.get(id)!, funding: funding.byCs.get(id) ?? blankFunding() }))
+    .map((id) => ({ ...personOf(userOf.get(id)), location: g.locOf(id), ...g.buckets.get(id)!, funding: funding.byCs.get(id) ?? blankFunding() }))
     .sort((a, b) => b.students - a.students || a.name.localeCompare(b.name));
   // The period's course upgrades (started, or paid on), newest first, with who started them.
   const recentUpgrades = g.upgrades
@@ -192,7 +222,7 @@ export async function csOverview(period: Period) {
         studentId: String(u.student_id ?? ""), student: String(s?.full_name ?? ""), code: String(s?.student_code ?? ""),
         course: String(u.course ?? ""), plan: String(u.plan ?? ""), status: String(u.status ?? ""),
         dueAed: Number(u.quote?.dueAed) || 0, paidAed: g.upgradePaid.get(String(u._id)) ?? 0, at: String(u.created_at ?? ""),
-        csId: owner, cs: String(u.created_by_name || userOf.get(owner)?.full_name || ""),
+        csId: owner, cs: String(u.created_by_name || userOf.get(owner)?.full_name || ""), location: owner ? g.locOf(owner) : "dubai",
       };
     })
     .sort((a, b) => b.at.localeCompare(a.at))
@@ -201,7 +231,13 @@ export async function csOverview(period: Period) {
   return {
     today: g.today, upcomingDays: UPCOMING_DAYS, period, rows,
     totals: { ...(g.buckets.get(TEAM) ?? blank()), funding: funding.team as FundingSummary },
-    funding: { rows: funding.rows, total: funding.total },
+    // Each location's team figures apart — never adding AED to INR (Root shows Bangalore's in INR).
+    totalsByLocation: Object.fromEntries(LOCATIONS.map((loc) => {
+      const f = blankFunding();
+      for (const [id, x] of funding.byCs) if (g.locOf(id) === loc) for (const k of Object.keys(f) as (keyof FundingSummary)[]) f[k] = Math.round((f[k] + x[k]) * 100) / 100;
+      return [loc, { ...(g.buckets.get(TEAM + loc) ?? blank()), funding: f }];
+    })),
+    funding: { rows: funding.rows.map((r) => ({ ...r, location: r.csId ? g.locOf(r.csId) : "dubai" })), total: funding.total },
     recentUpgrades,
   };
 }
@@ -235,12 +271,12 @@ export async function csDetail(userId: string, period: Period) {
   }
   dues.sort((a, b) => (a.daysLeft ?? 1e9) - (b.daysLeft ?? 1e9));
   return {
-    person: personOf(u),
+    person: { ...personOf(u), location: g.locOf(userId) },
     today: g.today,
     upcomingDays: UPCOMING_DAYS,
     period,
     summary: { ...(g.buckets.get(userId) ?? blank()), funding: funding.byCs.get(userId) ?? blankFunding() },
-    funding: { rows: funding.rows, total: funding.total },
+    funding: { rows: funding.rows.map((r) => ({ ...r, location: g.locOf(userId) })), total: funding.total },
     followups: g.followups
       .filter((f) => g.studentById.has(String(f.student_id)))
       .map((f) => ({ ...nameOf(String(f.student_id)), stage: String(f.stage ?? ""), title: String(f.title ?? ""), due: String(f.next_followup_date ?? ""),
@@ -254,7 +290,7 @@ export async function csDetail(userId: string, period: Period) {
       .sort((a, b) => a.since.localeCompare(b.since)),
     deposits: g.depositsIn
       .filter((t) => String(t.initiating_mentor_id || t.primary_mentor_id || "") === userId)
-      .map((t) => ({ studentId: String(t.student_id ?? ""), student: String(t.student_name ?? nameOf(String(t.student_id)).student), usd: Number(t.amount_usd) || 0,
+      .map((t) => ({ studentId: String(t.student_id ?? ""), student: String(t.student_name ?? nameOf(String(t.student_id)).student), usd: Number(t.amount_usd) || 0, aed: depositAedOf(t),
         at: String(t.approved_at || t.requested_at || t.created_date || "") }))
       .sort((a, b) => b.at.localeCompare(a.at)),
     commission: g.creditsIn.map((c) => ({ ...nameOf(String(c.student_id ?? "")), usd: Number(c.commission_usd) || 0, level: c.level ?? null,
