@@ -6,6 +6,7 @@ import { json } from "../lib/response";
 import { BUILTIN_ROLES, isAdminRole } from "../lib/roles";
 import { pendingOverview } from "./pending";
 import { csOverview, csDetail, type Period } from "./csOverview";
+import { CallFilterError, callsForPortal, recordingLinkForPortal } from "./calls";
 
 /* ────────────────────────────────────────────────────────────────────────────
    /api/v1/service/*   — the Root portal asking about roles and people.
@@ -113,6 +114,24 @@ export async function handlePortalService(req: Request, path: string): Promise<R
   /* GET /pending — the sidebar's numbers for the whole organisation, and whom each waits on (portal/pending.ts). */
   if (path === "/pending" && req.method === "GET") {
     return ok(await pendingOverview());
+  }
+
+  /* GET /calls — every 3CX call with a student, its totals and per person, for Root's "3CX calls" page and its Pending
+     page (2026-10-14; portal/calls.ts). GET /calls/:id/recording-link — a recording's signed 10-minute path here. */
+  if (path === "/calls" && req.method === "GET") {
+    try {
+      return ok(await callsForPortal(url.searchParams));
+    } catch (err) {
+      if (err instanceof CallFilterError) return refuse(400, "VALIDATION_ERROR", err.message);
+      throw err;
+    }
+  }
+  const recMatch = path.match(/^\/calls\/([0-9a-f]{24})\/recording-link$/i);
+  if (recMatch && req.method === "GET") {
+    const link = await recordingLinkForPortal(recMatch[1]!, url.searchParams.get("index"));
+    if (link === "bad") return refuse(400, "VALIDATION_ERROR", "Invalid call or recording");
+    if (!link) return refuse(404, "NOT_FOUND", "No recording for this call");
+    return ok(link);
   }
 
   /* GET /cs-overview[?from&to] and /cs-overview/:userId — each CS's students, deposits, commission and what waits
