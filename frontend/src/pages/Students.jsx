@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { enrolmentOf, ENROLMENT, EnrolledSwitch } from '@/components/students/enrolment';
-import { PRIORITY, PRIORITY_KEYS, priorityOf, PriorityPicker } from '@/components/students/priority';
+import { PRIORITY, PRIORITY_KEYS, priorityOf, PriorityPicker, priorityRowClass } from '@/components/students/priority';
 import { LanguagePicker } from '@/components/students/languagePicker';
 import { LANGUAGES } from '@/components/students/languages';
 import { OnboardedSwitch } from '@/components/students/onboarding';
@@ -1020,8 +1020,6 @@ export default function Students() {
                         <TableHead className="font-semibold">Student Code</TableHead>
                         <TableHead className="font-semibold">Student</TableHead>
                         <TableHead className="font-semibold">Phone</TableHead>
-                        <TableHead className="font-semibold">Priority</TableHead>
-                        <TableHead className="font-semibold">Language</TableHead>
                         <TableHead className="font-semibold">CS</TableHead>
                         <TableHead className="font-semibold">Team</TableHead>
                       <TableHead className="font-semibold">Course</TableHead>
@@ -1038,15 +1036,16 @@ export default function Students() {
                     <TableBody>
                       {displayStudents.length === 0 ? (
                         <TableRow>
-                          <TableCell colSpan={16} className="text-center py-8 text-gray-500">
+                          <TableCell colSpan={14} className="text-center py-8 text-gray-500">
                             {emptyText('No students found')}
                           </TableCell>
                         </TableRow>
                       ) : (
                         displayStudents.map((student) => (
-                          <TableRow key={student.id} className="cursor-pointer hover:bg-gray-50 transition-colors" onClick={(e) => openStudent(e, student.id)}>
+                          <TableRow key={student.id} className={`cursor-pointer transition-colors ${priorityRowClass(student)}`} onClick={(e) => openStudent(e, student.id)}>
                             <TableCell className="font-mono text-sm font-medium text-blue-600">
                               {student.student_code}
+                              <div className="mt-1.5 font-sans"><PriorityPicker student={student} currentUser={currentUser} /></div>
                             </TableCell>
                             <TableCell>
                               <div className="font-medium text-slate-900">{student.full_name}<NewForYou student={student} me={currentUser.id} /></div>
@@ -1054,9 +1053,7 @@ export default function Students() {
                               <BonusPendingBadge info={student.bonus_pending} student={student} className="mt-1" />
 <BirthdayTag date={student.birth_date} className="mt-1 ml-1" />
                             </TableCell>
-                            <TableCell className="text-sm font-mono">{student.phone}</TableCell>
-                            <TableCell><PriorityPicker student={student} currentUser={currentUser} /></TableCell>
-                            <TableCell><LanguagePicker student={student} currentUser={currentUser} /></TableCell>
+                            <TableCell><div className="text-sm font-mono">{student.phone}</div><div className="mt-1.5"><LanguagePicker student={student} currentUser={currentUser} /></div></TableCell>
                             <TableCell className="text-sm">{student.primary_mentor_name}</TableCell>
                             <TableCell className="text-sm">{student.team_name || '-'}<BangaloreBadge location={studentLocationOf(student)} className="ml-1.5" /></TableCell>
                             <TableCell className="max-w-[220px] text-sm"><CourseCell student={student} /></TableCell>
@@ -1123,8 +1120,6 @@ export default function Students() {
                       <TableHead className="font-semibold">Student Code</TableHead>
                       <TableHead className="font-semibold">Student</TableHead>
                       <TableHead className="font-semibold">Phone</TableHead>
-                      <TableHead className="font-semibold">Priority</TableHead>
-                      <TableHead className="font-semibold">Language</TableHead>
                       <TableHead className="font-semibold">CS</TableHead>
                       <TableHead className="font-semibold">Team</TableHead>
                       <TableHead className="font-semibold">Course</TableHead>
@@ -1141,15 +1136,16 @@ export default function Students() {
                   <TableBody>
                     {displayStudents.length === 0 ? (
                      <TableRow>
-                       <TableCell colSpan={16} className="text-center py-8 text-gray-500">
+                       <TableCell colSpan={14} className="text-center py-8 text-gray-500">
                          {emptyText('No team students found')}
                        </TableCell>
                      </TableRow>
                     ) : (
                      displayStudents.map((student) => (
-                       <TableRow key={student.id} className="cursor-pointer hover:bg-gray-50 transition-colors" onClick={(e) => openStudent(e, student.id)}>
+                       <TableRow key={student.id} className={`cursor-pointer transition-colors ${priorityRowClass(student)}`} onClick={(e) => openStudent(e, student.id)}>
                          <TableCell className="font-mono text-sm font-medium text-blue-600">
                            {student.student_code}
+                           <div className="mt-1.5 font-sans"><PriorityPicker student={student} currentUser={currentUser} /></div>
                          </TableCell>
                          <TableCell>
                            <div className="font-medium text-slate-900">{student.full_name}<NewForYou student={student} me={currentUser.id} /></div>
@@ -1157,9 +1153,7 @@ export default function Students() {
                            <BonusPendingBadge info={student.bonus_pending} student={student} className="mt-1" />
 <BirthdayTag date={student.birth_date} className="mt-1 ml-1" />
                          </TableCell>
-                         <TableCell className="text-sm font-mono">{student.phone}</TableCell>
-                         <TableCell><PriorityPicker student={student} currentUser={currentUser} /></TableCell>
-                         <TableCell><LanguagePicker student={student} currentUser={currentUser} /></TableCell>
+                         <TableCell><div className="text-sm font-mono">{student.phone}</div><div className="mt-1.5"><LanguagePicker student={student} currentUser={currentUser} /></div></TableCell>
                          <TableCell className="text-sm text-purple-600 font-medium">{student.primary_mentor_name}</TableCell>
                          <TableCell className="text-sm">{student.team_name || '-'}<BangaloreBadge location={studentLocationOf(student)} className="ml-1.5" /></TableCell>
                             <TableCell className="max-w-[220px] text-sm"><CourseCell student={student} /></TableCell>
@@ -1245,8 +1239,6 @@ export default function Students() {
                       <TableHead className="font-semibold">Student Code</TableHead>
                       <TableHead className="font-semibold">Student</TableHead>
                       <TableHead className="font-semibold">Phone</TableHead>
-                      <TableHead className="font-semibold">Priority</TableHead>
-                      <TableHead className="font-semibold">Language</TableHead>
                       <TableHead className="font-semibold">CS</TableHead>
                       <TableHead className="font-semibold">Team</TableHead>
                       <TableHead className="font-semibold">Course</TableHead>
@@ -1263,13 +1255,13 @@ export default function Students() {
                   <TableBody>
                     {displayStudents.length === 0 ? (
                       <TableRow>
-                        <TableCell colSpan={canTransfer ? 17 : 16} className="text-center py-8 text-gray-500">
+                        <TableCell colSpan={canTransfer ? 15 : 14} className="text-center py-8 text-gray-500">
                           {emptyText('No students found')}
                         </TableCell>
                       </TableRow>
                     ) : (
                       displayStudents.map((student) => (
-                        <TableRow key={student.id} className="cursor-pointer hover:bg-gray-50 transition-colors" onClick={(e) => openStudent(e, student.id)}>
+                        <TableRow key={student.id} className={`cursor-pointer transition-colors ${priorityRowClass(student)}`} onClick={(e) => openStudent(e, student.id)}>
                           {canTransfer && (
                             <TableCell>
                               <Checkbox
@@ -1280,6 +1272,7 @@ export default function Students() {
                           )}
                           <TableCell className="font-mono text-sm font-medium text-blue-600">
                             {student.student_code}
+                            <div className="mt-1.5 font-sans"><PriorityPicker student={student} currentUser={currentUser} /></div>
                           </TableCell>
                           <TableCell>
                             <div className="font-medium text-slate-900">{student.full_name}<NewForYou student={student} me={currentUser.id} /></div>
@@ -1287,9 +1280,7 @@ export default function Students() {
                             <BonusPendingBadge info={student.bonus_pending} student={student} className="mt-1" />
 <BirthdayTag date={student.birth_date} className="mt-1 ml-1" />
                           </TableCell>
-                          <TableCell className="text-sm font-mono">{student.phone}</TableCell>
-                          <TableCell><PriorityPicker student={student} currentUser={currentUser} /></TableCell>
-                          <TableCell><LanguagePicker student={student} currentUser={currentUser} /></TableCell>
+                          <TableCell><div className="text-sm font-mono">{student.phone}</div><div className="mt-1.5"><LanguagePicker student={student} currentUser={currentUser} /></div></TableCell>
                           <TableCell className="text-sm">{student.primary_mentor_name}</TableCell>
                           <TableCell className="text-sm">{student.team_name || '-'}<BangaloreBadge location={studentLocationOf(student)} className="ml-1.5" /></TableCell>
                             <TableCell className="max-w-[220px] text-sm"><CourseCell student={student} /></TableCell>
@@ -1358,8 +1349,6 @@ export default function Students() {
                     <TableHead className="font-semibold">Student Code</TableHead>
                     <TableHead className="font-semibold">Student</TableHead>
                     <TableHead className="font-semibold">Phone</TableHead>
-                    <TableHead className="font-semibold">Priority</TableHead>
-                    <TableHead className="font-semibold">Language</TableHead>
                       <TableHead className="font-semibold">Course</TableHead>
                       <TableHead className="font-semibold">Balance</TableHead>
                     <TableHead className="font-semibold">Status</TableHead>
@@ -1374,15 +1363,16 @@ export default function Students() {
                 <TableBody>
                   {displayStudents.length === 0 ? (
                     <TableRow>
-                      <TableCell colSpan={14} className="text-center py-8 text-gray-500">
+                      <TableCell colSpan={12} className="text-center py-8 text-gray-500">
                         {emptyText('No open pool students available')}
                       </TableCell>
                     </TableRow>
                   ) : (
                     displayStudents.map((student) => (
-                      <TableRow key={student.id} className="cursor-pointer hover:bg-gray-50 transition-colors" onClick={(e) => openStudent(e, student.id)}>
+                      <TableRow key={student.id} className={`cursor-pointer transition-colors ${priorityRowClass(student)}`} onClick={(e) => openStudent(e, student.id)}>
                         <TableCell className="font-mono text-sm font-medium text-blue-600">
                           {student.student_code}
+                          <div className="mt-1.5 font-sans"><PriorityPicker student={student} currentUser={currentUser} /></div>
                         </TableCell>
                         <TableCell>
                           <div className="font-medium text-slate-900">{student.full_name}<NewForYou student={student} me={currentUser.id} /></div>
@@ -1390,9 +1380,7 @@ export default function Students() {
                           <BonusPendingBadge info={student.bonus_pending} student={student} className="mt-1" />
 <BirthdayTag date={student.birth_date} className="mt-1 ml-1" />
                         </TableCell>
-                        <TableCell className="text-sm font-mono">{student.phone}</TableCell>
-                        <TableCell><PriorityPicker student={student} currentUser={currentUser} /></TableCell>
-                        <TableCell><LanguagePicker student={student} currentUser={currentUser} /></TableCell>
+                        <TableCell><div className="text-sm font-mono">{student.phone}</div><div className="mt-1.5"><LanguagePicker student={student} currentUser={currentUser} /></div></TableCell>
                             <TableCell className="max-w-[220px] text-sm"><CourseCell student={student} /></TableCell>
                             <TableCell><BalanceCell student={student} /></TableCell>
                         <TableCell>
@@ -1466,8 +1454,6 @@ export default function Students() {
                   <TableHead className="font-semibold">Student Code</TableHead>
                   <TableHead className="font-semibold">Student</TableHead>
                   <TableHead className="font-semibold">Phone</TableHead>
-                  <TableHead className="font-semibold">Priority</TableHead>
-                  <TableHead className="font-semibold">Language</TableHead>
                   <TableHead className="font-semibold">CS</TableHead>
                   <TableHead className="font-semibold">Team</TableHead>
                       <TableHead className="font-semibold">Course</TableHead>
@@ -1484,15 +1470,16 @@ export default function Students() {
               <TableBody>
                 {displayStudents.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={16} className="text-center py-8 text-gray-500">
+                    <TableCell colSpan={14} className="text-center py-8 text-gray-500">
                       {emptyText('No students found')}
                     </TableCell>
                   </TableRow>
                 ) : (
                   displayStudents.map((student) => (
-                    <TableRow key={student.id} className="cursor-pointer hover:bg-gray-50 transition-colors" onClick={(e) => openStudent(e, student.id)}>
+                    <TableRow key={student.id} className={`cursor-pointer transition-colors ${priorityRowClass(student)}`} onClick={(e) => openStudent(e, student.id)}>
                       <TableCell className="font-mono text-sm font-medium text-blue-600">
                         {student.student_code}
+                        <div className="mt-1.5 font-sans"><PriorityPicker student={student} currentUser={currentUser} /></div>
                       </TableCell>
                       <TableCell>
                         <div className="font-medium text-slate-900">{student.full_name}<NewForYou student={student} me={currentUser.id} /></div>
@@ -1500,9 +1487,7 @@ export default function Students() {
                         <BonusPendingBadge info={student.bonus_pending} student={student} className="mt-1" />
 <BirthdayTag date={student.birth_date} className="mt-1 ml-1" />
                       </TableCell>
-                      <TableCell className="text-sm font-mono">{student.phone}</TableCell>
-                      <TableCell><PriorityPicker student={student} currentUser={currentUser} /></TableCell>
-                      <TableCell><LanguagePicker student={student} currentUser={currentUser} /></TableCell>
+                      <TableCell><div className="text-sm font-mono">{student.phone}</div><div className="mt-1.5"><LanguagePicker student={student} currentUser={currentUser} /></div></TableCell>
                       <TableCell className="text-sm">{student.primary_mentor_name}</TableCell>
                       <TableCell className="text-sm">{student.team_name || '-'}<BangaloreBadge location={studentLocationOf(student)} className="ml-1.5" /></TableCell>
                             <TableCell className="max-w-[220px] text-sm"><CourseCell student={student} /></TableCell>

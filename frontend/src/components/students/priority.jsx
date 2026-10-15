@@ -24,6 +24,9 @@ export const PRIORITY = {
 };
 export const PRIORITY_KEYS = Object.keys(PRIORITY);
 export const priorityOf = (s) => (PRIORITY[s?.priority] ? s.priority : 'normal');
+/** A Students row tinted by its priority (the user, 2026-10-15): High rose, Medium amber, Valli violet; Normal as before. */
+const ROW = { high: 'bg-rose-50/80 hover:bg-rose-100/70', medium: 'bg-amber-50/80 hover:bg-amber-100/70', valli: 'bg-violet-50/80 hover:bg-violet-100/70' };
+export const priorityRowClass = (s) => ROW[priorityOf(s)] || 'hover:bg-gray-50';
 
 const mayChange = (user, student) =>
   !!user && (isAdminRole(user.app_role) || isStudentOf(student, user.id) || ['chief_mentor', 'cs_manager'].includes(user.app_role));
