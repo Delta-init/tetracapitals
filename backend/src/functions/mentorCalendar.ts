@@ -48,7 +48,8 @@ export async function getMentorSchedule(req: Request, _user: AuthUser): Promise<
   if (to <= from) return error("to must be after from", 400);
   if (to.getTime() - from.getTime() > MAX_WINDOW_DAYS * 864e5) return error(`At most ${MAX_WINDOW_DAYS} days at a time`, 400);
   return lms(async () => {
-    const data: any = await callLms("/mentors", { query: { from: from.toISOString(), to: to.toISOString() }, verb: "list its mentors" });
+    // Both academies' mentors — Dubai's and Bangalore's (the user, 2026-10-15); an LMS before that sends its own only.
+    const data: any = await callLms("/mentors", { query: { from: from.toISOString(), to: to.toISOString(), allAcademies: "1" }, verb: "list its mentors" });
     const mentors = (data?.mentors ?? []).map((m: any) => ({ ...m, slots: m.slots ?? [], classes: m.classes ?? [], meetings: m.meetings ?? [] }));
     const hours = await mentorHours(mentors.map((m: any) => m.email), from, to);
     return {
@@ -93,6 +94,8 @@ export async function bookMentorMeeting(req: Request, user: AuthUser): Promise<R
         location: inPerson ? str(body?.location, 300) : undefined,
         meetingUrl: !inPerson && body?.meetingUrl ? str(body.meetingUrl, 500) : undefined,
         attendees: attendeesOf(body?.attendees),
+        // Either academy's mentor (2026-10-15) — the calendar lists both.
+        allAcademies: true,
         notes: body?.notes ? str(body.notes) : undefined,
         bookedByEmail: user.email,
       },

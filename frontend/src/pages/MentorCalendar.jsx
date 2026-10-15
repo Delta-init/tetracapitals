@@ -1,3 +1,4 @@
+import { showsInr } from '@/components/utils/displayCurrency';
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
@@ -186,8 +187,14 @@ export default function MentorCalendar() {
   }, [myMentor, needle, course, mod]);
 
   const [query, setQuery] = useState('');
+  /* Both academies' mentors (the user, 2026-10-15): Dubai's and Bangalore's, each with a badge; this filter starts on
+     the viewer's own location (a Bangalore team's people Bangalore, everyone else Dubai). Each mentor is under the
+     academy they belong to. */
+  const [academy, setAcademy] = useState(() => (showsInr() ? 'bangalore' : 'dubai'));
+  const academyOf = (m) => (/bangal|banglo|bengal/i.test(String(m.academy?.name ?? '')) ? 'bangalore' : 'dubai');
+  const bothAcademies = (schedule.data?.mentors ?? []).some(m => m.academy && academyOf(m) === 'bangalore');
   const shown = useMemo(() => {
-    const all = schedule.data?.mentors ?? [];
+    const all = (schedule.data?.mentors ?? []).filter(m => !bothAcademies || academy === 'all' || academyOf(m) === academy);
     const q = query.trim().toLowerCase();
     const people = onlyMe && myMentor ? [myMentor]
       : q ? all.filter(m => String(m.name || '').toLowerCase().includes(q) || String(m.email || '').toLowerCase().includes(q)) : all;
@@ -195,9 +202,9 @@ export default function MentorCalendar() {
     return filtering
       ? people.filter(m => (m.classes ?? []).some(c => c.status !== 'cancelled' && classShown(c)) || (m.meetings ?? []).some(meetingShown))
       : people;
-  }, [schedule.data, query, onlyMe, myMentor, needle, course, mod]);
+  }, [schedule.data, query, onlyMe, myMentor, needle, course, mod, academy, bothAcademies]);
   // One page for both layouts. Stepping the week keeps the page: the mentors are the same.
-  const { pageItems: pageShown, bar } = usePagination(shown, { resetKey: `${query}|${onlyMe}|${needle}|${course}|${mod}` });
+  const { pageItems: pageShown, bar } = usePagination(shown, { resetKey: `${query}|${onlyMe}|${needle}|${course}|${mod}|${academy}` });
 
   /* ── booking: opened from the day it is for, with that mentor already chosen ── */
   const [booking, setBooking] = useState(null); // { mentor, day }
@@ -490,6 +497,14 @@ export default function MentorCalendar() {
             <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
             <Input value={find} onChange={e => setFind(e.target.value)} placeholder="Search sessions — title, course, module, who it's with…" className="h-9 pl-9" />
           </div>
+          {bothAcademies && (
+            <select value={academy} onChange={e => setAcademy(e.target.value)} aria-label="Academy"
+              className="h-9 rounded-md border border-input bg-background px-2 text-sm">
+              <option value="dubai">Dubai mentors</option>
+              <option value="bangalore">Bangalore mentors</option>
+              <option value="all">Both academies</option>
+            </select>
+          )}
           <select value={course} onChange={e => { setCourse(e.target.value); setMod(''); }} aria-label="Course"
             className="h-9 rounded-md border border-input bg-background px-2 text-sm">
             <option value="">All courses</option>
@@ -556,7 +571,7 @@ export default function MentorCalendar() {
                       <p className="truncate text-xs text-slate-400">{m.email}</p>
                       <WorkLine work={m.work} hrms={hrms} />
                     </div>
-                    {m.shared && <Badge variant="outline" className="shrink-0 text-[10px]">Shared</Badge>}
+                    {bothAcademies && m.academy && <Badge variant="outline" className={cn('shrink-0 text-[10px]', academyOf(m) === 'bangalore' ? 'border-amber-200 bg-amber-50 text-amber-800' : 'border-sky-200 bg-sky-50 text-sky-800')}>{academyOf(m) === 'bangalore' ? 'Bangalore' : 'Dubai'}</Badge>}
                   </div>
                   <div className="space-y-2 px-3 py-2.5">
                     {cell ?? <p className="text-xs text-slate-400">Nothing on this day.</p>}
@@ -591,7 +606,7 @@ export default function MentorCalendar() {
                         <p className="truncate font-medium text-slate-900">{m.name || m.email}</p>
                         <p className="truncate text-xs text-slate-400">{m.email}</p>
                         <WorkLine work={m.work} hrms={hrms} />
-                        {m.shared && <Badge variant="outline" className="mt-1 text-[10px]">Shared</Badge>}
+                        {bothAcademies && m.academy && <Badge variant="outline" className={cn('mt-1 text-[10px]', academyOf(m) === 'bangalore' ? 'border-amber-200 bg-amber-50 text-amber-800' : 'border-sky-200 bg-sky-50 text-sky-800')}>{academyOf(m) === 'bangalore' ? 'Bangalore' : 'Dubai'}</Badge>}
                       </td>
                       {days.map(day => (
                         <td key={day.toISOString()} className="group/cell cursor-pointer px-2 py-2.5 transition-colors hover:bg-cyan-50/50"
