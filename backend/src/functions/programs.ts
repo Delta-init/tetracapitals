@@ -4,6 +4,7 @@ import type { AuthUser } from "../auth/middleware";
 import { callLms, LmsError } from "../lib/lms";
 import { visibleMentorIds, studentsOf, isStudentOf } from "../students/followups";
 import { teamIndex, csManagerReach } from "../lib/userLocation";
+import { isMentorRole } from "../lib/roles";
 import { PROGRAM_NOTICES, sendProgramNotices, recordAnswer } from "../students/programNotices";
 
 /* ────────────────────────────────────────────────────────────────────────────
@@ -155,13 +156,20 @@ export async function searchProgramStudents(req: Request, user: AuthUser): Promi
   else if (body?.everyone) return json({ students: [] });
   const teams = await teamsOf(body, user);
   if (teams instanceof Response) return teams;
-  if (!body?.everyone && teams.length) {
-    // Those teams' students — teams they may pick.
-    and.push(studentsOf(new Set(await teamStaffIds(teams.map((t) => t.id)))));
+  // A whole group at once (the user, 2026-10-15): CSs' students, teams' students, or every student in the portal.
+  const csIds = (Array.isArray(body?.cs) ? body.cs : []).map((c: unknown) => str(c, 40)).filter(Boolean);
+  const group = body?.all === true || csIds.length > 0;
+  if (body?.all === true) {
+    // every student in the portal — nothing more to narrow by
+  } else if (csIds.length || (!body?.everyone && teams.length)) {
+    const staff = new Set<string>(csIds);
+    if (teams.length) for (const id of await teamStaffIds(teams.map((t) => t.id))) staff.add(id);
+    and.push(studentsOf(staff));
   } else if (!body?.everyone && mine !== null) and.push(studentsOf(mine));
   // "Add all": only those with an LMS account — the others can't join its classes.
   if (body?.enrolledOnly) and.push({ "lms_account.exists": true });
-  const rows = (await col("students").find({ $and: and }, { projection: { full_name: 1, email: 1, student_code: 1, primary_mentor_id: 1, primary_mentor_name: 1, common_cs: 1 } }).sort({ full_name: 1 }).limit(body?.everyone ? 20 : 300).toArray()) as any[];
+  and.push({ not_student: { $ne: true } });
+  const rows = (await col("students").find({ $and: and }, { projection: { full_name: 1, email: 1, student_code: 1, primary_mentor_id: 1, primary_mentor_name: 1, common_cs: 1 } }).sort({ full_name: 1 }).limit(group ? 5000 : body?.everyone ? 20 : 300).toArray()) as any[];
   return json({
     students: rows.map((s) => ({ id: String(s._id), name: s.full_name ?? "", email: String(s.email).toLowerCase(), code: s.student_code ?? "", csName: s.primary_mentor_name ?? "", yours: mine === null || isStudentOf(s, mine) })),
   });
@@ -179,6 +187,8 @@ const scheduleOf = (b: any) => ({
   ...(b.description !== undefined ? { description: str(b.description) } : {}),
   ...(b.isOnline !== undefined ? { isOnline: b.isOnline !== false } : {}),
   ...(b.location !== undefined ? { location: str(b.location, 200) } : {}),
+  // Its picture (2026-10-15) — an https address from the portal's upload, or "" to take it off.
+  ...(b.thumbnailUrl !== undefined ? { thumbnailUrl: str(b.thumbnailUrl, 2048) } : {}),
 });
 const emailsOf = (v: unknown) => [...new Set((Array.isArray(v) ? v : []).map((e) => str(e, 200).toLowerCase()).filter((e) => e.includes("@")))];
 
@@ -195,7 +205,8 @@ export async function createProgram(req: Request, user: AuthUser): Promise<Respo
   return lms(async () => {
     const made: any = await callLms("/programs", {
       method: "POST", verb: "make the program",
-      body: { ...scheduleOf(body), mentorEmail, students, actorEmail: user.email, actorName: user.full_name || user.email },
+      // Co-mentors too (2026-10-15) — the LMS takes them as coMentorEmails.
+      body: { ...scheduleOf(body), mentorEmail, coMentorEmails: emailsOf(body?.coMentorEmails).filter((e) => e !== mentorEmail), students, actorEmail: user.email, actorName: user.full_name || user.email },
     });
     const [one] = await decorate([made], user, await visibleMentorIds(user));
     if (teams.length && made?.id) {
@@ -286,5 +297,36 @@ export async function setProgramResponse(req: Request, user: AuthUser): Promise<
     await recordAnswer(notice, response, "by hand", program);
     await col(PROGRAM_NOTICES).updateOne(key, { $set: { answered_by: user.full_name || user.email } });
     return { ok: true, response };
+  });
+}
+
+/**
+ * POST /api/functions/getProgramAudiences → { all, teams: [{ id, name, location, count }], cs: [{ id, name, team, count }] }
+ * The groups New program adds students by (the user, 2026-10-15): every student in the portal, each team they may pick,
+ * each CS on those teams — with how many of their students have an LMS account (the ones a program can take).
+ */
+export async function getProgramAudiences(_req: Request, user: AuthUser): Promise<Response> {
+  if (!MAKERS.has(user.app_role)) return forbidden();
+  const idx = await teamIndex();
+  const teams = await pickableTeams(user);
+  const enrolled = { email: { $nin: [null, ""] }, "lms_account.exists": true, not_student: { $ne: true } };
+  const byCs = new Map<string, number>(((await col("students").aggregate([
+    { $match: enrolled }, { $group: { _id: "$primary_mentor_id", n: { $sum: 1 } } },
+  ]).toArray()) as any[]).map((r) => [String(r._id ?? ""), r.n]));
+  const teamIds = new Set(teams.map((t) => t.id));
+  const cs: { id: string; name: string; team: string; count: number }[] = [];
+  const teamCount = new Map<string, number>();
+  for (const [id, u] of idx.userById) {
+    if (!isMentorRole(String(u?.app_role ?? "")) || u?.status === "inactive") continue;
+    const t = idx.teamOf(id);
+    if (!t || !teamIds.has(t.id)) continue;
+    const n = byCs.get(id) ?? 0;
+    teamCount.set(t.id, (teamCount.get(t.id) ?? 0) + n);
+    if (u.app_role === "cs" || n > 0) cs.push({ id, name: String(u.full_name || u.email || "CS"), team: t.name, count: n });
+  }
+  return json({
+    all: await col("students").countDocuments(enrolled),
+    teams: teams.map((t) => ({ ...t, count: teamCount.get(t.id) ?? 0 })),
+    cs: cs.sort((a, b) => a.name.localeCompare(b.name)),
   });
 }

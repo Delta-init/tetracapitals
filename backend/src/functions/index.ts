@@ -68,7 +68,7 @@ import {
   getWhatsAppStatus, connectWhatsApp, disconnectWhatsApp, getWhatsAppChats, getWhatsAppMessages, markWhatsAppRead,
   sendWhatsApp, sendWhatsAppFile, linkWhatsAppChat, getStudentWhatsApp, getWhatsAppUnread,
 } from "./whatsapp";
-import { listPrograms, searchProgramStudents, createProgram, changeProgramStudents, rescheduleProgram, stopProgram, resendProgramNotice, setProgramResponse } from "./programs";
+import { listPrograms, searchProgramStudents, createProgram, changeProgramStudents, rescheduleProgram, stopProgram, resendProgramNotice, setProgramResponse, getProgramAudiences } from "./programs";
 import { getMentorSchedule, getMentorClass, bookMentorMeeting, getMentorMeeting, updateMentorMeeting, cancelMentorMeeting } from "./mentorCalendar";
 import { getInactivityTransfer, setInactivityTransfer, runInactivityTransfer } from "./inactivityTransfer";
 import { financeFundingConfigured } from "../finance/funding";
@@ -191,6 +191,7 @@ const AUTHED: Record<string, AuthedHandler> = {
   removeStudentMt5,
   setPrimaryMt5,
   markNotStudent,
+  getProgramAudiences,
   unmarkNotStudent,
   listNotStudents,
   // The bonus course payments, on the Course Upgrades page (courseUpgrades.ts)

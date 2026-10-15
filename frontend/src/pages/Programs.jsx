@@ -12,6 +12,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { CalendarClock, Check, Loader2, Mail, MessageCircle, Plus, Repeat, RotateCw, Search, Square, UserMinus, UserPlus, X } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import AudiencePicker from '@/components/programs/AudiencePicker';
 
 /* Programs (the user, 2026-10-09): a live class in the LMS that repeats weekly or monthly until an end date, for the
    students picked for it only. A CS picks their own students (and any other CS's by searching), a Chief Mentor or CS
@@ -86,6 +87,23 @@ function useProgramAction(name, okText) {
   });
 }
 
+/** The program's link: the next class's Google Meet (or the program's own link), with Copy and Open. */
+function ProgramLink({ p }) {
+  const now = Date.now();
+  const next = p.classes.find(c => c.status === 'scheduled' && new Date(c.startsAt).getTime() + (p.durationMins || 60) * 60_000 > now && c.meetUrl);
+  const url = p.meetingMode === 'link' && p.meetingUrl ? p.meetingUrl : next?.meetUrl;
+  if (!p.isOnline) return <p className="text-xs text-gray-500">In person — {p.location || 'no place given'}; no link.</p>;
+  if (!url) return <p className="text-xs text-gray-500">No Meet link yet — the LMS makes one for each class{p.classes.some(c => 'meetUrl' in c) ? '' : ' (needs the LMS update to show here)'}.</p>;
+  return (
+    <div className="flex flex-wrap items-center gap-2 rounded-md border border-blue-100 bg-blue-50/60 px-3 py-2 text-sm">
+      <span className="text-xs font-medium uppercase text-gray-500">{p.meetingMode === 'link' ? 'Program link' : 'Next class link'}</span>
+      <a href={url} target="_blank" rel="noreferrer" className="min-w-0 truncate font-mono text-blue-700 hover:underline">{url}</a>
+      {next && p.meetingMode !== 'link' && <span className="text-xs text-gray-500">· {when(next.startsAt)}</span>}
+      <Button type="button" size="sm" variant="outline" className="ml-auto h-7 text-xs" onClick={() => { navigator.clipboard?.writeText(url).then(() => toast.success('Link copied'), () => toast.error("Couldn't copy")); }}>Copy</Button>
+    </div>
+  );
+}
+
 function ProgramCard({ p, open, onToggle }) {
   const change = useProgramAction('changeProgramStudents', 'Students changed');
   const stop = useProgramAction('stopProgram', 'Program stopped');
@@ -103,13 +121,16 @@ function ProgramCard({ p, open, onToggle }) {
             <p className="mt-0.5 text-xs text-gray-400">{teamsOfProgram(p).map(t => <Badge key={t.id} variant="outline" className="mr-1.5 border-blue-200 bg-blue-50 px-1.5 py-0 text-[10px] text-blue-700">{t.name}</Badge>)}Made by {p.createdByName || p.createdByEmail || 'the LMS'}{p.source === 'lms' ? ' (in the LMS)' : ''}</p>
           </div>
           <div className="text-right text-xs text-gray-600">
-            <p className="font-medium text-gray-800">{p.mentor?.name ?? '—'}</p>
+            <p className="font-medium text-gray-800">{p.mentor?.name ?? '—'}{p.coMentors?.length ? <span className="font-normal text-gray-500"> + {p.coMentors.map(m => m.name).join(', ')}</span> : null}</p>
             <p>{p.students.length} student{p.students.length === 1 ? '' : 's'} · {upcoming.length} to come</p>
             {p.nextClassAt && <p className="flex items-center justify-end gap-1"><CalendarClock className="h-3.5 w-3.5" />{when(p.nextClassAt)}</p>}
           </div>
         </button>
         {open && (
           <div className="mt-4 space-y-4 border-t pt-4">
+            {/* Its link (the user, 2026-10-15): the next class's Google Meet, to copy or open; each date opens its own below */}
+            <ProgramLink p={p} />
+            {p.thumbnailUrl && <img src={p.thumbnailUrl} alt="" className="h-24 w-44 rounded-md border object-cover" />}
             <div>
               <p className="mb-2 text-xs font-medium uppercase text-gray-500">Students</p>
               <div className="flex flex-wrap gap-2">
@@ -130,7 +151,12 @@ function ProgramCard({ p, open, onToggle }) {
             <div>
               <p className="mb-2 text-xs font-medium uppercase text-gray-500">Classes</p>
               <div className="flex flex-wrap gap-1.5 text-[11px]">
-                {p.classes.map(c => <span key={c.id} className={cn('rounded px-1.5 py-0.5', c.status === 'cancelled' ? 'bg-gray-100 text-gray-400 line-through' : new Date(c.startsAt).getTime() < Date.now() ? 'bg-gray-100 text-gray-500' : 'bg-blue-50 text-blue-700')}>{when(c.startsAt)}</span>)}
+                {p.classes.map(c => {
+                  const cls = cn('rounded px-1.5 py-0.5', c.status === 'cancelled' ? 'bg-gray-100 text-gray-400 line-through' : new Date(c.startsAt).getTime() < Date.now() ? 'bg-gray-100 text-gray-500' : 'bg-blue-50 text-blue-700');
+                  return c.meetUrl && c.status !== 'cancelled'
+                    ? <a key={c.id} href={c.meetUrl} target="_blank" rel="noreferrer" title="Open its Google Meet" className={cn(cls, 'underline-offset-2 hover:underline')}>{when(c.startsAt)}</a>
+                    : <span key={c.id} className={cls}>{when(c.startsAt)}</span>;
+                })}
               </div>
             </div>
             {p.canManage && p.status === 'active' && (
@@ -244,33 +270,67 @@ function ProgramDialog({ program, onClose, teams = [] }) {
     isOnline: program?.isOnline ?? true, location: program?.location ?? '',
   });
   const [students, setStudents] = useState([]);
+  /* Groups ticked in the dropdown (2026-10-15) and which brought each student: unticking a group takes off only the
+     students no other group (or a pick by hand, 'manual') brought. */
+  const [groups, setGroups] = useState([]);
+  const [via, setVia] = useState({});
+  const addGroup = (key, found) => {
+    setGroups(g => (g.includes(key) ? g : [...g, key]));
+    setVia(v => { const n = { ...v }; for (const s of found) n[s.email] = [...new Set([...(n[s.email] ?? []), key])]; return n; });
+    setStudents(xs => { const have = new Set(xs.map(x => x.email)); return [...xs, ...found.filter(x => !have.has(x.email))]; });
+  };
+  const removeGroup = (key) => {
+    setGroups(g => g.filter(k => k !== key));
+    const n = {}, drop = new Set();
+    for (const [email, keys] of Object.entries(via)) { const left = keys.filter(k => k !== key); if (left.length) n[email] = left; else if (keys.includes(key)) drop.add(email); }
+    setVia(n);
+    setStudents(xs => xs.filter(x => !drop.has(x.email)));
+  };
+  const pickOne = (s) => {
+    setVia(v => ({ ...v, [s.email]: [...new Set([...(v[s.email] ?? []), 'manual'])] }));
+    setStudents(xs => (xs.some(x => x.email === s.email) ? xs : [...xs, s]));
+  };
+  const dropOne = (email) => {
+    setVia(v => { const n = { ...v }; delete n[email]; return n; });
+    setStudents(xs => xs.filter(x => x.email !== email));
+  };
+  // Co-mentors beside the main one, and its picture (2026-10-15; the LMS shows it on the class cards).
+  const [coMentors, setCoMentors] = useState((program?.coMentors ?? []).map(m => String(m.email).toLowerCase()));
+  const [image, setImage] = useState(program?.thumbnailUrl ?? '');
+  const [uploading, setUploading] = useState(false);
+  const upload = async (file) => {
+    if (!file) return;
+    if (!/^image\/(jpeg|png|webp)$/.test(file.type)) { toast.error('A JPG, PNG or WebP picture'); return; }
+    if (file.size > 2 * 1024 * 1024) { toast.error('At most 2 MB'); return; }
+    setUploading(true);
+    try {
+      const { file_url } = await base44.integrations.Core.UploadFile({ file });
+      setImage(file_url);
+    } catch (e) {
+      toast.error(errText(e));
+    } finally {
+      setUploading(false);
+    }
+  };
   // The team it is for — their own (the first they may pick) to start (2026-10-14).
   // Several teams, or all of them (the user, 2026-10-15).
   const [picked, setPicked] = useState(teams[0]?.id ? [teams[0].id] : []);
   const allPicked = teams.length > 0 && picked.length === teams.length;
   const toggleTeam = (id) => setPicked(xs => (xs.includes(id) ? xs.filter(x => x !== id) : [...xs, id]));
-  const [adding, setAdding] = useState(false);
-  const addAll = async () => {
-    setAdding(true);
-    try {
-      const r = await fn('searchProgramStudents', { q: '', teams: allPicked ? ['all'] : picked, enrolledOnly: true });
-      const found = r?.students ?? [];
-      setStudents(xs => { const have = new Set(xs.map(x => x.email)); return [...xs, ...found.filter(x => !have.has(x.email))]; });
-      toast.success(found.length ? `${found.length} enrolled student${found.length === 1 ? '' : 's'} of ${picked.length > 1 ? 'the teams' : 'the team'} added` : `${picked.length > 1 ? 'The teams have' : 'The team has'} no students with an LMS account`);
-    } catch (e) {
-      toast.error(errText(e));
-    } finally {
-      setAdding(false);
-    }
-  };
   const set = (k, v) => setF(x => ({ ...x, [k]: v }));
   const busy = create.isPending || reschedule.isPending;
   const ready = f.title.trim().length >= 3 && f.endDate && (f.repeat === 'monthly' || f.weekdays.length) && (f.isOnline || f.location.trim().length >= 2) && (program || (f.mentorEmail && students.length));
   const submit = () => {
     const sched = { repeat: f.repeat, weekdays: f.repeat === 'weekly' ? f.weekdays : [], monthDay: f.repeat === 'monthly' && f.monthDay !== '' ? Number(f.monthDay) : null, startDate: f.startDate, endDate: f.endDate, time: f.time, durationMins: Number(f.durationMins), title: f.title.trim(), description: f.description.trim(), isOnline: f.isOnline, location: f.location.trim() };
+    // Changing: the picture on its own (the classes stay), then the rest only if any of it changed.
+    const same = program && ['repeat', 'monthDay', 'startDate', 'endDate', 'time', 'durationMins', 'title', 'description', 'isOnline', 'location'].every(k => String(sched[k] ?? '') === String(program[k] ?? ''))
+      && JSON.stringify(sched.weekdays) === JSON.stringify(program.repeat === 'weekly' ? program.weekdays : []);
     const m = program
-      ? reschedule.mutateAsync({ id: program.id, ...sched })
-      : create.mutateAsync({ ...sched, mentorEmail: f.mentorEmail, studentEmails: students.map(s => s.email), ...(picked.length ? { teams: allPicked ? ['all'] : picked } : {}) });
+      ? (async () => {
+          if (image !== (program.thumbnailUrl ?? '')) await reschedule.mutateAsync({ id: program.id, thumbnailUrl: image });
+          if (!same) await reschedule.mutateAsync({ id: program.id, ...sched });
+        })()
+      : create.mutateAsync({ ...sched, mentorEmail: f.mentorEmail, coMentorEmails: coMentors.filter(e => e !== f.mentorEmail), ...(image ? { thumbnailUrl: image } : {}), studentEmails: students.map(s => s.email), ...(picked.length ? { teams: allPicked ? ['all'] : picked } : {}) });
     m.then(onClose).catch(() => {});
   };
   return (
@@ -315,6 +375,33 @@ function ProgramDialog({ program, onClose, teams = [] }) {
               </select>
             </div>
           )}
+          {!program && mentors.length > 1 && (
+            <div>
+              <Label>Co-mentors (optional)</Label>
+              <div className="mt-1 flex max-h-28 flex-wrap gap-1.5 overflow-auto rounded-md border p-2">
+                {mentors.filter(m => String(m.email).toLowerCase() !== f.mentorEmail).map(m => {
+                  const e = String(m.email).toLowerCase();
+                  const on = coMentors.includes(e);
+                  return (
+                    <button key={e} type="button" aria-pressed={on} onClick={() => setCoMentors(xs => (on ? xs.filter(x => x !== e) : [...xs, e]))}
+                      className={cn('rounded-full border px-2.5 py-1 text-xs', on ? 'border-violet-300 bg-violet-100 font-medium text-violet-800' : 'border-gray-200 bg-white text-gray-600 hover:bg-gray-50')}>{m.name}</button>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+          <div>
+            <Label>Picture (optional)</Label>
+            <div className="mt-1 flex items-center gap-3">
+              {image ? <img src={image} alt="" className="h-14 w-24 rounded-md border object-cover" /> : <div className="flex h-14 w-24 items-center justify-center rounded-md border border-dashed text-[10px] text-gray-400">No picture</div>}
+              <label className="cursor-pointer rounded-md border px-3 py-1.5 text-xs hover:bg-gray-50">
+                {uploading ? 'Uploading…' : image ? 'Change' : 'Upload'}
+                <input type="file" accept="image/jpeg,image/png,image/webp" className="hidden" disabled={uploading} onChange={e => { upload(e.target.files?.[0]); e.target.value = ''; }} />
+              </label>
+              {image && <button type="button" className="text-xs text-red-600 hover:underline" onClick={() => setImage('')}>Remove</button>}
+            </div>
+            <p className="mt-1 text-xs text-gray-500">Shown on its classes in the LMS. JPG, PNG or WebP, up to 2 MB.</p>
+          </div>
           <div className="flex gap-2">
             {['weekly', 'monthly'].map(r => <Button key={r} type="button" size="sm" variant={f.repeat === r ? 'default' : 'outline'} className="flex-1" onClick={() => set('repeat', r)}>{r === 'weekly' ? 'Weekly' : 'Monthly'}</Button>)}
           </div>
@@ -338,13 +425,15 @@ function ProgramDialog({ program, onClose, teams = [] }) {
           {!program && (
             <div>
               <div className="flex items-center justify-between gap-2">
-                <Label>Students — only they see it</Label>
-                {picked.length > 0 && <Button type="button" size="sm" variant="outline" className="h-7 text-xs" disabled={adding} onClick={addAll}>{adding ? <Loader2 className="mr-1 h-3 w-3 animate-spin" /> : <UserPlus className="mr-1 h-3 w-3" />}Add all {picked.length > 1 ? "the teams'" : "the team's"} enrolled</Button>}
+                <Label>Students — only they see it{students.length ? ` (${students.length})` : ''}</Label>
+                {students.length > 0 && <button type="button" className="text-xs text-red-600 hover:underline" onClick={() => { setStudents([]); setVia({}); setGroups([]); }}>Clear all</button>}
               </div>
-              <div className="my-1.5 flex flex-wrap gap-1.5">
-                {students.map(s => <span key={s.email} className="flex items-center gap-1 rounded-full bg-blue-50 px-2.5 py-1 text-xs text-blue-800">{s.name}{!s.yours && s.csName ? <span className="text-blue-400">· {s.csName}</span> : null}<button type="button" aria-label={`Remove ${s.name}`} onClick={() => setStudents(students.filter(x => x.email !== s.email))}><X className="h-3 w-3" /></button></span>)}
+              <div className="mt-1"><AudiencePicker selected={groups} onAdd={addGroup} onRemove={removeGroup} /></div>
+              {students.length > 490 && <p className="mt-1 text-xs text-amber-700">A program takes at most 490 students — take some off.</p>}
+              <div className="my-1.5 flex max-h-40 flex-wrap gap-1.5 overflow-auto">
+                {students.map(s => <span key={s.email} className="flex items-center gap-1 rounded-full bg-blue-50 px-2.5 py-1 text-xs text-blue-800">{s.name}{!s.yours && s.csName ? <span className="text-blue-400">· {s.csName}</span> : null}<button type="button" aria-label={`Remove ${s.name}`} onClick={() => dropOne(s.email)}><X className="h-3 w-3" /></button></span>)}
               </div>
-              <StudentPicker teams={picked} exclude={students.map(s => s.email)} onPick={s => setStudents(xs => xs.some(x => x.email === s.email) ? xs : [...xs, s])} />
+              <StudentPicker teams={picked} exclude={students.map(s => s.email)} onPick={pickOne} />
             </div>
           )}
         </div>
