@@ -17,15 +17,49 @@ import { getDownlineIds } from "../lib/scope";
 ──────────────────────────────────────────────────────────────────────────── */
 
 // "Onboarding call": the call after a student is onboarded (the user, 2026-10-04) — never automatic, as "Other".
-export const TARGET_OUTCOMES = ["DSLP", "DQMP", "DGMP", "Additional Deposit / Top-up", "Onboarding call", "Other"] as const;
+// The courses are the Products page's (transaction_tags, active), plus DGMP until it is one (the user, 2026-10-16:
+// MSNR and the other courses were missing — the list was the old sheet's DSLP / DQMP / DGMP); targetOutcomes().
+export const FIXED_OUTCOMES = ["Additional Deposit / Top-up", "Onboarding call", "Other"] as const;
+/** The old sheet's courses: still valid on a follow-up that has one, and DGMP still offered. */
+const LEGACY_COURSE_OUTCOMES = ["DSLP", "DQMP", "DGMP"];
+const KEPT_COURSE_OUTCOMES = ["DGMP"];
+/** @deprecated the fixed list from before 2026-10-16 — kept for anything still reading it; targetOutcomes() is the list. */
+export const TARGET_OUTCOMES = ["DSLP", "DQMP", "DGMP", ...FIXED_OUTCOMES] as const;
+
+/** The target outcomes offered: each course on the Products page (active), DGMP, then Top-up, Onboarding call, Other. */
+export async function targetOutcomes(): Promise<string[]> {
+  const products = ((await col("transaction_tags").find({ active: { $ne: false } }, { projection: { name: 1 } }).sort({ name: 1 }).toArray()) as any[])
+    .map((t) => String(t.name ?? "").trim()).filter(Boolean);
+  const courses = [...new Set([...products, ...KEPT_COURSE_OUTCOMES])].filter((n) => !(FIXED_OUTCOMES as readonly string[]).includes(n));
+  return [...courses, ...FIXED_OUTCOMES];
+}
+
+/** Whether a follow-up may be about this: one offered now, or one of the old sheet's courses. */
+export async function isTargetOutcome(outcome: string): Promise<boolean> {
+  if (!outcome) return false;
+  if (LEGACY_COURSE_OUTCOMES.includes(outcome)) return true;
+  return (await targetOutcomes()).includes(outcome);
+}
+
+const words = (v: unknown) => String(v ?? "").toLowerCase().split(/[^a-z0-9]+/).filter(Boolean);
+/**
+ * Whether money paid for `course` (a product's name, an upgrade's code or name) is the course a follow-up is about:
+ * every word of the outcome is in it — "MSNR" is MSNR, "DSLP Full" is "DSLP PRO Full", and the old "DSLP" any DSLP.
+ */
+export function outcomeMatches(outcome: string, course: unknown): boolean {
+  const want = words(outcome);
+  const have = new Set(words(course));
+  return want.length > 0 && want.every((w) => have.has(w));
+}
 export const STAGES = ["New", "Contacted", "Qualified", "Session with CM", "Objection Stage", "Converted", "Lost"] as const;
 export const LOST_REASONS = [
   "Not enough capital right now", "Trust / legitimacy concern", "Comparing with free content",
   "Price too high", "Needs more time to decide", "Not interested", "Other (see notes)",
 ] as const;
 export const CLOSED_STAGES = new Set(["Converted", "Lost"]);
-const PRODUCT_OUTCOMES = new Set(["DSLP", "DQMP", "DGMP"]);
 const TOP_UP = "Additional Deposit / Top-up";
+/** A course outcome: anything but Top-up, Onboarding call and Other. */
+const isCourseOutcome = (o: unknown) => !!o && !(FIXED_OUTCOMES as readonly string[]).includes(String(o));
 
 const BUSINESS_OFFSET_MS = 330 * 60_000;
 /** Today's date (YYYY-MM-DD) in business time. */
@@ -101,45 +135,81 @@ export async function recordEvents(events: FollowupEvent[]) {
 }
 
 /**
- * Auto-convert: an open follow-up whose student has an APPROVED DEPOSIT since
- * the follow-up was opened becomes Converted — for DSLP / DQMP / DGMP only
- * when the deposit is tagged with that product; for "Additional Deposit /
- * Top-up" any approved deposit. "Other" is never automatic. Converted date =
- * the deposit's approval date; deal value = its amount.
+ * Auto-convert: an open follow-up whose student paid for what it is about since it was opened becomes Converted.
+ * A course (the user, 2026-10-16: whichever way it is paid for now) — an approved bonus course payment for it (its
+ * product), an approved payment of a course upgrade to it, or an approved deposit tagged with it; "Additional
+ * Deposit / Top-up" — any approved deposit. "Onboarding call" and "Other" are never automatic. Converted date = when
+ * that money was approved; deal value = its amount, in dollars.
  */
+const AED_PER_USD = 3.67;
+type Paid = { id: string; student: string; at: string; usd: number; courses: string[]; topUp: boolean; what: string };
+
+async function paidFor(studentIds: string[]): Promise<Paid[]> {
+  const out: Paid[] = [];
+  const txs = (await col("funding_transactions")
+    .find(
+      { student_id: { $in: studentIds }, type: { $in: ["DEPOSIT", "BONUS"] }, status: "APPROVED" },
+      { projection: { student_id: 1, type: 1, approved_at: 1, requested_at: 1, created_date: 1, amount_usd: 1, tags: 1, course_payment: 1, bonus_credit: 1 } },
+    )
+    .toArray()) as any[];
+  for (const t of txs) {
+    // A bonus credited at a sales close is the promised bonus, not money the student paid.
+    if (t.type === "BONUS" && t.bonus_credit) continue;
+    const tags = Array.isArray(t.tags) ? t.tags : t.tags ? [t.tags] : [];
+    out.push({
+      id: String(t._id), student: String(t.student_id), at: String(t.approved_at || t.requested_at || t.created_date || ""),
+      usd: Number(t.amount_usd) || 0, courses: [...tags.map(String), ...(t.course_payment?.product ? [String(t.course_payment.product)] : [])],
+      topUp: t.type === "DEPOSIT", what: t.type === "BONUS" ? "course payment" : "deposit",
+    });
+  }
+  const upgrades = (await col("course_upgrades").find({ student_id: { $in: studentIds } }, { projection: { student_id: 1, course: 1, quote: 1 } }).toArray()) as any[];
+  if (upgrades.length) {
+    const byId = new Map(upgrades.map((u) => [String(u._id), u]));
+    // The course's name as the price list has it ("DSLP PRO Full"), beside its code ("DSLP_PRO").
+    const { DEFAULT_PRICE_LIST } = await import("../courses/priceList");
+    const nameOf = new Map<string, string>(DEFAULT_PRICE_LIST.map((c) => [String(c.code), String(c.name)]));
+    const pays = (await col("course_payments")
+      .find({ upgrade_id: { $in: [...byId.keys()] }, status: "approved" }, { projection: { upgrade_id: 1, decided_at: 1, recorded_at: 1, amount_aed: 1, approved_amount_aed: 1 } })
+      .toArray()) as any[];
+    for (const p of pays) {
+      const u = byId.get(String(p.upgrade_id));
+      if (!u) continue;
+      const aed = Number(p.approved_amount_aed ?? p.amount_aed) || 0;
+      out.push({
+        id: String(p._id), student: String(u.student_id), at: String(p.decided_at || p.recorded_at || ""),
+        usd: Math.round((aed / AED_PER_USD) * 100) / 100, courses: [String(u.course ?? ""), nameOf.get(String(u.course ?? "")) ?? ""].filter(Boolean),
+        topUp: false, what: "course upgrade payment",
+      });
+    }
+  }
+  return out.sort((a, b) => a.at.localeCompare(b.at));
+}
+
 export async function autoConvert(followups: any[]): Promise<number> {
-  const open = followups.filter((f) => !CLOSED_STAGES.has(f.stage) && (PRODUCT_OUTCOMES.has(f.target_outcome) || f.target_outcome === TOP_UP));
+  const open = followups.filter((f) => !CLOSED_STAGES.has(f.stage) && f.target_outcome !== "Onboarding call" && f.target_outcome !== "Other"
+    && (isCourseOutcome(f.target_outcome) || f.target_outcome === TOP_UP));
   if (!open.length) return 0;
   const studentIds = [...new Set(open.map((f) => String(f.student_id)))];
-  const deposits = (await col("funding_transactions")
-    .find(
-      { student_id: { $in: studentIds }, type: "DEPOSIT", status: "APPROVED" },
-      { projection: { student_id: 1, approved_at: 1, requested_at: 1, created_date: 1, amount_usd: 1, tags: 1 } },
-    )
-    .sort({ approved_at: 1 })
-    .toArray()) as any[];
-  if (!deposits.length) return 0;
+  const paid = await paidFor(studentIds);
+  if (!paid.length) return 0;
 
   let converted = 0;
   const now = new Date().toISOString();
   for (const f of open) {
     const opened = String(f.created_date || "");
-    const match = deposits.find((d) => {
-      if (String(d.student_id) !== String(f.student_id)) return false;
-      const at = String(d.approved_at || d.requested_at || d.created_date || "");
-      if (!at || at < opened) return false;
-      if (f.target_outcome === TOP_UP) return true;
-      const tags = Array.isArray(d.tags) ? d.tags : d.tags ? [d.tags] : [];
-      return tags.map(String).includes(f.target_outcome);
+    const match = paid.find((d) => {
+      if (d.student !== String(f.student_id)) return false;
+      if (!d.at || d.at < opened) return false;
+      if (f.target_outcome === TOP_UP) return d.topUp;
+      return d.courses.some((c) => outcomeMatches(f.target_outcome, c));
     });
     if (!match) continue;
-    const at = String(match.approved_at || match.requested_at || match.created_date);
     const fromStage = f.stage;
     const patch = {
       stage: "Converted",
-      converted_date: businessDate(at),
-      deal_value: Number(match.amount_usd) || 0,
-      converted_by_deposit_id: String(match._id),
+      converted_date: businessDate(match.at),
+      deal_value: match.usd,
+      converted_by_deposit_id: match.id,
       updated_date: now,
     };
     // Only if still open: two viewers at once can't convert it twice.
@@ -150,7 +220,7 @@ export async function autoConvert(followups: any[]): Promise<number> {
     await recordEvents([{
       followup_id: String(f._id), student_id: String(f.student_id), at: now, by_id: null, by_name: "Automatic",
       kind: "auto_converted", stage_from: fromStage, stage_to: "Converted",
-      text: `Converted automatically — approved deposit of $${patch.deal_value.toLocaleString("en-US")} on ${patch.converted_date}`,
+      text: `Converted automatically — approved ${match.what} of $${patch.deal_value.toLocaleString("en-US")} on ${patch.converted_date}`,
     }]);
   }
   return converted;

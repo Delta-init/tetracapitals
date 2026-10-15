@@ -14,7 +14,7 @@ import { AlarmClock, CalendarCheck, CheckCircle2, DollarSign, Download, ListChec
 import { getEffectiveUser } from '@/components/utils/ImpersonationContext';
 import { createPageUrl } from '@/utils';
 import {
-  OUTCOMES, STAGES, StatusBadge, StageBadge, ReminderBadge, NewFollowupDialog, fmtDate, fmtDue, money,
+  useOutcomes, OUTCOMES, STAGES, StatusBadge, StageBadge, ReminderBadge, NewFollowupDialog, fmtDate, fmtDue, money,
 } from '@/components/followups/followupUi';
 import { CallButton, useCallFlow } from '@/components/followups/CallFlow';
 import ReminderLog from '@/components/followups/ReminderLog';
@@ -69,6 +69,8 @@ export default function StudentFollowups() {
   useEffect(() => { const t = tabInUrl(); if (t) setTab(t); }, [location.search]);
   const [stage, setStage] = useState('all');
   const [outcome, setOutcome] = useState('all');
+  // The courses on the Products page and the rest; the filter also keeps the old sheet's DSLP / DQMP for older follow-ups.
+  const outcomeChoices = useOutcomes();
   const [team, setTeam] = useState('all');
   const [cs, setCs] = useState('all');
   const [tag, setTag] = useState('all');
@@ -152,7 +154,7 @@ export default function StudentFollowups() {
               </Select>
               <Select value={outcome} onValueChange={(v) => v && setOutcome(v)}>
                 <SelectTrigger className="h-9 w-52"><SelectValue /></SelectTrigger>
-                <SelectContent><SelectItem value="all">All target outcomes</SelectItem>{OUTCOMES.map(o => <SelectItem key={o} value={o}>{o}</SelectItem>)}</SelectContent>
+                <SelectContent><SelectItem value="all">All target outcomes</SelectItem>{[...new Set([...outcomeChoices, ...OUTCOMES])].map(o => <SelectItem key={o} value={o}>{o}</SelectItem>)}</SelectContent>
               </Select>
               <Select value={tag} onValueChange={(v) => v && setTag(v)}>
                 <SelectTrigger className="h-9 w-48"><SelectValue /></SelectTrigger>

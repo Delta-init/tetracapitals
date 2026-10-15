@@ -16,7 +16,26 @@ import { HistoryEntry } from './FollowupNotes';
 import { Mt5LoginField, useStudentMt5 } from '../students/mt5Accounts';
 
 // Same lists as the CSE Follow-up Tracker sheet (the server checks them too).
-export const OUTCOMES = ['DSLP', 'DQMP', 'DGMP', 'Additional Deposit / Top-up', 'Onboarding call', 'Other'];
+/* Target outcomes (the user, 2026-10-16: MSNR and the other courses were missing): each course on the Products page
+   (active), DGMP until it is one, then these three — as the server's targetOutcomes() (students/followups.ts). */
+export const FIXED_OUTCOMES = ['Additional Deposit / Top-up', 'Onboarding call', 'Other'];
+/** @deprecated the old sheet's fixed list — useOutcomes() is the list now. */
+export const OUTCOMES = ['DSLP', 'DQMP', 'DGMP', ...FIXED_OUTCOMES];
+
+/** The target outcomes to offer — with `current` first when it is one no longer offered (an old "DSLP"). */
+export function useOutcomes(current = '') {
+  // The same catalogue the funding form reads, so it is fetched once.
+  const { data: products = [] } = useQuery({
+    queryKey: ['transaction-tags-catalog'],
+    queryFn: async () => (await base44.entities.TransactionTag.list('name')).filter(t => t.active !== false),
+    staleTime: 5 * 60_000,
+  });
+  return useMemo(() => {
+    const courses = [...new Set([...products.map(t => String(t.name || '').trim()).filter(Boolean), 'DGMP'])].filter(n => !FIXED_OUTCOMES.includes(n));
+    const list = [...courses, ...FIXED_OUTCOMES];
+    return current && !list.includes(current) ? [current, ...list] : list;
+  }, [products, current]);
+}
 export const STAGES = ['New', 'Contacted', 'Qualified', 'Session with CM', 'Objection Stage', 'Converted', 'Lost'];
 export const LOST_REASONS = [
   'Not enough capital right now', 'Trust / legitimacy concern', 'Comparing with free content',
@@ -161,6 +180,7 @@ const MT5_LOGIN = /^\d{4,15}$/;
 
 export function LogFollowupDialog({ followup, onClose, onSaved }) {
   const [form, setForm] = useState({});
+  const outcomes = useOutcomes(followup?.target_outcome || '');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState(null);
   const today = new Date(Date.now() + 330 * 60000).toISOString().slice(0, 10);
@@ -332,7 +352,7 @@ export function LogFollowupDialog({ followup, onClose, onSaved }) {
             <Label>Target outcome</Label>
             <Select value={form.targetOutcome || undefined} onValueChange={(v) => v && set('targetOutcome')(v)}>
               <SelectTrigger><SelectValue placeholder="Pick a target outcome" /></SelectTrigger>
-              <SelectContent>{OUTCOMES.map(o => <SelectItem key={o} value={o}>{o}</SelectItem>)}</SelectContent>
+              <SelectContent>{outcomes.map(o => <SelectItem key={o} value={o}>{o}</SelectItem>)}</SelectContent>
             </Select>
           </div>
           <div className="space-y-1.5">
@@ -403,6 +423,7 @@ export const isOpenFollowup = (f) => !!f && f.followup_status !== 'Closed' && f.
 export function NewFollowupDialog({ open, onClose, onCancel, onSaved, onLog, student = null, students = [], followups = [], title = null, description = null, defaultOutcome = '' }) {
   const [studentId, setStudentId] = useState('');
   const [outcome, setOutcome] = useState('');
+  const outcomes = useOutcomes(defaultOutcome);
   const [next, setNext] = useState('');
   const [nextTime, setNextTime] = useState('');
   const [clientSaid, setClientSaid] = useState('');
@@ -477,7 +498,7 @@ export function NewFollowupDialog({ open, onClose, onCancel, onSaved, onLog, stu
               <Label>Target outcome</Label>
               <Select value={outcome || undefined} onValueChange={(v) => v && setOutcome(v)}>
                 <SelectTrigger><SelectValue placeholder="Pick one" /></SelectTrigger>
-                <SelectContent>{OUTCOMES.map(o => <SelectItem key={o} value={o}>{o}</SelectItem>)}</SelectContent>
+                <SelectContent>{outcomes.map(o => <SelectItem key={o} value={o}>{o}</SelectItem>)}</SelectContent>
               </Select>
             </div>
             <div className="space-y-1.5">

@@ -5,7 +5,7 @@ import type { AuthUser } from "../auth/middleware";
 import { loadTeams } from "../students/teams";
 import { tagNamesOf } from "../students/tags";
 import {
-  TARGET_OUTCOMES, STAGES, LOST_REASONS, CLOSED_STAGES,
+  targetOutcomes, isTargetOutcome, STAGES, LOST_REASONS, CLOSED_STAGES,
   businessToday, followupStatus, visibleMentorIds, canWorkOn, studentsOf, recordEvents, autoConvert,
 } from "../students/followups";
 import { theirStudents } from "../students/closedBy";
@@ -195,7 +195,7 @@ export async function getFollowups(req: Request, user: AuthUser): Promise<Respon
     revenue: converted.reduce((a, r) => a + (Number(r.deal_value) || 0), 0),
   };
 
-  const out: any = { today, followups: rows, stats, lists: { outcomes: TARGET_OUTCOMES, stages: STAGES, lost_reasons: LOST_REASONS } };
+  const out: any = { today, followups: rows, stats, lists: { outcomes: await targetOutcomes(), stages: STAGES, lost_reasons: LOST_REASONS } };
   if (studentId) {
     out.events = await col("student_followup_events").find({ student_id: studentId }).sort({ at: -1 }).limit(500).toArray();
     out.history = historyOf(rows, out.events);
@@ -238,7 +238,7 @@ export async function createFollowup(req: Request, user: AuthUser): Promise<Resp
   const oid = toObjectId(str(body?.studentId, 40));
   if (!oid) return error("studentId is required", 400);
   const outcome = str(body?.targetOutcome, 60);
-  if (!(TARGET_OUTCOMES as readonly string[]).includes(outcome)) return error("Pick a target outcome", 400);
+  if (!(await isTargetOutcome(outcome))) return error("Pick a target outcome", 400);
   const next = str(body?.nextFollowupDate, 10);
   if (next && !DATE.test(next)) return error("Next follow-up must be a date", 400);
   const time = next ? str(body?.nextFollowupTime, 5) : "";
@@ -407,7 +407,7 @@ export async function logFollowup(req: Request, user: AuthUser): Promise<Respons
   if (mt5Holder !== null && mt5Holder !== String(student._id)) return error("That MT5 ID is already saved for another student — check the number", 409);
   // The target outcome can change with a call — what it is about now (e.g. an Onboarding call becoming DSLP).
   const target = str(body?.targetOutcome, 60);
-  if (target && !(TARGET_OUTCOMES as readonly string[]).includes(target)) return error("Pick a target outcome", 400);
+  if (target && !(await isTargetOutcome(target))) return error("Pick a target outcome", 400);
   const retarget = !!target && target !== f.target_outcome;
   // A call from the Not onboarded page says whether it connected: not — they show as Not connected there (with how
   // many tries), and the sales close's bonus waits for a call that did.
