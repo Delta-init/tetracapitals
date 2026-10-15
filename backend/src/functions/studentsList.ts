@@ -272,6 +272,16 @@ export async function listStudents(req: Request, user: AuthUser): Promise<Respon
     const teamLocations = new Map((await loadTeams()).teams.map((t) => [t.id, t.location]));
     for (const r of result.rows as any[]) r.current_location = currentLocationOf(r, (id) => teamLocations.get(id));
   }
+  // Their primary MT5 login (the user, 2026-10-15: an MT5 column) — the primary one, else their first; one query.
+  if (result.rows.length) {
+    const accounts = (await col("mt5_accounts").find({ student_id: { $in: result.rows.map((r: any) => String(r.id)) } },
+      { projection: { student_id: 1, mt5_login: 1, is_primary: 1, created_date: 1 } }).sort({ created_date: 1 }).toArray()) as any[];
+    const best = new Map<string, any>();
+    for (const a of accounts) { const k = String(a.student_id), had = best.get(k); if (!had || (a.is_primary === true && had.is_primary !== true)) best.set(k, a); }
+    const count = new Map<string, number>();
+    for (const a of accounts) count.set(String(a.student_id), (count.get(String(a.student_id)) ?? 0) + 1);
+    for (const r of result.rows as any[]) { const a = best.get(String(r.id)); r.mt5_primary = a ? String(a.mt5_login ?? "") : ""; r.mt5_count = count.get(String(r.id)) ?? 0; }
+  }
   // Their bonuses not decided yet, and where they wait — one query for the whole page.
   const bonuses = await bonusPendingOf(result.rows.map((r: any) => String(r.id)));
   for (const r of result.rows as any[]) r.bonus_pending = bonuses.get(String(r.id)) ?? null;

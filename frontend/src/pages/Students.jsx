@@ -1020,6 +1020,7 @@ export default function Students() {
                         <TableHead className="font-semibold">Student Code</TableHead>
                         <TableHead className="font-semibold">Student</TableHead>
                         <TableHead className="font-semibold">Phone</TableHead>
+                        <TableHead className="font-semibold">MT5</TableHead>
                         <TableHead className="font-semibold">CS</TableHead>
                         <TableHead className="font-semibold">Team</TableHead>
                       <TableHead className="font-semibold">Course</TableHead>
@@ -1036,7 +1037,7 @@ export default function Students() {
                     <TableBody>
                       {displayStudents.length === 0 ? (
                         <TableRow>
-                          <TableCell colSpan={14} className="text-center py-8 text-gray-500">
+                          <TableCell colSpan={15} className="text-center py-8 text-gray-500">
                             {emptyText('No students found')}
                           </TableCell>
                         </TableRow>
@@ -1054,6 +1055,7 @@ export default function Students() {
 <BirthdayTag date={student.birth_date} className="mt-1 ml-1" />
                             </TableCell>
                             <TableCell><div className="text-sm font-mono">{student.phone}</div><div className="mt-1.5"><LanguagePicker student={student} currentUser={currentUser} /></div></TableCell>
+<TableCell className="whitespace-nowrap font-mono text-sm">{student.mt5_primary ? <span title={student.mt5_count > 1 ? `Primary of ${student.mt5_count} MT5 accounts` : "Primary MT5"}>{student.mt5_primary}{student.mt5_count > 1 && <span className="ml-1 font-sans text-[10px] text-gray-400">+{student.mt5_count - 1}</span>}</span> : <span className="text-gray-300">—</span>}</TableCell>
                             <TableCell className="text-sm">{student.primary_mentor_name}</TableCell>
                             <TableCell className="text-sm">{student.team_name || '-'}<BangaloreBadge location={studentLocationOf(student)} className="ml-1.5" /></TableCell>
                             <TableCell className="max-w-[220px] text-sm"><CourseCell student={student} /></TableCell>
@@ -1120,6 +1122,7 @@ export default function Students() {
                       <TableHead className="font-semibold">Student Code</TableHead>
                       <TableHead className="font-semibold">Student</TableHead>
                       <TableHead className="font-semibold">Phone</TableHead>
+                      <TableHead className="font-semibold">MT5</TableHead>
                       <TableHead className="font-semibold">CS</TableHead>
                       <TableHead className="font-semibold">Team</TableHead>
                       <TableHead className="font-semibold">Course</TableHead>
@@ -1136,7 +1139,7 @@ export default function Students() {
                   <TableBody>
                     {displayStudents.length === 0 ? (
                      <TableRow>
-                       <TableCell colSpan={14} className="text-center py-8 text-gray-500">
+                       <TableCell colSpan={15} className="text-center py-8 text-gray-500">
                          {emptyText('No team students found')}
                        </TableCell>
                      </TableRow>
@@ -1154,6 +1157,7 @@ export default function Students() {
 <BirthdayTag date={student.birth_date} className="mt-1 ml-1" />
                          </TableCell>
                          <TableCell><div className="text-sm font-mono">{student.phone}</div><div className="mt-1.5"><LanguagePicker student={student} currentUser={currentUser} /></div></TableCell>
+<TableCell className="whitespace-nowrap font-mono text-sm">{student.mt5_primary ? <span title={student.mt5_count > 1 ? `Primary of ${student.mt5_count} MT5 accounts` : "Primary MT5"}>{student.mt5_primary}{student.mt5_count > 1 && <span className="ml-1 font-sans text-[10px] text-gray-400">+{student.mt5_count - 1}</span>}</span> : <span className="text-gray-300">—</span>}</TableCell>
                          <TableCell className="text-sm text-purple-600 font-medium">{student.primary_mentor_name}</TableCell>
                          <TableCell className="text-sm">{student.team_name || '-'}<BangaloreBadge location={studentLocationOf(student)} className="ml-1.5" /></TableCell>
                             <TableCell className="max-w-[220px] text-sm"><CourseCell student={student} /></TableCell>
@@ -1239,6 +1243,7 @@ export default function Students() {
                       <TableHead className="font-semibold">Student Code</TableHead>
                       <TableHead className="font-semibold">Student</TableHead>
                       <TableHead className="font-semibold">Phone</TableHead>
+                      <TableHead className="font-semibold">MT5</TableHead>
                       <TableHead className="font-semibold">CS</TableHead>
                       <TableHead className="font-semibold">Team</TableHead>
                       <TableHead className="font-semibold">Course</TableHead>
@@ -1255,7 +1260,7 @@ export default function Students() {
                   <TableBody>
                     {displayStudents.length === 0 ? (
                       <TableRow>
-                        <TableCell colSpan={canTransfer ? 15 : 14} className="text-center py-8 text-gray-500">
+                        <TableCell colSpan={canTransfer ? 16 : 15} className="text-center py-8 text-gray-500">
                           {emptyText('No students found')}
                         </TableCell>
                       </TableRow>
@@ -1281,6 +1286,7 @@ export default function Students() {
 <BirthdayTag date={student.birth_date} className="mt-1 ml-1" />
                           </TableCell>
                           <TableCell><div className="text-sm font-mono">{student.phone}</div><div className="mt-1.5"><LanguagePicker student={student} currentUser={currentUser} /></div></TableCell>
+<TableCell className="whitespace-nowrap font-mono text-sm">{student.mt5_primary ? <span title={student.mt5_count > 1 ? `Primary of ${student.mt5_count} MT5 accounts` : "Primary MT5"}>{student.mt5_primary}{student.mt5_count > 1 && <span className="ml-1 font-sans text-[10px] text-gray-400">+{student.mt5_count - 1}</span>}</span> : <span className="text-gray-300">—</span>}</TableCell>
                           <TableCell className="text-sm">{student.primary_mentor_name}</TableCell>
                           <TableCell className="text-sm">{student.team_name || '-'}<BangaloreBadge location={studentLocationOf(student)} className="ml-1.5" /></TableCell>
                             <TableCell className="max-w-[220px] text-sm"><CourseCell student={student} /></TableCell>
@@ -1349,6 +1355,7 @@ export default function Students() {
                     <TableHead className="font-semibold">Student Code</TableHead>
                     <TableHead className="font-semibold">Student</TableHead>
                     <TableHead className="font-semibold">Phone</TableHead>
+                    <TableHead className="font-semibold">MT5</TableHead>
                       <TableHead className="font-semibold">Course</TableHead>
                       <TableHead className="font-semibold">Balance</TableHead>
                     <TableHead className="font-semibold">Status</TableHead>
@@ -1363,7 +1370,7 @@ export default function Students() {
                 <TableBody>
                   {displayStudents.length === 0 ? (
                     <TableRow>
-                      <TableCell colSpan={12} className="text-center py-8 text-gray-500">
+                      <TableCell colSpan={13} className="text-center py-8 text-gray-500">
                         {emptyText('No open pool students available')}
                       </TableCell>
                     </TableRow>
@@ -1381,6 +1388,7 @@ export default function Students() {
 <BirthdayTag date={student.birth_date} className="mt-1 ml-1" />
                         </TableCell>
                         <TableCell><div className="text-sm font-mono">{student.phone}</div><div className="mt-1.5"><LanguagePicker student={student} currentUser={currentUser} /></div></TableCell>
+<TableCell className="whitespace-nowrap font-mono text-sm">{student.mt5_primary ? <span title={student.mt5_count > 1 ? `Primary of ${student.mt5_count} MT5 accounts` : "Primary MT5"}>{student.mt5_primary}{student.mt5_count > 1 && <span className="ml-1 font-sans text-[10px] text-gray-400">+{student.mt5_count - 1}</span>}</span> : <span className="text-gray-300">—</span>}</TableCell>
                             <TableCell className="max-w-[220px] text-sm"><CourseCell student={student} /></TableCell>
                             <TableCell><BalanceCell student={student} /></TableCell>
                         <TableCell>
@@ -1454,6 +1462,7 @@ export default function Students() {
                   <TableHead className="font-semibold">Student Code</TableHead>
                   <TableHead className="font-semibold">Student</TableHead>
                   <TableHead className="font-semibold">Phone</TableHead>
+                  <TableHead className="font-semibold">MT5</TableHead>
                   <TableHead className="font-semibold">CS</TableHead>
                   <TableHead className="font-semibold">Team</TableHead>
                       <TableHead className="font-semibold">Course</TableHead>
@@ -1470,7 +1479,7 @@ export default function Students() {
               <TableBody>
                 {displayStudents.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={14} className="text-center py-8 text-gray-500">
+                    <TableCell colSpan={15} className="text-center py-8 text-gray-500">
                       {emptyText('No students found')}
                     </TableCell>
                   </TableRow>
@@ -1488,6 +1497,7 @@ export default function Students() {
 <BirthdayTag date={student.birth_date} className="mt-1 ml-1" />
                       </TableCell>
                       <TableCell><div className="text-sm font-mono">{student.phone}</div><div className="mt-1.5"><LanguagePicker student={student} currentUser={currentUser} /></div></TableCell>
+<TableCell className="whitespace-nowrap font-mono text-sm">{student.mt5_primary ? <span title={student.mt5_count > 1 ? `Primary of ${student.mt5_count} MT5 accounts` : "Primary MT5"}>{student.mt5_primary}{student.mt5_count > 1 && <span className="ml-1 font-sans text-[10px] text-gray-400">+{student.mt5_count - 1}</span>}</span> : <span className="text-gray-300">—</span>}</TableCell>
                       <TableCell className="text-sm">{student.primary_mentor_name}</TableCell>
                       <TableCell className="text-sm">{student.team_name || '-'}<BangaloreBadge location={studentLocationOf(student)} className="ml-1.5" /></TableCell>
                             <TableCell className="max-w-[220px] text-sm"><CourseCell student={student} /></TableCell>
