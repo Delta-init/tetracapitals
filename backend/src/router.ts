@@ -21,6 +21,7 @@ import {
 } from "./integrations/core";
 import { invokeFunction, listFunctions } from "./functions/index";
 import { handleReminderOpen } from "./functions/followupReminders";
+import { handleProgramConfirm } from "./students/programNotices";
 import { streamRecording } from "./students/calls";
 import { streamWhatsAppMedia } from "./functions/whatsapp";
 
@@ -82,6 +83,10 @@ export async function route(req: Request): Promise<Response> {
   // ---- The button in a follow-up reminder email: noted as seen, then on to the portal ----
   const reminderOpen = path.match(/^\/api\/reminders\/open\/([A-Za-z0-9_-]{16,64})$/);
   if (reminderOpen && req.method === "GET") return handleReminderOpen(reminderOpen[1]);
+
+  // ---- A program email's Confirm my seat page (GET shows the button, POST confirms) ----
+  const programConfirm = path.match(/^\/api\/programs\/confirm\/([A-Za-z0-9_-]{16,64})$/);
+  if (programConfirm && (req.method === "GET" || req.method === "POST")) return handleProgramConfirm(req, programConfirm[1]);
 
   // ---- A call recording, played from 3CX on a short-lived signed link (getCallRecording) ----
   if (path === "/api/calls/recording" && req.method === "GET") return streamRecording(req, url);

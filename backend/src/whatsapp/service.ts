@@ -195,6 +195,10 @@ async function receive(owner: { id: string; name: string }, sock: WASocket, msg:
     media: media ? { type: media.type, mime: media.mime, file_name: media.fileName, file: saved?.file ?? "", size: saved?.size ?? 0 } : null,
     at: new Date(ts > 0 ? ts * 1000 : Date.now()).toISOString(),
   });
+  // A YES or NO to a program's message (students/programNotices.ts) — loaded when needed, it sends through here.
+  if (kept && !fromMe && body && students.length) {
+    void import("../students/programNotices").then((m) => m.onWhatsAppReply(owner.id, students, body)).catch((err) => console.error("[whatsapp] program reply", err));
+  }
   // A new message to the CS: a push to their phone and computer (the WhatsApp page keeps the count, so no bell).
   if (kept && !fromMe) {
     const sid = toObjectId(students[0] ?? "");

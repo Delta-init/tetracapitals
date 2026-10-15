@@ -10,7 +10,7 @@ import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
-import { CalendarClock, Loader2, Plus, Repeat, Search, Square, UserMinus, UserPlus, X } from 'lucide-react';
+import { CalendarClock, Check, Loader2, Mail, MessageCircle, Plus, Repeat, RotateCw, Search, Square, UserMinus, UserPlus, X } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 /* Programs (the user, 2026-10-09): a live class in the LMS that repeats weekly or monthly until an end date, for the
@@ -28,7 +28,9 @@ const repeatText = (p) => p.repeat === 'weekly'
   : `Monthly on day ${p.monthDay ?? Number(String(p.startDate).slice(8))} at ${p.time}`;
 
 export default function Programs() {
-  const { data, isLoading, error } = useQuery({ queryKey: ['programs'], queryFn: () => fn('listPrograms', {}), staleTime: 15_000 });
+  const { data, isLoading, error } = useQuery({ queryKey: ['programs'], queryFn: () => fn('listPrograms', {}), staleTime: 15_000,
+    // While messages are going out, look again so "sending…" turns into sent.
+    refetchInterval: (q) => (q.state.data?.programs ?? []).some(p => p.students.some(s => s.notice?.sending)) ? 5000 : false });
   const [creating, setCreating] = useState(false);
   const [open, setOpen] = useState(null);
   const [showStopped, setShowStopped] = useState(false);
@@ -121,6 +123,7 @@ function ProgramCard({ p, open, onToggle }) {
                 <div className="mt-3"><StudentPicker exclude={p.students.map(s => s.email)} onPick={(s) => change.mutate({ id: p.id, addEmails: [s.email] })} /></div>
               )}
             </div>
+            <ProgramMessages p={p} />
             <div>
               <p className="mb-2 text-xs font-medium uppercase text-gray-500">Classes</p>
               <div className="flex flex-wrap gap-1.5 text-[11px]">
@@ -138,6 +141,51 @@ function ProgramCard({ p, open, onToggle }) {
         {editing && <ProgramDialog program={p} onClose={() => setEditing(false)} />}
       </CardContent>
     </Card>
+  );
+}
+
+/* What each student was sent and their answer (the user, 2026-10-15): the email and their CS's WhatsApp when they were
+   put on it, and Confirmed / Can't attend from a YES or NO, the email's Confirm my seat, or by hand here. Resend and the
+   answer for who made it, a Super Admin, or the student's own CS (backend students/programNotices.ts). */
+const SENT = {
+  sent: ['text-emerald-600', 'sent'], failed: ['text-red-600', 'failed'], skipped: ['text-amber-600', 'not sent'],
+};
+function Sent({ icon: Icon, label, r, sending }) {
+  const [tone, word] = sending ? ['text-gray-400', 'sending…'] : r ? SENT[r.status] ?? ['text-gray-400', r.status] : ['text-gray-400', 'not sent'];
+  return <span title={r?.why || ''} className={cn('inline-flex items-center gap-1', tone)}><Icon className="h-3.5 w-3.5" />{label} {word}{r?.why && !sending ? <span className="text-gray-400">— {r.why}</span> : null}</span>;
+}
+function ProgramMessages({ p }) {
+  const resend = useProgramAction('resendProgramNotice', 'Sending again');
+  const answer = useProgramAction('setProgramResponse', 'Saved');
+  const busy = resend.isPending || answer.isPending;
+  const confirmed = p.students.filter(s => s.notice?.response === 'confirmed').length;
+  return (
+    <div>
+      <p className="mb-2 text-xs font-medium uppercase text-gray-500">Messages and answers <span className="normal-case text-gray-400">· {confirmed} of {p.students.length} confirmed</span></p>
+      <div className="divide-y rounded-lg border text-xs">
+        {p.students.map(s => {
+          const n = s.notice, may = (p.canManage || s.yours) && p.status === 'active';
+          return (
+            <div key={s.email} className="flex flex-wrap items-center gap-x-4 gap-y-1 px-3 py-2">
+              <span className="min-w-[140px] font-medium text-gray-800">{s.name}</span>
+              <Sent icon={Mail} label="Email" r={n?.email} sending={n?.sending} />
+              <Sent icon={MessageCircle} label="WhatsApp" r={n?.whatsapp} sending={n?.sending} />
+              {n?.response === 'confirmed' ? <Badge className="bg-emerald-100 text-emerald-800 hover:bg-emerald-100">Confirmed{n.via ? ` · ${n.via === 'by hand' ? 'by hand' : n.via === 'email' ? 'by email' : 'on WhatsApp'}` : ''}</Badge>
+                : n?.response === 'declined' ? <Badge className="bg-red-100 text-red-800 hover:bg-red-100">Can't attend</Badge>
+                : <Badge variant="outline" className="text-gray-500">No answer yet</Badge>}
+              {may && (
+                <span className="ml-auto flex gap-1">
+                  {n?.response !== 'confirmed' && <Button size="sm" variant="outline" className="h-7 px-2 text-xs" disabled={busy} onClick={() => answer.mutate({ id: p.id, email: s.email, response: 'confirmed' })}><Check className="mr-1 h-3 w-3" />Confirmed</Button>}
+                  {n?.response !== 'declined' && <Button size="sm" variant="outline" className="h-7 px-2 text-xs" disabled={busy} onClick={() => answer.mutate({ id: p.id, email: s.email, response: 'declined' })}>Can't attend</Button>}
+                  {n?.response && <Button size="sm" variant="ghost" className="h-7 px-2 text-xs" disabled={busy} onClick={() => answer.mutate({ id: p.id, email: s.email, response: null })}>Clear</Button>}
+                  <Button size="sm" variant="ghost" className="h-7 px-2 text-xs" disabled={busy || n?.sending} onClick={() => { if (confirm(`Send ${s.name} the program's email and WhatsApp again?`)) resend.mutate({ id: p.id, email: s.email }); }}><RotateCw className="mr-1 h-3 w-3" />Resend</Button>
+                </span>
+              )}
+            </div>
+          );
+        })}
+      </div>
+    </div>
   );
 }
 
@@ -183,7 +231,7 @@ function ProgramDialog({ program, onClose, teams = [] }) {
     queryFn: () => fn('getMentorSchedule', { from: new Date().toISOString(), to: new Date(Date.now() + 864e5).toISOString() }),
   });
   const mentors = useMemo(() => (sched?.mentors ?? []).slice().sort((a, b) => String(a.name).localeCompare(String(b.name))), [sched]);
-  const create = useProgramAction('createProgram', 'Program made — the students are booked on every class');
+  const create = useProgramAction('createProgram', 'Program made — the students are booked on every class and get the email and WhatsApp');
   const reschedule = useProgramAction('rescheduleProgram', 'Program changed');
   const [f, setF] = useState({
     title: program?.title ?? '', description: program?.description ?? '', mentorEmail: program?.mentor?.email ?? '',

@@ -4,6 +4,7 @@ import type { AuthUser } from "../auth/middleware";
 import { callLms, LmsError } from "../lib/lms";
 import { visibleMentorIds, studentsOf, isStudentOf } from "../students/followups";
 import { teamIndex, csManagerReach } from "../lib/userLocation";
+import { PROGRAM_NOTICES, sendProgramNotices, recordAnswer } from "../students/programNotices";
 
 /* ────────────────────────────────────────────────────────────────────────────
    Programs (the user, 2026-10-09) — a live class in the LMS repeating weekly or
@@ -25,6 +26,12 @@ import { teamIndex, csManagerReach } from "../lib/userLocation";
    their location's, a Super Admin any — and its students list that team's,
    with "Add all" for its enrolled ones. The LMS has no team on a program, so
    the portal keeps it (program_teams: program_id → team).
+
+   Messages (the user, 2026-10-15): the students picked — when it is made and
+   any added later — get the program's email and a WhatsApp from their CS, and
+   are asked to confirm (students/programNotices.ts). Each student on a program
+   shows what was sent and their answer; Resend and Mark confirmed / Can't
+   attend for who made it, a Super Admin, or the student's own CS (team).
 ──────────────────────────────────────────────────────────────────────────── */
 
 const PROGRAM_TEAMS = "program_teams";
@@ -84,10 +91,14 @@ async function decorate(programs: any[], user: AuthUser, mine: Set<string> | nul
   const emails = [...new Set(programs.flatMap((p) => (p.students ?? []).map((s: any) => String(s.email ?? "").toLowerCase())).filter(Boolean))];
   const ours = await studentsByEmail(emails, mine);
   const me = String(user.email ?? "").toLowerCase();
+  const notices = new Map(((await col(PROGRAM_NOTICES).find({ program_id: { $in: programs.map((p) => String(p.id)) } },
+    { projection: { program_id: 1, student_email: 1, email: 1, whatsapp: 1, sending: 1, response: 1, responded_via: 1, responded_at: 1 } }).toArray()) as any[])
+    .map((n) => [`${n.program_id}|${n.student_email}`, { email: n.email ?? null, whatsapp: n.whatsapp ?? null, sending: !!n.sending, response: n.response ?? null, via: n.responded_via ?? "", at: n.responded_at ?? null }]));
   return programs.map((p) => ({
     ...p,
     canManage: isSuper(user) || (p.source === "portal" && String(p.createdByEmail ?? "").toLowerCase() === me),
-    students: (p.students ?? []).map((s: any) => ({ ...s, ...(ours.get(String(s.email ?? "").toLowerCase()) ?? { yours: false, csName: "", code: "" }) })),
+    students: (p.students ?? []).map((s: any) => ({ ...s, ...(ours.get(String(s.email ?? "").toLowerCase()) ?? { yours: false, csName: "", code: "" }),
+      notice: notices.get(`${p.id}|${String(s.email ?? "").toLowerCase()}`) ?? null })),
   }));
 }
 
@@ -176,7 +187,8 @@ export async function createProgram(req: Request, user: AuthUser): Promise<Respo
         program_id: String(made.id), team_id: team.id, team_name: team.name, set_by_id: user.id, set_by_name: user.full_name || user.email, set_at: new Date().toISOString(),
       } }, { upsert: true });
     }
-    return { ...one, team: team ? { id: team.id, name: team.name } : null, missing: made?.missing ?? [] };
+    const told = await sendProgramNotices(made, undefined, { by: user.full_name || user.email }).catch((err) => { console.error("[programs] messages", err); return 0; });
+    return { ...one, team: team ? { id: team.id, name: team.name } : null, missing: made?.missing ?? [], told };
   });
 }
 
@@ -186,9 +198,11 @@ export async function changeProgramStudents(req: Request, user: AuthUser): Promi
   return lms(async () => {
     const { program } = await loadOne(str(body?.id, 40), user);
     if (!program.canManage) throw new LmsError("Only who made this program, or a Super Admin, can change it", 403);
-    const changed: any = await callLms(`/programs/${program.id}/students`, { method: "POST", verb: "change the students", body: { add: emailsOf(body?.addEmails), remove: emailsOf(body?.removeEmails) } });
+    const add = emailsOf(body?.addEmails);
+    const changed: any = await callLms(`/programs/${program.id}/students`, { method: "POST", verb: "change the students", body: { add, remove: emailsOf(body?.removeEmails) } });
+    const told = add.length ? await sendProgramNotices(changed, add, { by: user.full_name || user.email }).catch(() => 0) : 0;
     const [one] = await decorate([changed], user, await visibleMentorIds(user));
-    return { ...one, missing: changed?.missing ?? [] };
+    return { ...one, missing: changed?.missing ?? [], told };
   });
 }
 
@@ -213,5 +227,47 @@ export async function stopProgram(req: Request, user: AuthUser): Promise<Respons
     const stopped: any = await callLms(`/programs/${program.id}/stop`, { method: "POST", verb: "stop the program" });
     const [one] = await decorate([stopped], user, await visibleMentorIds(user));
     return one;
+  });
+}
+
+/** The program and one student on it, if this person may act on that student's messages. */
+async function noticeFor(body: any, user: AuthUser) {
+  const { program } = await loadOne(str(body?.id, 40), user);
+  const email = str(body?.email, 200).toLowerCase();
+  const student = program.students.find((s: any) => String(s.email ?? "").toLowerCase() === email);
+  if (!student) throw new LmsError("That student isn't on this program", 404);
+  if (!program.canManage && !student.yours) throw new LmsError("Only who made this program, a Super Admin or the student's CS can do that", 403);
+  return { program, email };
+}
+
+/** POST /api/functions/resendProgramNotice { id, email } — the program's email and WhatsApp to that student again. */
+export async function resendProgramNotice(req: Request, user: AuthUser): Promise<Response> {
+  const body: any = await req.json().catch(() => ({}));
+  return lms(async () => {
+    const { program, email } = await noticeFor(body, user);
+    if (program.status !== "active") throw new LmsError("This program is stopped", 409);
+    const told = await sendProgramNotices(program, [email], { again: true, by: user.full_name || user.email });
+    if (!told) throw new LmsError("Program messages are switched off on this server", 409);
+    return { ok: true };
+  });
+}
+
+/** POST /api/functions/setProgramResponse { id, email, response: "confirmed" | "declined" | null } — told by phone; a confirm still sends the confirmation. */
+export async function setProgramResponse(req: Request, user: AuthUser): Promise<Response> {
+  const body: any = await req.json().catch(() => ({}));
+  const response = body?.response === "confirmed" || body?.response === "declined" ? body.response : null;
+  return lms(async () => {
+    const { program, email } = await noticeFor(body, user);
+    const key = { program_id: String(program.id), student_email: email };
+    let notice: any = await col(PROGRAM_NOTICES).findOne(key);
+    if (!notice) {
+      // Never sent (made before messages, or switched off): kept now, so the answer has somewhere to live.
+      const s: any = await col("students").findOne({ email: new RegExp(`^${esc(email)}$`, "i") }, { projection: { full_name: 1, primary_mentor_id: 1, primary_mentor_name: 1 } });
+      notice = { ...key, program_title: program.title, student_id: s ? String(s._id) : "", student_name: s?.full_name ?? "", cs_id: String(s?.primary_mentor_id ?? ""), cs_name: s?.primary_mentor_name ?? "", response: null, created_at: new Date().toISOString() };
+      await col(PROGRAM_NOTICES).updateOne(key, { $setOnInsert: notice }, { upsert: true });
+    }
+    await recordAnswer(notice, response, "by hand", program);
+    await col(PROGRAM_NOTICES).updateOne(key, { $set: { answered_by: user.full_name || user.email } });
+    return { ok: true, response };
   });
 }
