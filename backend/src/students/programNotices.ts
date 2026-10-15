@@ -42,6 +42,10 @@ const REMIND_BEFORE_MS = 30 * 60_000;
 const LMS_URL = "https://lms.deltainstitutions.com";
 const WA_GAP_MS = Number(process.env.PROGRAM_NOTICES_GAP_MS ?? 5000);
 const off = () => /^(off|false|0|no)$/i.test(process.env.PROGRAM_NOTICES ?? "");
+/* No program WhatsApps from a CS's own WhatsApp (the user, 2026-10-15): program WhatsApps go only from the LMS, through
+   its Business number (Creatyvot). The emails, the Confirm my seat page and the guests' class links (by email now)
+   carry on. PROGRAM_CS_WHATSAPP=on brings the CS WhatsApps back. */
+const csWhatsAppOn = () => /^(on|true|1|yes)$/i.test(process.env.PROGRAM_CS_WHATSAPP ?? "");
 const DAY_NAMES = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
 const esc = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 const firstName = (full: unknown) => String(full ?? "").trim().split(/\s+/)[0] || "there";
@@ -123,7 +127,7 @@ export const templates = {
       `You have been enrolled in *${d.title}* at Delta Institutions, led by ${d.mentor}.\n\n` +
       `*Schedule*\n- Days: ${d.days}\n- Time: ${d.time} (${d.zone}), ${d.duration}\n- Dates: ${d.start} to ${d.end}\n- Where: ${d.where}\n\n` +
       (d.guest
-        ? `*How to join*\nJoin on Google Meet${d.meet ? ` — ${d.meet}` : ""}. We'll send you each class's link on WhatsApp before it starts.${cs ? ` Ask ${cs} for an LMS account to see your classes there too.` : ""}\n\n`
+        ? `*How to join*\nJoin on Google Meet${d.meet ? ` — ${d.meet}` : ""}. We'll send you each class's link before it starts.${cs ? ` Ask ${cs} for an LMS account to see your classes there too.` : ""}\n\n`
         : `*How to join*\nLog in to your LMS account and open Live Classes — each class is there to join.\n\n`) +
       `Please confirm your seat with the button below${cs ? `, or tell ${cs}, your counsellor, on WhatsApp` : ""}.\n\n` +
       `${cs ? `If you have any questions, contact ${cs}, your counsellor.\n\n` : ""}` +
@@ -172,6 +176,7 @@ async function portalStudent(email: string) {
 const tzOf = async (csId: string) => (String(await locationOfUser(csId).catch(() => "")).toLowerCase() === "bangalore" ? "Asia/Kolkata" : "Asia/Dubai") as "Asia/Dubai" | "Asia/Kolkata";
 
 async function sendWhatsApp(csId: string, csName: string, phone: unknown, text: string) {
+  if (!csWhatsAppOn()) return { status: "skipped", why: "Program WhatsApps go from the LMS, not a CS's WhatsApp" };
   if (!csId) return { status: "skipped", why: "The student has no CS" };
   const number = intlNumbers(phone)[0];
   if (!number) return { status: "skipped", why: "No phone number on the student" };
