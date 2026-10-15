@@ -27,6 +27,9 @@ const repeatText = (p) => p.repeat === 'weekly'
   ? `Every ${p.weekdays.map(d => DAYS[d]).join(', ')} at ${p.time}`
   : `Monthly on day ${p.monthDay ?? Number(String(p.startDate).slice(8))} at ${p.time}`;
 
+/** A program's teams — several since 2026-10-15, one before. */
+const teamsOfProgram = (p) => (p.teams?.length ? p.teams : p.team ? [p.team] : []);
+
 export default function Programs() {
   const { data, isLoading, error } = useQuery({ queryKey: ['programs'], queryFn: () => fn('listPrograms', {}), staleTime: 15_000,
     // While messages are going out, look again so "sending…" turns into sent.
@@ -38,11 +41,11 @@ export default function Programs() {
   const [teamFilter, setTeamFilter] = useState('all');
   const teamsSeen = useMemo(() => {
     const m = new Map();
-    for (const p of data?.programs ?? []) if (p.team?.id) m.set(p.team.id, p.team.name);
+    for (const p of data?.programs ?? []) for (const t of teamsOfProgram(p)) m.set(t.id, t.name);
     return [...m].map(([id, name]) => ({ id, name })).sort((a, b) => a.name.localeCompare(b.name));
   }, [data]);
   const list = (data?.programs ?? []).filter(p => (showStopped || p.status === 'active')
-    && (teamFilter === 'all' || (teamFilter === 'none' ? !p.team : p.team?.id === teamFilter)));
+    && (teamFilter === 'all' || (teamFilter === 'none' ? !teamsOfProgram(p).length : teamsOfProgram(p).some(t => t.id === teamFilter))));
 
   return (
     <div className="space-y-6">
@@ -97,7 +100,7 @@ function ProgramCard({ p, open, onToggle }) {
               {p.status === 'stopped' && <Badge variant="secondary" className="ml-2">stopped</Badge>}
             </p>
             <p className="mt-1 flex items-center gap-1.5 text-xs text-gray-500"><Repeat className="h-3.5 w-3.5" />{repeatText(p)} · {p.durationMins} min · until {p.endDate} · {p.isOnline ? 'online' : p.location}</p>
-            <p className="mt-0.5 text-xs text-gray-400">{p.team ? <Badge variant="outline" className="mr-1.5 border-blue-200 bg-blue-50 px-1.5 py-0 text-[10px] text-blue-700">{p.team.name}</Badge> : null}Made by {p.createdByName || p.createdByEmail || 'the LMS'}{p.source === 'lms' ? ' (in the LMS)' : ''}</p>
+            <p className="mt-0.5 text-xs text-gray-400">{teamsOfProgram(p).map(t => <Badge key={t.id} variant="outline" className="mr-1.5 border-blue-200 bg-blue-50 px-1.5 py-0 text-[10px] text-blue-700">{t.name}</Badge>)}Made by {p.createdByName || p.createdByEmail || 'the LMS'}{p.source === 'lms' ? ' (in the LMS)' : ''}</p>
           </div>
           <div className="text-right text-xs text-gray-600">
             <p className="font-medium text-gray-800">{p.mentor?.name ?? '—'}</p>
@@ -190,13 +193,14 @@ function ProgramMessages({ p }) {
 }
 
 /* Your (team's) students first; "Any CS's student" searches everyone, to add one by one. */
-function StudentPicker({ onPick, exclude = [], team = '' }) {
+function StudentPicker({ onPick, exclude = [], teams: picked = [] }) {
+  const team = picked.join(',');
   const [q, setQ] = useState('');
   const [everyone, setEveryone] = useState(false);
   const enabled = everyone ? q.trim().length >= 2 : true;
   const { data, isFetching } = useQuery({
     queryKey: ['program-students', q.trim(), everyone, team], enabled, staleTime: 30_000,
-    queryFn: () => fn('searchProgramStudents', { q: q.trim(), everyone, ...(team ? { team } : {}) }),
+    queryFn: () => fn('searchProgramStudents', { q: q.trim(), everyone, ...(picked.length ? { teams: picked } : {}) }),
   });
   const hits = (data?.students ?? []).filter(s => !exclude.includes(s.email)).slice(0, 30);
   return (
@@ -241,15 +245,18 @@ function ProgramDialog({ program, onClose, teams = [] }) {
   });
   const [students, setStudents] = useState([]);
   // The team it is for — their own (the first they may pick) to start (2026-10-14).
-  const [team, setTeam] = useState(teams[0]?.id ?? '');
+  // Several teams, or all of them (the user, 2026-10-15).
+  const [picked, setPicked] = useState(teams[0]?.id ? [teams[0].id] : []);
+  const allPicked = teams.length > 0 && picked.length === teams.length;
+  const toggleTeam = (id) => setPicked(xs => (xs.includes(id) ? xs.filter(x => x !== id) : [...xs, id]));
   const [adding, setAdding] = useState(false);
   const addAll = async () => {
     setAdding(true);
     try {
-      const r = await fn('searchProgramStudents', { q: '', team, enrolledOnly: true });
+      const r = await fn('searchProgramStudents', { q: '', teams: allPicked ? ['all'] : picked, enrolledOnly: true });
       const found = r?.students ?? [];
       setStudents(xs => { const have = new Set(xs.map(x => x.email)); return [...xs, ...found.filter(x => !have.has(x.email))]; });
-      toast.success(found.length ? `${found.length} enrolled student${found.length === 1 ? '' : 's'} of the team added` : 'The team has no students with an LMS account');
+      toast.success(found.length ? `${found.length} enrolled student${found.length === 1 ? '' : 's'} of ${picked.length > 1 ? 'the teams' : 'the team'} added` : `${picked.length > 1 ? 'The teams have' : 'The team has'} no students with an LMS account`);
     } catch (e) {
       toast.error(errText(e));
     } finally {
@@ -263,7 +270,7 @@ function ProgramDialog({ program, onClose, teams = [] }) {
     const sched = { repeat: f.repeat, weekdays: f.repeat === 'weekly' ? f.weekdays : [], monthDay: f.repeat === 'monthly' && f.monthDay !== '' ? Number(f.monthDay) : null, startDate: f.startDate, endDate: f.endDate, time: f.time, durationMins: Number(f.durationMins), title: f.title.trim(), description: f.description.trim(), isOnline: f.isOnline, location: f.location.trim() };
     const m = program
       ? reschedule.mutateAsync({ id: program.id, ...sched })
-      : create.mutateAsync({ ...sched, mentorEmail: f.mentorEmail, studentEmails: students.map(s => s.email), ...(team ? { team } : {}) });
+      : create.mutateAsync({ ...sched, mentorEmail: f.mentorEmail, studentEmails: students.map(s => s.email), ...(picked.length ? { teams: allPicked ? ['all'] : picked } : {}) });
     m.then(onClose).catch(() => {});
   };
   return (
@@ -277,10 +284,27 @@ function ProgramDialog({ program, onClose, teams = [] }) {
           <div><Label>Title</Label><Input value={f.title} onChange={e => set('title', e.target.value)} placeholder="e.g. Weekly trade review" /></div>
           <div><Label>What it is (optional)</Label><Input value={f.description} onChange={e => set('description', e.target.value)} /></div>
           {!program && teams.length > 0 && (
-            <div><Label>Team</Label>
-              <select className="mt-1 w-full rounded-md border px-3 py-2 text-sm" value={team} onChange={e => setTeam(e.target.value)}>
-                {teams.map(t => <option key={t.id} value={t.id}>{t.name}{t.location === 'bangalore' ? ' · Bangalore' : ''}</option>)}
-              </select>
+            <div>
+              <div className="flex items-center justify-between">
+                <Label>Teams</Label>
+                {teams.length > 1 && (
+                  <label className="flex items-center gap-1.5 text-xs text-gray-600">
+                    <input type="checkbox" checked={allPicked} onChange={e => setPicked(e.target.checked ? teams.map(t => t.id) : [])} />All teams
+                  </label>
+                )}
+              </div>
+              <div className="mt-1 flex max-h-32 flex-wrap gap-1.5 overflow-auto rounded-md border p-2">
+                {teams.map(t => {
+                  const on = picked.includes(t.id);
+                  return (
+                    <button key={t.id} type="button" onClick={() => toggleTeam(t.id)} aria-pressed={on}
+                      className={cn('rounded-full border px-2.5 py-1 text-xs', on ? 'border-blue-300 bg-blue-100 font-medium text-blue-800' : 'border-gray-200 bg-white text-gray-600 hover:bg-gray-50')}>
+                      {t.name}{t.location === 'bangalore' ? ' · Bangalore' : ''}
+                    </button>
+                  );
+                })}
+              </div>
+              <p className="mt-1 text-xs text-gray-500">{picked.length ? `${picked.length} team${picked.length === 1 ? '' : 's'} — their students are listed below` : 'No team — your own students are listed below'}</p>
             </div>
           )}
           {!program && (
@@ -315,12 +339,12 @@ function ProgramDialog({ program, onClose, teams = [] }) {
             <div>
               <div className="flex items-center justify-between gap-2">
                 <Label>Students — only they see it</Label>
-                {team && <Button type="button" size="sm" variant="outline" className="h-7 text-xs" disabled={adding} onClick={addAll}>{adding ? <Loader2 className="mr-1 h-3 w-3 animate-spin" /> : <UserPlus className="mr-1 h-3 w-3" />}Add all the team's enrolled</Button>}
+                {picked.length > 0 && <Button type="button" size="sm" variant="outline" className="h-7 text-xs" disabled={adding} onClick={addAll}>{adding ? <Loader2 className="mr-1 h-3 w-3 animate-spin" /> : <UserPlus className="mr-1 h-3 w-3" />}Add all {picked.length > 1 ? "the teams'" : "the team's"} enrolled</Button>}
               </div>
               <div className="my-1.5 flex flex-wrap gap-1.5">
                 {students.map(s => <span key={s.email} className="flex items-center gap-1 rounded-full bg-blue-50 px-2.5 py-1 text-xs text-blue-800">{s.name}{!s.yours && s.csName ? <span className="text-blue-400">· {s.csName}</span> : null}<button type="button" aria-label={`Remove ${s.name}`} onClick={() => setStudents(students.filter(x => x.email !== s.email))}><X className="h-3 w-3" /></button></span>)}
               </div>
-              <StudentPicker team={team} exclude={students.map(s => s.email)} onPick={s => setStudents(xs => xs.some(x => x.email === s.email) ? xs : [...xs, s])} />
+              <StudentPicker teams={picked} exclude={students.map(s => s.email)} onPick={s => setStudents(xs => xs.some(x => x.email === s.email) ? xs : [...xs, s])} />
             </div>
           )}
         </div>
