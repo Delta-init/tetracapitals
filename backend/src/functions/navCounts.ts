@@ -78,7 +78,13 @@ export async function getNavCounts(_req: Request, user: AuthUser): Promise<Respo
     col("students").countDocuments(mine(notOnboardedFilter())),
     col("students").countDocuments(mine(newFromFinanceFilter(Date.now()))),
     countCallNeeded(ids),
-    BONUS_APPROVERS.includes(user.app_role) ? col("funding_transactions").countDocuments(decidableMt5Filter()) : 0,
+    // A broker admin: their location's bonuses, and every deposit and withdrawal (finance/bonusLocation.ts).
+    BONUS_APPROVERS.includes(user.app_role)
+      ? user.app_role === "broker_admin"
+        ? col("funding_transactions").find(decidableMt5Filter(), { projection: { type: 1, student_id: 1 } }).limit(5000).toArray()
+            .then(async (rows) => (await (await import("../finance/bonusLocation")).forBrokerLocation(rows as any[], user)).length)
+        : col("funding_transactions").countDocuments(decidableMt5Filter())
+      : 0,
     // Balance payments due (2026-10-13): none here now — a sales close's instalments are followed up in its CRM, and a
     // course paid in parts here has no due date. Kept at 0 so an older screen reads nothing due.
     Promise.resolve(0),

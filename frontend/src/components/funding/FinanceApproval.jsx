@@ -36,7 +36,8 @@ export function WithAccountsBadge({ transaction }) {
 export function CourseInvoiceNote({ transaction }) {
   const ci = transaction?.course_invoice;
   if (!ci?.invoice_number) return null;
-  const aed = (minor) => `AED ${((Number(minor) || 0) / 100).toLocaleString('en-US')}`;
+  // In the invoice's own currency: a Bangalore team's is in rupees (2026-10-15).
+  const aed = (minor) => `${ci.currency || 'AED'} ${((Number(minor) || 0) / 100).toLocaleString('en-US')}`;
   return (
     <span className="block text-[11px] text-slate-600 mt-0.5" title="Recorded by Delta Finance on this invoice; the client was emailed the receipt">
       Invoice {ci.invoice_number}{ci.receipt_number ? ` · receipt ${ci.receipt_number}` : ''} · {aed(ci.balance_minor)} left

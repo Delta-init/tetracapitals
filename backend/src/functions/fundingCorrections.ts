@@ -70,6 +70,9 @@ export async function sendFundingBack(req: Request, user: AuthUser): Promise<Res
   if (tx.status !== "PENDING") return error(`This request is already ${String(tx.status).toLowerCase()}`, 409);
   if (withFinance(tx)) return error("Delta finance still has this request — it can be sent back once it reaches you", 409);
   if (tx.returned?.at) return error("This request is already with the CS for correction", 409);
+  // A Bangalore team's bonus: Bangalore's broker admins' (2026-10-15).
+  const elsewhere = await (await import("../finance/bonusLocation")).bonusLocationRefusal(tx, user.id, user.app_role);
+  if (elsewhere) return error(elsewhere, 403);
 
   const now = new Date().toISOString();
   const student: any = tx.student_id && ObjectId.isValid(String(tx.student_id)) ? await col("students").findOne({ _id: new ObjectId(String(tx.student_id)) }, { projection: { primary_mentor_id: 1, full_name: 1, email: 1 } }) : null;
@@ -149,8 +152,11 @@ export async function correctFundingRequest(req: Request, user: AuthUser): Promi
     await recordHistory([{ student_id: String(tx.student_id), at: now, type: "funding_returned", by_id: user.id, by_name: who(user),
       text: `${tx.type} request corrected and sent back for approval${changed.length ? ` — ${changed.join(", ")}` : ""}${note ? ` (${note})` : ""}`.slice(0, 400) } as any]);
   }
-  // Straight back to whoever sent it, and the other approvers.
-  const approvers = ((await col("users").find({ app_role: { $in: BONUS_APPROVERS }, status: { $ne: "inactive" } }, { projection: { _id: 1 } }).toArray()) as any[]).map((u) => String(u._id));
+  // Straight back to whoever sent it, and the other approvers — a bonus's, its location's (2026-10-15).
+  const { bonusDeciderIds, bonusLocationOf } = await import("../finance/bonusLocation");
+  const approvers = tx.type === "BONUS"
+    ? await bonusDeciderIds(await bonusLocationOf(tx))
+    : ((await col("users").find({ app_role: { $in: BONUS_APPROVERS }, status: { $ne: "inactive" } }, { projection: { _id: 1 } }).toArray()) as any[]).map((u) => String(u._id));
   await notify([...new Set([String(tx.returned.by_id ?? ""), ...approvers].filter(Boolean))], {
     type: "funding_corrected",
     title: `Corrected: ${String(student?.full_name ?? tx.student_name ?? "").trim() || "a student"}'s ${String(tx.type ?? "").toLowerCase()} request`,

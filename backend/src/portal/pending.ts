@@ -62,7 +62,7 @@ export async function pendingOverview(now = Date.now()): Promise<{ kinds: Pendin
   const links = col("payment_link_requests");
 
   const users = (await col("users")
-    .find({}, { projection: { full_name: 1, email: 1, app_role: 1, status: 1 } })
+    .find({}, { projection: { full_name: 1, email: 1, app_role: 1, status: 1, team_location: 1 } })
     .toArray()) as any[];
   const userById = new Map(users.map((u) => [String(u._id), u]));
   const isActive = (u: any) => u?.status !== "inactive";
@@ -75,7 +75,7 @@ export async function pendingOverview(now = Date.now()): Promise<{ kinds: Pendin
     followups.find({ ...open, ...followupsDueTodayFilter(today) }, { projection: { student_id: 1 } }).toArray(),
     followups.find({ ...open, ...followupsOverdueFilter(today) }, { projection: { student_id: 1 } }).toArray(),
     callNeeded(null),
-    col("funding_transactions").countDocuments(decidableBonusFilter()),
+    col("funding_transactions").find(decidableBonusFilter(), { projection: { student_id: 1 } }).limit(5000).toArray(),
     links.countDocuments(paymentLinksPendingFilter()),
     links.find(paymentLinksUnseenFilter("approved"), { projection: { requested_by_id: 1 } }).toArray(),
     links.find(paymentLinksUnseenFilter("rejected"), { projection: { requested_by_id: 1 } }).toArray(),
@@ -97,8 +97,14 @@ export async function pendingOverview(now = Date.now()): Promise<{ kinds: Pendin
     byStudentCs(tally, "class_completions_open", completions.map((c) => String(c.student_id ?? ""))),
   ]);
 
-  // MT5 bonuses: any broker admin or Super Admin may decide one — each carries them all.
-  for (const id of holders(BONUS_APPROVERS)) add(tally, id, "bonus_approvals_pending", bonuses);
+  // MT5 bonuses: a Super Admin may decide any — each carries them all; a broker admin their own location's (2026-10-15).
+  const { studentLocations, brokerLocationOf } = await import("../finance/bonusLocation");
+  const bonusWhere = await studentLocations(bonuses.map((b: any) => b.student_id));
+  const bonusesIn = (loc: string) => bonuses.filter((b: any) => (bonusWhere.get(String(b.student_id ?? "")) ?? "dubai") === loc).length;
+  for (const id of holders(BONUS_APPROVERS)) {
+    const where = brokerLocationOf(userById.get(id));
+    add(tally, id, "bonus_approvals_pending", where ? bonusesIn(where) : bonuses.length);
+  }
 
   // Payment links: requests wait for any Super Admin; ready and turned down ones for the CS who asked — on a CS's
   // sidebar only, so only while they are a CS.
@@ -116,7 +122,7 @@ export async function pendingOverview(now = Date.now()): Promise<{ kinds: Pendin
     { key: "followups_today", label: "Follow-ups", total: dueToday.length },
     { key: "overdue_followups", label: "Overdue follow-ups", total: overdue.length },
     { key: "class_completions_open", label: "Class Completions", total: completions.length },
-    { key: "bonus_approvals_pending", label: "MT5 Bonus Approvals", total: bonuses, shared: true },
+    { key: "bonus_approvals_pending", label: "MT5 Bonus Approvals", total: bonuses.length, shared: true },
     { key: "payment_links_pending", label: "Payment Links — requests waiting", total: linksPending, shared: true },
     { key: "payment_links_ready", label: "Payment Links — ready, not seen", total: ready.length },
     { key: "payment_links_turned_down", label: "Payment Links — turned down, not seen", total: turnedDown.length },

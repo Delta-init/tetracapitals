@@ -47,6 +47,10 @@ export default function ProcessFundingDialog({ transaction, open, onClose, onPro
   const mt5Bonus = coursePayment ? Number(coursePayment.bonus_usd) || 0 : null;
   // The transaction ID finance's approval left on it — never the MT5 one: the broker admin types that.
   const financeTxnId = transaction?.status === 'PENDING' && transaction?.finance_approval?.decision === 'approved' ? (transaction?.transaction_id || '') : '';
+  // Finance confirmed the payment (the user, 2026-10-15): its amount is settled — the broker admin credits the bonus
+  // above and approves, never retypes what was paid (the server refuses a change too, finance/funding.ts financeLock).
+  const financeConfirmed = transaction?.type === 'BONUS' && transaction?.status === 'PENDING'
+    && transaction?.finance_approval?.state === 'decided' && transaction?.finance_approval?.decision === 'approved';
   const [withdrawalMentorId, setWithdrawalMentorId] = useState('');
 
   const { data: mt5Accounts = [] } = useQuery({
@@ -272,7 +276,7 @@ export default function ProcessFundingDialog({ transaction, open, onClose, onPro
               <span className="block text-xs text-emerald-800">
                 Recorded on invoice {transaction.course_invoice.invoice_number}
                 {transaction.course_invoice.receipt_number ? ` · receipt ${transaction.course_invoice.receipt_number}` : ''}
-                {' · '}{`AED ${((transaction.course_invoice.balance_minor || 0) / 100).toLocaleString('en-US')}`} left on it
+                {' · '}{`${transaction.course_invoice.currency || 'AED'} ${((transaction.course_invoice.balance_minor || 0) / 100).toLocaleString('en-US')}`} left on it
               </span>
             )}
           </div>
@@ -320,8 +324,17 @@ export default function ProcessFundingDialog({ transaction, open, onClose, onPro
           )}
 
           <div className="space-y-2 bg-blue-50 p-4 rounded-lg border-2 border-blue-200">
-            <Label htmlFor="amount_usd" className="text-base font-semibold">{mt5Bonus !== null ? 'Payment received (USD) - Editable' : 'Amount (USD) - Editable'}</Label>
-            {mt5Bonus !== null && <p className="text-xs text-slate-500">What the student paid, in USD — used for reports and the commission, not what you credit in MT5.</p>}
+            <Label htmlFor="amount_usd" className="text-base font-semibold">
+              {financeConfirmed ? 'Payment received (USD) — confirmed by Delta Finance' : mt5Bonus !== null ? 'Payment received (USD) - Editable' : 'Amount (USD) - Editable'}
+            </Label>
+            {mt5Bonus !== null && (
+              <p className="text-xs text-slate-500">
+                What the student paid, in USD — used for reports and the commission, not what you credit in MT5.
+                {financeConfirmed ? ' Finance approved this payment, so it stays as it is: credit the MT5 bonus shown above.' : ''}
+                {transaction.amount_currency === 'INR' && Number(transaction.amount_original) > 0
+                  ? ` Paid INR ${Number(transaction.amount_original).toLocaleString('en-US')}.` : ''}
+              </p>
+            )}
             <Input
               id="amount_usd"
               type="number"
@@ -330,6 +343,8 @@ export default function ProcessFundingDialog({ transaction, open, onClose, onPro
               onChange={(e) => setFormData({ ...formData, amount_usd: parseFloat(e.target.value) || 0 })}
               placeholder="Enter amount in USD"
               className="text-lg font-semibold"
+              readOnly={financeConfirmed}
+              disabled={financeConfirmed}
             />
           </div>
 

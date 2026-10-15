@@ -9,6 +9,7 @@ import { creditCommissionFor } from "../functions/creditCommission";
 import { recomputeCoMentorContribution } from "../functions/referrals";
 import { notify } from "../lib/notify";
 import { csManagerReach } from "../lib/userLocation";
+import { bonusDeciderIds, bonusLocationOf } from "./bonusLocation";
 
 /* ────────────────────────────────────────────────────────────────────────────
    Bonus requests are approved in Delta finance first.
@@ -39,6 +40,15 @@ import { csManagerReach } from "../lib/userLocation";
    change what is being approved (crud.ts and the master editor refuse). One
    finance will not take at all — malformed — is handed back and approved here
    (a bonus by a broker admin or a Super Admin).
+
+   A Bangalore team's bonus goes to finance's Bangalore organization, in
+   rupees (the user, 2026-10-15): the rupees paid as they were typed, or the
+   dollars at the portal's fixed 100 INR = $1, with the rate finance turns the
+   course's AED figures into rupees at (coursePayment.inrPerAed). Finance's
+   decision then comes back in rupees too, and is turned back into dollars
+   here at the same rate. Never to Delta HQ: with FINANCE_ORG_ID_BANGALORE
+   unset, it waits, still trying, until it is set. Only Bangalore's broker
+   admins (and Super Admins) are told of it and decide it (./bonusLocation.ts).
 
    `finance_approval` on the funding transaction, the server's alone:
      state  queued   waiting to be sent (retried until finance takes it)
@@ -216,11 +226,17 @@ const LOCKED = ["status", "amount_usd", "type", "student_id"] as const;
  */
 export function financeLock(existing: any, data: Record<string, any>): string | null {
   delete data.finance_approval;
-  if (!withFinance(existing)) return null;
   const differs = (f: (typeof LOCKED)[number]) =>
     f === "amount_usd" ? Number(data[f]) !== Number(existing[f]) : String(data[f] ?? "") !== String(existing[f] ?? "");
+  // The payment finance confirmed is settled (the user, 2026-10-15): the broker admin credits the bonus and approves,
+  // but the amount the student paid stays as finance approved it — J Vijay's $1,500 had been typed over with the $1,000 bonus.
+  if (awaitingBroker(existing) && "amount_usd" in data && differs("amount_usd")) return FINANCE_CONFIRMED_MESSAGE;
+  if (!withFinance(existing)) return null;
   return LOCKED.some((f) => f in data && differs(f)) ? WITH_FINANCE_MESSAGE : null;
 }
+
+export const FINANCE_CONFIRMED_MESSAGE =
+  "Delta Finance approved this payment at this amount — it can't be changed here. Credit the MT5 bonus it shows, and approve.";
 
 /* ── Sending ─────────────────────────────────────────────────────────────── */
 
@@ -234,7 +250,7 @@ const sha256 = (s: string) => createHash("sha256").update(s).digest("hex");
  * middleware/service-auth.ts checks and the sales CRM's financeClient.ts sends:
  * METHOD \n PATH \n TIMESTAMP \n NONCE \n sha256(body), HMAC-SHA256.
  */
-export async function postToFinance(path: string, payload: unknown): Promise<any> {
+export async function postToFinance(path: string, payload: unknown, orgId: string = config.financeOrgId): Promise<any> {
   const raw = JSON.stringify(payload);
   const timestamp = String(Date.now());
   const nonce = randomUUID();
@@ -249,7 +265,7 @@ export async function postToFinance(path: string, payload: unknown): Promise<any
       "x-delta-timestamp": timestamp,
       "x-delta-nonce": nonce,
       "x-delta-signature": signature,
-      "x-delta-org": config.financeOrgId,
+      "x-delta-org": orgId,
     },
     body: raw,
     signal: AbortSignal.timeout(TIMEOUT_MS),
@@ -383,8 +399,20 @@ export function paymentsForFinance(tx: any): Array<{ method: string; amountMinor
   return out.every((p) => p.method && p.method.length <= 60 && p.amountMinor > 0 && /^[A-Z]{3}$/.test(p.currency)) ? out : [];
 }
 
-/** What the accountants see: the request, the student, and the proof. */
-async function depositPayload(tx: any) {
+/** The portal's fixed rates (frontend FundingRequestForm): 1 USD = 3.67 AED, 1 INR = 0.010 USD. */
+const AED_PER_USD = 3.67;
+const FIXED_USD_PER_INR = 0.01;
+/** What a request's rupees were turned into dollars at — the rate kept on it, else the fixed one. */
+export const usdPerInrOf = (tx: any): number => (Number(tx?.fx_rate_usd_per_inr) > 0 ? Number(tx.fx_rate_usd_per_inr) : FIXED_USD_PER_INR);
+/** A Bangalore bonus's amount for finance, in paise: the rupees as typed, else its dollars at its rate. */
+export function rupeesMinorOf(tx: any): number {
+  if (String(tx?.amount_currency ?? "").toUpperCase() === "INR" && Number(tx?.amount_original) > 0) return Math.round(Number(tx.amount_original) * 100);
+  return Math.round((Number(tx?.amount_usd) || 0) / usdPerInrOf(tx) * 100);
+}
+
+/** What the accountants see: the request, the student, and the proof. In rupees for a Bangalore bonus. */
+async function depositPayload(tx: any, location: "dubai" | "bangalore" = "dubai") {
+  const inr = location === "bangalore" && tx.type === "BONUS";
   const sid = tx.student_id ? toObjectId(String(tx.student_id)) : null;
   const student: any = sid
     ? await col("students").findOne({ _id: sid }, { projection: { email: 1, phone: 1, full_name: 1, student_code: 1, student_level: 1, team_name: 1 } })
@@ -396,13 +424,18 @@ async function depositPayload(tx: any) {
     externalId: String(tx._id),
     // A bonus is a course payment: the money in, and what it earns in MT5 (coursePayment).
     type: tx.type === "BONUS" ? "BONUS" : "DEPOSIT",
-    amountMinor: Math.round(Number(tx.amount_usd || 0) * 100),
-    currency: "USD",
+    amountMinor: inr ? rupeesMinorOf(tx) : Math.round(Number(tx.amount_usd || 0) * 100),
+    currency: inr ? "INR" : "USD",
+    // Bangalore's: finance's course invoice is in rupees, at the rate the request's AED figures were worked out at.
+    ...(inr ? { academy: "bangalore" } : {}),
     ...(Number(tx.amount_original) > 0 && /^[A-Z]{3}$/.test(String(tx.amount_currency ?? ""))
       ? { amountOriginal: Number(tx.amount_original), amountCurrency: String(tx.amount_currency) }
       : {}),
     ...(tx.type === "BONUS" && coursePaymentOf(tx.course_payment)
-      ? { coursePayment: { ...coursePaymentOf(tx.course_payment), ...(paidOnOf(tx) ? { paidOn: paidOnOf(tx) } : {}) } }
+      ? { coursePayment: {
+          ...coursePaymentOf(tx.course_payment), ...(paidOnOf(tx) ? { paidOn: paidOnOf(tx) } : {}),
+          ...(inr ? { inrPerAed: Math.round(1 / (AED_PER_USD * usdPerInrOf(tx)) * 1e6) / 1e6 } : {}),
+        } }
       : {}),
     student: {
       id: String(tx.student_id ?? ""),
@@ -442,10 +475,30 @@ async function sendOne(tx: any): Promise<void> {
   const attempts = (tx.finance_approval?.attempts ?? 0) + 1;
   // Only while it is still ours to send: a decision may have come in first.
   const stillQueued = { _id: tx._id, status: "PENDING", "finance_approval.state": "queued" };
-  try {
-    const result = await postToFinance(INTAKE_PATH, await depositPayload(tx));
+  // A Bangalore team's bonus: Bangalore's finance, in rupees — and never Delta HQ's, so it waits while that is not set.
+  const location = tx.type === "BONUS" ? await bonusLocationOf(tx) : "dubai";
+  if (location === "bangalore" && !config.financeOrgIdBangalore) {
+    const message = "FINANCE_ORG_ID_BANGALORE is not set on the Tetra Commission server — a Bangalore team's bonus goes only to Bangalore's finance";
     await col("funding_transactions").updateOne(stillQueued, {
       $set: {
+        "finance_approval.attempts": attempts,
+        "finance_approval.last_attempt_at": now,
+        "finance_approval.next_attempt_at": new Date(Date.now() + backoffMs(attempts)).toISOString(),
+        "finance_approval.last_error": message,
+      },
+    });
+    console.warn(`[finance funding] bonus ${tx._id} not sent: ${message}`);
+    return;
+  }
+  try {
+    const payload = await depositPayload(tx, location);
+    const result = await postToFinance(INTAKE_PATH, payload, location === "bangalore" ? config.financeOrgIdBangalore : config.financeOrgId);
+    await col("funding_transactions").updateOne(stillQueued, {
+      $set: {
+        // What finance was sent, so its decision is read in the same currency.
+        "finance_approval.org": location === "bangalore" ? "bangalore" : "delta_hq",
+        "finance_approval.currency": payload.currency,
+        "finance_approval.amount_minor": payload.amountMinor,
         "finance_approval.state": "sent",
         "finance_approval.sent_at": now,
         "finance_approval.request_id": String(result?.id ?? ""),
@@ -842,9 +895,8 @@ export async function handleFundingDecision(req: Request): Promise<Response> {
       // Claimed in the same write that approves it: finishing it is this request's job.
       set["finance_approval.effects_claimed_at"] = now;
     }
-    set.amount_usd = amountMinor / 100;
     set.transaction_id = transactionId;
-    if (amountMinor !== Math.round(Number(tx.amount_usd || 0) * 100)) set.requested_amount_usd = tx.amount_usd;
+    Object.assign(set, approvedAmountSet(tx, amountMinor, text(body.currency, 3).toUpperCase()));
     const paymentMethod = text(body.paymentMethod, 60);
     if (paymentMethod) set.payment_method = paymentMethod;
     const mt5Login = text(body.mt5Login, 60);
@@ -871,7 +923,7 @@ export async function handleFundingDecision(req: Request): Promise<Response> {
   }
 
   let effects = {};
-  if (firstOfTwo) await bonusToBroker(tx, byName, byEmail);
+  if (firstOfTwo) await bonusToBroker({ ...tx, ...set }, byName, byEmail);
   else if (decision === "approved") effects = await applyApproval(oid, byName, byEmail);
   else {
     await logRejection({ ...tx, rejection_reason: reason }, byName, byEmail);
@@ -883,6 +935,30 @@ export async function handleFundingDecision(req: Request): Promise<Response> {
 }
 
 /**
+ * The amount finance approved, as this request keeps it. Sent in rupees (a Bangalore bonus — `finance_approval.currency`,
+ * or the decision's own `currency`): the same rupees as sent change nothing, and other rupees are turned back into
+ * dollars at the request's rate, the rupees typed and the AED with them. Sent in dollars: the dollars, as before. A
+ * change is remembered as `requested_amount_usd`.
+ */
+export function approvedAmountSet(tx: any, amountMinor: number, currency = ""): Record<string, unknown> {
+  const inr = (currency || String(tx?.finance_approval?.currency ?? "")).toUpperCase() === "INR";
+  if (!inr) {
+    const set: Record<string, unknown> = { amount_usd: amountMinor / 100 };
+    if (amountMinor !== Math.round(Number(tx?.amount_usd || 0) * 100)) set.requested_amount_usd = tx?.amount_usd;
+    return set;
+  }
+  const sent = Number(tx?.finance_approval?.amount_minor) > 0 ? Number(tx.finance_approval.amount_minor) : rupeesMinorOf(tx);
+  if (amountMinor === sent) return {};
+  const usd = Math.round((amountMinor / 100) * usdPerInrOf(tx) * 100) / 100;
+  return {
+    amount_usd: usd,
+    amount_aed: Math.round(usd * AED_PER_USD * 100) / 100,
+    ...(String(tx?.amount_currency ?? "").toUpperCase() === "INR" ? { amount_original: amountMinor / 100 } : {}),
+    requested_amount_usd: tx?.amount_usd,
+  };
+}
+
+/**
  * Finance approved a bonus's payment: one audit line, and the broker admins and Super Admins told it is theirs to
  * credit and approve now (the bell and a push). Never throws.
  */
@@ -891,9 +967,8 @@ async function bonusToBroker(tx: any, byName: string, byEmail: string): Promise<
     await logOnce(tx, "accounts_approve_bonus",
       `Bonus for ${tx.student_name ?? "a student"} approved in Delta Finance by ${byName} — waiting for a broker admin`,
       byName, byEmail, { finance_approval: "approved", amount_usd: tx.amount_usd });
-    const approvers = (await col("users")
-      .find({ app_role: { $in: BONUS_APPROVERS }, status: { $ne: "inactive" } }, { projection: { _id: 1 } })
-      .toArray()).map((u: any) => String(u._id));
+    // Its location's broker admins, and the Super Admins (./bonusLocation.ts).
+    const approvers = await bonusDeciderIds(await bonusLocationOf(tx));
     await notify(approvers, {
       type: "bonus_to_approve",
       title: `Bonus to approve: ${tx.student_name || tx.student_code || "a student"}`,

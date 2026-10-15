@@ -328,6 +328,11 @@ export async function updateEntity(req: Request, entityName: string, id: string)
     // A deposit, a withdrawal or a bonus: decided by a broker admin or a Super Admin (finance/funding.ts).
     const refused = decisionRefusal(existing, data, ctx.user.app_role);
     if (refused) return error(refused.message, refused.status);
+    // A Bangalore team's bonus is a Bangalore broker admin's (or a Super Admin's) to decide — Dubai's likewise (2026-10-15).
+    if ("status" in data && String(data.status) !== String(existing.status)) {
+      const elsewhere = await (await import("../finance/bonusLocation")).bonusLocationRefusal(existing, ctx.user.id, ctx.user.app_role);
+      if (elsewhere) return error(elsewhere, 403);
+    }
   }
   await col(ctx.cfg.collection).updateOne({ _id: oid }, { $set: data });
   const doc = await col(ctx.cfg.collection).findOne({ _id: oid });

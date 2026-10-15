@@ -3,6 +3,7 @@ import { json, forbidden } from "../lib/response";
 import { serialize, toObjectId } from "../lib/id";
 import type { AuthUser } from "../auth/middleware";
 import { BONUS_APPROVERS, BONUS_APPROVERS_MESSAGE, withFinance, financeFundingConfigured } from "../finance/funding";
+import { forBrokerLocation } from "../finance/bonusLocation";
 
 /**
  * POST /api/functions/getBonusApprovals
@@ -57,13 +58,14 @@ export async function getBonusApprovals(req: Request, user: AuthUser): Promise<R
   const from = day(body?.from), to = day(body?.to);
   const monthStart = from ? new Date(Date.parse(`${from}T00:00:00+04:00`)).toISOString() : uaeMonthStart();
   const decidedUntil = to ? new Date(Date.parse(`${to}T00:00:00+04:00`) + 86_400_000).toISOString() : null;
-  const bonuses = (await col("funding_transactions")
+  // A broker admin: their own location's bonuses (Bangalore's or Dubai's — finance/bonusLocation.ts, 2026-10-15).
+  const bonuses = await forBrokerLocation((await col("funding_transactions")
     .find({
       type: { $in: MT5_TYPES },
       $or: [{ status: "PENDING" }, { status: { $in: ["APPROVED", "REJECTED"] }, approved_at: { $gte: monthStart, ...(decidedUntil ? { $lt: decidedUntil } : {}) } }],
     })
     .limit(3000)
-    .toArray()) as any[];
+    .toArray()) as any[], user);
 
   const studentIds = [...new Set(bonuses.map((t) => String(t.student_id ?? "")))].map(toObjectId).filter(Boolean);
   const students = (await col("students")

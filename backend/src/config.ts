@@ -183,6 +183,11 @@ export const config = {
   financeIntegrationSecret: process.env.FINANCE_INTEGRATION_SECRET ?? "",
   financeOrgId: process.env.FINANCE_ORG_ID ?? "",
   /**
+   * Finance's Bangalore organization (the CRMs' FINANCE_ORG_ID_BANGALORE): a Bangalore team's bonus goes there, in
+   * rupees, and never to Delta HQ (the user, 2026-10-15). Unset, those bonuses wait here, still trying, until it is set.
+   */
+  financeOrgIdBangalore: process.env.FINANCE_ORG_ID_BANGALORE ?? "",
+  /**
    * The Delta LMS, which sends every other new student here (the ones finance
    * did not enrol). What the LMS presents in `x-lms-secret`; must match its
    * COMMISSION_S2S_SECRET. Unset turns the route off — never open.

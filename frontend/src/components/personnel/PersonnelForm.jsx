@@ -37,6 +37,8 @@ export default function PersonnelForm({ user, onSubmit, onClose, allUsers, limit
     extension: '',           // their 3CX extension — links their calls to them
     extension_source: '',    // "manual" once typed here: the 3CX sync then leaves it alone
     no_auto_assign: false,   // CS left out of the turns new students go by (backend students/teams.ts)
+    // A broker admin's location (2026-10-15): they decide that location's bonuses only (backend finance/bonusLocation.ts).
+    team_location: 'dubai',
     password: '',
   });
   const [showPassword, setShowPassword] = useState(false);
@@ -70,6 +72,7 @@ export default function PersonnelForm({ user, onSubmit, onClose, allUsers, limit
         extension: user.extension || '',
         extension_source: user.extension_source || '',
         no_auto_assign: user.no_auto_assign === true,
+        team_location: /bangal|banglo|bengal/i.test(String(user.team_location ?? '')) ? 'bangalore' : 'dubai',
       });
     }
   }, [user]);
@@ -87,15 +90,18 @@ export default function PersonnelForm({ user, onSubmit, onClose, allUsers, limit
         return;
       }
     }
+    // The location is a broker admin's own; anyone else's is their team's (Teams page) — never sent from here.
+    const { team_location, ...others } = formData;
+    const data = formData.app_role === 'broker_admin' ? formData : others;
     if (isCreate) {
       if (!formData.password || formData.password.length < 8) {
         alert('Initial password is required and must be at least 8 characters.');
         return;
       }
-      onSubmit(formData);
+      onSubmit(data);
     } else {
       // Editing — don't send the password field at all.
-      const { password, ...rest } = formData;
+      const { password, ...rest } = data;
       onSubmit(rest);
     }
   };
@@ -293,6 +299,20 @@ export default function PersonnelForm({ user, onSubmit, onClose, allUsers, limit
             />
             <p className="text-xs text-gray-500 mt-1">Applied when this staff submits a transaction — pays each level up the chain per the plan.</p>
           </div>}
+
+          {!limited && formData.app_role === 'broker_admin' && (
+            <div>
+              <Label htmlFor="team_location">Location</Label>
+              <Select value={formData.team_location} onValueChange={(v) => setFormData({ ...formData, team_location: v })}>
+                <SelectTrigger id="team_location"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="dubai">Dubai</SelectItem>
+                  <SelectItem value="bangalore">Bangalore</SelectItem>
+                </SelectContent>
+              </Select>
+              <p className="mt-1 text-xs text-gray-500">They are told of, and approve, this location's team bonuses only. A Super Admin approves any.</p>
+            </div>
+          )}
 
           {formData.app_role === 'cs' && (
             <label className="flex items-start gap-2 text-sm">
