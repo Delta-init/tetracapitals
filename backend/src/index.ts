@@ -15,6 +15,8 @@ import { startLmsEnrolmentWorker } from "./students/lmsEnrolment";
 import { startLmsActivityWorker } from "./students/lmsActivity";
 import { startLmsCsWorker } from "./students/lmsCs";
 import { startMentorScheduleWorker } from "./students/mentorScheduleAlerts";
+import { startGuestReminderWorker } from "./students/programNotices";
+import { callLms } from "./lib/lms";
 import { ensureSalesRole } from "./students/closedBy";
 
 async function main() {
@@ -51,6 +53,8 @@ async function main() {
   startTimeReminderWorker();
   // New students from finance not onboarded 6 hours on: their leaders and the Super Admins told (ONBOARDING_ALERTS=off to keep a server out of it).
   startOnboardingAlertWorker();
+  // Program guests (no LMS account): each class's Google Meet link ~30 minutes before, every 5 minutes (PROGRAM_NOTICES=off stops it).
+  startGuestReminderWorker((id) => callLms(`/programs/${id}`, { verb: "find the program" }));
   startBonusVerifyAlertWorker();
   // Calls with students (and their recordings) from 3CX, every minute — once THREECX_* is set.
   startCallSyncWorker();

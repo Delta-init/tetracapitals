@@ -33,6 +33,12 @@ import { status as whatsAppStatus, sendText, intlNumbers } from "../whatsapp/ser
 ──────────────────────────────────────────────────────────────────────────── */
 
 export const PROGRAM_NOTICES = "program_notices";
+/* Students picked who have no LMS account (the user, 2026-10-15): the LMS can't book them, so the portal keeps them
+   on the program as guests (program_guests: program_id, email, student_id, name) — they get the same messages, with the
+   Google Meet link instead of "it's in your LMS", and a WhatsApp with each class's link before it starts. */
+export const PROGRAM_GUESTS = "program_guests";
+const GUEST_REMINDERS = "program_guest_reminders";
+const REMIND_BEFORE_MS = 30 * 60_000;
 const LMS_URL = "https://lms.deltainstitutions.com";
 const WA_GAP_MS = Number(process.env.PROGRAM_NOTICES_GAP_MS ?? 5000);
 const off = () => /^(off|false|0|no)$/i.test(process.env.PROGRAM_NOTICES ?? "");
@@ -55,8 +61,17 @@ const dateText = (day: string) => {
   return Number.isNaN(d.getTime()) ? day : d.toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric", timeZone: "UTC" });
 };
 
-/** The details a student's messages show — times in their own academy's zone. */
-export function detailsFor(p: any, tz: "Asia/Dubai" | "Asia/Kolkata") {
+/** The Meet link a guest joins by: the program's own, else the next class's room ("" in person or before the LMS has one). */
+export function meetLinkOf(p: any): string {
+  if (p?.isOnline === false) return "";
+  if (p?.meetingMode === "link" && p?.meetingUrl) return String(p.meetingUrl);
+  const now = Date.now();
+  const next = (p?.classes ?? []).find((c: any) => c.status === "scheduled" && c.meetUrl && new Date(c.startsAt).getTime() + (Number(p?.durationMins) || 60) * 60_000 > now);
+  return next ? String(next.meetUrl) : "";
+}
+
+/** The details a student's messages show — times in their own academy's zone; a guest (no LMS account) the Meet link. */
+export function detailsFor(p: any, tz: "Asia/Dubai" | "Asia/Kolkata", guest = false) {
   const zone = tz === "Asia/Kolkata" ? "India time" : "Dubai time";
   const next = p?.nextClassAt ? new Date(p.nextClassAt) : null;
   const at = (d: Date) => d.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit", timeZone: tz });
@@ -75,8 +90,12 @@ export function detailsFor(p: any, tz: "Asia/Dubai" | "Asia/Kolkata") {
     duration: `${Number(p?.durationMins) || 60} minutes`,
     start: from,
     end: dateText(String(p?.endDate ?? "")),
-    where: p?.isOnline === false ? String(p?.location ?? "").trim() || "At the academy" : "Online (Google Meet, the link is in your LMS)",
+    where: p?.isOnline === false ? String(p?.location ?? "").trim() || "At the academy"
+      : guest ? (meetLinkOf(p) ? `Online — Google Meet: ${meetLinkOf(p)}` : "Online (Google Meet — we send you the link before each class)")
+      : "Online (Google Meet, the link is in your LMS)",
     firstClass: next ? onDay(next) : from,
+    guest,
+    meet: guest ? meetLinkOf(p) : "",
   };
 }
 export type Details = ReturnType<typeof detailsFor>;
@@ -87,7 +106,9 @@ export const templates = {
     `Hi ${name} 👋\n\n` +
     `You've been enrolled in *${d.title}* at Delta Institutions with ${d.mentor}.\n\n` +
     `📅 ${d.days}\n⏰ ${d.time} (${d.zone}) · ${d.duration}\n🗓️ From ${d.start} to ${d.end}\n📍 ${d.where}\n\n` +
-    `The classes are already in your LMS account under Live Classes — join each one from there.\n\n` +
+    (d.guest
+      ? `Join on Google Meet${d.meet ? `: ${d.meet}` : ""} — we'll also send you each class's link before it starts. Ask ${cs || "your counsellor"} for an LMS account to see your classes there too.\n\n`
+      : `The classes are already in your LMS account under Live Classes — join each one from there.\n\n`) +
     `Please reply *YES* to confirm you'll attend, or *NO* if this timing doesn't suit you.\n\n` +
     `${cs ? `${cs}, your Delta Institutions counsellor` : "Delta Institutions"}`,
   program_confirmed: (name: string, d: Details, cs: string) =>
@@ -101,7 +122,9 @@ export const templates = {
       `Dear ${name},\n\n` +
       `You have been enrolled in *${d.title}* at Delta Institutions, led by ${d.mentor}.\n\n` +
       `*Schedule*\n- Days: ${d.days}\n- Time: ${d.time} (${d.zone}), ${d.duration}\n- Dates: ${d.start} to ${d.end}\n- Where: ${d.where}\n\n` +
-      `*How to join*\nLog in to your LMS account and open Live Classes — each class is there to join.\n\n` +
+      (d.guest
+        ? `*How to join*\nJoin on Google Meet${d.meet ? ` — ${d.meet}` : ""}. We'll send you each class's link on WhatsApp before it starts.${cs ? ` Ask ${cs} for an LMS account to see your classes there too.` : ""}\n\n`
+        : `*How to join*\nLog in to your LMS account and open Live Classes — each class is there to join.\n\n`) +
       `Please confirm your seat with the button below${cs ? `, or tell ${cs}, your counsellor, on WhatsApp` : ""}.\n\n` +
       `${cs ? `If you have any questions, contact ${cs}, your counsellor.\n\n` : ""}` +
       `Warm regards,\nDelta Institutions`,
@@ -145,7 +168,8 @@ async function portalStudent(email: string) {
     { projection: { full_name: 1, phone: 1, email: 1, primary_mentor_id: 1, primary_mentor_name: 1 } });
   return s;
 }
-const tzOf = async (csId: string) => ((await locationOfUser(csId).catch(() => "")) === "Bangalore" ? "Asia/Kolkata" : "Asia/Dubai") as "Asia/Dubai" | "Asia/Kolkata";
+// (locationOfUser answers "bangalore" in lower case — compared as such: before 2026-10-15 every student got Dubai time.)
+const tzOf = async (csId: string) => (String(await locationOfUser(csId).catch(() => "")).toLowerCase() === "bangalore" ? "Asia/Kolkata" : "Asia/Dubai") as "Asia/Dubai" | "Asia/Kolkata";
 
 async function sendWhatsApp(csId: string, csName: string, phone: unknown, text: string) {
   if (!csId) return { status: "skipped", why: "The student has no CS" };
@@ -195,11 +219,14 @@ export async function sendProgramNotices(program: any, emails?: string[], opts: 
     }, { upsert: true });
     started++;
     void (async () => {
-      const d = detailsFor(program, await tzOf(csId));
+      const guest = on.get(email)?.guest === true;
+      const d = detailsFor(program, await tzOf(csId), guest);
       const name = firstName(s?.full_name || on.get(email)?.name);
       const mail = templates.program_enrolment_email(name, d, csName);
+      // A guest has no LMS to open: the Meet link instead, when there is one.
+      const first = guest ? (d.meet ? [{ label: "Join on Google Meet", url: d.meet, color: "#0f766e" }] : []) : [{ label: "Open my LMS", url: LMS_URL, color: "#0f766e" }];
       const [mailed, whatsapp] = await Promise.all([
-        sendEmail(email, mail, [{ label: "Open my LMS", url: LMS_URL, color: "#0f766e" }, { label: "Confirm my seat", url: confirmUrl(token), color: "#16a34a" }]),
+        sendEmail(email, mail, [...first, { label: "Confirm my seat", url: confirmUrl(token), color: "#16a34a" }]),
         sendWhatsApp(csId, csName, s?.phone, templates.program_enrolment(name, d, csName)),
       ]);
       await col(PROGRAM_NOTICES).updateOne(key, { $set: { email: mailed, whatsapp, sending: false } });
@@ -279,4 +306,51 @@ export async function handleProgramConfirm(req: Request, token: string): Promise
   }
   await recordAnswer(notice, "confirmed", "email");
   return page("You're confirmed ✅", `Thank you. Your seat in <strong>${title}</strong> is reserved — we've sent the details to your email.`);
+}
+
+/* ── Guests: each class's link before it starts ──────────────────────────── */
+
+/**
+ * Every few minutes: a guest (no LMS account) of an online program gets the next class's Google Meet link on WhatsApp
+ * (from their CS) about 30 minutes before it starts — else by email — once per class. Students on the LMS get the
+ * LMS's own reminders.
+ */
+export async function guestReminderTick(fetchProgram: (id: string) => Promise<any>, now = Date.now()): Promise<number> {
+  if (off()) return 0;
+  const guests = (await col(PROGRAM_GUESTS).find({}).toArray()) as any[];
+  if (!guests.length) return 0;
+  const byProgram = new Map<string, any[]>();
+  for (const g of guests) byProgram.set(g.program_id, [...(byProgram.get(g.program_id) ?? []), g]);
+  let sent = 0;
+  for (const [programId, list] of byProgram) {
+    const p: any = await fetchProgram(programId).catch(() => null);
+    if (!p || p.status !== "active" || p.isOnline === false) continue;
+    const soon = (p.classes ?? []).filter((c: any) => c.status === "scheduled" && c.meetUrl
+      && new Date(c.startsAt).getTime() > now && new Date(c.startsAt).getTime() - now <= REMIND_BEFORE_MS);
+    for (const c of soon) {
+      for (const g of list) {
+        const key = { class_id: String(c.id), email: String(g.email) };
+        const claimed = await col(GUEST_REMINDERS).updateOne(key, { $setOnInsert: { ...key, program_id: programId, at: new Date().toISOString() } }, { upsert: true });
+        if (!claimed.upsertedCount) continue;
+        const s = await portalStudent(g.email);
+        const csId = String(s?.primary_mentor_id ?? ""), csName = String(s?.primary_mentor_name ?? "").trim();
+        const tz = await tzOf(csId);
+        const time = new Date(c.startsAt).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit", timeZone: tz });
+        const name = firstName(s?.full_name || g.name);
+        const text = `Hi ${name} 👋\n\n*${p.title}* starts at ${time} (${tz === "Asia/Kolkata" ? "India time" : "Dubai time"}).\n\nJoin on Google Meet: ${c.meetUrl}\n\n${csName ? `${csName}, Delta Institutions` : "Delta Institutions"}`;
+        let r: any = await sendWhatsApp(csId, csName, s?.phone, text);
+        if (r.status !== "sent") r = await sendEmail(g.email, { subject: `${p.title} starts at ${time} — join on Google Meet`, body: text }, [{ label: "Join on Google Meet", url: c.meetUrl, color: "#0f766e" }]);
+        await col(GUEST_REMINDERS).updateOne(key, { $set: { result: r } });
+        if (r.status === "sent") sent++;
+      }
+    }
+  }
+  return sent;
+}
+
+let guestTimer: ReturnType<typeof setInterval> | null = null;
+/** Every 5 minutes. */
+export function startGuestReminderWorker(fetchProgram: (id: string) => Promise<any>): void {
+  if (guestTimer) return;
+  guestTimer = setInterval(() => { void guestReminderTick(fetchProgram).catch((err) => console.error("[programs] guest reminders", err)); }, 5 * 60_000);
 }

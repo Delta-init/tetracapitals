@@ -106,6 +106,8 @@ function ProgramLink({ p }) {
 
 function ProgramCard({ p, open, onToggle }) {
   const change = useProgramAction('changeProgramStudents', 'Students changed');
+  // A guest with an LMS account now: booked on the program like everyone else (2026-10-15).
+  const toLms = useProgramAction('addProgramGuestToLms', 'Booked on the program in the LMS');
   const stop = useProgramAction('stopProgram', 'Program stopped');
   const [editing, setEditing] = useState(false);
   const upcoming = p.classes.filter(c => c.status === 'scheduled' && new Date(c.startsAt).getTime() > Date.now());
@@ -135,8 +137,12 @@ function ProgramCard({ p, open, onToggle }) {
               <p className="mb-2 text-xs font-medium uppercase text-gray-500">Students</p>
               <div className="flex flex-wrap gap-2">
                 {p.students.map(s => (
-                  <span key={s.email} title={`${s.email}${s.csName ? ` · CS ${s.csName}` : ''}`} className={cn('flex items-center gap-1 rounded-full px-2.5 py-1 text-xs', s.yours ? 'bg-blue-50 text-blue-800' : 'bg-gray-100 text-gray-700')}>
+                  <span key={s.email} title={`${s.email}${s.csName ? ` · CS ${s.csName}` : ''}${s.guest ? ' · no LMS account — told by email and WhatsApp with the Meet link' : ''}`} className={cn('flex items-center gap-1 rounded-full px-2.5 py-1 text-xs', s.guest ? 'bg-amber-50 text-amber-800' : s.yours ? 'bg-blue-50 text-blue-800' : 'bg-gray-100 text-gray-700')}>
                     {s.name}{!s.yours && s.csName ? <span className="text-gray-400">· {s.csName}</span> : null}
+                    {s.guest && <span className="rounded bg-amber-200/70 px-1 text-[10px] font-semibold">No LMS</span>}
+                    {s.guest && p.canManage && p.status === 'active' && (
+                      <button type="button" title="They have an LMS account now — book them on the program" disabled={toLms.isPending} onClick={() => toLms.mutate({ id: p.id, email: s.email })} className="text-[10px] font-semibold text-amber-900 underline-offset-2 hover:underline">Add to LMS</button>
+                    )}
                     {p.canManage && p.status === 'active' && (
                       <button type="button" aria-label={`Take ${s.name} off`} disabled={change.isPending} onClick={() => { if (confirm(`Take ${s.name} off "${p.title}"? Their seats on the classes still to come are freed.`)) change.mutate({ id: p.id, removeEmails: [s.email] }); }} className="opacity-60 hover:opacity-100"><UserMinus className="h-3 w-3" /></button>
                     )}
@@ -196,7 +202,7 @@ function ProgramMessages({ p }) {
           const n = s.notice, may = (p.canManage || s.yours) && p.status === 'active';
           return (
             <div key={s.email} className="flex flex-wrap items-center gap-x-4 gap-y-1 px-3 py-2">
-              <span className="min-w-[140px] font-medium text-gray-800">{s.name}</span>
+              <span className="min-w-[140px] font-medium text-gray-800">{s.name}{s.guest && <span className="ml-1.5 rounded bg-amber-100 px-1 text-[10px] font-semibold text-amber-800" title="No LMS account — the Meet link by email and WhatsApp, and before each class">No LMS</span>}</span>
               <Sent icon={Mail} label="Email" r={n?.email} sending={n?.sending} />
               <Sent icon={MessageCircle} label="WhatsApp" r={n?.whatsapp} sending={n?.sending} />
               {n?.response === 'confirmed' ? <Badge className="bg-emerald-100 text-emerald-800 hover:bg-emerald-100">Confirmed{n.via ? ` · ${n.via === 'by hand' ? 'by hand' : n.via === 'email' ? 'by email' : 'on WhatsApp'}` : ''}</Badge>
@@ -430,8 +436,9 @@ function ProgramDialog({ program, onClose, teams = [] }) {
               </div>
               <div className="mt-1"><AudiencePicker selected={groups} onAdd={addGroup} onRemove={removeGroup} /></div>
               {students.length > 490 && <p className="mt-1 text-xs text-amber-700">A program takes at most 490 students — take some off.</p>}
+              {students.some(s => s.lms === false) && <p className="mt-1 text-xs text-amber-700">{students.filter(s => s.lms === false).length} without an LMS account join as guests — they get the program by email and WhatsApp with the Google Meet link, and each class's link before it starts.</p>}
               <div className="my-1.5 flex max-h-40 flex-wrap gap-1.5 overflow-auto">
-                {students.map(s => <span key={s.email} className="flex items-center gap-1 rounded-full bg-blue-50 px-2.5 py-1 text-xs text-blue-800">{s.name}{!s.yours && s.csName ? <span className="text-blue-400">· {s.csName}</span> : null}<button type="button" aria-label={`Remove ${s.name}`} onClick={() => dropOne(s.email)}><X className="h-3 w-3" /></button></span>)}
+                {students.map(s => <span key={s.email} className={cn('flex items-center gap-1 rounded-full px-2.5 py-1 text-xs', s.lms === false ? 'bg-amber-50 text-amber-800' : 'bg-blue-50 text-blue-800')}>{s.name}{s.lms === false && <span className="rounded bg-amber-200/70 px-1 text-[10px] font-semibold" title="No LMS account — joins as a guest: the program by email and WhatsApp, with the Meet link">No LMS</span>}{!s.yours && s.csName ? <span className="text-blue-400">· {s.csName}</span> : null}<button type="button" aria-label={`Remove ${s.name}`} onClick={() => dropOne(s.email)}><X className="h-3 w-3" /></button></span>)}
               </div>
               <StudentPicker teams={picked} exclude={students.map(s => s.email)} onPick={pickOne} />
             </div>

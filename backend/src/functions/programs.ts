@@ -5,7 +5,7 @@ import { callLms, LmsError } from "../lib/lms";
 import { visibleMentorIds, studentsOf, isStudentOf } from "../students/followups";
 import { teamIndex, csManagerReach } from "../lib/userLocation";
 import { isMentorRole } from "../lib/roles";
-import { PROGRAM_NOTICES, sendProgramNotices, recordAnswer } from "../students/programNotices";
+import { PROGRAM_NOTICES, PROGRAM_GUESTS, sendProgramNotices, recordAnswer } from "../students/programNotices";
 
 /* ────────────────────────────────────────────────────────────────────────────
    Programs (the user, 2026-10-09) — a live class in the LMS repeating weekly or
@@ -110,12 +110,26 @@ async function decorate(programs: any[], user: AuthUser, mine: Set<string> | nul
   const notices = new Map(((await col(PROGRAM_NOTICES).find({ program_id: { $in: programs.map((p) => String(p.id)) } },
     { projection: { program_id: 1, student_email: 1, email: 1, whatsapp: 1, sending: 1, response: 1, responded_via: 1, responded_at: 1 } }).toArray()) as any[])
     .map((n) => [`${n.program_id}|${n.student_email}`, { email: n.email ?? null, whatsapp: n.whatsapp ?? null, sending: !!n.sending, response: n.response ?? null, via: n.responded_via ?? "", at: n.responded_at ?? null }]));
-  return programs.map((p) => ({
-    ...p,
-    canManage: isSuper(user) || (p.source === "portal" && String(p.createdByEmail ?? "").toLowerCase() === me),
-    students: (p.students ?? []).map((s: any) => ({ ...s, ...(ours.get(String(s.email ?? "").toLowerCase()) ?? { yours: false, csName: "", code: "" }),
-      notice: notices.get(`${p.id}|${String(s.email ?? "").toLowerCase()}`) ?? null })),
-  }));
+  // Guests — picked, but with no LMS account (students/programNotices.ts PROGRAM_GUESTS): on the list too, marked.
+  const guestsOf = new Map<string, any[]>();
+  for (const g of (await col(PROGRAM_GUESTS).find({ program_id: { $in: programs.map((p) => String(p.id)) } }).toArray()) as any[]) {
+    guestsOf.set(g.program_id, [...(guestsOf.get(g.program_id) ?? []), g]);
+  }
+  const guestEmails = [...new Set([...guestsOf.values()].flat().map((g) => String(g.email)))];
+  const guestInfo = await studentsByEmail(guestEmails, mine);
+  return programs.map((p) => {
+    const onLms = new Set((p.students ?? []).map((s: any) => String(s.email ?? "").toLowerCase()));
+    const guests = (guestsOf.get(String(p.id)) ?? []).filter((g) => !onLms.has(String(g.email)))
+      .map((g) => ({ id: g.student_id || "", name: g.name || g.email, email: g.email, guest: true }));
+    return {
+      ...p,
+      canManage: isSuper(user) || (p.source === "portal" && String(p.createdByEmail ?? "").toLowerCase() === me),
+      students: [...(p.students ?? []), ...guests].map((s: any) => {
+        const e = String(s.email ?? "").toLowerCase();
+        return { ...s, ...((s.guest ? guestInfo : ours).get(e) ?? { yours: false, csName: "", code: "" }), notice: notices.get(`${p.id}|${e}`) ?? null };
+      }),
+    };
+  });
 }
 
 async function loadOne(id: string, user: AuthUser) {
@@ -169,9 +183,9 @@ export async function searchProgramStudents(req: Request, user: AuthUser): Promi
   // "Add all": only those with an LMS account — the others can't join its classes.
   if (body?.enrolledOnly) and.push({ "lms_account.exists": true });
   and.push({ not_student: { $ne: true } });
-  const rows = (await col("students").find({ $and: and }, { projection: { full_name: 1, email: 1, student_code: 1, primary_mentor_id: 1, primary_mentor_name: 1, common_cs: 1 } }).sort({ full_name: 1 }).limit(group ? 5000 : body?.everyone ? 20 : 300).toArray()) as any[];
+  const rows = (await col("students").find({ $and: and }, { projection: { full_name: 1, email: 1, student_code: 1, primary_mentor_id: 1, primary_mentor_name: 1, common_cs: 1, lms_account: 1 } }).sort({ full_name: 1 }).limit(group ? 5000 : body?.everyone ? 20 : 300).toArray()) as any[];
   return json({
-    students: rows.map((s) => ({ id: String(s._id), name: s.full_name ?? "", email: String(s.email).toLowerCase(), code: s.student_code ?? "", csName: s.primary_mentor_name ?? "", yours: mine === null || isStudentOf(s, mine) })),
+    students: rows.map((s) => ({ id: String(s._id), name: s.full_name ?? "", email: String(s.email).toLowerCase(), code: s.student_code ?? "", csName: s.primary_mentor_name ?? "", yours: mine === null || isStudentOf(s, mine), lms: s.lms_account?.exists === true })),
   });
 }
 
@@ -203,11 +217,22 @@ export async function createProgram(req: Request, user: AuthUser): Promise<Respo
   const teams = await teamsOf(body, user);
   if (teams instanceof Response) return teams;
   return lms(async () => {
-    const made: any = await callLms("/programs", {
-      method: "POST", verb: "make the program",
-      // Co-mentors too (2026-10-15) — the LMS takes them as coMentorEmails.
-      body: { ...scheduleOf(body), mentorEmail, coMentorEmails: emailsOf(body?.coMentorEmails).filter((e) => e !== mentorEmail), students, actorEmail: user.email, actorName: user.full_name || user.email },
-    });
+    const made: any = await (async () => {
+      try {
+        return await callLms("/programs", {
+          method: "POST", verb: "make the program",
+          // Co-mentors too (2026-10-15) — the LMS takes them as coMentorEmails.
+          body: { ...scheduleOf(body), mentorEmail, coMentorEmails: emailsOf(body?.coMentorEmails).filter((e) => e !== mentorEmail), students, actorEmail: user.email, actorName: user.full_name || user.email },
+        });
+      } catch (err) {
+        // Nobody picked is on the LMS: the program needs one (the others join as guests).
+        if (err instanceof LmsError && /Not students on the LMS|Add at least one student/i.test(err.message)) {
+          throw new LmsError("Nobody you picked has an LMS account yet — a program needs at least one student on the LMS; the others then join as guests (by email and WhatsApp, with the Meet link).", 400);
+        }
+        throw err;
+      }
+    })();
+    await keepGuests(String(made.id), made?.missing ?? [], user);
     const [one] = await decorate([made], user, await visibleMentorIds(user));
     if (teams.length && made?.id) {
       await col(PROGRAM_TEAMS).updateOne({ program_id: String(made.id) }, { $set: {
@@ -215,8 +240,39 @@ export async function createProgram(req: Request, user: AuthUser): Promise<Respo
         set_by_id: user.id, set_by_name: user.full_name || user.email, set_at: new Date().toISOString(),
       } }, { upsert: true });
     }
-    const told = await sendProgramNotices(made, undefined, { by: user.full_name || user.email }).catch((err) => { console.error("[programs] messages", err); return 0; });
+    // Everyone picked is told — guests too, with the Meet link.
+    const told = await sendProgramNotices(one, undefined, { by: user.full_name || user.email }).catch((err) => { console.error("[programs] messages", err); return 0; });
     return { ...one, teams, team: teams[0] ?? null, missing: made?.missing ?? [], told };
+  });
+}
+
+/** Picked with no LMS account: kept on the program as guests — portal students only (an unknown address is dropped). */
+async function keepGuests(programId: string, emails: string[], user: AuthUser): Promise<void> {
+  const list = [...new Set(emails.map((e) => String(e).trim().toLowerCase()).filter((e) => e.includes("@")))];
+  for (const email of list) {
+    const s: any = await col("students").findOne({ email: new RegExp(`^${esc(email)}$`, "i") }, { projection: { full_name: 1 } });
+    if (!s) continue;
+    await col(PROGRAM_GUESTS).updateOne({ program_id: programId, email }, { $setOnInsert: {
+      program_id: programId, email, student_id: String(s._id), name: s.full_name ?? "", added_by: user.full_name || user.email, added_at: new Date().toISOString(),
+    } }, { upsert: true });
+  }
+}
+
+/**
+ * POST /api/functions/addProgramGuestToLms { id, email } — a guest who has an LMS account now: booked on the program
+ * like everyone else, and no longer a guest. Who made it, or a Super Admin.
+ */
+export async function addProgramGuestToLms(req: Request, user: AuthUser): Promise<Response> {
+  const body: any = await req.json().catch(() => ({}));
+  return lms(async () => {
+    const { program } = await loadOne(str(body?.id, 40), user);
+    if (!program.canManage) throw new LmsError("Only who made this program, or a Super Admin, can change it", 403);
+    const email = str(body?.email, 200).toLowerCase();
+    const changed: any = await callLms(`/programs/${program.id}/students`, { method: "POST", verb: "add the student", body: { add: [email], remove: [] } });
+    if ((changed?.missing ?? []).map((e: string) => String(e).toLowerCase()).includes(email)) throw new LmsError("They still have no LMS account — make one first", 409);
+    await col(PROGRAM_GUESTS).deleteMany({ program_id: String(program.id), email });
+    const [one] = await decorate([changed], user, await visibleMentorIds(user));
+    return one;
   });
 }
 
@@ -226,10 +282,13 @@ export async function changeProgramStudents(req: Request, user: AuthUser): Promi
   return lms(async () => {
     const { program } = await loadOne(str(body?.id, 40), user);
     if (!program.canManage) throw new LmsError("Only who made this program, or a Super Admin, can change it", 403);
-    const add = emailsOf(body?.addEmails);
-    const changed: any = await callLms(`/programs/${program.id}/students`, { method: "POST", verb: "change the students", body: { add, remove: emailsOf(body?.removeEmails) } });
-    const told = add.length ? await sendProgramNotices(changed, add, { by: user.full_name || user.email }).catch(() => 0) : 0;
+    const add = emailsOf(body?.addEmails), remove = emailsOf(body?.removeEmails);
+    const changed: any = await callLms(`/programs/${program.id}/students`, { method: "POST", verb: "change the students", body: { add, remove } });
+    // Added with no LMS account: guests; taken off: off the guests too.
+    await keepGuests(String(program.id), (changed?.missing ?? []).filter((e: string) => add.includes(String(e).toLowerCase())), user);
+    if (remove.length) await col(PROGRAM_GUESTS).deleteMany({ program_id: String(program.id), email: { $in: remove } });
     const [one] = await decorate([changed], user, await visibleMentorIds(user));
+    const told = add.length ? await sendProgramNotices(one, add, { by: user.full_name || user.email }).catch(() => 0) : 0;
     return { ...one, missing: changed?.missing ?? [], told };
   });
 }
@@ -309,24 +368,29 @@ export async function getProgramAudiences(_req: Request, user: AuthUser): Promis
   if (!MAKERS.has(user.app_role)) return forbidden();
   const idx = await teamIndex();
   const teams = await pickableTeams(user);
-  const enrolled = { email: { $nin: [null, ""] }, "lms_account.exists": true, not_student: { $ne: true } };
-  const byCs = new Map<string, number>(((await col("students").aggregate([
-    { $match: enrolled }, { $group: { _id: "$primary_mentor_id", n: { $sum: 1 } } },
-  ]).toArray()) as any[]).map((r) => [String(r._id ?? ""), r.n]));
+  // Every student with an email (2026-10-15: those without an LMS account join as guests), and how many are on the LMS.
+  const withEmail = { email: { $nin: [null, ""] }, not_student: { $ne: true } };
+  const rowsBy = ((await col("students").aggregate([
+    { $match: withEmail }, { $group: { _id: "$primary_mentor_id", n: { $sum: 1 }, lms: { $sum: { $cond: [{ $eq: ["$lms_account.exists", true] }, 1, 0] } } } },
+  ]).toArray()) as any[]);
+  const byCs = new Map<string, number>(rowsBy.map((r) => [String(r._id ?? ""), r.n]));
+  const lmsByCs = new Map<string, number>(rowsBy.map((r) => [String(r._id ?? ""), r.lms]));
   const teamIds = new Set(teams.map((t) => t.id));
-  const cs: { id: string; name: string; team: string; count: number }[] = [];
-  const teamCount = new Map<string, number>();
+  const cs: { id: string; name: string; team: string; count: number; lms: number }[] = [];
+  const teamCount = new Map<string, number>(), teamLms = new Map<string, number>();
   for (const [id, u] of idx.userById) {
     if (!isMentorRole(String(u?.app_role ?? "")) || u?.status === "inactive") continue;
     const t = idx.teamOf(id);
     if (!t || !teamIds.has(t.id)) continue;
-    const n = byCs.get(id) ?? 0;
+    const n = byCs.get(id) ?? 0, l = lmsByCs.get(id) ?? 0;
     teamCount.set(t.id, (teamCount.get(t.id) ?? 0) + n);
-    if (u.app_role === "cs" || n > 0) cs.push({ id, name: String(u.full_name || u.email || "CS"), team: t.name, count: n });
+    teamLms.set(t.id, (teamLms.get(t.id) ?? 0) + l);
+    if (u.app_role === "cs" || n > 0) cs.push({ id, name: String(u.full_name || u.email || "CS"), team: t.name, count: n, lms: l });
   }
   return json({
-    all: await col("students").countDocuments(enrolled),
-    teams: teams.map((t) => ({ ...t, count: teamCount.get(t.id) ?? 0 })),
+    all: await col("students").countDocuments(withEmail),
+    all_lms: await col("students").countDocuments({ ...withEmail, "lms_account.exists": true }),
+    teams: teams.map((t) => ({ ...t, count: teamCount.get(t.id) ?? 0, lms: teamLms.get(t.id) ?? 0 })),
     cs: cs.sort((a, b) => a.name.localeCompare(b.name)),
   });
 }

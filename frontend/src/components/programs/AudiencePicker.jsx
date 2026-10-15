@@ -11,7 +11,8 @@ import { cn } from '@/lib/utils';
 /* ────────────────────────────────────────────────────────────────────────────
    Add students by group (the user, 2026-10-15) — one dropdown, several ticks:
    every student in the portal, a team's, a CS's. Ticking one adds its students
-   (those with an LMS account — the only ones a program can take); unticking it
+   (those without an LMS account join as guests — told by email and WhatsApp
+   with the Meet link, 2026-10-15); unticking it
    takes off the ones only it brought. backend functions/programs.ts
    getProgramAudiences / searchProgramStudents { all | teams | cs, enrolledOnly }.
 ──────────────────────────────────────────────────────────────────────────── */
@@ -34,9 +35,10 @@ export default function AudiencePicker({ selected, onAdd, onRemove }) {
   const needle = q.trim().toLowerCase();
   const options = useMemo(() => {
     const out = [];
-    if (data) out.push({ key: 'all', label: 'All students in the portal', sub: `${data.all} enrolled`, group: '' });
-    for (const t of data?.teams ?? []) out.push({ key: `t:${t.id}`, label: t.name, sub: `${t.count} enrolled${t.location === 'bangalore' ? ' · Bangalore' : ''}`, group: 'Teams' });
-    for (const c of data?.cs ?? []) out.push({ key: `c:${c.id}`, label: c.name, sub: `${c.count} enrolled · ${c.team}`, group: 'CSs' });
+    const n = (count, lms) => `${count}${lms != null ? ` · ${lms} on LMS` : ''}`;
+    if (data) out.push({ key: 'all', label: 'All students in the portal', sub: n(data.all, data.all_lms), group: '' });
+    for (const t of data?.teams ?? []) out.push({ key: `t:${t.id}`, label: t.name, sub: `${n(t.count, t.lms)}${t.location === 'bangalore' ? ' · Bangalore' : ''}`, group: 'Teams' });
+    for (const c of data?.cs ?? []) out.push({ key: `c:${c.id}`, label: c.name, sub: `${n(c.count, c.lms)} · ${c.team}`, group: 'CSs' });
     return needle ? out.filter(o => o.label.toLowerCase().includes(needle) || o.sub.toLowerCase().includes(needle)) : out;
   }, [data, needle]);
 
@@ -44,10 +46,12 @@ export default function AudiencePicker({ selected, onAdd, onRemove }) {
     if (selected.includes(o.key)) { onRemove(o.key); return; }
     setBusy(o.key);
     try {
-      const r = await fn('searchProgramStudents', { q: '', ...bodyOf(o.key), enrolledOnly: true });
+      // Everyone in it — those without an LMS account join as guests (2026-10-15).
+      const r = await fn('searchProgramStudents', { q: '', ...bodyOf(o.key) });
       const found = r?.students ?? [];
       onAdd(o.key, found);
-      toast.success(found.length ? `${found.length} student${found.length === 1 ? '' : 's'} from ${o.label}` : `${o.label}: no students with an LMS account`);
+      const noLms = found.filter(s => s.lms === false).length;
+      toast.success(found.length ? `${found.length} student${found.length === 1 ? '' : 's'} from ${o.label}${noLms ? ` — ${noLms} without an LMS account join as guests` : ''}` : `${o.label}: no students with an email`);
     } catch (e) {
       toast.error(e?.response?.data?.error || e?.message || "Couldn't add them");
     } finally {
