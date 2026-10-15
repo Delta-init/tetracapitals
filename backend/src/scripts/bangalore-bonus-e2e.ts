@@ -213,13 +213,25 @@ if (noBangaloreOrg) {
   await txs.insertOne({ _id: old, type: "BONUS", status: "APPROVED", student_id: String(vijay._id), student_name: vijay.full_name, student_code: "STU-5000",
     amount_usd: 1000, amount_aed: 5505, amount_currency: "INR", amount_original: 150000, course_payment: { bonus_usd: 1000, paid_today_aed: 5505 },
     finance_approval: { state: "decided", decision: "approved" } });
+  // What finance approved, as the audit line written then kept it.
+  const approvedLine = (id: ObjectId, usd: number) => ({ entity_id: String(id), action_type: "accounts_approve_bonus", new_value: JSON.stringify({ finance_approval: "approved", amount_usd: usd }) });
+  // Praveen's (STU-2991): $500 typed in dollars, approved at $500, carrying AED 2,000 — right as it is.
+  const praveen = new ObjectId();
+  await txs.insertOne({ _id: praveen, type: "BONUS", status: "APPROVED", student_id: String(dina._id), student_code: "STU-2991", amount_usd: 500, amount_aed: 2000, amount_currency: "USD", amount_original: 500, finance_approval: { state: "decided", decision: "approved" } });
+  // One with no record of what finance approved: left alone.
+  const unknown = new ObjectId();
+  await txs.insertOne({ _id: unknown, type: "BONUS", status: "APPROVED", student_id: String(dina._id), student_code: "STU-NOLOG", amount_usd: 900, amount_aed: 5505, finance_approval: { state: "decided", decision: "approved" } });
+  await db.collection("logs").insertMany([approvedLine(old, 1500), approvedLine(praveen, 500)]);
   // One finance corrected to $1,400 is right as it is.
   await txs.insertOne({ _id: new ObjectId(), type: "BONUS", status: "APPROVED", student_id: String(dina._id), amount_usd: 1400, amount_aed: 5505, requested_amount_usd: 1500, finance_approval: { state: "decided", decision: "approved" } });
-  let fixes = await planPaidFixes(db);
+  const planned = await planPaidFixes(db);
+  let fixes = planned.fixes;
   check("the dry run finds J Vijay's: $1,000 → $1,500, and nothing else", fixes.length === 1 && fixes[0].id === String(old) && fixes[0].amountUsd === 1000 && fixes[0].paidUsd === 1500, JSON.stringify(fixes));
+  check("…not Praveen's ($500 approved, $500 now, though its AED reads 2,000)", !fixes.some((f) => f.id === String(praveen)));
+  check("…and lists the one with no record of finance's amount, leaving it alone", planned.noRecord.some((f) => f.id === String(unknown)) && !fixes.some((f) => f.id === String(unknown)), JSON.stringify(planned.noRecord));
   check("…and changes nothing", (await txOf(String(old)))?.amount_usd === 1000);
   check("written: it is $1,500 again, with an audit line", (await applyPaidFixes(db, fixes)) === 1 && (await txOf(String(old)))?.amount_usd === 1500 && (await db.collection("logs").countDocuments({ entity_id: String(old), action_type: "restore_bonus_paid_amount" })) === 1);
-  check("run again: nothing to put back", (await planPaidFixes(db)).length === 0);
+  check("run again: nothing to put back", (await planPaidFixes(db)).fixes.length === 0);
   check("the undo puts it back as it was", (await undoPaidFixes(db, fixes)) === 1 && (await txOf(String(old)))?.amount_usd === 1000);
   await applyPaidFixes(db, fixes);
   const inHq = (await bangaloreBonusesInHq(db)).map((x) => x.id);
