@@ -89,14 +89,14 @@ function studentCard(s: any, lms: any) {
 }
 
 /** A failed ask, as the page says it — an LMS without the many-students ask yet says so. */
-function lmsTrouble(err: unknown) {
+export function lmsTrouble(err: unknown) {
   const message = err instanceof LmsError ? err.message : "The LMS could not be asked";
   const notYet = /not found|no route|cannot post|email must be one address/i.test(message);
   return notYet ? "The LMS doesn't share tickets this way yet — it needs its update" : message;
 }
 
 /** The students in `scope` (null: everyone) with an email — one record an address: the LMS knows a person by it, and so do their tickets. */
-async function studentsByEmail(scope: Record<string, any> | null): Promise<Map<string, any>> {
+export async function studentsByEmail(scope: Record<string, any> | null): Promise<Map<string, any>> {
   const students = (await col("students")
     .find(scope ? { $and: [scope, { email: { $regex: "@" } }] } : { email: { $regex: "@" } }, {
       projection: { full_name: 1, student_code: 1, email: 1, phone: 1, country: 1, primary_mentor_name: 1, team_name: 1, enrolment_status: 1 },
@@ -111,7 +111,7 @@ async function studentsByEmail(scope: Record<string, any> | null): Promise<Map<s
 }
 
 /** Their tickets in the LMS — only theirs — and what each gave the LMS to be reached by. Throws when the LMS can't be asked. */
-async function lmsTicketsOf(byEmail: Map<string, any>): Promise<{ tickets: any[]; contact: Map<string, any> }> {
+export async function lmsTicketsOf(byEmail: Map<string, any>): Promise<{ tickets: any[]; contact: Map<string, any> }> {
   const emails = [...byEmail.keys()];
   const batches: string[][] = [];
   for (let i = 0; i < emails.length; i += LMS_BATCH) batches.push(emails.slice(i, i + LMS_BATCH));

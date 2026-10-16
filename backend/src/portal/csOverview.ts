@@ -79,7 +79,7 @@ const depositAedOf = (t: any) => (Number(t?.amount_aed) > 0 ? Number(t.amount_ae
 export type Location = "dubai" | "bangalore";
 export const LOCATIONS: Location[] = ["dubai", "bangalore"];
 /** Where each person is, as getMyCurrency decides it: a Bangalore team's people Bangalore; everyone else Dubai. */
-async function locations(): Promise<(id: string) => Location> {
+export async function locations(): Promise<(id: string) => Location> {
   const index = await loadTeams();
   return (id: string) => {
     const u = index.userById.get(String(id));

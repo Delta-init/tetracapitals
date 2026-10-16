@@ -5,6 +5,7 @@ import { config } from "../config";
 import { json } from "../lib/response";
 import { BUILTIN_ROLES, isAdminRole } from "../lib/roles";
 import { pendingOverview } from "./pending";
+import { csPending } from "./csPending";
 import { csOverview, csDetail, type Period } from "./csOverview";
 import { CallFilterError, callsForPortal, recordingLinkForPortal } from "./calls";
 
@@ -114,6 +115,12 @@ export async function handlePortalService(req: Request, path: string): Promise<R
   /* GET /pending — the sidebar's numbers for the whole organisation, and whom each waits on (portal/pending.ts). */
   if (path === "/pending" && req.method === "GET") {
     return ok(await pendingOverview());
+  }
+
+  /* GET /cs-pending — what waits on each CS and which students: onboarding, bonuses by where they are stuck, LMS
+     tickets, follow-ups due, class completions to call (portal/csPending.ts) — Root's Pending → CS portal tab. */
+  if (path === "/cs-pending" && req.method === "GET") {
+    return ok(await csPending());
   }
 
   /* GET /calls — every 3CX call with a student, its totals and per person, for Root's "3CX calls" page and its Pending
