@@ -7,6 +7,7 @@ import { buildScopeFilter } from "../lib/scope";
 import { recordHistory } from "../students/history";
 import { callLms, lmsConfigured, LmsError } from "../lib/lms";
 import { status as whatsAppStatus, sendText, intlNumbers } from "../whatsapp/service";
+import { isCsLike } from "../lib/roles";
 
 /* The LMS answers for at most this many addresses at a time; a few asks at once. */
 const LMS_BATCH = 500;
@@ -221,7 +222,7 @@ const TICKET_WHATSAPP = "lms_ticket_whatsapp";
  * answer. Never stops the answer: what didn't go is said why. → { sent, to?, with_problem?, why_not? }
  */
 async function answerOnWhatsApp(user: AuthUser, student: any, ticketId: string, ticket: any, answer: string) {
-  if (user.app_role !== "cs") return { sent: false, why_not: "WhatsApp goes from a CS's own WhatsApp — only a CS can send it" };
+  if (!isCsLike(user.app_role)) return { sent: false, why_not: "WhatsApp goes from a CS's own WhatsApp — only a CS or CS Manager can send it" };
   if (whatsAppStatus(user.id).status !== "connected") return { sent: false, why_not: "Your WhatsApp is not linked — link it on the WhatsApp page" };
   const to = intlNumbers(student.phone)[0];
   if (!to) return { sent: false, why_not: "The student has no phone number here" };

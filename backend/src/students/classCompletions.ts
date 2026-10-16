@@ -71,7 +71,8 @@ export async function keepClassCompletion(key: string, cls: LmsClass, student: a
 async function whoToTell(studentId: string): Promise<{ to: "cs" | "super_admins"; people: any[] }> {
   const s: any = await col("students").findOne({ _id: toObjectId(studentId) as any }, { projection: { primary_mentor_id: 1 } });
   const csId = toObjectId(String(s?.primary_mentor_id ?? ""));
-  const cs = csId ? await col("users").findOne({ _id: csId, app_role: "cs", status: { $ne: "inactive" } }) : null;
+  // The student's CS — a CS Manager who is their CS too (2026-10-16).
+  const cs = csId ? await col("users").findOne({ _id: csId, app_role: { $in: ["cs", "cs_manager"] }, status: { $ne: "inactive" } }) : null;
   if (cs) return { to: "cs", people: [cs] };
   return { to: "super_admins", people: await col("users").find({ app_role: "super_admin", status: { $ne: "inactive" } }).toArray() };
 }

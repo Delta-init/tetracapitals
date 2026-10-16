@@ -7,6 +7,7 @@ import { getDownlineIds } from "../lib/scope";
 import type { AuthUser } from "../auth/middleware";
 import { loadTeams } from "../students/teams";
 import { visibleMentorIds, isStudentOf } from "../students/followups";
+import { isCsLike } from "../lib/roles";
 import {
   status, connect, disconnect, sendText, sendFile, studentsByKey, forgetStudents, phoneKeys, intlNumbers, mediaPath, WhatsAppError,
 } from "../whatsapp/service";
@@ -22,7 +23,8 @@ import {
 
 const str = (v: unknown, max = 200) => String(v ?? "").trim().slice(0, max);
 const who = (u: AuthUser) => u.full_name || u.email || "somebody";
-const canLink = (u: AuthUser) => u.app_role === "cs";
+// A CS — and a CS Manager, from their own number too (2026-10-16).
+const canLink = (u: AuthUser) => isCsLike(u.app_role);
 
 /** Whose WhatsApp `user` may read — null: everyone's. */
 async function readable(user: AuthUser): Promise<Set<string> | null> {
@@ -88,7 +90,7 @@ export async function getWhatsAppStatus(_req: Request, user: AuthUser): Promise<
   const owners = await readable(user);
   let list: any[] = [];
   if (!owners || owners.size > 1) {
-    const filter: Record<string, any> = { app_role: "cs", status: { $ne: "inactive" } };
+    const filter: Record<string, any> = { app_role: { $in: ["cs", "cs_manager"] }, status: { $ne: "inactive" } };
     if (owners) filter._id = { $in: [...owners].map(toObjectId).filter(Boolean) };
     const teams = await loadTeams();
     const counts = new Map((await col("whatsapp_messages").aggregate([{ $group: { _id: "$owner_id", n: { $sum: 1 } } }]).toArray()).map((r: any) => [String(r._id), r.n]));

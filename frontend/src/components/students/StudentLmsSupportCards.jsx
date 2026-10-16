@@ -64,7 +64,7 @@ export function TicketAnswer({ studentId, ticket }) {
   const { user } = useAuth();
   const [text, setText] = useState('');
   // A CS's answer goes to the student on their WhatsApp too — the first for a ticket with the problem above it.
-  const isCs = user?.app_role === 'cs';
+  const isCs = ['cs', 'cs_manager'].includes(user?.app_role);   // a CS Manager answers from their own WhatsApp too (2026-10-16)
   const [onWhatsApp, setOnWhatsApp] = useState(true);
   const done = () => {
     qc.invalidateQueries({ queryKey: ['student-lms-support', studentId] });

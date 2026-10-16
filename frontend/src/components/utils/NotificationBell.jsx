@@ -73,7 +73,8 @@ export default function NotificationBell({ currentUser, onWhatsAppUnread }) {
 
   // A CS's own WhatsApp: new messages pop up, and the menu shows that some are unread.
   useEffect(() => {
-    if (currentUser?.app_role !== 'cs') return undefined;
+    // …and a CS Manager's own (2026-10-16).
+    if (!['cs', 'cs_manager'].includes(currentUser?.app_role)) return undefined;
     let since = null, alive = true;
     const tick = async () => {
       try {

@@ -40,3 +40,7 @@ export function isCustomRole(role: string): boolean {
 export function isMentorRole(role: string): boolean {
   return (BUILTIN_MENTOR_ROLES as readonly string[]).includes(role) || isCustomRole(role);
 }
+
+/** A CS — or a CS Manager, who can do everything a CS can (the user, 2026-10-16): link and message from their own
+ *  WhatsApp, send the onboarding and support messages, ask for payment links, and get a CS's alerts for their students. */
+export const isCsLike = (role: unknown): boolean => role === "cs" || role === "cs_manager";

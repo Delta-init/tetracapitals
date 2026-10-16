@@ -11,6 +11,7 @@ import { sendMail, mailConfigured } from "../lib/mailer";
 import { abzerConfigured, createAbzerLink, AbzerError } from "../lib/abzer";
 import { intlNumbers } from "../whatsapp/service";
 import { onboardingEmail } from "./studentOnboarding";
+import { isCsLike } from "../lib/roles";
 
 /* ────────────────────────────────────────────────────────────────────────────
    Payment links, asked for by a CS and pasted in by a Super Admin — in place
@@ -62,9 +63,9 @@ const cap = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
 const who = (u: AuthUser) => u.full_name || u.email || "somebody";
 const money = (amount: number) => `${CURRENCY} ${Number(amount).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 const isSuperAdmin = (u: AuthUser) => u.app_role === "super_admin";
-/** Only a CS asks, for their own students (Common ones too). */
+/** A CS (or CS Manager, 2026-10-16) asks, for their own students (Common ones too). */
 const mayRequest = (u: AuthUser, s: any) =>
-  u.app_role === "cs" && (String(s?.primary_mentor_id ?? "") === u.id || commonIds(s).includes(u.id));
+  isCsLike(u.app_role) && (String(s?.primary_mentor_id ?? "") === u.id || commonIds(s).includes(u.id));
 /** The first email address on the student's record (some hold two). */
 const emailOf = (s: any) => (String(s?.email ?? "").match(/[^\s,;<>]+@[^\s,;<>]+\.[^\s,;<>]+/g) ?? []).find((e) => EMAIL.test(e)) ?? "";
 const escapeRegex = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
@@ -259,7 +260,7 @@ export async function getPaymentLinks(req: Request, user: AuthUser): Promise<Res
     });
   }
 
-  if (user.app_role === "cs") {
+  if (isCsLike(user.app_role)) {
     const list = await col(REQUESTS).find({ requested_by_id: user.id }).sort({ created_at: -1 }).limit(1000).toArray();
     const requests = list.map((r) => view(r, user));
     if (markSeen && requests.some((r) => r.new)) await markAnswersSeen(user);

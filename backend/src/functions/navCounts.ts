@@ -12,6 +12,7 @@ import { BONUS_APPROVERS } from "../finance/funding";
 import { openCreditRequests } from "./creditRequests";
 import { csManagerReach, fundingOfIds } from "../lib/userLocation";
 import { IS_STUDENT, OF_A_STUDENT } from "../students/notStudent";
+import { isCsLike } from "../lib/roles";
 
 /* The filters behind each number — shared with the Root portal's Pending page (portal/pending.ts), so the two never
    drift apart. A `forId` narrows one to that person, as their own sidebar has it. */
@@ -63,7 +64,7 @@ export async function getNavCounts(_req: Request, user: AuthUser): Promise<Respo
     ids = (await col("students").find(studentsOf(visible), { projection: { _id: 1 } }).toArray()).map((s) => String(s._id));
     open.student_id = { $in: ids };
   }
-  const cs = user.app_role === "cs";
+  const cs = isCsLike(user.app_role);
   const mine = (filter: Record<string, any>) => (visible ? { $and: [filter, studentsOf(visible)] } : filter);
   // As the Not onboarded and Balance payments pages: the Sales role the students they closed.
   const theirs = async (filter: Record<string, any>) => (visible ? { $and: [filter, await theirStudents(user, studentsOf(visible))] } : filter);

@@ -97,7 +97,7 @@ const escapeRegex = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 async function activeCs(id: unknown): Promise<any | null> {
   const oid = toObjectId(String(id ?? ""));
   if (!oid) return null;
-  return col("users").findOne({ _id: oid, app_role: "cs", status: { $ne: "inactive" } });
+  return col("users").findOne({ _id: oid, app_role: { $in: ["cs", "cs_manager"] }, status: { $ne: "inactive" } });
 }
 
 /** The student here the event is about: by LMS id, else by email whatever its case. */

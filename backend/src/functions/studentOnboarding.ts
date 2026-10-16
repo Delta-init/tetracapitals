@@ -9,6 +9,7 @@ import { existsSync } from "node:fs";
 import { join } from "node:path";
 import { sendMail, mailConfigured, type MailAttachment } from "../lib/mailer";
 import { status as whatsAppStatus, sendText, intlNumbers } from "../whatsapp/service";
+import { isCsLike } from "../lib/roles";
 
 /* ────────────────────────────────────────────────────────────────────────────
    Onboarding: a student is Onboarded once they have been sent their welcome —
@@ -201,7 +202,7 @@ export async function getOnboardingDraft(req: Request, user: AuthUser): Promise<
   const w = welcome(s);
   const emails = String(s.email ?? "").match(/[^\s,;<>]+@[^\s,;<>]+\.[^\s,;<>]+/g) ?? [];
   const numbers = intlNumbers(s.phone);
-  const whatsAppWhyNot = user.app_role !== "cs" ? "WhatsApp goes from a CS's own WhatsApp — only a CS can send it"
+  const whatsAppWhyNot = !isCsLike(user.app_role) ? "WhatsApp goes from a CS's own WhatsApp — only a CS or CS Manager can send it"
     : whatsAppStatus(user.id).status !== "connected" ? "Your WhatsApp is not linked — link it on the WhatsApp page" : "";
   return json({
     onboarded: s.onboarded === true,
@@ -257,7 +258,7 @@ export async function setOnboarding(req: Request, user: AuthUser): Promise<Respo
   }
   if (whatsapp) {
     const to = String(whatsapp.to ?? "").trim().slice(0, 40), text = String(whatsapp.text ?? "").trim().slice(0, 4000);
-    if (user.app_role !== "cs") failed.whatsapp = "WhatsApp goes from a CS's own WhatsApp — only a CS can send it";
+    if (!isCsLike(user.app_role)) failed.whatsapp = "WhatsApp goes from a CS's own WhatsApp — only a CS or CS Manager can send it";
     else if (!to || !text) failed.whatsapp = "WhatsApp needs a number and a message";
     else {
       try {
