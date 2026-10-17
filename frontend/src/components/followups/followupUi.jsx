@@ -203,7 +203,8 @@ export function LogFollowupDialog({ followup, onClose, onSaved }) {
   const bonusGiven = (past?.sales_bonus || []).some(b => b.given && b.amount > 0);
   // Required on the onboarding call only, for a student with none saved: from the Not onboarded page once it connected,
   // after the welcome only when they have that bonus; optional on every other follow-up (the user, 2026-10-06).
-  const needsMt5 = !!past && mt5s.length === 0 && (askConnected ? form.connected === 'yes' : onboardingCall && bonusGiven);
+  // Optional on every log (the user, 2026-10-17) — before, the onboarding call needed one until they had one saved.
+  const needsMt5 = false;
   // Where that bonus goes, their primary is picked for them: on the Not onboarded page's call, and after the welcome
   // when they have the bonus.
   const picksPrimary = askConnected || (onboardingCall && bonusGiven);
