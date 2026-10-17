@@ -104,6 +104,19 @@ function ProgramLink({ p }) {
   );
 }
 
+/* The programme's form link from the LMS ({LMS}/p/{code}) — to share with anyone: an LMS student signs in, anyone
+   else fills in name, email and phone and gets the class's Join now button. Shown on every card in the list. */
+function FormLink({ p }) {
+  if (!p.joinUrl) return null;
+  return (
+    <div className="mt-3 flex flex-wrap items-center gap-2 rounded-md border border-emerald-100 bg-emerald-50/60 px-3 py-2 text-sm">
+      <span className="text-xs font-medium uppercase text-gray-500">Form link</span>
+      <a href={p.joinUrl} target="_blank" rel="noreferrer" className="min-w-0 truncate font-mono text-emerald-700 hover:underline">{p.joinUrl}</a>
+      <Button type="button" size="sm" variant="outline" className="ml-auto h-7 text-xs" onClick={() => { navigator.clipboard?.writeText(p.joinUrl).then(() => toast.success('Form link copied'), () => toast.error("Couldn't copy")); }}>Copy</Button>
+    </div>
+  );
+}
+
 function ProgramCard({ p, open, onToggle }) {
   const change = useProgramAction('changeProgramStudents', 'Students changed');
   // A guest with an LMS account now: booked on the program like everyone else (2026-10-15).
@@ -128,6 +141,8 @@ function ProgramCard({ p, open, onToggle }) {
             {p.nextClassAt && <p className="flex items-center justify-end gap-1"><CalendarClock className="h-3.5 w-3.5" />{when(p.nextClassAt)}</p>}
           </div>
         </button>
+        {/* The form link (LMS, 2026-10-17): LMS students sign in; anyone else fills in a short form and gets Join now */}
+        <FormLink p={p} />
         {open && (
           <div className="mt-4 space-y-4 border-t pt-4">
             {/* Its link (the user, 2026-10-15): the next class's Google Meet, to copy or open; each date opens its own below */}
