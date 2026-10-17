@@ -251,7 +251,7 @@ export async function setOnboarding(req: Request, user: AuthUser): Promise<Respo
     else if (!subject || !message) failed.email = "The email needs a subject and a message";
     else {
       const r = await sendMail({ to, subject, text: asText(message), html: asHtml(message, subject), fromName: "Delta Institutions", replyTo: user.email || undefined,
-        ...(LOGO ? { attachments: [LOGO] } : {}) });
+        ...(LOGO ? { attachments: [LOGO] } : {}), log: { kind: "Onboarding welcome", byId: user.id, byName: by, studentId: String(s._id) } });
       if (r.ok) sent.email = { to, subject, at: now, message_id: r.messageId };
       else failed.email = r.error;
     }

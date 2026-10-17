@@ -43,6 +43,9 @@ export async function ensureIndexes(): Promise<void> {
   const d = db();
   await Promise.all([
     d.collection("users").createIndex({ email: 1 }, { unique: true }),
+    // The portal's email log (lib/mailer.ts, 2026-10-17): by address, newest first; kept a year.
+    d.collection("email_log").createIndex({ to: 1, at: -1 }),
+    d.collection("email_log").createIndex({ at_date: 1 }, { expireAfterSeconds: 365 * 24 * 60 * 60 }),
     d.collection("users").createIndex({ app_role: 1 }),
     d.collection("students").createIndex({ primary_mentor_id: 1 }),
     d.collection("students").createIndex({ senior_mentor_id: 1 }),

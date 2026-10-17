@@ -54,7 +54,16 @@ export type SendResult =
 export type MailAttachment = { filename: string; path: string; cid?: string };
 
 /** `fromName` shows the mailbox under that name; `replyTo` is where an answer goes (the person who sent it). */
-export async function sendMail(msg: { to: string; subject: string; html: string; text: string; fromName?: string; replyTo?: string; attachments?: MailAttachment[] }): Promise<SendResult> {
+/** What an email was about and who sent it — for the email log (optional; the log keeps the email either way). */
+export type MailLogInfo = { kind?: string; byId?: string; byName?: string; studentId?: string };
+
+export async function sendMail(msg: { to: string; subject: string; html: string; text: string; fromName?: string; replyTo?: string; attachments?: MailAttachment[]; log?: MailLogInfo }): Promise<SendResult> {
+  const result = await deliver(msg);
+  keepInLog(msg, result);
+  return result;
+}
+
+async function deliver(msg: { to: string; subject: string; html: string; text: string; fromName?: string; replyTo?: string; attachments?: MailAttachment[] }): Promise<SendResult> {
   if (!mailConfigured()) return { ok: false, error: "Email is not configured on the server (SMTP settings)", notConfigured: true };
   try {
     const info = await transport().sendMail({
@@ -69,4 +78,18 @@ export async function sendMail(msg: { to: string; subject: string; html: string;
     transporter = null; // a broken connection shouldn't stick for the next try
     return { ok: false, error: err instanceof Error ? err.message : String(err) };
   }
+}
+
+/* Every email the portal sends — to anyone — is kept in email_log (the user, 2026-10-17: the student page's Emails),
+   with whether it went, for a year (db.ts). Never in the way: a log that can't be written loses only itself. */
+function keepInLog(msg: { to: string; subject: string; html: string; text: string; fromName?: string; log?: MailLogInfo }, result: SendResult): void {
+  const now = new Date();
+  void import("../db").then(({ col }) => col("email_log").insertOne({
+    to: String(msg.to ?? "").trim().toLowerCase(), subject: String(msg.subject ?? "").slice(0, 500),
+    html: String(msg.html ?? "").slice(0, 300_000), text: String(msg.text ?? "").slice(0, 50_000), from_name: msg.fromName ?? "",
+    status: result.ok ? "sent" : (result as any).notConfigured ? "not_sent" : "failed",
+    error: result.ok ? "" : String((result as any).error ?? "").slice(0, 500),
+    kind: msg.log?.kind ?? "", by_id: msg.log?.byId ?? "", by_name: msg.log?.byName ?? "", student_id: msg.log?.studentId ?? "",
+    at: now.toISOString(), at_date: now,
+  } as any)).catch((err) => console.error("[mail] could not keep the email in the log", err));
 }

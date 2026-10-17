@@ -13,7 +13,7 @@ import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import {
   ArrowLeft, CalendarPlus, Edit, IdCard, ListChecks, Phone, MessageCircle, Wallet, GraduationCap,
   Presentation, LifeBuoy, Link2, CandlestickChart, History as HistoryIcon,
-  FileCheck, UserX
+  FileCheck, UserX, Mail
 } from "lucide-react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { createPageUrl } from "../utils";
@@ -35,6 +35,7 @@ import StudentFollowupsSection from "@/components/followups/StudentFollowupsSect
 import StudentCallsSection from "@/components/calls/StudentCallsSection";
 import StudentWhatsAppCard from "@/components/students/StudentWhatsAppCard";
 import PaymentLinksCard from "@/components/students/PaymentLinksCard";
+import StudentEmailsCard from "@/components/students/StudentEmailsCard";
 import StudentClassesCard from "@/components/students/StudentClassesCard";
 import StudentLmsCoursesCard from "@/components/students/StudentLmsCoursesCard";
 import StudentLmsSupportCards from "@/components/students/StudentLmsSupportCards";
@@ -66,6 +67,7 @@ const TABS = [
   { key: 'support', label: 'Support & assignments', icon: LifeBuoy, empty: 'No support tickets or assignments to show.' },
   { key: 'payment-links', label: 'Payment links', icon: Link2, empty: 'No payment links for this student.' },
   { key: 'mt5', label: 'MT5 accounts', icon: CandlestickChart },
+  { key: 'emails', label: 'Emails', icon: Mail },
   { key: 'history', label: 'History', icon: HistoryIcon },
 ];
 const TOP_BAR = 64;   // the app's top bar (Layout.jsx, h-16): the tab bar sticks just under it
@@ -611,6 +613,11 @@ export default function StudentDetail() {
           </TabsContent>
 
           {/* Everything that happened to this student */}
+          {/* The emails the portal and the LMS sent them (the user, 2026-10-17) */}
+          <TabsContent {...panel('emails')}>
+            <StudentEmailsCard studentId={student.id} />
+          </TabsContent>
+
           <TabsContent {...panel('history')}>
             <StudentHistory studentId={studentId} enabled={!!currentUser} />
           </TabsContent>

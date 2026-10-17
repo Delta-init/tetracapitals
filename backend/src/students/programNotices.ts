@@ -196,7 +196,7 @@ async function sendEmail(to: string, mail: { subject: string; body: string }, bu
   if (!mailConfigured()) return { status: "skipped", why: "Email is not set up on this server" };
   const logo = onboardingEmail.logo;
   const r: any = await sendMail({ to, subject: mail.subject, text: onboardingEmail.asText(mail.body) + buttons.map((b) => `\n\n${b.label}: ${b.url}`).join(""),
-    html: emailHtml(mail.body, mail.subject, buttons), fromName: "Delta Institutions", ...(replyTo ? { replyTo } : {}), ...(logo ? { attachments: [logo] } : {}) })
+    html: emailHtml(mail.body, mail.subject, buttons), fromName: "Delta Institutions", log: { kind: "Program" }, ...(replyTo ? { replyTo } : {}), ...(logo ? { attachments: [logo] } : {}) })
     .catch((err: unknown) => ({ ok: false, error: err instanceof Error ? err.message : String(err) }));
   return r?.ok === false || r?.sent === false ? { status: "failed", why: String(r?.error ?? r?.reason ?? "The email did not go") } : { status: "sent", at: new Date().toISOString() };
 }

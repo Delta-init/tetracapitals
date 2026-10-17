@@ -52,6 +52,7 @@ import { getCsLeaderboard } from "./csLeaderboard";
 import { getMyCurrency } from "./myCurrency";
 import { removeStudentMt5, setPrimaryMt5 } from "./studentMt5";
 import { markNotStudent, unmarkNotStudent, listNotStudents } from "./notStudent";
+import { getStudentEmails, getStudentEmail } from "./studentEmails";
 import { getLmsCourseAccess, giveLmsCourses, setLmsModuleAccess } from "./lmsCourseAccess";
 import { getClassCompletions } from "./classCompletions";
 import { getMyTeamCsIds } from "./myTeam";
@@ -191,6 +192,8 @@ const AUTHED: Record<string, AuthedHandler> = {
   removeStudentMt5,
   setPrimaryMt5,
   markNotStudent,
+  getStudentEmails,
+  getStudentEmail,
   getProgramAudiences,
   addProgramGuestToLms,
   unmarkNotStudent,

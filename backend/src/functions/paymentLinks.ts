@@ -187,6 +187,7 @@ async function emailLink(r: any, student: any): Promise<void> {
     const sent = await sendMail({
       to, subject: m.subject, text: asText(m.text), html: asHtml(m.text, m.subject),
       fromName: "Delta Institutions", replyTo: r.requested_by_email || undefined, ...(logo ? { attachments: [logo] } : {}),
+      log: { kind: "Payment link", byName: r.requested_by_name || "", studentId: String(student?._id ?? r.student_id ?? "") },
     });
     if (sent.ok) r.email = { to, subject: m.subject, at: new Date().toISOString(), message_id: sent.messageId };
     else emailError = sent.error;
