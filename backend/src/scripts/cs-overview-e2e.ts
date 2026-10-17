@@ -111,8 +111,8 @@ check("dues: AED 3,000 due in 2 days (upcoming), USD 500 a day overdue; a paid f
   && a.overdueDues.count === 1 && a.overdueDues.amount.USD === 500 && !a.upcoming.amount.USD, show([a?.upcoming, a?.overdueDues]));
 check("balance due per currency, never added together: AED 3,000 and USD 500 across 2 students", a?.balance?.students === 2 && a.balance.amount.AED === 3000 && a.balance.amount.USD === 500, show(a?.balance));
 check("Cee Two: AED 1,000 owed but due in 20 days — in the balance, not upcoming", b?.balance?.amount?.AED === 1000 && b.upcoming.count === 0, show(b?.balance));
-check("bonus: Cee One 1 client $500 waiting for a broker admin; Cee Two 1 client $250 needing a call + MT5",
-  a?.bonus?.clients === 1 && a.bonus.usd === 500 && a.bonus.waitingBroker === 1 && b?.bonus?.clients === 1 && b.bonus.usd === 250 && b.bonus.needsCall === 1, show([a?.bonus, b?.bonus]));
+check("bonus: Cee One 1 client $500 waiting for a broker admin; Cee Two 1 client $250 after full payment (Chen still owes AED 1,000 — 2026-10-17)",
+  a?.bonus?.clients === 1 && a.bonus.usd === 500 && a.bonus.waitingBroker === 1 && b?.bonus?.clients === 1 && b.bonus.usd === 250 && b.bonus.afterPayment === 1 && b.bonus.needsCall === 0, show([a?.bonus, b?.bonus]));
 check("not onboarded: Emre 7 hours (late) for Cee One, Divya 1 hour for Cee Two", a?.notOnboarded === 1 && a.notOnboardedLate === 1 && b?.notOnboarded === 1 && b.notOnboardedLate === 0,
   show([a?.notOnboarded, a?.notOnboardedLate, b?.notOnboarded, b?.notOnboardedLate]));
 check("course upgrades: Cee One started 1 in the period (on Cee Two's student) and finance approved AED 3,500 in 2 payments; Cee Two 1, nothing paid; a cancelled one not counted",

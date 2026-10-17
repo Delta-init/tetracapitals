@@ -25,11 +25,13 @@ import { Mt5LoginField, MT5_LOGIN, mt5LoginOf } from '@/components/students/mt5A
 
 export const BONUS_STAGES = {
   sent_back: { label: 'Sent back — correct it', cls: 'border-rose-300 bg-rose-100 text-rose-800', note: 'Sent back to the CS to correct (by a broker admin or by accounts) — it waits for the correction, not for a broker admin' },
+  // Its course still owes: the sales bonus waits for the full payment (the user, 2026-10-17).
+  after_payment: { label: 'After full payment', cls: 'border-violet-200 bg-violet-50 text-violet-800', note: 'Promised at the sales close, but the course is not paid in full yet — the bonus is sent, and approved, once the balance is paid' },
   needs_call: { label: 'Needs call + MT5', cls: 'border-rose-200 bg-rose-50 text-rose-800', note: 'Promised at the sales close — it goes to be credited once a call that connected is logged with their MT5' },
   with_finance: { label: 'With finance', cls: 'border-sky-200 bg-sky-50 text-sky-800', note: 'Delta finance is approving the payment' },
   waiting_broker: { label: 'Waiting for broker admin', cls: 'border-amber-200 bg-amber-50 text-amber-800', note: 'A broker admin or a Super Admin credits it in MT5 and approves it' },
 };
-const STAGE_KEYS = ['sent_back', 'needs_call', 'with_finance', 'waiting_broker'];
+const STAGE_KEYS = ['sent_back', 'after_payment', 'needs_call', 'with_finance', 'waiting_broker'];
 
 const usd = (n) => `$${Number(n || 0).toLocaleString('en-US', { maximumFractionDigits: 2 })}`;
 
@@ -85,6 +87,20 @@ export function BonusPendingBadge({ info, className = '', onClick, student }) {
 
 const money = (n, cur) => (n == null ? '—' : cur === 'USD' || !cur ? usd(n) : `${cur} ${Number(n).toLocaleString('en-US', { maximumFractionDigits: 2 })}`);
 
+/** Bonuses held until their course is paid in full (2026-10-17): what is left to pay on each. */
+function AfterPayment({ list }) {
+  return (
+    <div className="space-y-1.5 rounded-lg border border-violet-200 bg-violet-50 px-3 py-2 text-sm text-violet-900">
+      <p className="font-medium">The sales bonus is sent once the course is paid in full.</p>
+      {list.map(b => (
+        <p key={b.invoice_id} className="text-xs">
+          {b.course || 'Course'}{b.invoice_number ? ` · ${b.invoice_number}` : ''} — {money(b.amount, b.currency)} bonus · <b>{b.owed}</b> still owed
+        </p>
+      ))}
+    </div>
+  );
+}
+
 /** Send bonus for credit: the bonus, what finance sent, the MT5 — and a receipt where finance sent none. */
 function SendSalesBonusDialog({ student, onClose }) {
   const qc = useQueryClient();
@@ -137,9 +153,10 @@ function SendSalesBonusDialog({ student, onClose }) {
         ) : error ? (
           <p className="rounded-lg bg-amber-50 px-3 py-2 text-sm text-amber-800">{/unknown function|not found|404/i.test(String(error?.message)) ? 'This needs the server update (the API deploy).' : error.message}</p>
         ) : !bonuses.length ? (
-          <p className="rounded-lg bg-slate-50 px-3 py-2 text-sm text-slate-600">Nothing is waiting — it was sent already.</p>
+          data?.after_payment?.length ? <AfterPayment list={data.after_payment} /> : <p className="rounded-lg bg-slate-50 px-3 py-2 text-sm text-slate-600">Nothing is waiting — it was sent already.</p>
         ) : (
           <div className="space-y-3 text-sm">
+            {data?.after_payment?.length > 0 && <AfterPayment list={data.after_payment} />}
             {bonuses.map(b => {
               const up = uploads[b.invoice_id];
               return (

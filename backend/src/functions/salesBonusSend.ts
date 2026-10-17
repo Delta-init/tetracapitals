@@ -7,6 +7,7 @@ import { recordHistory } from "../students/history";
 import { MT5_LOGIN, mt5LoginOf, mt5Of, mt5Owner, keepMt5 } from "../students/mt5";
 import { salesBonusOf, raiseSalesBonusCredits } from "./studentFollowups";
 import { csManagerReach } from "../lib/userLocation";
+import { owedText } from "../students/salesBonusPaid";
 
 /* ────────────────────────────────────────────────────────────────────────────
    Send a sales-close bonus for credit from its badge (the user, 2026-10-12).
@@ -39,7 +40,8 @@ async function waiting(student: any) {
     .toArray()) as any[]).map((t) => String(t.sales_close?.invoice_id ?? "")));
   const fees = new Map((student.course_fees ?? []).map((f: any) => [String(f?.invoice_id ?? ""), f]));
   return salesBonusOf(student)
-    .filter((b: any) => b.given && b.amount > 0 && !raised.has(b.invoice_id))
+    // Its course still owing: held until it is paid in full (afterPayment — the user, 2026-10-17).
+    .filter((b: any) => b.given && b.amount > 0 && !raised.has(b.invoice_id) && !(b.owed_minor > 0))
     .map((b: any) => {
       const f: any = fees.get(b.invoice_id) ?? {};
       const receipts: { url: string; name: string; label: string }[] = [];
@@ -69,6 +71,19 @@ async function waiting(student: any) {
     });
 }
 
+/** The bonuses given at the close and not sent, held because their course still owes — what is left to pay on each. */
+async function afterPayment(student: any) {
+  const raised = new Set(((await col("funding_transactions")
+    .find({ bonus_credit: "sales_close", student_id: String(student._id) }, { projection: { "sales_close.invoice_id": 1 } })
+    .toArray()) as any[]).map((t) => String(t.sales_close?.invoice_id ?? "")));
+  return salesBonusOf(student)
+    .filter((b: any) => b.given && b.amount > 0 && !raised.has(b.invoice_id) && b.owed_minor > 0)
+    .map((b: any) => ({
+      invoice_id: b.invoice_id, invoice_number: b.invoice_number, course: b.course, amount: b.amount, currency: b.currency,
+      owed_minor: b.owed_minor, owed: owedText(b.owed_minor, b.fee_currency),
+    }));
+}
+
 async function studentFor(body: any, user: AuthUser): Promise<any | Response> {
   const oid = toObjectId(String(body?.studentId ?? ""));
   if (!oid) return error("studentId is required", 400);
@@ -85,7 +100,7 @@ async function studentFor(body: any, user: AuthUser): Promise<any | Response> {
 export async function getSalesBonusToSend(req: Request, user: AuthUser): Promise<Response> {
   const student = await studentFor(await req.json().catch(() => ({})), user);
   if (student instanceof Response) return student;
-  return json({ bonuses: await waiting(student), mt5: await mt5Of(String(student._id)) });
+  return json({ bonuses: await waiting(student), after_payment: await afterPayment(student), mt5: await mt5Of(String(student._id)) });
 }
 
 /**
@@ -102,7 +117,11 @@ export async function sendSalesBonusCredit(req: Request, user: AuthUser): Promis
   if (owner !== null && owner !== String(student._id)) return error("That MT5 login is saved for another student — check the number", 409);
 
   const list = await waiting(student);
-  if (!list.length) return error("Nothing is waiting — this student's bonus was sent already", 409);
+  if (!list.length) {
+    const held = await afterPayment(student);
+    if (held.length) return error(`${held.map((b: any) => `${b.owed} is still owed on ${b.invoice_number || b.course || "the course"}`).join("; ")} — the sales bonus is sent once the course is paid in full`, 409);
+    return error("Nothing is waiting — this student's bonus was sent already", 409);
+  }
   // An invoice finance sent no receipt for: one uploaded here, or nothing goes.
   const given = body?.receipts && typeof body.receipts === "object" ? body.receipts : {};
   const receipts = new Map<string, { url: string; name: string }>();

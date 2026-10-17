@@ -14,7 +14,7 @@ import { loadTeams } from "../students/teams";
 import { LOCATIONS, currentLocationOf } from "../lib/location";
 import { bonusPendingOf, idsWithBonusPending } from "../students/bonusPending";
 import { IS_STUDENT, OF_A_STUDENT } from "../students/notStudent";
-const BONUS_FILTERS = ["pending", "sent_back", "needs_call", "with_finance", "waiting_broker"];
+const BONUS_FILTERS = ["pending", "sent_back", "after_payment", "needs_call", "with_finance", "waiting_broker"];
 
 /* ────────────────────────────────────────────────────────────────────────────
    The Students page, one page at a time. Which students each tab holds and

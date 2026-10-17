@@ -21,13 +21,15 @@ export default function BonusReport() {
         { label: 'Collected (approved)', tone: 'approved', value: aedOnly(d.total.approved_collected_aed), sub: `paid for ${num(d.total.approved)} approved bonuses` },
         { label: 'Bonuses', value: aedOnly(d.total.aed), sub: `paid · ${aed(d.total.usd)} MT5 bonus · ${num(d.total.count)} in all` },
         { label: 'Approved', tone: 'approved', value: aedOnly(d.total.approved_aed), sub: `paid · ${aed(d.total.approved_usd)} MT5 bonus · ${num(d.total.approved)} bonuses` },
-        { label: 'Still pending', tone: 'pending', value: aedOnly((d.total.needs_call_aed || 0) + (d.total.with_finance_aed || 0) + (d.total.waiting_broker_aed || 0)),
-          sub: `paid · ${aed((d.total.needs_call_usd || 0) + (d.total.with_finance_usd || 0) + (d.total.waiting_broker_usd || 0))} MT5 bonus · ${num(d.total.needs_call)} need call + MT5 · ${num(d.total.with_finance)} with finance · ${num(d.total.waiting_broker)} broker admin` },
+        { label: 'Still pending', tone: 'pending', value: aedOnly((d.total.after_payment_aed || 0) + (d.total.needs_call_aed || 0) + (d.total.with_finance_aed || 0) + (d.total.waiting_broker_aed || 0)),
+          sub: `paid · ${aed((d.total.after_payment_usd || 0) + (d.total.needs_call_usd || 0) + (d.total.with_finance_usd || 0) + (d.total.waiting_broker_usd || 0))} MT5 bonus · ${num(d.total.after_payment)} after full payment · ${num(d.total.needs_call)} need call + MT5 · ${num(d.total.with_finance)} with finance · ${num(d.total.waiting_broker)} broker admin` },
         { label: 'Rejected', tone: 'rejected', value: aedOnly(d.total.rejected_aed), sub: `paid · ${aed(d.total.rejected_usd)} MT5 bonus · ${num(d.total.rejected)} bonuses` },
       ]}
       columns={[
         { label: 'All (paid · MT5 bonus, AED)', get: r => r.aed, fmt: (v, r) => bonusPaid(r.usd, r.aed) },
         { key: 'count', label: 'Bonuses', type: 'number' },
+        // The course still owes: the sales bonus waits for the full payment (2026-10-17).
+        { label: 'After full payment', tone: 'pending', get: r => r.after_payment, fmt: (v, r) => both(r.after_payment, r.after_payment_usd, r.after_payment_aed) },
         { label: 'Needs call + MT5', tone: 'pending', get: r => r.needs_call, fmt: (v, r) => both(r.needs_call, r.needs_call_usd, r.needs_call_aed) },
         { label: 'With finance', tone: 'pending', get: r => r.with_finance, fmt: (v, r) => both(r.with_finance, r.with_finance_usd, r.with_finance_aed) },
         { label: 'Broker admin', tone: 'pending', get: r => r.waiting_broker, fmt: (v, r) => both(r.waiting_broker, r.waiting_broker_usd, r.waiting_broker_aed) },

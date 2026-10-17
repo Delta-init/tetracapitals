@@ -209,6 +209,8 @@ export async function decideCreditRequest(req: Request, user: AuthUser): Promise
     const tx: any = await col("funding_transactions").findOne({ _id: new ObjectId(r.funding_tx_id) });
     if (tx?.status !== "PENDING") linked = "decided";
     else if (withFinance(tx)) linked = "with_finance";
+    // A sales-close bonus whose course still owes stays waiting for the full payment (2026-10-17).
+    else if (await (await import("../students/salesBonusPaid")).salesBonusOwedRefusal(tx)) linked = "course_owes";
     else {
       const set: Record<string, any> = {
         status: "APPROVED", approved_at: now, approved_by_id: user.id, approved_by_name: who(user), updated_date: now,

@@ -95,6 +95,11 @@ export async function masterEditTransaction(req: Request, caller: AuthUser): Pro
   // Not even here: a deposit Delta finance is deciding is decided there.
   const locked = financeLock(before, patch);
   if (locked) return error(locked, 409);
+  // A sales-close bonus is approved once its course is paid in full (the user, 2026-10-17).
+  if (String(patch.status ?? "") === "APPROVED" && (before as any).status !== "APPROVED") {
+    const owing = await (await import("../students/salesBonusPaid")).salesBonusOwedRefusal(before);
+    if (owing) return error(owing, 409);
+  }
 
   const now = new Date().toISOString();
   patch.updated_date = now;
@@ -200,6 +205,10 @@ export async function masterBulkEditTransactions(req: Request, caller: AuthUser)
   for (const doc of await col("funding_transactions").find({ _id: { $in: oids } }).toArray()) {
     const locked = financeLock(doc, { ...patch });
     if (locked) return error(`${(doc as any).student_name ?? "One of them"}: ${locked}`, 409);
+    if (String(patch.status ?? "") === "APPROVED" && (doc as any).status !== "APPROVED") {
+      const owing = await (await import("../students/salesBonusPaid")).salesBonusOwedRefusal(doc);
+      if (owing) return error(`${(doc as any).student_name ?? "One of them"}: ${owing}`, 409);
+    }
   }
 
   const now = new Date().toISOString();

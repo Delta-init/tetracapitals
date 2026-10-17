@@ -333,6 +333,11 @@ export async function updateEntity(req: Request, entityName: string, id: string)
       const elsewhere = await (await import("../finance/bonusLocation")).bonusLocationRefusal(existing, ctx.user.id, ctx.user.app_role);
       if (elsewhere) return error(elsewhere, 403);
     }
+    // A sales-close bonus is approved once its course is paid in full (the user, 2026-10-17).
+    if (String(data.status ?? "") === "APPROVED" && existing.status !== "APPROVED") {
+      const owing = await (await import("../students/salesBonusPaid")).salesBonusOwedRefusal(existing);
+      if (owing) return error(owing, 409);
+    }
   }
   await col(ctx.cfg.collection).updateOne({ _id: oid }, { $set: data });
   const doc = await col(ctx.cfg.collection).findOne({ _id: oid });

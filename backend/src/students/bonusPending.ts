@@ -2,6 +2,7 @@ import { col } from "../db";
 import { toObjectId } from "../lib/id";
 import { withFinance } from "../finance/funding";
 import { salesBonusOf } from "../functions/studentFollowups";
+import { owedSalesCredits } from "./salesBonusPaid";
 
 /* ────────────────────────────────────────────────────────────────────────────
    "Bonus pending" on the Students page and the student page (the user,
@@ -22,6 +23,11 @@ import { salesBonusOf } from "../functions/studentFollowups";
                      connected is logged with their MT5 (functions/
                      studentFollowups.ts raiseSalesBonusCredits).
 
+     after_payment   a sales-close bonus whose course still owes (the user,
+                     2026-10-17): not sent, or sent and not to be approved,
+                     until the course is paid in full (students/
+                     salesBonusPaid.ts).
+
    Several pending: their count and total, and the earliest stage among them —
    needs a call before with finance, with finance before the broker admin.
    Read-only: nothing is changed.
@@ -29,9 +35,9 @@ import { salesBonusOf } from "../functions/studentFollowups";
 
 // sent_back (the user, 2026-10-13): sent back to its CS to correct — by a broker admin (still PENDING, `returned`) or
 // by accounts (REJECTED, finance_approval.sent_back, not sent again yet) — never "waiting for a broker admin".
-export type BonusStage = "sent_back" | "needs_call" | "with_finance" | "waiting_broker";
-export const BONUS_STAGE_KEYS: BonusStage[] = ["sent_back", "needs_call", "with_finance", "waiting_broker"];
-const RANK: Record<BonusStage, number> = { sent_back: 0, needs_call: 1, with_finance: 2, waiting_broker: 3 };
+export type BonusStage = "sent_back" | "after_payment" | "needs_call" | "with_finance" | "waiting_broker";
+export const BONUS_STAGE_KEYS: BonusStage[] = ["sent_back", "after_payment", "needs_call", "with_finance", "waiting_broker"];
+const RANK: Record<BonusStage, number> = { sent_back: 0, after_payment: 1, needs_call: 2, with_finance: 3, waiting_broker: 4 };
 export interface BonusStageTotal { count: number; total_usd: number }
 export interface BonusPending {
   count: number;
@@ -39,6 +45,7 @@ export interface BonusPending {
   /** The earliest stage among them: with finance while any one is there. */
   stage: BonusStage;
   sent_back: BonusStageTotal;
+  after_payment: BonusStageTotal;
   needs_call: BonusStageTotal;
   with_finance: BonusStageTotal;
   waiting_broker: BonusStageTotal;
@@ -70,10 +77,13 @@ const salesUsd = (b: { amount: number; currency: string }) => (b.currency === "U
 /** Students who were given a bonus at a sales close (finance's course fees), with an amount. */
 const GIVEN_AT_CLOSE = { course_fees: { $elemMatch: { bonus_given: true, bonus_minor: { $gt: 0 } } } };
 
-/** Each one's sales-close bonuses not sent to be credited yet: [{ usd, since }] per student id. */
-export async function notSentOf(match: Record<string, any>): Promise<Map<string, { usd: number; since: string }[]>> {
+/**
+ * Each one's sales-close bonuses not sent to be credited yet: [{ usd, since, owed }] per student id — `owed`: its course
+ * still owes, so it waits for the full payment rather than for a call.
+ */
+export async function notSentOf(match: Record<string, any>): Promise<Map<string, { usd: number; since: string; owed: boolean }[]>> {
   const students = (await col("students").find({ ...match, ...GIVEN_AT_CLOSE }, { projection: { course_fees: 1, created_date: 1 } }).toArray()) as any[];
-  const out = new Map<string, { usd: number; since: string }[]>();
+  const out = new Map<string, { usd: number; since: string; owed: boolean }[]>();
   if (!students.length) return out;
   const raised = new Set(((await col("funding_transactions")
     .find({ bonus_credit: "sales_close", student_id: { $in: students.map((x) => String(x._id)) } }, { projection: { student_id: 1, "sales_close.invoice_id": 1 } })
@@ -83,7 +93,7 @@ export async function notSentOf(match: Record<string, any>): Promise<Map<string,
     const fees = new Map((st.course_fees ?? []).map((f: any) => [String(f?.invoice_id ?? ""), f]));
     const left = salesBonusOf(st)
       .filter((b: SalesBonus) => b.given && b.amount > 0 && !raised.has(`${sid}|${b.invoice_id}`))
-      .map((b: SalesBonus) => ({ usd: salesUsd(b), since: String((fees.get(b.invoice_id) as any)?.recorded_at || st.created_date || "") }));
+      .map((b: SalesBonus) => ({ usd: salesUsd(b), since: String((fees.get(b.invoice_id) as any)?.recorded_at || st.created_date || ""), owed: (b as any).owed_minor > 0 }));
     if (left.length) out.set(sid, left);
   }
   return out;
@@ -91,7 +101,7 @@ export async function notSentOf(match: Record<string, any>): Promise<Map<string,
 
 const blank = (since: string): BonusPending => ({
   count: 0, total_usd: 0, stage: "waiting_broker",
-  sent_back: { count: 0, total_usd: 0 }, needs_call: { count: 0, total_usd: 0 }, with_finance: { count: 0, total_usd: 0 }, waiting_broker: { count: 0, total_usd: 0 }, since,
+  sent_back: { count: 0, total_usd: 0 }, after_payment: { count: 0, total_usd: 0 }, needs_call: { count: 0, total_usd: 0 }, with_finance: { count: 0, total_usd: 0 }, waiting_broker: { count: 0, total_usd: 0 }, since,
 });
 function add(b: BonusPending, stage: BonusStage, usd: number, at: string) {
   b.count++;
@@ -109,20 +119,21 @@ export async function bonusPendingOf(studentIds: string[]): Promise<Map<string, 
   if (!ids.length) return out;
   const txs = (await col("funding_transactions")
     .find({ ...PENDING_BONUS, student_id: { $in: ids } }, {
-      projection: { student_id: 1, status: 1, amount_usd: 1, finance_approval: 1, bonus_credit: 1, requested_at: 1, created_date: 1, returned: 1, resubmitted_as: 1 },
+      projection: { student_id: 1, status: 1, amount_usd: 1, finance_approval: 1, bonus_credit: 1, sales_close: 1, requested_at: 1, created_date: 1, returned: 1, resubmitted_as: 1 },
     })
     .toArray()) as any[];
+  const owed = await owedSalesCredits(txs);
   for (const t of txs) {
     const sid = String(t.student_id);
     const at = String(t.requested_at || t.created_date || "");
     const b = out.get(sid) ?? blank(at);
-    add(b, bonusStageOf(t), usdOf(t), at);
+    add(b, stageWithPayment(t, owed), usdOf(t), at);
     out.set(sid, b);
   }
   const oids = ids.map((id) => toObjectId(id)).filter(Boolean);
   for (const [sid, left] of await notSentOf({ _id: { $in: oids as any[] } })) {
     const b = out.get(sid) ?? blank(left[0].since);
-    for (const x of left) add(b, "needs_call", x.usd, x.since);
+    for (const x of left) add(b, x.owed ? "after_payment" : "needs_call", x.usd, x.since);
     out.set(sid, b);
   }
   return out;
@@ -136,10 +147,21 @@ export async function idsWithBonusPending(stage: "pending" | BonusStage = "pendi
   const ids = new Set<string>();
   if (stage !== "needs_call") {
     const txs = (await col("funding_transactions")
-      .find({ ...PENDING_BONUS, student_id: { $nin: [null, ""] } }, { projection: { student_id: 1, finance_approval: 1, bonus_credit: 1, status: 1, returned: 1, resubmitted_as: 1 } })
+      .find({ ...PENDING_BONUS, student_id: { $nin: [null, ""] } }, { projection: { student_id: 1, finance_approval: 1, bonus_credit: 1, sales_close: 1, status: 1, returned: 1, resubmitted_as: 1 } })
       .toArray()) as any[];
-    for (const t of txs) if (stage === "pending" || bonusStageOf(t) === stage) ids.add(String(t.student_id));
+    const owed = stage === "pending" ? new Map() : await owedSalesCredits(txs);
+    for (const t of txs) if (stage === "pending" || stageWithPayment(t, owed) === stage) ids.add(String(t.student_id));
   }
-  if (stage === "pending" || stage === "needs_call") for (const sid of (await notSentOf({})).keys()) ids.add(sid);
+  if (stage === "pending" || stage === "needs_call" || stage === "after_payment") {
+    for (const [sid, left] of await notSentOf({})) {
+      if (stage === "pending" || left.some((x) => (stage === "after_payment") === x.owed)) ids.add(sid);
+    }
+  }
   return [...ids];
+}
+
+/** A pending request's stage, a sales-close credit whose course still owes being held for the full payment. */
+export function stageWithPayment(tx: any, owed: Map<string, unknown>): BonusStage {
+  const stage = bonusStageOf(tx);
+  return stage === "waiting_broker" && owed.has(String(tx._id)) ? "after_payment" : stage;
 }

@@ -61,7 +61,7 @@ interface Bucket {
   upcoming: { count: number; amount: Money };
   overdueDues: { count: number; amount: Money };
   balance: { students: number; amount: Money };
-  bonus: { clients: number; usd: number; needsCall: number; withFinance: number; waitingBroker: number };
+  bonus: { clients: number; usd: number; afterPayment: number; needsCall: number; withFinance: number; waitingBroker: number };
   notOnboarded: number;
   notOnboardedLate: number;
   upgrades: { count: number; paidAed: number; payments: number };
@@ -69,7 +69,7 @@ interface Bucket {
 const blank = (): Bucket => ({
   students: 0, deposits: { count: 0, usd: 0, aed: 0 }, commissionUsd: 0, followupsToday: 0, followupsOverdue: 0,
   upcoming: { count: 0, amount: {} }, overdueDues: { count: 0, amount: {} }, balance: { students: 0, amount: {} },
-  bonus: { clients: 0, usd: 0, needsCall: 0, withFinance: 0, waitingBroker: 0 }, notOnboarded: 0, notOnboardedLate: 0,
+  bonus: { clients: 0, usd: 0, afterPayment: 0, needsCall: 0, withFinance: 0, waitingBroker: 0 }, notOnboarded: 0, notOnboardedLate: 0,
   upgrades: { count: 0, paidAed: 0, payments: 0 },
 });
 
@@ -157,7 +157,7 @@ async function gather(period: Period, only?: string, now = Date.now()) {
     for (const id of s ? csAnd(s) : []) {
       const x = b(id).bonus;
       x.clients++; x.usd = cents(x.usd + p.total_usd);
-      x.needsCall += p.needs_call.count; x.withFinance += p.with_finance.count; x.waitingBroker += p.waiting_broker.count;
+      x.afterPayment += p.after_payment.count; x.needsCall += p.needs_call.count; x.withFinance += p.with_finance.count; x.waitingBroker += p.waiting_broker.count;
     }
   }
   const depositsIn = (deposits as any[]).filter((t) => inPeriod(String(t.approved_at || t.requested_at || t.created_date || ""), period));

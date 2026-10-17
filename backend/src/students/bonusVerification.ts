@@ -1,5 +1,6 @@
 import { col } from "../db";
 import { salesBonusOf } from "../functions/studentFollowups";
+import { owedText } from "./salesBonusPaid";
 
 /* ────────────────────────────────────────────────────────────────────────────
    Onboarding verification: the MT5 bonus promised at a sales close, checked
@@ -38,6 +39,12 @@ export interface BonusCheck {
   reason?: string;
   /** How many times it was submitted again after a rejection. */
   resubmitted?: number;
+  /**
+   * Its course still owes (2026-10-17): the bonus waits for the full payment — not sent, or not approved, until then —
+   * and with it the onboarding verification. What is left, in the course's currency.
+   */
+  after_payment?: boolean;
+  owed?: string;
 }
 
 /** For one student: none (no bonus promised), or where their bonuses stand together. */
@@ -48,7 +55,7 @@ const BONUS_FIELDS = {
   rejected_at: 1, rejected_by_name: 1, rejection_reason: 1, updated_date: 1, resubmit_count: 1,
 };
 
-type Promised = { invoice_id: string; invoice_number: string; course: string; given: boolean; amount: number; currency: string };
+type Promised = { invoice_id: string; invoice_number: string; course: string; given: boolean; amount: number; currency: string; owed_minor: number; fee_currency: string };
 
 /** Every bonus promised at these students' sales closes, with where its request stands — by student id. */
 export async function bonusChecksFor(students: any[]): Promise<Map<string, BonusCheck[]>> {
@@ -84,6 +91,7 @@ export async function bonusChecksFor(students: any[]): Promise<Map<string, Bonus
           : {}),
         ...(state === "rejected" && t.rejection_reason ? { reason: String(t.rejection_reason) } : {}),
         ...(Number(t?.resubmit_count) > 0 ? { resubmitted: Number(t.resubmit_count) } : {}),
+        ...(state !== "approved" && b.owed_minor > 0 ? { after_payment: true, owed: owedText(b.owed_minor, b.fee_currency) } : {}),
       };
     }));
   }

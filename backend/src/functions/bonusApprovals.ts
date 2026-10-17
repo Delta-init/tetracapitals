@@ -87,10 +87,15 @@ export async function getBonusApprovals(req: Request, user: AuthUser): Promise<R
   const paymentsOfUpgrade = new Map<string, any[]>();
   for (const p of upgradePayments) paymentsOfUpgrade.set(String(p.upgrade_id), [...(paymentsOfUpgrade.get(String(p.upgrade_id)) ?? []), p]);
 
+  // A sales-close bonus whose course still owes: not approved until it is paid in full (2026-10-17).
+  const { owedSalesCredits, owedText } = await import("../students/salesBonusPaid");
+  const owed = await owedSalesCredits(bonuses.filter((t) => t.status === "PENDING"));
   const row = (t: any) => {
     const s = studentOf.get(String(t.student_id ?? ""));
+    const o = owed.get(String(t._id));
     return {
       ...serialize(t),
+      ...(o ? { course_owed: owedText(o.minor, o.currency) } : {}),
       upgrade_receipts: t.course_upgrade?.upgrade_id
         ? (paymentsOfUpgrade.get(String(t.course_upgrade.upgrade_id)) ?? []).filter((p) => /^https?:\/\//i.test(String(p.receipt_url ?? ""))).map((p) => ({
           receipt_url: String(p.receipt_url), receipt_name: String(p.receipt_name ?? ""), method: String(p.method ?? ""),

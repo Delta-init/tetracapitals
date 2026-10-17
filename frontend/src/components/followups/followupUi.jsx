@@ -169,6 +169,12 @@ export function SalesBonusNote({ bonuses, className = '' }) {
           : list.map((b, i) => (
             <p key={i} className="text-xs text-amber-900">
               {b.given ? <strong>{money(b)}</strong> : 'No bonus'}{b.course ? ` · ${b.course}` : ''}{b.invoice_number ? ` · invoice ${b.invoice_number}` : ''}
+              {/* The course still owes: the bonus is sent once it is paid in full (2026-10-17). */}
+              {b.given && b.owed_minor > 0 && (
+                <span className="mt-0.5 block font-medium text-violet-800">
+                  After full payment — {b.fee_currency || 'AED'} {(b.owed_minor / 100).toLocaleString('en-US', { minimumFractionDigits: 2 })} still owed, so it isn't sent for credit yet
+                </span>
+              )}
             </p>
           ))}
       </div>

@@ -5,7 +5,8 @@ import type { AuthUser } from "../auth/middleware";
 import { isAdmin, visibleMentorIds } from "../students/followups";
 import { seesClosedOnly } from "../students/closedBy";
 import { loadTeams, type TeamIndex } from "../students/teams";
-import { bonusStageOf, notSentOf } from "../students/bonusPending";
+import { notSentOf, stageWithPayment } from "../students/bonusPending";
+import { owedSalesCredits } from "../students/salesBonusPaid";
 import { csManagerReach } from "../lib/userLocation";
 
 /* ────────────────────────────────────────────────────────────────────────────
@@ -249,10 +250,12 @@ export async function getBonusReport(req: Request, user: AuthUser): Promise<Resp
   const ctx = await reportCtx(await req.json().catch(() => ({})), user);
   if (ctx instanceof Response) return ctx;
   const txs = (await col("funding_transactions")
-    .find({ type: "BONUS" }, { projection: { type: 1, course_payment: 1, status: 1, amount_usd: 1, initiating_mentor_id: 1, primary_mentor_id: 1, primary_mentor_name: 1, requested_at: 1, created_date: 1, finance_approval: 1, bonus_credit: 1, amount_aed: 1 } })
+    .find({ type: "BONUS" }, { projection: { type: 1, course_payment: 1, status: 1, amount_usd: 1, initiating_mentor_id: 1, primary_mentor_id: 1, primary_mentor_name: 1, requested_at: 1, created_date: 1, finance_approval: 1, bonus_credit: 1, sales_close: 1, student_id: 1, amount_aed: 1 } })
     .toArray()) as any[];
+  // A sales-close bonus whose course still owes waits for the full payment (2026-10-17).
+  const owed = await owedSalesCredits(txs.filter((t) => t.status === "PENDING"));
   const blank = () => ({
-    count: 0, usd: 0, aed: 0, approved_collected_aed: 0, needs_call: 0, needs_call_usd: 0, needs_call_aed: 0, with_finance: 0, with_finance_usd: 0, with_finance_aed: 0,
+    count: 0, usd: 0, aed: 0, approved_collected_aed: 0, after_payment: 0, after_payment_usd: 0, after_payment_aed: 0, needs_call: 0, needs_call_usd: 0, needs_call_aed: 0, with_finance: 0, with_finance_usd: 0, with_finance_aed: 0,
     waiting_broker: 0, waiting_broker_usd: 0, waiting_broker_aed: 0, approved: 0, approved_usd: 0, approved_aed: 0, rejected: 0, rejected_usd: 0, rejected_aed: 0,
   });
   const g = grouper(blank);
@@ -262,7 +265,7 @@ export async function getBonusReport(req: Request, user: AuthUser): Promise<Resp
     const p = personOf(ctx, raisedBy(t), t.primary_mentor_name);
     if (!counts(ctx, p)) continue;
     // Sent back to correct still waits — counted with the broker admin's column in this report.
-    const raw = t.status === "APPROVED" ? "approved" : t.status === "REJECTED" ? "rejected" : bonusStageOf(t);
+    const raw = t.status === "APPROVED" ? "approved" : t.status === "REJECTED" ? "rejected" : stageWithPayment(t, owed);
     const stage = raw === "sent_back" ? "waiting_broker" : raw;
     // The MT5 bonus and the AED the student paid, as Funding Requests shows them (2026-10-13).
     const usd = creditUsdOf(t), aedPaid = paidAedOf(t);
@@ -287,7 +290,9 @@ export async function getBonusReport(req: Request, user: AuthUser): Promise<Resp
       for (const x of left) {
         const at = when(x.since);
         if (!inRange(ctx, at)) continue;
-        g.add(p, at, { count: 1, usd: x.usd, needs_call: 1, needs_call_usd: x.usd } as any);
+        g.add(p, at, x.owed
+          ? { count: 1, usd: x.usd, after_payment: 1, after_payment_usd: x.usd } as any
+          : { count: 1, usd: x.usd, needs_call: 1, needs_call_usd: x.usd } as any);
       }
     }
   }

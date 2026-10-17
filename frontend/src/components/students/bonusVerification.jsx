@@ -26,6 +26,8 @@ const STATES = {
   pending: { label: 'Verification pending', cls: 'bg-amber-100 text-amber-800' },
   rejected: { label: 'Rejected', cls: 'bg-rose-100 text-rose-700' },
   approved: { label: 'Approved', cls: 'bg-emerald-100 text-emerald-700' },
+  // The course still owes: the bonus — and with it the verification — waits for the full payment (2026-10-17).
+  after_payment: { label: 'Bonus after full payment', cls: 'bg-violet-100 text-violet-800' },
 };
 
 /** One student's verification, as one pill: theirs overall, or one bonus's. */
@@ -44,8 +46,11 @@ export function VerificationCell({ row }) {
     <div className="space-y-1">
       {(one ? [one] : bonuses).map((b) => (
         <div key={b.invoice_id} className="flex items-center gap-1.5">
-          <VerificationBadge state={b.state} title={b.reason ? `Rejected: ${b.reason}` : undefined} />
-          <span className="text-xs text-slate-500">{money(b)}</span>
+          <VerificationBadge
+            state={b.after_payment ? 'after_payment' : b.state}
+            title={b.after_payment ? `${b.owed} still owed — the bonus is sent and approved once the course is paid in full` : b.reason ? `Rejected: ${b.reason}` : undefined}
+          />
+          <span className="text-xs text-slate-500">{money(b)}{b.after_payment && b.owed ? ` · ${b.owed} owed` : ''}</span>
         </div>
       ))}
     </div>

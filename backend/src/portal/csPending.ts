@@ -38,14 +38,14 @@ const TICKETS_MS = 60_000;
 
 export interface CsPendingCounts {
   onboarding: number; onboarding_late: number;
-  bonus: number; bonus_usd: number; bonus_sent_back: number; bonus_needs_call: number; bonus_with_finance: number; bonus_waiting_broker: number;
+  bonus: number; bonus_usd: number; bonus_sent_back: number; bonus_after_payment: number; bonus_needs_call: number; bonus_with_finance: number; bonus_waiting_broker: number;
   tickets_open: number; tickets_waiting: number;
   followups_today: number; followups_overdue: number;
   completions: number;
 }
 const blank = (): CsPendingCounts => ({
   onboarding: 0, onboarding_late: 0,
-  bonus: 0, bonus_usd: 0, bonus_sent_back: 0, bonus_needs_call: 0, bonus_with_finance: 0, bonus_waiting_broker: 0,
+  bonus: 0, bonus_usd: 0, bonus_sent_back: 0, bonus_after_payment: 0, bonus_needs_call: 0, bonus_with_finance: 0, bonus_waiting_broker: 0,
   tickets_open: 0, tickets_waiting: 0, followups_today: 0, followups_overdue: 0, completions: 0,
 });
 const cents = (n: number) => Math.round(n * 100) / 100;
@@ -137,7 +137,7 @@ export async function csPending(now = Date.now()) {
   }).sort((a, b) => a.since.localeCompare(b.since));
 
   const STAGE_KEY: Record<BonusStage, keyof CsPendingCounts> = {
-    sent_back: "bonus_sent_back", needs_call: "bonus_needs_call", with_finance: "bonus_with_finance", waiting_broker: "bonus_waiting_broker",
+    sent_back: "bonus_sent_back", after_payment: "bonus_after_payment", needs_call: "bonus_needs_call", with_finance: "bonus_with_finance", waiting_broker: "bonus_waiting_broker",
   };
   const bonus = [...bonusOf].map(([sid, p]) => {
     const who = whoOf(sid);

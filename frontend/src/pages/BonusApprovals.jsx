@@ -89,6 +89,7 @@ const EXPORT_COLUMNS = [
   { header: 'Finance invoices', width: 40, value: t => [t.sales_close?.invoice_number, ...(t.student?.invoices || []).filter(f => f.invoice_number !== t.sales_close?.invoice_number).map(f => `${f.invoice_number} ${f.currency} ${f.fee}${f.balance > 0 ? ` owes ${f.balance}` : ''}`)].filter(Boolean).join('; ') },
   { header: 'Source', value: t => sourceLabel(t) },
   { header: 'Raised by', value: t => t.resubmitted_by_name || t.requested_by_name || '' },
+  { header: 'Course still owes', value: t => t.course_owed || '' },
   { header: 'Sold by', value: t => (t.source === 'sales_close' ? (t.student?.closed_by || []).map(c => c.name).join('; ') : '') },
   { header: 'Txn ID', value: t => t.transaction_id },
   { header: 'Already credited', value: t => (t.already_credited?.at ? `Yes — ${t.already_credited.note || ''} (${t.already_credited.by_name || ''})` : '') },
@@ -414,6 +415,8 @@ export default function BonusApprovals() {
                             </td>
                             <td className="min-w-[160px] px-3 py-2.5 text-xs">
                               {t.sales_close?.invoice_number && <div className="font-mono font-medium text-slate-800">{t.sales_close.invoice_number}</div>}
+                              {/* Its course still owes: approved once it is paid in full (2026-10-17). */}
+                              {t.course_owed && <div className="mt-0.5 rounded bg-violet-50 px-1.5 py-0.5 font-medium text-violet-800">{t.course_owed} still owed — approve after full payment</div>}
                               {(t.student?.invoices || []).filter(f => f.invoice_number !== t.sales_close?.invoice_number).map((f) => (
                                 <div key={f.invoice_number} className="text-slate-600"><span className="font-mono">{f.invoice_number}</span> · {f.currency} {Number(f.fee).toLocaleString('en-US')}{f.balance > 0 ? <span className="text-amber-700"> · owes {Number(f.balance).toLocaleString('en-US')}</span> : ''}</div>
                               ))}

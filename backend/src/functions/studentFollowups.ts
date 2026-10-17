@@ -11,6 +11,7 @@ import {
 import { theirStudents } from "../students/closedBy";
 import { MT5_LOGIN, mt5LoginOf, mt5Of, mt5Owner, keepMt5 } from "../students/mt5";
 import { bonusCurrencyOf } from "../students/salesCrm";
+import { owedOf } from "../students/salesBonusPaid";
 
 const DATE = /^\d{4}-\d{2}-\d{2}$/;
 /** A follow-up's time, UAE: hours and minutes, 24-hour (the user, 2026-10-10 — a reminder goes before it and at it). */
@@ -42,6 +43,9 @@ export function salesBonusOf(student: any) {
       amount: f.bonus_given === true ? Math.round(Number(f.bonus_minor) || 0) / 100 : 0,
       // Its own; a sales CRM's with none is USD (the user, 2026-10-12); else the fee's.
       currency: bonusCurrencyOf(f),
+      // Still owed on the course (its own currency's minor units): the bonus waits for the full payment (2026-10-17).
+      owed_minor: owedOf(f),
+      fee_currency: String(f.currency ?? ""),
     }));
 }
 
@@ -57,6 +61,8 @@ export async function raiseSalesBonusCredits(
   let raised = 0;
   for (const b of salesBonusOf(student)) {
     if (!b.given || !(b.amount > 0)) continue;
+    // Not while the course still owes: the sales bonus is for a course paid in full (the user, 2026-10-17).
+    if (b.owed_minor > 0) continue;
     if (opts.only && !opts.only.has(b.invoice_id)) continue;
     const receipt = opts.receipts?.get(b.invoice_id);
     const usd = b.currency === "USD" ? b.amount : Math.round((b.amount / AED_PER_USD) * 100) / 100;
