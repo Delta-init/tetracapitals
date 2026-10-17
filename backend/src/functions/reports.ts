@@ -34,17 +34,17 @@ const UAE_OFFSET_MS = 4 * 3_600_000;
 const DAY_MS = 86_400_000;
 const DATE = /^\d{4}-\d{2}-\d{2}$/;
 const cents = (n: number) => Math.round(n * 100) / 100;
-const usdOf = (t: any) => (Number.isFinite(Number(t?.amount_usd)) ? Number(t.amount_usd) : 0);
+export const usdOf = (t: any) => (Number.isFinite(Number(t?.amount_usd)) ? Number(t.amount_usd) : 0);
 /** As Funding Requests shows a request (the user, 2026-10-13): a bonus its MT5 bonus — a course payment's bonus, not
  *  the payment — anything else its USD amount… */
-const creditUsdOf = (t: any) => (t?.type === "BONUS" && t?.course_payment ? Number(t.course_payment.bonus_usd) || 0 : usdOf(t));
+export const creditUsdOf = (t: any) => (t?.type === "BONUS" && t?.course_payment ? Number(t.course_payment.bonus_usd) || 0 : usdOf(t));
 /** …and the AED the student paid with it: a course payment's AED received, a deposit's or withdrawal's AED; a bonus
  *  credit (sales close, course upgrade) none — its money came through finance. */
-const paidAedOf = (t: any) => {
+export const paidAedOf = (t: any) => {
   if (t?.type === "BONUS" && t?.bonus_credit) return 0;
   return Number(t?.course_payment?.paid_today_aed) || Number(t?.amount_aed) || usdOf(t) * 3.67;
 };
-const when = (...vals: unknown[]): number => {
+export const when = (...vals: unknown[]): number => {
   for (const v of vals) {
     const t = v ? Date.parse(String(v)) : NaN;
     if (Number.isFinite(t)) return t;
@@ -69,7 +69,7 @@ export interface ReportCtx {
 }
 
 /** The period asked for, as [since, until) in UTC ms — UAE calendar days. */
-function rangeOf(body: any, now = Date.now()): { since: number; until: number; period: string } | string {
+export function rangeOf(body: any, now = Date.now()): { since: number; until: number; period: string } | string {
   const period = String(body?.period ?? "month");
   const uae = new Date(now + UAE_OFFSET_MS);
   const y = uae.getUTCFullYear(), m = uae.getUTCMonth();
@@ -125,11 +125,11 @@ export function counts(ctx: ReportCtx, p: Person): boolean {
   if (ctx.cs && p.id !== ctx.cs) return false;
   return true;
 }
-const inRange = (ctx: ReportCtx, t: number) => Number.isFinite(t) && t >= ctx.since && t < ctx.until;
-const raisedBy = (t: any) => String(t.initiating_mentor_id || t.primary_mentor_id || "");
+export const inRange = (ctx: ReportCtx, t: number) => Number.isFinite(t) && t >= ctx.since && t < ctx.until;
+export const raisedBy = (t: any) => String(t.initiating_mentor_id || t.primary_mentor_id || "");
 
 /** Rows keyed by person, by team and by month, each with whatever `add` sums. */
-function grouper<T extends Record<string, number>>(blank: () => T) {
+export function grouper<T extends Record<string, number>>(blank: () => T) {
   const people = new Map<string, Person & T>(), teams = new Map<string, { id: string; team: string; location: string } & T>(), months = new Map<string, { month: string } & T>();
   const total = blank();
   const sum = (into: T, add: Partial<T>) => { for (const [k, v] of Object.entries(add)) (into as any)[k] = cents(((into as any)[k] ?? 0) + (v as number)); };
@@ -159,7 +159,7 @@ function grouper<T extends Record<string, number>>(blank: () => T) {
   };
 }
 
-const meta = (ctx: ReportCtx) => ({
+export const meta = (ctx: ReportCtx) => ({
   period: ctx.period,
   since: ctx.since ? new Date(ctx.since).toISOString() : null,
   until: ctx.until < Number.MAX_SAFE_INTEGER ? new Date(ctx.until).toISOString() : null,
