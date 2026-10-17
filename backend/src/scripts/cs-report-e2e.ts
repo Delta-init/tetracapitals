@@ -130,6 +130,7 @@ const rv1 = row("revenue", one), rv2 = row("revenue", two);
 same("revenue, Cee One: 1 deposit $1000 / AED 3670, 1 withdrawal $200, net $800, 1 course payment AED 5000",
   [rv1.deposits, rv1.deposit_usd, rv1.deposit_aed, rv1.withdrawals, rv1.withdrawal_usd, rv1.net_usd, rv1.course_payments, rv1.course_payment_aed], [1, 1000, 3670, 1, 200, 800, 1, 5000]);
 same("revenue, Cee Two: $500 at 3.67, and the old upgrade's payment in the period", [rv2.deposit_usd, rv2.deposit_aed, rv2.course_payment_aed], [500, 1835, 4000]);
+same("in AED: Cee One's withdrawal AED 734 (USD at 3.67), net AED 2936", [rv1.withdrawal_aed, rv1.net_aed], [734, 2936]);
 same("revenue total", [d.revenue?.total?.deposits, d.revenue?.total?.deposit_usd, d.revenue?.total?.course_payment_aed], [2, 1500, 9000]);
 check("revenue rows: kind, student, CS, team", (d.revenue?.rows ?? []).some((x: any) => x.kind === "deposit" && x.student === "Asha" && x.cs === "Cee One" && x.team === "Falcons"));
 const f1 = row("followups", one), f2 = row("followups", two);
@@ -149,6 +150,7 @@ same("bonus, Cee One: 1 approved $100", [b1.count, b1.approved, b1.approved_usd]
 same("bonus, Bangalore: with finance $250, plus the sales-close bonus needing a call $300", [row("bonus", blr).with_finance, row("bonus", blr).needs_call, row("bonus", blr).usd], [1, 1, 550]);
 same("bonus, Cee Two: 1 rejected", row("bonus", two).rejected, 1);
 same("commission: Cee One $40, Cee Two $20 (pool and outside left out)", [row("commission", one).usd, row("commission", two).usd, d.commission?.total?.usd], [40, 20, 60]);
+same("commission in AED at 3.67: Cee One 146.8, Cee Two 73.4", [row("commission", one).aed, row("commission", two).aed, d.commission?.total?.aed], [146.8, 73.4, 220.2]);
 const u1 = row("upgrades", one), u2 = row("upgrades", two);
 same("upgrades, Cee One: 1 started, AED 5000 quoted, AED 5000 paid", [u1.started, u1.quoted_aed, u1.paid_aed], [1, 5000, 5000]);
 same("upgrades, Cee Two: none started, AED 4000 paid on an older one", [u2.started, u2.paid_aed], [0, 4000]);

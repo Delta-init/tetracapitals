@@ -31,13 +31,17 @@ import {
 
    The same filters as the Reports section: period (or from/to), location,
    team, cs. Everyone's — Root's root admins. Each section carries its rows
-   (the latest 2000). Read-only.
+   (the latest 2000). Money in AED (the user, 2026-10-17: "all in AED, only the bonus in
+   USD") — as recorded, else USD at the portal's fixed 3.67; a bonus keeps its USD
+   (the MT5 bonus) beside the AED paid. Read-only.
 ──────────────────────────────────────────────────────────────────────────── */
 
 const ROWS = 2000;
 type Q = Record<string, string | undefined>;
 const iso = (t: number) => (Number.isFinite(t) ? new Date(t).toISOString() : "");
 const latest = <T extends { at: string }>(rows: T[]) => rows.sort((a, b) => b.at.localeCompare(a.at)).slice(0, ROWS);
+/** AED as recorded, else the USD at the portal's fixed 3.67. */
+const aedFrom = (aed: unknown, usd: number) => (Number(aed) > 0 ? Number(aed) : Math.round(usd * 367) / 100);
 const who = (p: Person) => ({ cs_id: p.id, cs: p.name, team: p.team, location: p.location });
 
 export async function csReportForPortal(q: Q): Promise<Record<string, unknown> | string> {
@@ -78,7 +82,7 @@ export async function csReportForPortal(q: Q): Promise<Record<string, unknown> |
   };
 
   /* ── Revenue ─────────────────────────────────────────────────────────── */
-  const revenue = grouper(() => ({ deposits: 0, deposit_usd: 0, deposit_aed: 0, withdrawals: 0, withdrawal_usd: 0, course_payments: 0, course_payment_aed: 0, net_usd: 0 }));
+  const revenue = grouper(() => ({ deposits: 0, deposit_usd: 0, deposit_aed: 0, withdrawals: 0, withdrawal_usd: 0, withdrawal_aed: 0, course_payments: 0, course_payment_aed: 0, net_usd: 0, net_aed: 0 }));
   const revenueRows: any[] = [];
   for (const t of txs) {
     if (t.status !== "APPROVED" || (t.type !== "DEPOSIT" && t.type !== "WITHDRAWAL")) continue;
@@ -86,9 +90,9 @@ export async function csReportForPortal(q: Q): Promise<Record<string, unknown> |
     if (!inRange(ctx, at)) continue;
     const p = P(raisedBy(t), t.primary_mentor_name);
     if (!counts(ctx, p)) continue;
-    const usd = usdOf(t), aed = Number(t.amount_aed) > 0 ? Number(t.amount_aed) : Math.round(usd * 367) / 100;
-    if (t.type === "DEPOSIT") revenue.add(p, at, { deposits: 1, deposit_usd: usd, deposit_aed: aed, net_usd: usd });
-    else revenue.add(p, at, { withdrawals: 1, withdrawal_usd: usd, net_usd: -usd });
+    const usd = usdOf(t), aed = aedFrom(t.amount_aed, usd);
+    if (t.type === "DEPOSIT") revenue.add(p, at, { deposits: 1, deposit_usd: usd, deposit_aed: aed, net_usd: usd, net_aed: aed });
+    else revenue.add(p, at, { withdrawals: 1, withdrawal_usd: usd, withdrawal_aed: aed, net_usd: -usd, net_aed: -aed });
     revenueRows.push({ kind: t.type === "DEPOSIT" ? "deposit" : "withdrawal", at: iso(at), usd, aed, ...stu(t.student_id, t.student_name), ...who(p) });
   }
   const upgradeById = new Map((upgrades as any[]).map((u) => [String(u._id), u]));
@@ -218,7 +222,7 @@ export async function csReportForPortal(q: Q): Promise<Record<string, unknown> |
   }
 
   /* ── Commission ─────────────────────────────────────────────────────── */
-  const cm = grouper(() => ({ credits: 0, usd: 0 }));
+  const cm = grouper(() => ({ credits: 0, usd: 0, aed: 0 }));
   const cmRows: any[] = [];
   for (const c of credits) {
     const at = when(c.requested_at, c.created_date);
@@ -226,8 +230,8 @@ export async function csReportForPortal(q: Q): Promise<Record<string, unknown> |
     const p = P(c.recipient_id, c.recipient_name);
     if (!counts(ctx, p)) continue;
     const usd = Number(c.commission_usd) || 0;
-    cm.add(p, at, { credits: 1, usd });
-    cmRows.push({ at: iso(at), usd, level: c.level ?? null, type: String(c.transaction_type ?? ""), status: String(c.status ?? ""), ...stu(c.student_id, c.student_name), ...who(p) });
+    cm.add(p, at, { credits: 1, usd, aed: aedFrom(0, usd) });
+    cmRows.push({ at: iso(at), usd, aed: aedFrom(0, usd), level: c.level ?? null, type: String(c.transaction_type ?? ""), status: String(c.status ?? ""), ...stu(c.student_id, c.student_name), ...who(p) });
   }
 
   /* ── Course upgrades ────────────────────────────────────────────────── */
@@ -261,13 +265,13 @@ export async function csReportForPortal(q: Q): Promise<Record<string, unknown> |
   return {
     ...meta(ctx),
     filters: { teams: ctx.index.teams.map((t) => ({ id: t.id, name: t.name, location: t.location })), people },
-    revenue: { ...revenue.out("deposit_usd"), rows: latest(revenueRows) },
+    revenue: { ...revenue.out("deposit_aed"), rows: latest(revenueRows) },
     followups: { ...fu.out("logged"), rows: latest(fuRows) },
     calls: { ...cg.out("calls"), rows: latest(callRows) },
     programs: { available: programsAvailable, ...(programsMessage ? { message: programsMessage } : {}), ...pg.out("classes"), rows: latest(programRows) },
     onboarded: { ...ob.out("onboarded"), rows: latest(obRows) },
     bonus: { ...bg.out("usd"), rows: latest(bonusRows) },
-    commission: { ...cm.out("usd"), rows: latest(cmRows) },
+    commission: { ...cm.out("aed"), rows: latest(cmRows) },
     upgrades: { ...ug.out("paid_aed"), rows: latest(ugRows) },
   };
 }
