@@ -9,13 +9,21 @@ import { includedCourses } from "./upgradeCalc";
  * opens the ones of every course it takes off too (DSLP PRO: DWT, MMC, DSLP).
  * DQMP has no LMS course yet: add its line once the course is made there.
  * HADC is no upgrade's.
+ *
+ * MSNR opens the LMS's own MSNR course since 2026-10-18 (it used to open MMC,
+ * which is now a product of its own — lmsTargetOfProduct). Only MSNR itself
+ * moved: inside DSLP PRO and DQMP it still stands for MMC, as before
+ * (INCLUDED_AS), so what those open is unchanged.
  */
 export interface LmsTarget { title: string; firstModules?: number }
+
+const MSNR_COURSE: LmsTarget = { title: "MSNR - Malaysian Support & Resistance" };
+const MMC_COURSE: LmsTarget = { title: "MMC (MARKET MAKING CYCLE)" };
 
 export const CSE_LMS: Record<CourseCode, LmsTarget[]> = {
   MBT: [{ title: "MARKET BREAK-OUT TRADING PROGRAM" }],
   DWT: [{ title: "DELTA WAVE THEORY TRADING PROGRAMME" }],
-  MSNR: [{ title: "MMC (MARKET MAKING CYCLE)" }],
+  MSNR: [MSNR_COURSE],
   DSLP_OFFER: [{ title: "DSLP - Delta Structure & Liquidity Programme", firstModules: 10 }],
   DSLP_PRO: [{ title: "DSLP - Delta Structure & Liquidity Programme" }],
   DQMP: [],
@@ -23,11 +31,16 @@ export const CSE_LMS: Record<CourseCode, LmsTarget[]> = {
 
 export const sameTitle = (a: string, b: string) => a.replace(/\s+/g, " ").trim().toLowerCase() === b.replace(/\s+/g, " ").trim().toLowerCase();
 
+/** What a course opens when it comes inside a bigger one, where that differs from its own line (see above). */
+const INCLUDED_AS: Partial<Record<CourseCode, LmsTarget[]>> = {
+  MSNR: [MMC_COURSE],
+};
+
 /** Every LMS course an upgrade to `code` opens: its own and those of the courses it takes off, the widest per course. */
 export function lmsTargetsOf(code: CourseCode): { targets: LmsTarget[]; ownMapped: boolean } {
   const out: LmsTarget[] = [];
   for (const c of [code, ...includedCourses(code)]) {
-    for (const t of CSE_LMS[c] ?? []) {
+    for (const t of (c !== code && INCLUDED_AS[c]) || CSE_LMS[c] || []) {
       const have = out.find((o) => sameTitle(o.title, t.title));
       if (!have) out.push({ ...t });
       else if (have.firstModules !== undefined && (t.firstModules === undefined || t.firstModules > have.firstModules)) have.firstModules = t.firstModules;
@@ -41,9 +54,9 @@ export const productKey = (name: unknown) => String(name ?? "").toUpperCase().re
 
 /**
  * The LMS course a Bonus course payment's product opens (the user, 2026-10-12 — "go, your way"): by the product's name,
- * as Course Upgrades map their courses — DSLP Offer the first 10 DSLP modules, DSLP (Full) all of DSLP, DWT, MSNR (MMC),
- * MBT. A product that bundles others has them on the request too (its tags), and each opens its own. Anything else
- * (HADC, DQMP…) opens nothing yet.
+ * as Course Upgrades map their courses — DSLP Offer the first 10 DSLP modules, DSLP (Full) all of DSLP, DWT, MBT;
+ * MSNR its own MSNR course and MMC the MMC course (2026-10-18 — MSNR used to open MMC). A product that bundles others
+ * has them on the request too (its tags), and each opens its own. Anything else (HADC, DQMP…) opens nothing yet.
  */
 export function lmsTargetOfProduct(name: unknown): LmsTarget | null {
   const k = productKey(name);
@@ -51,7 +64,8 @@ export function lmsTargetOfProduct(name: unknown): LmsTarget | null {
   if (k.startsWith("DSLP") && k.includes("OFFER")) return { ...CSE_LMS.DSLP_OFFER[0]! };
   if (k.startsWith("DSLP")) return { ...CSE_LMS.DSLP_PRO[0]! };
   if (k.startsWith("DWT") || k.includes("DELTAWAVE")) return { ...CSE_LMS.DWT[0]! };
-  if (k.startsWith("MSNR") || k.startsWith("MMC") || k.includes("MARKETMAKING")) return { ...CSE_LMS.MSNR[0]! };
+  if (k.startsWith("MSNR") || k.includes("MALAYSIAN")) return { ...MSNR_COURSE };
+  if (k.startsWith("MMC") || k.includes("MARKETMAKING")) return { ...MMC_COURSE };
   if (k.startsWith("MBT") || k.includes("BREAKOUT")) return { ...CSE_LMS.MBT[0]! };
   return null;
 }

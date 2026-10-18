@@ -7,7 +7,7 @@
  */
 import { quoteUpgrade, progressOf, UpgradeError, type OwnedCourse, type PlanType } from "../courses/upgradeCalc";
 import type { CourseCode } from "../courses/priceList";
-import { lmsTargetsOf, sameTitle } from "../courses/lmsMapping";
+import { lmsTargetsOf, lmsTargetOfProduct, lmsTargetsOfProducts, sameTitle } from "../courses/lmsMapping";
 
 let checks = 0, failures = 0;
 function check(label: string, ok: boolean, detail = "") {
@@ -90,10 +90,20 @@ check("an unknown course", refused(() => quoteUpgrade("DGMP" as CourseCode, "ful
 
 console.log("\nThe LMS modules each upgrade opens (lmsMapping.ts)");
 const titles = (c: CourseCode) => lmsTargetsOf(c).targets.map((t) => `${t.title.split(" ")[0]}${t.firstModules ? `:${t.firstModules}` : ""}`).sort().join(",");
-check("MSNR opens MMC", titles("MSNR") === "MMC");
+check("MSNR opens its own MSNR course", titles("MSNR") === "MSNR");
 check("DSLP Offer opens DSLP 1–10 and DWT", titles("DSLP_OFFER") === "DELTA,DSLP:10", titles("DSLP_OFFER"));
 check("DSLP PRO opens all of DSLP, DWT and MMC", titles("DSLP_PRO") === "DELTA,DSLP,MMC", titles("DSLP_PRO"));
 check("DQMP: no LMS course yet, DSLP PRO's courses", !lmsTargetsOf("DQMP").ownMapped && titles("DQMP") === "DELTA,DSLP,MMC", titles("DQMP"));
+console.log("\nThe LMS course a Bonus product opens (lmsTargetOfProduct)");
+const prod = (n: string) => lmsTargetOfProduct(n)?.title ?? "—";
+check("MSNR → the MSNR course", prod("MSNR") === "MSNR - Malaysian Support & Resistance", prod("MSNR"));
+check("MSNR, however typed → the MSNR course", prod("msnr — full") === "MSNR - Malaysian Support & Resistance" && prod("Malaysian SNR") === "MSNR - Malaysian Support & Resistance");
+check("MMC → the MMC course", prod("MMC") === "MMC (MARKET MAKING CYCLE)", prod("MMC"));
+check("Market Making Cycle → the MMC course", prod("Market Making Cycle") === "MMC (MARKET MAKING CYCLE)", prod("Market Making Cycle"));
+check("MSNR and MMC together open both", lmsTargetsOfProducts(["MSNR", "MMC"]).length === 2);
+check("unchanged: DSLP Offer → DSLP 1–10, DSLP → all, DWT, MBT", lmsTargetOfProduct("DSLP Offer Price")?.firstModules === 10 && lmsTargetOfProduct("DSLP Full")?.firstModules === undefined
+  && prod("DWT") === "DELTA WAVE THEORY TRADING PROGRAMME" && prod("MBT") === "MARKET BREAK-OUT TRADING PROGRAM");
+check("unchanged: HADC, DQMP → nothing", prod("HADC") === "—" && prod("DQMP") === "—");
 check("titles match however the LMS spaces them", sameTitle("DSLP  - Delta Structure & Liquidity Programme", "DSLP - Delta Structure & Liquidity Programme"));
 
 console.log(`\n${checks - failures}/${checks} checks passed`);
