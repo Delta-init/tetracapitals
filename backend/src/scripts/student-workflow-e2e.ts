@@ -7,6 +7,8 @@
  *                       rule apart; follow-up stage now; sources; per team and per CS; by day
  *   Case 2  edge        outside the period, not a student, an approved deposit only, the filters (location, team, cs)
  *   Case 3  the people  the students behind a box or a stage, a team's, a CS's, the open pool's
+ *   Case 5  bonus pending  how many, the USD, each reason (sent back, waiting for the full payment, needs a call,
+ *                       with finance, waiting for a broker admin), the students behind a reason, per CS
  *   Case 4  who sees    an admin everything, a team leader their team, a CS their own; Root with the secret only
  *
  * Run through ./test-student-workflow.sh (throwaway mongod and the API — no .env). Scratch database only.
@@ -52,9 +54,11 @@ const stu = (name: string, cs: any | null, extra: Record<string, unknown> = {}) 
   onboarded: false, created_date: ago(48), ...extra,
 });
 const asha = stu("Asha", one, { onboarded: true, onboarded_at: ago(40), finance_invoice_id: "inv1", enrolment_status: "closed", location: "dubai" });
-const bilal = stu("Bilal", one, { created_date: ago(2), source: "delta_lms", lms_user_id: "l1" });              // waiting: 2 h in
+const bilal = stu("Bilal", one, { created_date: ago(2), source: "delta_lms", lms_user_id: "l1",
+  course_fees: [{ invoice_id: "inv7", course: "MBT", bonus_given: true, bonus_minor: 20000, currency: "USD", fee_minor: 100000, paid_minor: 50000, balance_minor: 50000 }] }); // bonus waits for the full payment              // waiting: 2 h in
 const cara = stu("Cara", two, { created_date: ago(30), source: "cs_sheet" });                                   // late
-const dev = stu("Dev", blr, { onboarded: true, onboarded_at: ago(20), finance_invoice_id: "inv2", location: "bangalore" });
+const dev = stu("Dev", blr, { onboarded: true, onboarded_at: ago(20), finance_invoice_id: "inv2", location: "bangalore",
+  course_fees: [{ invoice_id: "inv2", course: "MBT", bonus_given: true, bonus_minor: 30000, currency: "USD", fee_minor: 100000, paid_minor: 100000, balance_minor: 0 }] }); // bonus needs a call
 const eve = stu("Eve", null, { location: "dubai", finance_invoice_id: "inv3" });                               // open pool, late
 const old = stu("Old", one, { created_date: ago(24 * 40) });                                                    // outside the period
 const fake = stu("Fake", one, { not_student: true });                                                           // not a student
@@ -77,6 +81,11 @@ await db.collection("funding_transactions").insertMany([
   { _id: new ObjectId(), type: "DEPOSIT", status: "APPROVED", amount_usd: 1000, student_id: sid(asha), approved_at: ago(10) },
   { _id: new ObjectId(), type: "DEPOSIT", status: "PENDING", amount_usd: 500, student_id: sid(dev) },              // not approved
   { _id: new ObjectId(), type: "WITHDRAWAL", status: "APPROVED", amount_usd: 100, student_id: sid(cara) },         // not a deposit
+  // Pending bonuses: with finance and waiting for a broker admin (Asha), sent back to its CS (Cara), a decided one (left out)
+  { _id: new ObjectId(), type: "BONUS", status: "PENDING", amount_usd: 100, student_id: sid(asha), finance_approval: { state: "sent" }, requested_at: ago(5) },
+  { _id: new ObjectId(), type: "BONUS", status: "PENDING", amount_usd: 40, student_id: sid(asha), bonus_credit: "course_upgrade", requested_at: ago(4) },
+  { _id: new ObjectId(), type: "BONUS", status: "PENDING", amount_usd: 50, student_id: sid(cara), returned: { at: ago(3), reason: "Wrong MT5" }, requested_at: ago(6) },
+  { _id: new ObjectId(), type: "BONUS", status: "APPROVED", amount_usd: 999, student_id: sid(cara), approved_at: ago(2) },
 ] as any[]);
 await db.collection("student_history").insertMany([
   { _id: new ObjectId(), student_id: sid(cara), at: ago(25), type: "mentor_changed", via: "reassign", text: "Moved" },
@@ -116,6 +125,25 @@ const ppl = Object.fromEntries((all.body?.people ?? []).map((x: any) => [x.name,
 check("per CS: Cee One 2 (1 waiting), Cee Two 1 (late), Cee Blr 1", ppl["Cee One"]?.came === 2 && ppl["Cee One"]?.waiting === 1 && ppl["Cee Two"]?.late === 1 && ppl["Cee Blr"]?.came === 1, j(all.body?.people));
 check("by day: adds up to 5", (all.body?.timeline ?? []).reduce((n: number, d: any) => n + d.came, 0) === 5, j(all.body?.timeline));
 check("the wait it uses: 6 hours", all.body?.wait_hours === 6);
+
+step("Case 5 — bonus pending and why");
+const bon = all.body?.bonus ?? {};
+const why = Object.fromEntries((bon.reasons ?? []).map((r: any) => [r.reason, r]));
+check("4 students with a bonus pending — a decided one left out", t.bonus_pending === 4 && bon.students === 4, j(bon));
+check("USD in all: 690", bon.usd === 690, j(bon));
+check("sent back to the CS: Cara, $50", why.sent_back?.students === 1 && why.sent_back?.usd === 50, j(why.sent_back));
+check("waiting for the full payment: Bilal, $200", why.after_payment?.students === 1 && why.after_payment?.usd === 200, j(why.after_payment));
+check("needs a call that connects: Dev, $300", why.needs_call?.students === 1 && why.needs_call?.usd === 300, j(why.needs_call));
+check("with finance: Asha, $100", why.with_finance?.students === 1 && why.with_finance?.usd === 100, j(why.with_finance));
+check("waiting for a broker admin: Asha too, $40", why.waiting_broker?.students === 1 && why.waiting_broker?.usd === 40, j(why.waiting_broker));
+const wf = await fn(admin, "getStudentWorkflowStudents", { box: "bonus_with_finance" });
+check("the students behind a reason: Asha, her total and her earliest reason", wf.body?.students?.length === 1 && wf.body.students[0].name === "Asha" && wf.body.students[0].bonus?.usd === 140 && wf.body.students[0].bonus?.reason === "with_finance" && wf.body.students[0].bonus?.reasons.length === 2, j(wf.body));
+const bp = await fn(admin, "getStudentWorkflowStudents", { box: "bonus_pending" });
+check("…all 4 behind the box", bp.body?.total === 4, j(bp.body));
+check("per CS: Cee One 2 (Asha, Bilal)", (all.body?.people ?? []).find((p: any) => p.name === "Cee One")?.bonus_pending === 2, j(all.body?.people));
+check("a student with none: no bonus on their row", (await fn(admin, "getStudentWorkflowStudents", { box: "pool" })).body?.students?.[0]?.bonus === null);
+const rootBonus = await svc("/student-workflow/students", "&box=bonus_needs_call");
+check("Root: the students behind a reason", rootBonus.body?.data?.students?.map((x: any) => x.name).join() === "Dev", j(rootBonus.body));
 
 step("Case 2 — filters");
 const dubai = await fn(admin, "getStudentWorkflow", { location: "dubai" });

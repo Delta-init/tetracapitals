@@ -39,7 +39,17 @@ const day = (iso) => (iso ? new Date(iso).toLocaleString('en-GB', { day: '2-digi
 const BOX_TITLE = {
   came: 'Came in', assigned: 'Assigned to a CS', pool: 'Open pool', onboarded: 'Onboarded', waiting: 'Waiting — within 6 hours', late: 'Late — not onboarded',
   enrolled: 'Enrolled in the LMS', contacted: 'Contacted', deposited: 'First deposit', moved: 'Moved by hand', moved_inactivity: 'Moved for no deposit',
+  bonus_pending: 'Bonus pending',
 };
+/* Why a bonus waits (2026-10-20, backend students/bonusPending.ts), in the order a CS can act on them. */
+const BONUS_REASON = {
+  sent_back: 'sent back to the CS',
+  after_payment: 'waiting for full payment',
+  needs_call: 'needs a connected call',
+  with_finance: 'with finance',
+  waiting_broker: 'waiting for a broker admin',
+};
+const usd = (n) => `$${(Number(n) || 0).toLocaleString('en-US', { maximumFractionDigits: 2 })}`;
 
 function Box({ n, label, tone = 'neutral', onClick, sub }) {
   return (
@@ -156,6 +166,24 @@ export default function StudentWorkflow() {
                 sub={t.moved_inactivity ? `+ ${t.moved_inactivity} for no deposit` : undefined} onClick={() => show(BOX_TITLE.moved, { box: 'moved' })} />
             </div>
 
+            {d.bonus && (
+              <div className={`rounded-xl border p-3 ${d.bonus.students ? 'border-amber-200 bg-amber-50/60' : 'border-slate-200 bg-white'}`}>
+                <button type="button" onClick={() => show(BOX_TITLE.bonus_pending, { box: 'bonus_pending' })} className="flex w-full items-baseline justify-center gap-2 hover:underline">
+                  <span className={`text-2xl font-semibold tabular-nums ${d.bonus.students ? 'text-amber-700' : 'text-slate-900'}`}>{d.bonus.students}</span>
+                  <span className="text-sm text-slate-600">bonus pending · {usd(d.bonus.usd)}</span>
+                </button>
+                <div className="mt-2 flex flex-wrap justify-center gap-2">
+                  {(d.bonus.reasons || []).map(r => (
+                    <button key={r.reason} type="button" disabled={!r.students}
+                      onClick={() => show(`Bonus pending — ${BONUS_REASON[r.reason] || r.reason}`, { box: `bonus_${r.reason}` })}
+                      className={`rounded-full border px-3 py-1 text-xs ${r.students ? 'border-amber-200 bg-white text-amber-800 hover:bg-amber-50' : 'border-slate-200 text-slate-400'}`}>
+                      {BONUS_REASON[r.reason] || r.reason} · <span className="font-semibold tabular-nums">{r.students}</span>{r.students ? ` · ${usd(r.usd)}` : ''}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+
             <div>
               <div className="mb-2 text-xs font-medium text-slate-500">Where they stand now (follow-up stage)</div>
               <div className="flex h-4 w-full overflow-hidden rounded-full bg-slate-100">
@@ -187,7 +215,7 @@ export default function StudentWorkflow() {
 }
 
 function Table({ title, rows, first, sub, onRow }) {
-  const cols = [['came', 'Came in'], ['onboarded', 'Onboarded'], ['late', 'Late'], ['enrolled', 'LMS'], ['contacted', 'Contacted'], ['deposited', 'Deposit'], ['moved', 'Moved']];
+  const cols = [['came', 'Came in'], ['onboarded', 'Onboarded'], ['late', 'Late'], ['enrolled', 'LMS'], ['contacted', 'Contacted'], ['deposited', 'Deposit'], ['bonus_pending', 'Bonus pending'], ['moved', 'Moved']];
   return (
     <div className="overflow-x-auto rounded-2xl border border-slate-200/70 bg-white shadow-soft">
       <div className="border-b px-4 py-3 text-sm font-semibold text-slate-800">{title}</div>
@@ -202,7 +230,7 @@ function Table({ title, rows, first, sub, onRow }) {
             <tr key={r.id ?? 'pool'} className="cursor-pointer border-t hover:bg-slate-50" onClick={() => onRow(r)}>
               <td className="px-4 py-2"><span className="font-medium text-slate-900">{first(r)}</span>{sub(r) ? <span className="block text-xs text-slate-500">{sub(r)}</span> : null}</td>
               {cols.map(([k]) => (
-                <td key={k} className={`px-3 py-2 text-right tabular-nums ${k === 'late' && r[k] ? 'text-rose-700 font-semibold' : 'text-slate-700'}`}>
+                <td key={k} className={`px-3 py-2 text-right tabular-nums ${k === 'late' && r[k] ? 'text-rose-700 font-semibold' : k === 'bonus_pending' && r[k] ? 'text-amber-700 font-semibold' : 'text-slate-700'}`}>
                   {r[k] || 0}{k === 'onboarded' && r.came ? <span className="ml-1 text-xs text-slate-400">{pct(r[k], r.came)}</span> : null}
                 </td>
               ))}
@@ -235,10 +263,10 @@ function Breakdown({ open, ask, onClose }) {
             <table className="w-full min-w-[720px] text-sm">
               <thead className="sticky top-0 bg-white"><tr className="text-left text-xs text-slate-500">
                 <th className="py-2 pr-3 font-medium">Student</th><th className="py-2 pr-3 font-medium">CS</th><th className="py-2 pr-3 font-medium">Came in</th>
-                <th className="py-2 pr-3 font-medium">Onboarded</th><th className="py-2 pr-3 font-medium">Stage</th><th className="py-2 font-medium">Flags</th>
+                <th className="py-2 pr-3 font-medium">Onboarded</th><th className="py-2 pr-3 font-medium">Stage</th><th className="py-2 pr-3 font-medium">Bonus pending</th><th className="py-2 font-medium">Flags</th>
               </tr></thead>
               <tbody>
-                {rows.length === 0 && <tr><td colSpan={6} className="py-6 text-center text-slate-500">Nobody here.</td></tr>}
+                {rows.length === 0 && <tr><td colSpan={7} className="py-6 text-center text-slate-500">Nobody here.</td></tr>}
                 {rows.map(s => (
                   <tr key={s.id} className="border-t align-top">
                     <td className="py-2 pr-3">
@@ -249,6 +277,7 @@ function Breakdown({ open, ask, onClose }) {
                     <td className="py-2 pr-3 whitespace-nowrap">{day(s.came_at)}</td>
                     <td className="py-2 pr-3 whitespace-nowrap">{s.onboarded_at ? day(s.onboarded_at) : <span className={s.late ? 'font-medium text-rose-700' : 'text-slate-500'}>{s.late ? 'Late' : 'Not yet'}</span>}</td>
                     <td className="py-2 pr-3">{s.stage}</td>
+                    <td className="py-2 pr-3">{s.bonus ? <><span className="font-medium text-amber-700">{usd(s.bonus.usd)}</span><span className="block text-xs text-slate-500">{(s.bonus.reasons || [s.bonus.reason]).map(x => BONUS_REASON[x] || x).join(' · ')}</span></> : <span className="text-slate-400">—</span>}</td>
                     <td className="py-2 text-xs text-slate-600">{[s.enrolled && 'LMS', s.contacted && 'contacted', s.deposited && 'deposit', s.moved && 'moved'].filter(Boolean).join(' · ') || '—'}</td>
                   </tr>
                 ))}

@@ -1,6 +1,7 @@
 import { col } from "../db";
 import { personOf, counts, meta, type ReportCtx, type Person } from "../functions/reports";
 import { WAIT_HOURS } from "./onboardingAlerts";
+import { bonusPendingOf, BONUS_STAGE_KEYS, type BonusStage } from "./bonusPending";
 
 /* ────────────────────────────────────────────────────────────────────────────
    The student workflow (the user, 2026-10-20: "the same workflow chart as the
@@ -17,6 +18,11 @@ import { WAIT_HOURS } from "./onboardingAlerts";
      moved by hand  given to another CS by a transfer or reassign — not the
                     admins' bulk reshuffles or imports (unassign-all, student-
                     split, sheets…), not the no-deposit rule (counted apart)
+     bonus pending  an MT5 bonus not credited yet, and why (2026-10-20,
+                    students/bonusPending.ts): sent back to the CS to correct,
+                    waiting for the course's full payment, needs a call that
+                    connects, with finance, waiting for a broker admin — a
+                    student with several counted under each of their reasons
 
    with each one's follow-up stage now ("No follow-up" when none), and the same
    per team and per CS — their CS now. The filters and who sees what are the
@@ -24,7 +30,10 @@ import { WAIT_HOURS } from "./onboardingAlerts";
    Manager their location, a team leader their team, a CS their own. Read-only.
 ──────────────────────────────────────────────────────────────────────────── */
 
-export const WORKFLOW_BOXES = ["came", "assigned", "pool", "onboarded", "waiting", "late", "enrolled", "contacted", "deposited", "moved", "moved_inactivity"] as const;
+export const WORKFLOW_BOXES = [
+  "came", "assigned", "pool", "onboarded", "waiting", "late", "enrolled", "contacted", "deposited", "moved", "moved_inactivity",
+  "bonus_pending", "bonus_sent_back", "bonus_after_payment", "bonus_needs_call", "bonus_with_finance", "bonus_waiting_broker",
+] as const;
 export type WorkflowBox = (typeof WORKFLOW_BOXES)[number];
 export const isWorkflowBox = (v: unknown): v is WorkflowBox => typeof v === "string" && (WORKFLOW_BOXES as readonly string[]).includes(v);
 
@@ -39,6 +48,8 @@ const blank = (): Counts => Object.fromEntries(WORKFLOW_BOXES.map((b) => [b, 0])
 interface Row {
   id: string; name: string; code: string; came_at: string; source: string; location: string;
   cs: Person | null; onboarded_at: string | null; stage: string; boxes: Set<WorkflowBox>;
+  /** Pending bonuses: USD in all, and each reason's USD. */
+  bonus: { usd: number; stage: BonusStage; by: Partial<Record<BonusStage, number>> } | null;
 }
 
 const sourceOf = (s: any): string =>
@@ -67,18 +78,19 @@ async function build(ctx: ReportCtx, now: number): Promise<Row[]> {
     rows.push({
       id: String(s._id), name: String(s.full_name ?? ""), code: String(s.student_code ?? ""), came_at: s.created_date, source: sourceOf(s),
       location: cs?.location ?? (s.location === "bangalore" ? "bangalore" : "dubai"), cs,
-      onboarded_at: s.onboarded === true ? s.onboarded_at ?? null : null, stage: "No follow-up", boxes,
+      onboarded_at: s.onboarded === true ? s.onboarded_at ?? null : null, stage: "No follow-up", boxes, bonus: null,
     });
   }
   if (!rows.length) return rows;
 
   const ids = rows.map((r) => r.id);
-  const [calls, events, followups, deposits, moves] = await Promise.all([
+  const [calls, events, followups, deposits, moves, bonuses] = await Promise.all([
     col("student_calls").distinct("student_id", { student_id: { $in: ids } }),
     col("student_followup_events").distinct("student_id", { student_id: { $in: ids }, kind: { $in: ["created", "logged"] } }),
     col("student_followups").find({ student_id: { $in: ids } }, { projection: { student_id: 1, stage: 1, created_date: 1 } }).toArray(),
     col("funding_transactions").distinct("student_id", { student_id: { $in: ids }, type: "DEPOSIT", status: "APPROVED" }),
     col("student_history").find({ student_id: { $in: ids }, type: "mentor_changed" }, { projection: { student_id: 1, via: 1, text: 1 } }).toArray(),
+    bonusPendingOf(ids),
   ]) as any[];
   const contacted = new Set([...calls, ...events].map(String));
   const deposited = new Set(deposits.map(String));
@@ -101,6 +113,13 @@ async function build(ctx: ReportCtx, now: number): Promise<Row[]> {
     if (moved.has(r.id)) r.boxes.add("moved");
     if (movedInactivity.has(r.id)) r.boxes.add("moved_inactivity");
     r.stage = stageOf.get(r.id)?.stage ?? "No follow-up";
+    const b = (bonuses as Map<string, any>).get(r.id);
+    if (b && b.count > 0) {
+      r.boxes.add("bonus_pending");
+      const by: Partial<Record<BonusStage, number>> = {};
+      for (const k of BONUS_STAGE_KEYS) if (b[k]?.count > 0) { by[k] = b[k].total_usd; r.boxes.add(`bonus_${k}` as WorkflowBox); }
+      r.bonus = { usd: b.total_usd, stage: b.stage, by };
+    }
   }
   return rows;
 }
@@ -112,7 +131,13 @@ export async function studentWorkflow(ctx: ReportCtx, now = Date.now()) {
   const teams = new Map<string, { id: string | null; name: string; location: string } & Counts>();
   const people = new Map<string, { id: string; name: string; team: string; location: string } & Counts>();
   const days = new Map<string, number>();
+  const bonusUsd = { all: 0, ...Object.fromEntries(BONUS_STAGE_KEYS.map((k) => [k, 0])) } as Record<string, number>;
+  const money = (n: number) => Math.round(n * 100) / 100;
   for (const r of rows) {
+    if (r.bonus) {
+      bonusUsd.all = money(bonusUsd.all + r.bonus.usd);
+      for (const [k, v] of Object.entries(r.bonus.by)) bonusUsd[k] = money(bonusUsd[k] + (v ?? 0));
+    }
     for (const b of r.boxes) totals[b]++;
     stages.set(r.stage, (stages.get(r.stage) ?? 0) + 1);
     sources.set(r.source, (sources.get(r.source) ?? 0) + 1);
@@ -134,6 +159,11 @@ export async function studentWorkflow(ctx: ReportCtx, now = Date.now()) {
     generated_at: iso(now),
     wait_hours: WAIT_HOURS,
     totals,
+    // Pending bonuses of these students: how many, the USD, and each reason's (students counted under each of theirs).
+    bonus: {
+      students: totals.bonus_pending, usd: bonusUsd.all,
+      reasons: BONUS_STAGE_KEYS.map((k) => ({ reason: k, students: totals[`bonus_${k}` as WorkflowBox], usd: bonusUsd[k] })),
+    },
     stages: [...stages].map(([stage, count]) => ({ stage, count })).sort((a, b) => order(a.stage) - order(b.stage)),
     sources: [...sources].map(([source, count]) => ({ source, count })).sort((a, b) => b.count - a.count),
     teams: [...teams.values()].sort((a, b) => b.came - a.came),
@@ -155,6 +185,7 @@ export async function studentWorkflowStudents(ctx: ReportCtx, pick: { box?: Work
       cs: r.cs ? { id: r.cs.id, name: r.cs.name, team: r.cs.team } : null,
       onboarded_at: r.onboarded_at, stage: r.stage,
       late: r.boxes.has("late"), contacted: r.boxes.has("contacted"), deposited: r.boxes.has("deposited"), enrolled: r.boxes.has("enrolled"), moved: r.boxes.has("moved"),
+      bonus: r.bonus ? { usd: r.bonus.usd, reason: r.bonus.stage, reasons: Object.keys(r.bonus.by) } : null,
     })),
   };
 }
