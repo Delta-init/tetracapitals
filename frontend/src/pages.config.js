@@ -90,6 +90,7 @@ import TargetsManagement from './pages/TargetsManagement';
 import Teams from './pages/Teams';
 import TeamDetail from './pages/TeamDetail';
 import InactivityTransfers from './pages/InactivityTransfers';
+import StudentWorkflow from './pages/StudentWorkflow';
 import StudentFollowups from './pages/StudentFollowups';
 import OverdueFollowups from './pages/OverdueFollowups';
 import StudentCalls from './pages/StudentCalls';
@@ -162,6 +163,7 @@ export const PAGES = {
     "Teams": Teams,
     "TeamDetail": TeamDetail,
     "InactivityTransfers": InactivityTransfers,
+    "StudentWorkflow": StudentWorkflow,
     "StudentFollowups": StudentFollowups,
     "OverdueFollowups": OverdueFollowups,
     "NotOnboarded": NotOnboarded,

@@ -7,6 +7,9 @@ import { BUILTIN_ROLES, isAdminRole } from "../lib/roles";
 import { pendingOverview } from "./pending";
 import { csPending } from "./csPending";
 import { csReportForPortal } from "./csReport";
+import { rangeOf, type ReportCtx } from "../functions/reports";
+import { loadTeams } from "../students/teams";
+import { studentWorkflow, studentWorkflowStudents, isWorkflowBox } from "../students/studentWorkflow";
 import { csOverview, csDetail, type Period } from "./csOverview";
 import { CallFilterError, callsForPortal, recordingLinkForPortal } from "./calls";
 
@@ -131,6 +134,26 @@ export async function handlePortalService(req: Request, path: string): Promise<R
     const q = Object.fromEntries(url.searchParams.entries());
     const report = await csReportForPortal(q);
     return typeof report === "string" ? refuse(400, "VALIDATION_ERROR", report) : ok(report);
+  }
+
+  /* GET /student-workflow[?period|from&to, location, team, cs] and /student-workflow/students[?…, box|stage, teamId,
+     csId] — the student workflow chart and the students behind a box (2026-10-20, students/studentWorkflow.ts) —
+     Root's Reports → CS portal tab. Everyone's: Root's root admins. */
+  if ((path === "/student-workflow" || path === "/student-workflow/students") && req.method === "GET") {
+    const q = Object.fromEntries(url.searchParams.entries());
+    const range = rangeOf({ period: q.period ?? (q.from || q.to ? "custom" : "month"), from: q.from, to: q.to });
+    if (typeof range === "string") return refuse(400, "VALIDATION_ERROR", range);
+    const ctx: ReportCtx = {
+      ...range, index: await loadTeams(), reach: null, lockedLocation: null,
+      location: q.location === "dubai" || q.location === "bangalore" ? q.location : null,
+      team: String(q.team ?? "").slice(0, 40), cs: String(q.cs ?? "").slice(0, 40),
+    };
+    if (path === "/student-workflow") return ok(await studentWorkflow(ctx));
+    if (q.box !== undefined && !isWorkflowBox(q.box)) return refuse(400, "VALIDATION_ERROR", "Unknown box");
+    return ok(await studentWorkflowStudents(ctx, {
+      box: q.box as never, stage: q.stage ? q.stage.slice(0, 40) : undefined,
+      teamId: q.teamId === undefined ? undefined : q.teamId.slice(0, 40), csId: q.csId ? q.csId.slice(0, 40) : undefined,
+    }));
   }
 
   /* GET /calls — every 3CX call with a student, its totals and per person, for Root's "3CX calls" page and its Pending

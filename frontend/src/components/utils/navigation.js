@@ -59,7 +59,7 @@ import {
   BookCheck,
   ClipboardCheck,
   Repeat,
-  Coins, BadgeAlert, UserX } from 'lucide-react';
+  Coins, BadgeAlert, UserX, Workflow } from 'lucide-react';
 
 // "StudentLogHistoryPage" -> "Student Log History", "AIInsights" -> "AI Insights"
 export const humanize = (name = '') =>
@@ -137,6 +137,8 @@ export const NAV_ITEMS = [
   { name: 'RetentionManagement', page: 'RetentionManagement', icon: RefreshCcw, roles: ['academic_head'] },
   { name: 'DrawAdminStudents', page: 'DrawAdminStudents', icon: Users, roles: ['draw_admin'] },
   { name: 'InactivityTransfers', page: 'InactivityTransfers', icon: Hourglass, roles: ['super_admin', 'admin'] },
+  // Where the students that came in went (2026-10-20): admins everything, a CS Manager their location, a team leader their team.
+  { name: 'StudentWorkflow', label: 'Student workflow', page: 'StudentWorkflow', icon: Workflow, roles: ['super_admin', 'admin', 'academic_head', 'chief_mentor', 'cs_manager'] },
   { name: 'StudentTags', label: 'Student Tags', page: 'StudentTags', icon: Tags, roles: ['super_admin', 'admin', 'broker_admin', 'academic_head', 'finance_admin'] },
   { name: 'MT5Accounts', hidden: true, page: 'MT5Accounts', icon: CandlestickChart, roles: ['super_admin', 'admin', 'broker_admin', 'academic_head', 'junior_mentor', 'chief_mentor', 'senior_mentor'] },
   { name: 'FundingActivities', page: 'MyFundingRequests', icon: Wallet, roles: ['chief_mentor', 'senior_mentor', 'junior_mentor', 'assistance'] },
@@ -188,7 +190,7 @@ export const NESTED_GROUPS = {
 export const GROUP_OF = {
   Dashboard: 'Overview', TeamDashboard: 'Overview', Teams: 'Overview', ActivityTracker: 'Overview', AIInsights: 'Overview', Leaderboard: 'Overview', MentorPerformance: 'Overview', MentorTraining: 'Overview',
   Personnel: 'People & Access', RolesManagement: 'People & Access', Hierarchy: 'People & Access', AcademicCounselors: 'People & Access', MasterAdmin: 'People & Access',
-  Students: 'Students', CourseUpgrades: 'Students', NotOnboarded: 'Students', InactiveStudents: 'Students', BalancePayments: 'Students', StudentFollowups: 'Students', OverdueFollowups: 'Students', StudentCalls: 'Students', ClassCompletions: 'Students', WhatsApp: 'Students', MentorCalendar: 'Students', Programs: 'Students', SupportTickets: 'Students', LmsRequests: 'Students', Exams: 'Students', ZohoInvoices: 'Students', StudentLogs: 'Students', StudentLogHistoryPage: 'Students', MyStudentRequests: 'Students', StudentRequestApprovals: 'Students', RetentionManagement: 'Students', DrawAdminStudents: 'Students', MT5Accounts: 'Students', InactivityTransfers: 'Students', StudentTags: 'Students',
+  Students: 'Students', CourseUpgrades: 'Students', NotOnboarded: 'Students', InactiveStudents: 'Students', BalancePayments: 'Students', StudentFollowups: 'Students', OverdueFollowups: 'Students', StudentCalls: 'Students', ClassCompletions: 'Students', WhatsApp: 'Students', MentorCalendar: 'Students', Programs: 'Students', SupportTickets: 'Students', LmsRequests: 'Students', Exams: 'Students', ZohoInvoices: 'Students', StudentLogs: 'Students', StudentLogHistoryPage: 'Students', MyStudentRequests: 'Students', StudentRequestApprovals: 'Students', RetentionManagement: 'Students', DrawAdminStudents: 'Students', MT5Accounts: 'Students', InactivityTransfers: 'Students', StudentWorkflow: 'Students', StudentTags: 'Students',
   FundingActivities: 'Funding', FundingRequests: 'Funding', BonusApprovals: 'Funding', NotCreditedYet: 'Funding', PaymentLinks: 'Funding', Transactions: 'Funding', TransactionTags: 'Funding',
   CommissionPlans: 'Commission', BonusCommissionReports: 'Commission', DepositCommissionReports: 'Commission', CommissionTools: 'Commission', Commissions: 'Commission', QuarterClosing: 'Commission', MonthlyClosing: 'Commission', DailyPayouts: 'Commission', MyCommissionHistory: 'Commission', MyTargets: 'Commission', TargetsManagement: 'Commission',
   DepositReport: 'Reports', WithdrawalReport: 'Reports', FundingRequestReport: 'Reports', BonusReport: 'Reports', Reports: 'Reports', CommissionReports: 'Reports',
