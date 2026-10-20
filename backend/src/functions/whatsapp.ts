@@ -8,6 +8,7 @@ import type { AuthUser } from "../auth/middleware";
 import { loadTeams } from "../students/teams";
 import { visibleMentorIds, isStudentOf } from "../students/followups";
 import { isCsLike } from "../lib/roles";
+import { TEAM_WIDE_MENTORS } from "../lib/scope";
 import {
   status, connect, disconnect, sendText, sendFile, studentsByKey, forgetStudents, phoneKeys, intlNumbers, mediaPath, WhatsAppError,
 } from "../whatsapp/service";
@@ -29,7 +30,7 @@ const canLink = (u: AuthUser) => isCsLike(u.app_role);
 /** Whose WhatsApp `user` may read — null: everyone's. */
 async function readable(user: AuthUser): Promise<Set<string> | null> {
   if (user.app_role === "super_admin") return null;
-  if (user.app_role === "chief_mentor" || user.app_role === "cs_manager") return new Set(await getDownlineIds(user.id));
+  if (user.app_role === "chief_mentor" || user.app_role === "cs_manager" || TEAM_WIDE_MENTORS.has(user.app_role)) return new Set(await getDownlineIds(user.id));
   return new Set([user.id]);
 }
 const fail = (err: unknown) =>

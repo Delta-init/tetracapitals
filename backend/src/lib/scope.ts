@@ -60,9 +60,14 @@ export type DataScope = "all" | "own" | "downline" | "closed";
 /** Visibility for built-in mentor roles that have no Role Management setting. */
 export const DEFAULT_SCOPES: Record<string, DataScope> = {
   chief_mentor: "downline",
-  senior_mentor: "own",
-  junior_mentor: "own",
+  // Their whole team, as its CSs together (the user, 2026-10-20; getDownlineIds) — not only their own students.
+  senior_mentor: "downline",
+  junior_mentor: "downline",
+  subjunior_mentor: "downline",
 };
+
+/** Mentors whose "team" is everyone on their team (Teams page), not only who reports to them (2026-10-20). */
+export const TEAM_WIDE_MENTORS = new Set(["senior_mentor", "junior_mentor", "subjunior_mentor"]);
 
 const isScope = (v: unknown): v is DataScope => v === "all" || v === "own" || v === "downline" || v === "closed";
 
@@ -112,6 +117,13 @@ export async function getDownlineIds(userId: string): Promise<string[]> {
     const idx = await teamIndex();
     const mine = await locationOfUser(userId, idx);
     for (const u of users as any[]) if (u.app_role === "cs" && (await locationOfUser(String(u._id), idx)) === mine) everyCs.push(String(u._id));
+  }
+  // A senior / junior / sub-junior mentor: everyone on their team (the user, 2026-10-20) — on the Bangalore team they all
+  // report to its CS Manager, so nobody is "below" them, yet the team is theirs to see and work with.
+  if (me && TEAM_WIDE_MENTORS.has(String(me.app_role ?? ""))) {
+    const idx = await teamIndex();
+    const team = idx.teamOf(userId);
+    if (team) for (const id of idx.userById.keys()) if (idx.teamOf(id)?.id === team.id) everyCs.push(id);
   }
   const result = new Set<string>([userId, ...everyCs]);
   const queue = [userId, ...everyCs];

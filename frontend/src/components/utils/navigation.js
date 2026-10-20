@@ -153,7 +153,7 @@ export const NAV_ITEMS = [
   { name: 'NotCreditedYet', label: 'Not Credited Yet', page: 'NotCreditedYet', icon: BadgeAlert, roles: [], only: [], hidden: true, notForSales: true },
   // CSs ask on the student's page; a Super Admin pastes the link in (backend/src/functions/paymentLinks.ts). A CS
   // sees what they asked for here, along with their Students page; no other role gets it.
-  { name: 'PaymentLinks', label: 'Payment Links', page: 'PaymentLinks', icon: CreditCard, roles: ['super_admin', 'cs', 'cs_manager'], only: ['super_admin', 'cs', 'cs_manager'], sameAccessAs: 'Students' },
+  { name: 'PaymentLinks', label: 'Payment Links', page: 'PaymentLinks', icon: CreditCard, roles: ['super_admin', 'cs', 'cs_manager', 'chief_mentor', 'senior_mentor', 'junior_mentor', 'subjunior_mentor'], only: ['super_admin', 'cs', 'cs_manager', 'chief_mentor', 'senior_mentor', 'junior_mentor', 'subjunior_mentor'], sameAccessAs: 'Students' },
   { name: 'MyTargets', page: 'MyTargets', icon: Target, roles: ['chief_mentor', 'senior_mentor', 'junior_mentor'] },
   { name: 'TargetsManagement', page: 'TargetsManagement', icon: Crosshair, roles: ['super_admin', 'broker_admin', 'academic_head'] },
   { name: 'MyCommissionHistory', page: 'MyCommissionHistory', icon: ReceiptText, roles: ['chief_mentor', 'senior_mentor', 'junior_mentor'] },

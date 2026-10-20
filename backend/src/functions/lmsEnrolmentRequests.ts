@@ -14,6 +14,7 @@ import { locationOf } from "../lib/location";
 import { lmsEnrolledFields } from "../students/lmsEnrolment";
 import { mayTransfer } from "./studentTransfer";
 import { csManagerReach } from "../lib/userLocation";
+import { TEAM_WIDE_MENTORS } from "../lib/scope";
 
 /* ────────────────────────────────────────────────────────────────────────────
    LMS enrolment requests (the user, 2026-10-06): the LMS admin's Requests page —
@@ -421,7 +422,7 @@ export async function viewStudentInLms(req: Request, user: AuthUser): Promise<Re
   const body: any = await req.json().catch(() => ({}));
   const write = body?.mode === "write";
   if (write && !actsAsStudent(user.app_role)) return error("Act as student is for the student's own CS or mentor, their leaders and Super Admins", 403);
-  const leads = user.app_role === "chief_mentor" || user.app_role === "cs_manager";
+  const leads = user.app_role === "chief_mentor" || user.app_role === "cs_manager" || TEAM_WIDE_MENTORS.has(user.app_role);
   const found = await lmsStudentFor(body, user, { ownOnly: !leads });
   if (found instanceof Response) return found;
   if (!lmsConfigured()) return error(NOT_LINKED, 503);

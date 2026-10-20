@@ -1,7 +1,7 @@
 import { col } from "../db";
 import type { AuthUser } from "../auth/middleware";
 import { isAdminRole } from "../lib/roles";
-import { getDownlineIds } from "../lib/scope";
+import { getDownlineIds, TEAM_WIDE_MENTORS } from "../lib/scope";
 
 /* ────────────────────────────────────────────────────────────────────────────
    Student follow-ups — the CS follow-up tracker, per student.
@@ -86,7 +86,8 @@ export const canEditAny = (user: AuthUser) => user.app_role === "super_admin" ||
  */
 export async function visibleMentorIds(user: AuthUser): Promise<Set<string> | null> {
   if (isAdmin(user)) return null;
-  if (user.app_role === "chief_mentor" || user.app_role === "cs_manager") return new Set(await getDownlineIds(user.id));
+  // …and a senior / junior / sub-junior mentor their whole team (lib/scope TEAM_WIDE_MENTORS, 2026-10-20).
+  if (user.app_role === "chief_mentor" || user.app_role === "cs_manager" || TEAM_WIDE_MENTORS.has(user.app_role)) return new Set(await getDownlineIds(user.id));
   return new Set([user.id]);
 }
 

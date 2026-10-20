@@ -12,6 +12,8 @@ import { abzerConfigured, createAbzerLink, AbzerError } from "../lib/abzer";
 import { intlNumbers } from "../whatsapp/service";
 import { onboardingEmail } from "./studentOnboarding";
 import { isCsLike } from "../lib/roles";
+import { visibleMentorIds, studentsOf } from "../students/followups";
+import { isMentorRole } from "../lib/roles";
 
 /* ────────────────────────────────────────────────────────────────────────────
    Payment links, asked for by a CS and pasted in by a Super Admin — in place
@@ -267,7 +269,15 @@ export async function getPaymentLinks(req: Request, user: AuthUser): Promise<Res
     if (markSeen && requests.some((r) => r.new)) await markAnswersSeen(user);
     return json({ can_approve: false, requests });
   }
-  if (!isSuperAdmin(user)) return forbidden("Only a Super Admin, or the CS who asked, sees payment link requests");
+  // Their team's (the user, 2026-10-20): a Chief Mentor, CS Manager or mentor sees the requests for their team's
+  // students — to read; the Super Admin makes the links.
+  if (!isSuperAdmin(user)) {
+    const visible = await visibleMentorIds(user);
+    if (!visible || !isMentorRole(user.app_role)) return forbidden("Only a Super Admin, or the CS who asked, sees payment link requests");
+    const ids = ((await col("students").find(studentsOf(visible), { projection: { _id: 1 } }).toArray()) as any[]).map((s) => String(s._id));
+    const list = await col(REQUESTS).find({ student_id: { $in: ids } }).sort({ created_at: -1 }).limit(2000).toArray();
+    return json({ can_approve: false, team: true, requests: list.map((r) => view(r, user)) });
+  }
   const list = (await col(REQUESTS).find({}).sort({ created_at: -1 }).limit(2000).toArray()) as any[];
   const waiting = [...new Set(list.filter((r) => r.status === "pending").map((r) => r.student_id))].map(toObjectId).filter(Boolean) as ObjectId[];
   const students = waiting.length ? await col("students").find({ _id: { $in: waiting } }, { projection: { email: 1 } }).toArray() : [];

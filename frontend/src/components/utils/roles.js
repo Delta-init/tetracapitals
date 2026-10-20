@@ -93,7 +93,28 @@ export const getScope = (user) => {
 export const readsClosedOnly = (user) => !!user && isCustomRole(user.app_role) && user.data_scope === 'closed';
 
 /** Ids of `userId` and everyone below them in the Up Head tree. */
+/** Mentors whose team is everyone on it (backend lib/scope TEAM_WIDE_MENTORS, 2026-10-20). */
+export const TEAM_WIDE_MENTORS = ['senior_mentor', 'junior_mentor', 'subjunior_mentor'];
+
 export const downlineIds = (userId, users = []) => {
+  // A senior / junior / sub-junior mentor: their whole team, as the Teams page groups it.
+  const me = users.find(u => u.id === userId);
+  if (me && TEAM_WIDE_MENTORS.includes(me.app_role)) {
+    const byId = {};
+    for (const u of users) byId[u.id] = u;
+    const rootOf = (u) => {
+      let cur = u; const seen = new Set();
+      while (cur && cur.app_role !== 'chief_mentor' && cur.up_head_id && !seen.has(cur.id)) {
+        seen.add(cur.id);
+        const up = byId[cur.up_head_id];
+        if (!up || !isMentorRole(up.app_role)) break;
+        cur = up;
+      }
+      return cur?.id;
+    };
+    const root = rootOf(me);
+    return new Set([userId, ...users.filter(u => isMentorRole(u.app_role) && rootOf(u) === root).map(u => u.id)]);
+  }
   const childrenOf = {};
   for (const u of users) {
     if (u.up_head_id) (childrenOf[u.up_head_id] = childrenOf[u.up_head_id] || []).push(u.id);
