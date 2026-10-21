@@ -97,7 +97,9 @@ export default function MyFundingRequests() {
   const { data: users = [] } = useQuery({
     queryKey: ['users'],
     queryFn: () => base44.entities.User.list(),
-    enabled: false // Disabled to avoid 403 errors
+    // Loaded for whoever has a team view (2026-10-21): their team — the Team tab and the New request's students — is
+    // worked out from it. (It was switched off, so a mentor's team came up empty.)
+    enabled: !!currentUser && getScope(currentUser) === 'downline',
   });
 
   const { data: pendingReferrals = [] } = useQuery({
@@ -201,8 +203,12 @@ export default function MyFundingRequests() {
       // A CS Manager's own: those they raised, though another CS's student's counts as that CS's.
       return attribMentor === currentUser.id || (isCsManager && t.requested_by_id === currentUser.id);
     });
+    // A Chief Mentor or senior / junior mentor: their team's students too (the user, 2026-10-21) — the same team the
+    // Team tab shows (roles.js downlineIds: a mentor's whole team).
+    const myTeam = getScope(currentUser) === 'downline' ? downlineIds(currentUser.id, users) : null;
     myStudents = isCsManager ? students : students.filter(s => {
       if (s.primary_mentor_id === currentUser.id) return true;
+      if (myTeam && (myTeam.has(s.primary_mentor_id) || (s.common_cs || []).some(c => myTeam.has(c?.id)))) return true;
       if (!s.co_mentors_details) return false;
       try {
         const co = Array.isArray(s.co_mentors_details) ? s.co_mentors_details : JSON.parse(s.co_mentors_details);
