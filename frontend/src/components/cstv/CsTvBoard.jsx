@@ -29,6 +29,25 @@ background:var(--bg);color:var(--ink);font-family:'Outfit',ui-sans-serif,system-
 .stv-blink{animation:stv-blink 1.2s steps(1,end) infinite}
 @media (prefers-reduced-motion:reduce){.stv-blink{animation:none}}
 .stv-scroll{scrollbar-width:none}.stv-scroll::-webkit-scrollbar{display:none}
+/* The podium on a loop (the user, 2026-10-22): every 16 s the steps rise out of the floor one after another (3rd, 2nd,
+   then 1st), the people drop onto them, hold — floating, a light sweeping across each step, the winner crowned — and
+   sink away to start again. */
+@keyframes stv-rise{0%{transform:translateY(102%)}6%{transform:translateY(-3%)}8.5%,92%{transform:translateY(0)}98%,100%{transform:translateY(102%)}}
+@keyframes stv-drop{0%,6%{opacity:0;transform:translateY(-35%) scale(.85)}10%{opacity:1;transform:translateY(4%) scale(1.03)}12.5%,90%{opacity:1;transform:none}95%,100%{opacity:0;transform:translateY(-12%) scale(.95)}}
+@keyframes stv-float{0%,100%{transform:translateY(0)}50%{transform:translateY(-7%)}}
+@keyframes stv-shine{0%,62%{transform:translateX(-120%) skewX(-18deg)}82%,100%{transform:translateX(260%) skewX(-18deg)}}
+.stv-rise{animation:stv-rise 16s cubic-bezier(.22,.9,.25,1) infinite both;will-change:transform}
+.stv-drop{animation:stv-drop 16s cubic-bezier(.22,.9,.25,1) infinite both;will-change:transform,opacity}
+.stv-float{animation:stv-float 3.6s ease-in-out infinite;will-change:transform}
+.stv-shine{position:absolute;inset:0 auto 0 0;width:40%;pointer-events:none;background:linear-gradient(90deg,transparent,rgba(255,236,200,.13),transparent);animation:stv-shine 5s ease-in-out infinite}
+.stv-crown{position:absolute;left:50%;bottom:86%;width:62%;transform:translateX(-50%);perspective:400px;pointer-events:none;z-index:2}
+.stv-crown>svg{display:block;width:100%;height:auto;transform-style:preserve-3d;animation:stv-crown 4.2s ease-in-out infinite}
+@keyframes stv-crown{0%,100%{transform:translateY(0) rotateY(-24deg) rotateZ(-5deg)}50%{transform:translateY(-10%) rotateY(24deg) rotateZ(5deg)}}
+.stv-crown .gem{animation:stv-gem 1.8s ease-in-out infinite}
+@keyframes stv-gem{0%,100%{opacity:0}50%{opacity:.9}}
+.stv-crown .glint{animation:stv-glint 3.2s ease-in-out infinite}
+@keyframes stv-glint{0%,55%{transform:translateX(-40px) skewX(-20deg)}85%,100%{transform:translateX(150px) skewX(-20deg)}}
+@media (prefers-reduced-motion:reduce){.stv-rise,.stv-drop,.stv-float,.stv-shine,.stv-crown>svg,.stv-crown .gem,.stv-crown .glint{animation:none}.stv-shine{display:none}}
 `;
 
 const PLACES = ['gold', 'silver', 'bronze'];
@@ -285,22 +304,32 @@ function Step({ p, rank, fmtMoney, big = false }) {
   const first = rank === 1;
   // A coloured trophy only with something to show for it.
   const place = p.month_aed > 0 ? PLACES[rank - 1] : undefined;
+  // Third rises first, then second, then the winner (the loop's CSS above).
+  const delay = { animationDelay: `${(3 - rank) * 0.45}s` };
   return (
     <div className="flex min-w-0 flex-col items-center">
+      {/* room for the crown */}
+      {first && place && <div className={big ? 'h-[clamp(2.4rem,3.4vw,5rem)]' : 'h-[clamp(1.6rem,2.2vw,3.2rem)]'} />}
+      <div className="stv-drop flex w-full min-w-0 flex-col items-center" style={delay}>
+      <div className="stv-float relative" style={{ animationDelay: `${rank * 0.6}s` }}>
+      {first && place && <Crown />}
       <Photo
         name={p.name}
         url={p.photo ?? null}
-        className={cn(big
+        className={cn('relative', big
           ? (first ? 'h-[clamp(5rem,6.2vw,9rem)] w-[clamp(5rem,6.2vw,9rem)]' : 'h-[clamp(4rem,4.8vw,7rem)] w-[clamp(4rem,4.8vw,7rem)]')
           : (first ? 'h-[clamp(3.4rem,3.9vw,5.6rem)] w-[clamp(3.4rem,3.9vw,5.6rem)]' : 'h-[clamp(2.8rem,3.1vw,4.5rem)] w-[clamp(2.8rem,3.1vw,4.5rem)]'), 'rounded-[24%]')}
         ring={place ? `var(--${place})` : 'var(--step-edge)'}
       />
+      </div>
       <p className={cn('mt-1.5 w-full truncate text-center font-semibold leading-tight', first ? T.title : T.body)} title={p.name}>{p.name}</p>
       <p className={cn('w-full truncate text-center text-[color:var(--mute)]', T.tiny)}>{p.team || '—'}</p>
+      </div>
 
-      <div className="mt-[clamp(0.3rem,0.45vw,0.7rem)] w-full">
+      <div className="mt-[clamp(0.3rem,0.45vw,0.7rem)] w-full overflow-hidden">
+      <div className="stv-rise" style={delay}>
         <div className="h-[clamp(0.7rem,0.85vw,1.2rem)] w-full bg-[color:var(--step-top)]" style={{ clipPath: 'polygon(9% 0, 91% 0, 100% 100%, 0 100%)' }} />
-        <div className={cn('flex w-full flex-col items-center border-t border-[color:var(--step-edge)] bg-[color:var(--step-front)] px-1',
+        <div className={cn('relative flex w-full flex-col items-center overflow-hidden border-t border-[color:var(--step-edge)] bg-[color:var(--step-front)] px-1',
           big
             ? (first ? 'pb-[clamp(2.4rem,3.6vw,5.5rem)] pt-[clamp(0.6rem,0.8vw,1.2rem)]' : rank === 2 ? 'pb-[clamp(1.2rem,1.9vw,2.9rem)] pt-[clamp(0.5rem,0.7vw,1rem)]' : 'pb-[clamp(0.6rem,0.9vw,1.4rem)] pt-[clamp(0.5rem,0.7vw,1rem)]')
             : (first ? 'pb-[clamp(0.9rem,1.3vw,1.9rem)] pt-[clamp(0.45rem,0.6vw,0.9rem)]' : 'pb-[clamp(0.4rem,0.55vw,0.8rem)] pt-[clamp(0.35rem,0.5vw,0.75rem)]'))}>
@@ -317,9 +346,70 @@ function Step({ p, rank, fmtMoney, big = false }) {
           <p className={cn('num whitespace-nowrap text-[color:var(--ink2)]', T.tiny)}>
             <span className={p.today_payments > 0 ? 'font-semibold text-[color:var(--good)]' : undefined}>{fmtInt(p.today_payments || 0)} today</span>
           </p>
+          <span className="stv-shine" style={{ animationDelay: `${rank * 0.7}s` }} />
         </div>
       </div>
+      </div>
     </div>
+  );
+}
+
+/** The winner's crown (the user, 2026-10-22: "3D, professional") — faceted gold: every point has a lit and a shaded
+ *  face, the band is shaded like a cylinder, cut gems, gold spheres on the tips; it turns in 3D and a glint runs
+ *  across it. No glow, no shadow. */
+function Crown() {
+  return (
+    <span className="stv-crown" aria-hidden="true">
+      <svg viewBox="0 0 120 100">
+        <defs>
+          <linearGradient id="stvCrownLit" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stopColor="#fff6c9" /><stop offset=".5" stopColor="#f7cf4f" /><stop offset="1" stopColor="#d99a1e" /></linearGradient>
+          <linearGradient id="stvCrownShade" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stopColor="#e3a92c" /><stop offset="1" stopColor="#8f5c08" /></linearGradient>
+          <linearGradient id="stvCrownBody" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stopColor="#f2bf3c" /><stop offset="1" stopColor="#b47a12" /></linearGradient>
+          <linearGradient id="stvCrownBand" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stopColor="#7a4c05" /><stop offset=".22" stopColor="#d9a12a" /><stop offset=".42" stopColor="#fff0b0" /><stop offset=".6" stopColor="#efc04a" /><stop offset="1" stopColor="#6e4404" /></linearGradient>
+          <radialGradient id="stvCrownBall" cx=".35" cy=".3" r=".75"><stop offset="0" stopColor="#fffbe6" /><stop offset=".45" stopColor="#f5c542" /><stop offset="1" stopColor="#8a5a08" /></radialGradient>
+          <clipPath id="stvCrownClip"><path d="M14 66L12 28L24 48L36 19L48 43L60 6L72 43L84 19L96 48L108 28L106 66L106 82Q60 96 14 82Z" /></clipPath>
+        </defs>
+        <path d="M14 66 L24 48 L48 43 L72 43 L96 48 L106 66 Q60 80 14 66Z" fill="url(#stvCrownBody)" />
+        <path d="M12 28L14 66L14 66Z" fill="url(#stvCrownLit)" />
+        <path d="M24 48L36 19L36 71.1Z" fill="url(#stvCrownLit)" />
+        <path d="M48 43L60 6L60 73Z" fill="url(#stvCrownLit)" />
+        <path d="M72 43L84 19L84 71.1Z" fill="url(#stvCrownLit)" />
+        <path d="M96 48L108 28L106 66Z" fill="url(#stvCrownLit)" />
+        <path d="M12 28L24 48L14 66Z" fill="url(#stvCrownShade)" />
+        <path d="M36 19L48 43L36 71.1Z" fill="url(#stvCrownShade)" />
+        <path d="M60 6L72 43L60 73Z" fill="url(#stvCrownShade)" />
+        <path d="M84 19L96 48L84 71.1Z" fill="url(#stvCrownShade)" />
+        <path d="M108 28L106 66L106 66Z" fill="url(#stvCrownShade)" />
+        <path d="M14 66Q60 80 106 66L106 82Q60 96 14 82Z" fill="url(#stvCrownBand)" />
+        <path d="M14 69Q60 83 106 69" fill="none" stroke="#fff4c2" strokeWidth=".9" opacity=".8" />
+        <path d="M14 79Q60 93 106 79" fill="none" stroke="#6e4404" strokeWidth=".9" opacity=".7" />
+        <path d="M14 66L12 28L24 48L36 19L48 43L60 6L72 43L84 19L96 48L108 28L106 66L106 82Q60 96 14 82Z" fill="none" stroke="#6e4404" strokeWidth="1.1" strokeLinejoin="round" />
+        <g>
+          <path d="M34 81.8L39 86.8L34 86.8Z" fill="#ff8fa3" /><path d="M39 86.8L34 91.8L34 86.8Z" fill="#7d0a22" />
+          <path d="M34 91.8L29 86.8L34 86.8Z" fill="#c9183c" /><path d="M29 86.8L34 81.8L34 86.8Z" fill="#ff8fa3" opacity=".85" />
+          <path d="M34 81.8L39 86.8L34 91.8L29 86.8Z" fill="none" stroke="#5a3a04" strokeWidth=".7" />
+          <circle className="gem" cx="32.5" cy="85" r="1.4" fill="#fff" style={{ animationDelay: '0s' }} />
+        </g>
+        <g>
+          <path d="M60 82.1L66.5 88.6L60 88.6Z" fill="#9fe3ff" /><path d="M66.5 88.6L60 95.1L60 88.6Z" fill="#0b4c80" />
+          <path d="M60 95.1L53.5 88.6L60 88.6Z" fill="#1f8fd6" /><path d="M53.5 88.6L60 82.1L60 88.6Z" fill="#9fe3ff" opacity=".85" />
+          <path d="M60 82.1L66.5 88.6L60 95.1L53.5 88.6Z" fill="none" stroke="#5a3a04" strokeWidth=".7" />
+          <circle className="gem" cx="58" cy="86.3" r="1.8" fill="#fff" style={{ animationDelay: '0.6s' }} />
+        </g>
+        <g>
+          <path d="M86 81.8L91 86.8L86 86.8Z" fill="#ff8fa3" /><path d="M91 86.8L86 91.8L86 86.8Z" fill="#7d0a22" />
+          <path d="M86 91.8L81 86.8L86 86.8Z" fill="#c9183c" /><path d="M81 86.8L86 81.8L86 86.8Z" fill="#ff8fa3" opacity=".85" />
+          <path d="M86 81.8L91 86.8L86 91.8L81 86.8Z" fill="none" stroke="#5a3a04" strokeWidth=".7" />
+          <circle className="gem" cx="84.5" cy="85" r="1.4" fill="#fff" style={{ animationDelay: '1.2s' }} />
+        </g>
+        <circle cx="12" cy="28" r="4" fill="url(#stvCrownBall)" stroke="#8a5a08" strokeWidth=".6" />
+        <circle cx="36" cy="19" r="4" fill="url(#stvCrownBall)" stroke="#8a5a08" strokeWidth=".6" />
+        <circle cx="60" cy="6" r="4.6" fill="url(#stvCrownBall)" stroke="#8a5a08" strokeWidth=".6" />
+        <circle cx="84" cy="19" r="4" fill="url(#stvCrownBall)" stroke="#8a5a08" strokeWidth=".6" />
+        <circle cx="108" cy="28" r="4" fill="url(#stvCrownBall)" stroke="#8a5a08" strokeWidth=".6" />
+        <g clipPath="url(#stvCrownClip)"><rect className="glint" x="0" y="0" width="14" height="100" fill="#fff" opacity=".4" /></g>
+      </svg>
+    </span>
   );
 }
 
