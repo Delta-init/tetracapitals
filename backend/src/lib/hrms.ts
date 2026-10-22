@@ -35,3 +35,57 @@ export async function hrmsGet<T>(path: string, query: Record<string, string>): P
   const body = (await res.json().catch(() => ({}))) as { data?: T };
   return body.data as T;
 }
+
+/** One signed POST with a JSON body; the answer's `data`. (The signature covers sha256 of the body.) */
+export async function hrmsPost<T>(path: string, payload: unknown): Promise<T> {
+  const signedPath = `/api/v1/integrations${path}`;
+  const raw = JSON.stringify(payload ?? {});
+  const timestamp = String(Date.now());
+  const nonce = randomBytes(16).toString("hex");
+  const canonical = ["POST", signedPath, timestamp, nonce, createHash("sha256").update(raw).digest("hex")].join("\n");
+  const signature = createHmac("sha256", config.hrms.integrationSecret).update(canonical).digest("hex");
+  let res: Response;
+  try {
+    res = await fetch(`${config.hrms.apiUrl}${signedPath}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "X-Delta-Client": config.hrms.clientId, "X-Delta-Timestamp": timestamp, "X-Delta-Nonce": nonce, "X-Delta-Signature": signature },
+      body: raw,
+      signal: AbortSignal.timeout(TIMEOUT_MS),
+    });
+  } catch {
+    throw new Error("The HRMS could not be reached");
+  }
+  if (!res.ok) throw new Error(`The HRMS answered ${res.status}`);
+  const body = (await res.json().catch(() => ({}))) as { data?: T };
+  return body.data as T;
+}
+
+/* People's HRMS photos (the CS TV board, 2026-10-22) — as the Root portal's Sales TV gets them: the directory's
+   work-modes, matched by email then name; each photo a signed link good for a few hours, so kept 1 hour. */
+const photoCache = new Map<string, { url: string | null; at: number }>();
+const PHOTO_TTL_MS = 60 * 60_000;
+export async function hrmsPhotos(people: { email: string; name?: string }[]): Promise<Map<string, string | null>> {
+  const out = new Map<string, string | null>();
+  const want: { email: string; name?: string }[] = [];
+  for (const p of people) {
+    const e = String(p.email ?? "").trim().toLowerCase();
+    if (!e) continue;
+    const had = photoCache.get(e);
+    if (had && Date.now() - had.at < PHOTO_TTL_MS) out.set(e, had.url);
+    else want.push({ email: e, name: p.name });
+  }
+  if (want.length && hrmsConfigured()) {
+    try {
+      const rows = (await hrmsPost<any[]>("/directory/work-modes", { people: want.slice(0, 300) })) ?? [];
+      rows.forEach((r, i) => {
+        const e = String(r?.email ?? want[i]?.email ?? "").toLowerCase();
+        const url = typeof r?.photoUrl === "string" && /^https?:\/\//.test(r.photoUrl) ? r.photoUrl : null;
+        photoCache.set(e, { url, at: Date.now() });
+        out.set(e, url);
+      });
+    } catch (err) {
+      console.error("[hrms] photos", err instanceof Error ? err.message : err);
+    }
+  }
+  return out;
+}

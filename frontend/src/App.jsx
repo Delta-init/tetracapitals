@@ -15,6 +15,7 @@ import { AuthProvider, useAuth } from '@/lib/AuthContext';
 import UserNotRegisteredError from '@/components/UserNotRegisteredError';
 import Login from './pages/Login';
 import Sso from './pages/Sso';
+import CsTv from './pages/CsTv';
 import RootPortalHistoryBridge from '@/components/RootPortalHistoryBridge';
 
 const { Pages, Layout, mainPage } = pagesConfig;
@@ -47,6 +48,8 @@ const AuthenticatedApp = () => {
   if (onLoginPage) return <Routes><Route path="*" element={<Login />} /></Routes>;
   // So is the landing page for signing in from the Root portal.
   if (location.pathname === '/sso') return <Routes><Route path="*" element={<Sso />} /></Routes>;
+  // The CS TV board for the office screens: no sign-in, a secret in the link (pages/CsTv.jsx).
+  if (location.pathname.toLowerCase().startsWith('/tv/')) return <Routes><Route path="*" element={<CsTv />} /></Routes>;
 
   if (isLoadingAuth) {
     return (

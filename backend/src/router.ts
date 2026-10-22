@@ -24,6 +24,7 @@ import { handleReminderOpen } from "./functions/followupReminders";
 import { handleProgramConfirm } from "./students/programNotices";
 import { streamRecording } from "./students/calls";
 import { streamWhatsAppMedia } from "./functions/whatsapp";
+import { handleCsTv } from "./functions/csTv";
 
 /**
  * Main HTTP router. The API is namespaced under /api.
@@ -63,6 +64,9 @@ export async function route(req: Request): Promise<Response> {
   if (path === "/api/auth/change-password" && req.method === "POST") return handleChangePassword(req);
   // Signing in from the Root portal with the one-time token it hands over.
   if (path === "/api/auth/sso" && req.method === "POST") return handleSso(req);
+
+  // ---- The CS TV board for the office screens: no sign-in, a secret in the link (functions/csTv.ts) ----
+  if (path === "/api/public/cs-tv" && req.method === "GET") return handleCsTv(req);
 
   // ---- The Root portal asking about roles and people (shared secret) ----
   if (path.startsWith("/api/v1/service/")) return handlePortalService(req, path.slice("/api/v1/service".length));
