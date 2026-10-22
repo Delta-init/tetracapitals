@@ -49,7 +49,7 @@ const AuthenticatedApp = () => {
   // So is the landing page for signing in from the Root portal.
   if (location.pathname === '/sso') return <Routes><Route path="*" element={<Sso />} /></Routes>;
   // The CS TV board for the office screens: no sign-in, a secret in the link (pages/CsTv.jsx).
-  if (location.pathname.toLowerCase().startsWith('/tv/')) return <Routes><Route path="*" element={<CsTv />} /></Routes>;
+  if (location.pathname.toLowerCase().startsWith('/tv/') || /^\/cs\/(dubai|bangalore)\/?$/i.test(location.pathname)) return <Routes><Route path="*" element={<CsTv />} /></Routes>;
 
   if (isLoadingAuth) {
     return (

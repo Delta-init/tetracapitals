@@ -82,12 +82,13 @@ async function board(location: "dubai" | "bangalore") {
   };
 }
 
-/** GET /api/public/cs-tv?t=<token>&location=dubai|bangalore — the board, for the TV page; no sign-in. */
+/**
+ * GET /api/public/cs-tv?location=dubai|bangalore — the board, for the TV page at /cs/dubai or /cs/bangalore. Open, no
+ * secret (the user asked for it twice, 2026-10-22: "I need normal /cs/dubai only") — names, teams and amounts only,
+ * never a student or an email.
+ */
 export async function handleCsTv(req: Request): Promise<Response> {
   const url = new URL(req.url);
-  const want = await token();
-  const t = String(url.searchParams.get("t") ?? "");
-  if (!want || t !== want) return error("This TV link isn't valid — copy it again from the Leaderboard page", 403);
   const location = url.searchParams.get("location") === "bangalore" ? "bangalore" : "dubai";
   const had = cache.get(location);
   if (had && Date.now() - had.at < CACHE_MS) return json(had.data);

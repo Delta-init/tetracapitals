@@ -4,8 +4,30 @@
     {
       "name": "frontend",
       "runtimeExecutable": "npm",
-      "runtimeArgs": ["run", "dev", "--prefix", "frontend"],
+      "runtimeArgs": [
+        "run",
+        "dev",
+        "--prefix",
+        "frontend"
+      ],
       "port": 5173
+    },
+    {
+      "name": "tv-preview",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": [
+        "run",
+        "dev",
+        "--prefix",
+        "frontend",
+        "--",
+        "--port",
+        "5199"
+      ],
+      "port": 5199,
+      "env": {
+        "VITE_API_URL": "http://localhost:4599"
+      }
     }
   ]
 }

@@ -1,0 +1,69 @@
+{
+  "kind": "tc-bonus-paid-amounts",
+  "at": "2026-10-15T14:09:27.573Z",
+  "fixes": [
+    {
+      "id": "6ac62b46588e3862af124ebe",
+      "student": "Praveen Thalayarath Cheruvari",
+      "code": "STU-2991",
+      "status": "APPROVED",
+      "amountUsd": 500,
+      "paidUsd": 544.96,
+      "bonusUsd": 0
+    },
+    {
+      "id": "6ac7b65ce5eae79ef9c13788",
+      "student": "akshay bhaskar acharya",
+      "code": "STU-4114",
+      "status": "APPROVED",
+      "amountUsd": 500,
+      "paidUsd": 544.96,
+      "bonusUsd": 500
+    },
+    {
+      "id": "6ac8fe3407dffe36910a718e",
+      "student": "Nithin Suresh",
+      "code": "STU-4171",
+      "status": "APPROVED",
+      "amountUsd": 2000,
+      "paidUsd": 2001.36,
+      "bonusUsd": 12000
+    },
+    {
+      "id": "6acde45b78efc3e9a8278bb0",
+      "student": "Mohammed Basheer\t",
+      "code": "STU-2875",
+      "status": "APPROVED",
+      "amountUsd": 1000,
+      "paidUsd": 1089.92,
+      "bonusUsd": 1000
+    },
+    {
+      "id": "6acdf45fb33a71c86910f885",
+      "student": "Arun Sudarsanan",
+      "code": "STU-4185",
+      "status": "APPROVED",
+      "amountUsd": 3000,
+      "paidUsd": 3495.91,
+      "bonusUsd": 3000
+    },
+    {
+      "id": "6acf42b7f939c35d7ce0b984",
+      "student": "Deep",
+      "code": "STU-4168",
+      "status": "APPROVED",
+      "amountUsd": 1000,
+      "paidUsd": 1089.92,
+      "bonusUsd": 1000
+    },
+    {
+      "id": "6ad0b83104c09abb636c1789",
+      "student": "J Vijay",
+      "code": "STU-5000",
+      "status": "APPROVED",
+      "amountUsd": 1000,
+      "paidUsd": 1500,
+      "bonusUsd": 1000
+    }
+  ]
+}

@@ -166,30 +166,18 @@ export default function Leaderboard() {
   );
 }
 
-/* The office TV board's links (the user, 2026-10-22: pages/CsTv.jsx) — a Super Admin copies them; Reset makes a new
-   secret, and the old links stop. */
+/* The office TV board's links (the user, 2026-10-22: pages/CsTv.jsx) — open: /cs/dubai and /cs/bangalore. */
 function TvLinks() {
-  const [busy, setBusy] = useState(false);
-  const copy = async (location, reset = false) => {
-    setBusy(true);
-    try {
-      const { token } = (await base44.functions.invoke('getCsTvLink', reset ? { reset: true } : {})).data;
-      // The short address with the secret once — the screen keeps it, then /tv/cs/<location> alone works there.
-      const link = `${window.location.origin}/tv/cs/${location}?t=${encodeURIComponent(token)}`;
-      await navigator.clipboard?.writeText(link);
-      toast.success(reset ? 'New TV link copied — the old ones stop working' : `${location === 'bangalore' ? 'Bangalore' : 'Dubai'} TV link copied`, { description: link });
-    } catch (e) {
-      toast.error(/unknown function|not found|404/i.test(String(e?.message)) ? 'The TV link needs the server update (the API deploy)' : e?.message || "Couldn't get the link");
-    } finally {
-      setBusy(false);
-    }
+  const copy = async (location) => {
+    const link = `${window.location.origin}/cs/${location}`;
+    try { await navigator.clipboard?.writeText(link); toast.success(`${location === 'bangalore' ? 'Bangalore' : 'Dubai'} TV link copied`, { description: link }); }
+    catch { toast.message(link); }
   };
   return (
     <div className="mt-2 flex flex-wrap items-center gap-2 text-xs">
       <span className="inline-flex items-center gap-1 text-slate-500"><Monitor className="h-3.5 w-3.5" />Office TV:</span>
-      <button type="button" disabled={busy} onClick={() => copy('dubai')} className="rounded-full border border-slate-200 bg-white px-2.5 py-1 hover:bg-slate-50">Copy Dubai link</button>
-      <button type="button" disabled={busy} onClick={() => copy('bangalore')} className="rounded-full border border-slate-200 bg-white px-2.5 py-1 hover:bg-slate-50">Copy Bangalore link</button>
-      <button type="button" disabled={busy} onClick={() => { if (window.confirm('Make a new TV link? Screens on the old one stop until they get the new link.')) copy('dubai', true); }} className="rounded-full px-2 py-1 text-slate-400 hover:text-rose-600">Reset</button>
+      <button type="button" onClick={() => copy('dubai')} className="rounded-full border border-slate-200 bg-white px-2.5 py-1 hover:bg-slate-50">Copy Dubai link</button>
+      <button type="button" onClick={() => copy('bangalore')} className="rounded-full border border-slate-200 bg-white px-2.5 py-1 hover:bg-slate-50">Copy Bangalore link</button>
     </div>
   );
 }
