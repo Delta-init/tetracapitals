@@ -433,16 +433,17 @@ function TeamsPanel({ teams, fmtMoney, className = 'flex-[3]' }) {
       {teams.length === 0 ? (
         <p className={cn('px-2 py-6 text-center text-[color:var(--mute)]', T.small)}>No teams yet.</p>
       ) : (
-        <ul>
+        // Cards, two by two (the user, 2026-10-22) — more than four scroll inside the panel.
+        <ul className="grid grid-cols-2 gap-[clamp(0.4rem,0.5vw,0.8rem)] pt-0.5">
           {teams.map((t, i) => (
-            <li key={t.id || t.team} className="flex items-center gap-[clamp(0.5rem,0.6vw,0.9rem)] border-b border-[color:var(--line)] px-[clamp(0.4rem,0.5vw,0.7rem)] py-[clamp(0.35rem,0.45vw,0.65rem)] last:border-b-0">
+            <li key={t.id || t.team} className="flex min-w-0 items-center gap-[clamp(0.5rem,0.6vw,0.9rem)] rounded-[clamp(0.7rem,0.8vw,1.1rem)] border border-[color:var(--line)] bg-[color:var(--head)] px-[clamp(0.5rem,0.6vw,0.9rem)] py-[clamp(0.4rem,0.5vw,0.75rem)]">
               <span className={cn('num w-[2ch] shrink-0 font-bold', T.title)} style={{ color: i < 3 ? `var(--${PLACES[i]})` : 'var(--mute)' }}>{i + 1}</span>
               <span className="h-[2.2em] w-1 shrink-0 rounded-full" style={{ background: teamTone(t.team) }} />
               <div className="min-w-0 flex-1">
                 <p className={cn('truncate font-semibold leading-tight', T.body)}>{t.team}</p>
-                <p className={cn('text-[color:var(--mute)]', T.tiny)}>{t.cs_count} CS · {fmtInt(t.payments)} payments</p>
+                <p className={cn('truncate text-[color:var(--mute)]', T.tiny)}>{t.cs_count} CS · {fmtInt(t.payments)} payments</p>
+                <p className={cn('num truncate font-bold text-[color:var(--money)]', T.body)}>{fmtMoney(t.month_aed)}</p>
               </div>
-              <span className={cn('num shrink-0 font-bold text-[color:var(--money)]', T.body)}>{fmtMoney(t.month_aed)}</span>
             </li>
           ))}
         </ul>
