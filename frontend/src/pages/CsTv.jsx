@@ -8,7 +8,7 @@ import { Crown, Maximize, RotateCw, Trophy, Users } from 'lucide-react';
    CS with their HRMS photos, the teams, and a pop-up for each new approved
    payment. Turns 0 / 90 / 180 / 270° for a screen hung on its side
    (?rotate=, or the button / the R key — remembered on that screen).
-   /tv/cs?t=<token>&location=dubai|bangalore[&rotate=90]
+   /tv/cs/dubai?t=<token> once on a screen, then just /tv/cs/dubai (or /bangalore) [?rotate=90].
    backend functions/csTv.ts (GET /api/public/cs-tv).
 ──────────────────────────────────────────────────────────────────────────── */
 
@@ -46,13 +46,28 @@ function Photo({ name, url, className }) {
 
 export default function CsTv() {
   const p = params();
-  const token = p.get('t') || '';
-  const location = p.get('location') === 'bangalore' ? 'bangalore' : 'dubai';
+  // /tv/cs/dubai or /tv/cs/bangalore (the user, 2026-10-22); ?location= still works. The secret comes once with the
+  // link (?t=) and the screen keeps it, so afterwards the short address alone opens the board on that screen.
+  const fromPath = window.location.pathname.toLowerCase().split('/').filter(Boolean)[2];
+  const location = (fromPath || p.get('location')) === 'bangalore' ? 'bangalore' : 'dubai';
+  const token = (() => {
+    const given = p.get('t');
+    try {
+      if (given) localStorage.setItem('cs_tv_t', given);
+      return given || localStorage.getItem('cs_tv_t') || '';
+    } catch { return given || ''; }
+  })();
   const [rotate, setRotate] = useState(() => {
     const fromUrl = Number(p.get('rotate'));
     if ([0, 90, 180, 270].includes(fromUrl) && p.has('rotate')) return fromUrl;
     try { const v = Number(localStorage.getItem(ROT_KEY)); return [0, 90, 180, 270].includes(v) ? v : 0; } catch { return 0; }
   });
+  // Once kept, the secret leaves the address bar: the screen shows just /tv/cs/<location>.
+  useEffect(() => {
+    if (!p.get('t')) return;
+    const q = new URLSearchParams(window.location.search); q.delete('t'); q.delete('location');
+    window.history.replaceState(null, '', `/tv/cs/${location}${q.toString() ? `?${q}` : ''}`);
+  }, []);
   const [data, setData] = useState(null);
   const [error, setError] = useState('');
   const [pop, setPop] = useState(null);

@@ -174,7 +174,8 @@ function TvLinks() {
     setBusy(true);
     try {
       const { token } = (await base44.functions.invoke('getCsTvLink', reset ? { reset: true } : {})).data;
-      const link = `${window.location.origin}/tv/cs?t=${encodeURIComponent(token)}&location=${location}`;
+      // The short address with the secret once — the screen keeps it, then /tv/cs/<location> alone works there.
+      const link = `${window.location.origin}/tv/cs/${location}?t=${encodeURIComponent(token)}`;
       await navigator.clipboard?.writeText(link);
       toast.success(reset ? 'New TV link copied — the old ones stop working' : `${location === 'bangalore' ? 'Bangalore' : 'Dubai'} TV link copied`, { description: link });
     } catch (e) {
