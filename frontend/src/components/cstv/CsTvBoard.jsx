@@ -129,8 +129,8 @@ export default function CsTvBoard({ fetcher, location, rotate = 0, onRotate }) {
   const serverNow = now + offset.current;
   const gap = 'gap-[clamp(0.5rem,0.7vw,1.1rem)]';
   // The board's first layout (the user, 2026-10-22: "the old UI, in this theme, with the 3D steps"): the whole location's
-  // top three on the podium with the teams under it, every CS in a list beside it that scrolls by itself, the latest
-  // payments under that. Side by side on a wide screen; one under the other on a narrow or turned one.
+  // top three on the podium with the teams under it, every CS in a list beside it that scrolls by itself (the latest
+  // payments panel hidden, 2026-10-22 — each one still pops up). Side by side on a wide screen; one under the other on a narrow or turned one.
   const [width, setWidth] = useState(1600);
   useEffect(() => {
     const el = root.current;
@@ -176,7 +176,6 @@ export default function CsTvBoard({ fetcher, location, rotate = 0, onRotate }) {
           <div className={cn('flex min-h-0 flex-col', gap)}>
             <AllCs people={people} money={money} />
             {!wide && <TeamsPanel teams={data.teams ?? []} fmtMoney={fmtMoney} />}
-            <RecentPayments recent={data.recent ?? []} fmtMoney={fmtMoney} />
           </div>
         </div>
       )}
@@ -444,33 +443,6 @@ function TeamsPanel({ teams, fmtMoney }) {
                 <p className={cn('text-[color:var(--mute)]', T.tiny)}>{t.cs_count} CS · {fmtInt(t.payments)} payments</p>
               </div>
               <span className={cn('num shrink-0 font-bold text-[color:var(--money)]', T.body)}>{fmtMoney(t.month_aed)}</span>
-            </li>
-          ))}
-        </ul>
-      )}
-    </Panel>
-  );
-}
-
-function RecentPayments({ recent, fmtMoney }) {
-  const shown = recent.slice(0, 8);
-  return (
-    <Panel title="Latest payments" dot="var(--good)" hint="The latest approved course payments" className="flex-[2]">
-      {shown.length === 0 ? (
-        <p className={cn('px-2 py-6 text-center text-[color:var(--mute)]', T.small)}>No payments yet.</p>
-      ) : (
-        <ul>
-          {shown.map(c => (
-            <li key={c.id} className="flex items-center gap-[clamp(0.5rem,0.6vw,0.9rem)] border-b border-[color:var(--line)] px-[clamp(0.4rem,0.5vw,0.7rem)] py-[clamp(0.35rem,0.45vw,0.65rem)] last:border-b-0">
-              <span className={cn('num shrink-0 text-[color:var(--mute)]', T.small)}>{dubaiHm(Date.parse(c.at))}</span>
-              <div className="min-w-0 flex-1">
-                <p className={cn('truncate font-semibold leading-tight', T.body)}>{c.cs || '—'}</p>
-                <p className="flex min-w-0 items-center gap-1.5">
-                  <span className={cn('inline-flex shrink-0 items-center gap-1 font-medium', T.tiny)} style={{ color: teamTone(c.team) }}>{c.team}</span>
-                  {c.product && <span className={cn('truncate text-[color:var(--mute)]', T.tiny)}>· {c.product}</span>}
-                </p>
-              </div>
-              <span className={cn('num shrink-0 font-bold text-[color:var(--money)]', T.body)}>{c.aed > 0 ? fmtMoney(c.aed) : ''}</span>
             </li>
           ))}
         </ul>
