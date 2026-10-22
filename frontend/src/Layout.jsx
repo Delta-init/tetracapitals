@@ -218,6 +218,8 @@ export default function Layout({ children, currentPageName }) {
     if (item.name === 'Personnel' && currentUser?.app_role === 'cs_manager') return true;
     // …and Tickets: the Academic Head's come to CS Managers too (2026-10-13).
     if (item.name === 'Tickets' && currentUser?.app_role === 'cs_manager') return true;
+    // …and Instructor Reviews for everyone it's made for (2026-10-22), whatever their role's page list says.
+    if (item.name === 'InstructorReviews' && item.roles.includes(currentUser?.app_role)) return true;
     if (Array.isArray(allowedPages)) return allowedPages.includes(item.sameAccessAs || item.name);
     return item.roles.includes('all') || item.roles.includes(currentUser?.app_role);
   });

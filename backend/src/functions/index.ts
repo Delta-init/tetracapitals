@@ -54,6 +54,7 @@ import { getMyCurrency } from "./myCurrency";
 import { removeStudentMt5, setPrimaryMt5 } from "./studentMt5";
 import { markNotStudent, unmarkNotStudent, listNotStudents } from "./notStudent";
 import { getStudentEmails, getStudentEmail } from "./studentEmails";
+import { getInstructorReviews, getInstructorReviewList } from "./instructorReviews";
 import { getLmsCourseAccess, giveLmsCourses, setLmsModuleAccess } from "./lmsCourseAccess";
 import { getClassCompletions } from "./classCompletions";
 import { getMyTeamCsIds } from "./myTeam";
@@ -197,6 +198,8 @@ const AUTHED: Record<string, AuthedHandler> = {
   setPrimaryMt5,
   markNotStudent,
   getStudentEmails,
+  getInstructorReviews,
+  getInstructorReviewList,
   getStudentEmail,
   getProgramAudiences,
   addProgramGuestToLms,
