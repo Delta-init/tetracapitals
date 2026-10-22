@@ -126,9 +126,11 @@ export default function MyFundingRequests() {
   });
 
   // NEW level-based commission credits (bonus + deposit) for this staff member.
+  // Only theirs, all of them (2026-10-22): the list used to bring the newest 100 of the whole team's, so a chief's or
+  // mentor's own fell off the end in a busy team.
   const { data: myCommissionCredits = [] } = useQuery({
-    queryKey: ['commission-credits'],
-    queryFn: () => base44.entities.CommissionCredit.list('-created_date'),
+    queryKey: ['commission-credits', currentUser?.id],
+    queryFn: () => base44.entities.CommissionCredit.filter({ recipient_id: currentUser.id }, '-created_date', 10000),
     enabled: !!currentUser,
   });
 
@@ -251,8 +253,10 @@ export default function MyFundingRequests() {
   const depositCommission = myQuarterCredits
     .filter(c => c.method === 'deposit' && !c.is_pool)
     .reduce((s, c) => s + (c.commission_usd || 0), 0);
-  const bonusWith = myQuarterCredits.filter(c => c.method === 'bonus_with' && !c.is_pool).reduce((s, c) => s + (c.commission_usd || 0), 0);
-  const bonusWithout = myQuarterCredits.filter(c => c.method === 'bonus_without' && !c.is_pool).reduce((s, c) => s + (c.commission_usd || 0), 0);
+  // Pool shares count (2026-10-22): a junior's and senior's bonus commission is their share of the pool — before, it was
+  // left out, so they saw $0 with their money credited.
+  const bonusWith = myQuarterCredits.filter(c => c.method === 'bonus_with').reduce((s, c) => s + (c.commission_usd || 0), 0);
+  const bonusWithout = myQuarterCredits.filter(c => c.method === 'bonus_without').reduce((s, c) => s + (c.commission_usd || 0), 0);
   const bonusTotal = bonusWith + bonusWithout;
   // Bonus In: the approved Bonus requests this person raised in the quarter, dated as the deposit figures are — not a
   // sales-close bonus credit, which only credits the student's MT5.

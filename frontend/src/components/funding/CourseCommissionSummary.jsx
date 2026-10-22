@@ -68,7 +68,10 @@ export default function CourseCommissionSummary({ isManager = false, role = '' }
   // In AED only (the user, 2026-10-13): their % of the AED the students paid — course payments (upgrades earn none) —
   // and of what is still to collect.
   const pct = Number(data?.rate?.pct) || 0;
-  const earnedAed = ((Number(c?.course_payments_aed) || 0) * pct) / 100;
+  // A mentor (not a CS or CS Manager): what was actually credited to them in the dates (pool shares included) — their %
+  // isn't the CS's, and a junior's or senior's is a share of a pool (2026-10-22).
+  const mentor = !!role && !['cs', 'cs_manager'].includes(role);
+  const earnedAed = mentor ? Number(data?.commission?.aed) || 0 : ((Number(c?.course_payments_aed) || 0) * pct) / 100;
   const moreAed = ((Number(t?.aed) || 0) * pct) / 100;
   return (
     <Card className="border-gray-200 bg-gradient-to-br from-blue-50 to-indigo-50">
@@ -108,10 +111,10 @@ export default function CourseCommissionSummary({ isManager = false, role = '' }
               {c?.pending_count > 0 && <p className="mt-1 text-xs text-amber-700">+ {AED(c.pending_aed)} waiting approval ({c.pending_count})</p>}
             </Stat>
             <Stat label={chief ? 'Your Chief Mentor commission' : isManager ? 'Your CS Manager commission' : 'Commission earned'} value={AED(earnedAed)} tone="text-emerald-600">
-              <p className="mt-2 text-xs text-gray-400">{pct ? `${pct}% of ${AED(c?.course_payments_aed)} collected${chief ? ' by your team' : isManager ? " by every CS" : ''} · ${""}` : 'no commission plan'}</p>
+              <p className="mt-2 text-xs text-gray-400">{mentor ? `credited to you in these dates · ${data?.commission?.count ?? 0} credit${data?.commission?.count === 1 ? '' : 's'}, pool shares included` : pct ? `${pct}% of ${AED(c?.course_payments_aed)} collected${chief ? ' by your team' : isManager ? " by every CS" : ''}` : 'no commission plan'}</p>
             </Stat>
             <Stat label="Still to collect" value={AED(t?.aed)} sub={`${t?.students ?? 0} student${t?.students === 1 ? '' : 's'}`} tone="text-amber-600">
-              {moreAed > 0 && <p className="mt-2 text-xs text-emerald-700">you earn {AED(moreAed)} more when it's paid</p>}
+              {!mentor && moreAed > 0 && <p className="mt-2 text-xs text-emerald-700">you earn {AED(moreAed)} more when it's paid</p>}
               <p className="mt-1 text-xs text-gray-400">today's balances — not the dates picked</p>
             </Stat>
           </div>
