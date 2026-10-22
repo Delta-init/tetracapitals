@@ -128,18 +128,9 @@ export default function CsTvBoard({ fetcher, location, rotate = 0, onRotate }) {
 
   const serverNow = now + offset.current;
   const gap = 'gap-[clamp(0.5rem,0.7vw,1.1rem)]';
-  const teams = (() => {
-    const by = new Map();
-    for (const p of data?.cs ?? []) {
-      const k = p.team_id || p.team || '-';
-      if (!by.has(k)) by.set(k, { code: k, name: p.team || 'No team', people: [] });
-      by.get(k).people.push(p);
-    }
-    const order = new Map((data?.teams ?? []).map((t, i) => [t.id || t.team || '-', i]));
-    return [...by.values()].sort((a, b) => (order.get(a.code) ?? 99) - (order.get(b.code) ?? 99));
-  })();
-  // As many team columns as fit, ~330px each (the Sales TV puts its three side by side only on a wide screen); the
-  // side panels beside them when there's room, else under them.
+  // The board's first layout (the user, 2026-10-22: "the old UI, in this theme, with the 3D steps"): the whole location's
+  // top three on the podium with the teams under it, every CS in a list beside it that scrolls by itself, the latest
+  // payments under that. Side by side on a wide screen; one under the other on a narrow or turned one.
   const [width, setWidth] = useState(1600);
   useEffect(() => {
     const el = root.current;
@@ -148,37 +139,47 @@ export default function CsTvBoard({ fetcher, location, rotate = 0, onRotate }) {
     ro.observe(el);
     return () => ro.disconnect();
   }, []);
-  const wide = width >= 1100;
-  const cols = Math.max(1, Math.min(teams.length || 1, Math.floor((width - (wide ? 300 : 0)) / 330)));
-  const side = !wide;
+  const wide = width >= 1000;
+  const people = data?.cs ?? [];
+  const box = 'flex min-h-0 flex-col overflow-hidden rounded-[clamp(1rem,1.2vw,1.6rem)] border border-[color:var(--line)] bg-[color:var(--panel)]';
 
   return (
     <div ref={root} className="stv relative flex h-full w-full flex-col overflow-hidden p-[clamp(0.5rem,0.7vw,1.1rem)]">
       <style dangerouslySetInnerHTML={{ __html: CSS }} />
       <Header serverNow={serverNow} lastOk={lastOk} now={now} fetchError={fetchError} rootRef={root} location={location} rotate={rotate} onRotate={onRotate} />
 
-      <div
-        className={cn('stv-scroll mt-[clamp(0.5rem,0.7vw,1.1rem)] grid min-h-0 flex-1', side ? 'auto-rows-[minmax(34rem,auto)] overflow-y-auto' : 'auto-rows-[minmax(0,1fr)] overflow-hidden', gap)}
-        style={{ gridTemplateColumns: side ? `repeat(${cols}, minmax(0,1fr))` : `repeat(${cols}, minmax(0,1fr)) minmax(15rem,0.62fr)` }}
-      >
-        {!data ? (
-          <section className="grid place-items-center rounded-[clamp(1rem,1.2vw,1.6rem)] border border-[color:var(--line)] bg-[color:var(--panel)]" style={{ gridColumn: `span ${cols}` }}>
-            <p className={cn('text-[color:var(--mute)]', T.small)}>{fetchError || 'Loading…'}</p>
-          </section>
-        ) : teams.length === 0 ? (
-          <section className="grid place-items-center rounded-[clamp(1rem,1.2vw,1.6rem)] border border-[color:var(--line)] bg-[color:var(--panel)]" style={{ gridColumn: `span ${cols}` }}>
-            <p className={cn('text-[color:var(--mute)]', T.small)}>No CSs on this board yet.</p>
-          </section>
-        ) : (side ? teams : teams.slice(0, cols)).map(team => (
-          <TeamColumn key={team.code} team={team} month={data.month} fmtMoney={fmtMoney} money={money} />
-        ))}
-        {(
-          <aside className={cn('flex min-h-0 flex-col', gap)} style={side ? { gridColumn: '1 / -1', minHeight: '24rem' } : undefined}>
-            <TeamsPanel teams={data?.teams ?? []} fmtMoney={fmtMoney} />
-            <RecentPayments recent={data?.recent ?? []} fmtMoney={fmtMoney} />
-          </aside>
-        )}
-      </div>
+      {!data ? (
+        <section className={cn(box, 'mt-[clamp(0.5rem,0.7vw,1.1rem)] flex-1 place-items-center justify-center')}>
+          <p className={cn('text-center text-[color:var(--mute)]', T.small)}>{fetchError || 'Loading…'}</p>
+        </section>
+      ) : (
+        <div className={cn('mt-[clamp(0.5rem,0.7vw,1.1rem)] grid min-h-0 flex-1', gap, wide ? 'grid-cols-[minmax(0,1.15fr)_minmax(0,1fr)] grid-rows-[minmax(0,1fr)]' : 'grid-cols-1 grid-rows-[auto_minmax(0,1fr)]')}>
+          <div className={cn('flex min-h-0 flex-col', gap)}>
+            {/* The podium, for the whole location */}
+            <section className={cn(box, wide && 'flex-[3]')}>
+              <div className="flex flex-wrap items-center gap-2.5 px-[clamp(0.8rem,1vw,1.4rem)] pt-[clamp(0.6rem,0.8vw,1.1rem)]">
+                <span className="h-[0.7em] w-[0.7em] shrink-0 rounded-full bg-[color:var(--accent)]" />
+                <h2 className={cn('truncate font-semibold', T.title)}>Top CSs</h2>
+                <span className={cn('rounded-full border border-[color:var(--line)] px-3 py-0.5 text-[color:var(--mute)]', T.small)}>{monthLabel(data.month)}</span>
+                <span className="ml-auto flex items-center gap-2">
+                  <span className={cn('num rounded-full bg-[color:var(--head)] px-3 py-0.5 font-semibold text-[color:var(--money)]', T.body)} title="Collected this month">{fmtMoney(data.totals?.month_aed)}</span>
+                  <span className={cn('num rounded-full bg-[color:var(--head)] px-3 py-0.5 font-semibold text-[color:var(--good)]', T.body)} title="Collected today">{fmtMoney(data.totals?.today_aed)} today</span>
+                </span>
+              </div>
+              {people.length === 0
+                ? <p className={cn('px-3 py-10 text-center text-[color:var(--mute)]', T.small)}>No CSs on this board yet.</p>
+                : <div className="flex flex-1 items-end"><div className="w-full"><Podium people={people.slice(0, 3)} fmtMoney={fmtMoney} big /></div></div>}
+            </section>
+            {wide && <TeamsPanel teams={data.teams ?? []} fmtMoney={fmtMoney} />}
+          </div>
+
+          <div className={cn('flex min-h-0 flex-col', gap)}>
+            <AllCs people={people} money={money} />
+            {!wide && <TeamsPanel teams={data.teams ?? []} fmtMoney={fmtMoney} />}
+            <RecentPayments recent={data.recent ?? []} fmtMoney={fmtMoney} />
+          </div>
+        </div>
+      )}
 
       <SoundPrompt />
       <SaleCelebration />
@@ -269,64 +270,19 @@ function Header({ serverNow, lastOk, now, fetchError, rootRef, location, rotate,
 /* #, CS, payments this month and today, collected this month, collected today. */
 const COLS = 'grid grid-cols-[clamp(1.7rem,1.9vw,2.9rem)_minmax(0,1fr)_repeat(2,minmax(0,clamp(1.7rem,1.9vw,2.9rem)))_minmax(0,clamp(4.2rem,4.6vw,6.8rem))_minmax(0,clamp(3.8rem,4.2vw,6.2rem))] items-center whitespace-nowrap gap-x-[clamp(0.15rem,0.25vw,0.45rem)]';
 
-function TeamColumn({ team, month, fmtMoney, money }) {
-  const body = useRef(null);
-  const rest = team.people.slice(3);
-  useAutoScroll(body, rest.length);
-  const t = team.people.reduce((a, p) => ({ m: a.m + p.payments, d: a.d + (p.today_payments || 0), r: a.r + p.month_aed, x: a.x + p.today_aed }), { m: 0, d: 0, r: 0, x: 0 });
-  const head = cn('text-right font-medium text-[color:var(--ink2)]', T.tiny);
-
-  return (
-    <section className="flex min-h-0 flex-col overflow-hidden rounded-[clamp(1rem,1.2vw,1.6rem)] border border-[color:var(--line)] bg-[color:var(--panel)]">
-      <div className="flex items-center gap-2.5 px-[clamp(0.8rem,1vw,1.4rem)] pt-[clamp(0.6rem,0.8vw,1.1rem)]">
-        <span className="h-[0.7em] w-[0.7em] shrink-0 rounded-full" style={{ background: teamTone(team.name) }} />
-        <h2 className={cn('truncate font-semibold', T.title)}>{team.name}</h2>
-        <span className={cn('ml-auto shrink-0 rounded-full border border-[color:var(--line)] px-3 py-0.5 text-[color:var(--mute)]', T.small)}>{monthLabel(month)}</span>
-      </div>
-
-      <Podium people={team.people.slice(0, 3)} fmtMoney={fmtMoney} />
-
-      <div className={cn(COLS, 'mx-[clamp(0.4rem,0.5vw,0.8rem)] rounded-full bg-[color:var(--head)] px-[clamp(0.6rem,0.7vw,1rem)] py-[clamp(0.35rem,0.45vw,0.65rem)]')}>
-        <span className={cn(head, 'text-left')}>#</span>
-        <span className={cn(head, 'text-left')}>CS</span>
-        <span className={head} title="Course payments this month">Month</span>
-        <span className={head} title="Course payments today">Today</span>
-        <span className={head} title="Collected this month">Collected</span>
-        <span className={head} title="Collected today">Today</span>
-      </div>
-
-      <div ref={body} className="stv-scroll min-h-0 flex-1 overflow-y-auto px-[clamp(0.4rem,0.5vw,0.8rem)]">
-        {rest.length === 0 ? (
-          <p className={cn('px-2 py-4 text-center text-[color:var(--mute)]', T.small)}>Everybody is on the podium.</p>
-        ) : (
-          <ol>{rest.map((p, i) => <PersonRow key={p.id} p={p} rank={i + 4} money={money} />)}</ol>
-        )}
-      </div>
-
-      <div className={cn(COLS, 'num border-t border-[color:var(--line)] px-[clamp(1rem,1.2vw,1.8rem)] py-[clamp(0.4rem,0.55vw,0.8rem)] font-semibold whitespace-nowrap', T.body)}>
-        <span className={cn('col-span-2 truncate font-medium text-[color:var(--mute)]', T.small)}>Total · {team.people.length} people</span>
-        <span className="text-right">{fmtInt(t.m)}</span>
-        <span className="text-right">{fmtInt(t.d)}</span>
-        <span className="text-right text-[color:var(--money)]" title={fmtMoney(t.r)}>{fmtInt(money(t.r))}</span>
-        <span className="text-right text-[color:var(--good)]">{fmtInt(money(t.x))}</span>
-      </div>
-    </section>
-  );
-}
-
-function Podium({ people, fmtMoney }) {
+function Podium({ people, fmtMoney, big = false }) {
   const order = [1, 0, 2];
   return (
     <div className="grid grid-cols-3 items-end gap-[clamp(0.25rem,0.35vw,0.6rem)] px-[clamp(0.6rem,0.8vw,1.2rem)] pb-[clamp(0.5rem,0.7vw,1rem)] pt-[clamp(0.4rem,0.6vw,0.9rem)]">
       {order.map(i => {
         const p = people[i];
-        return p ? <Step key={p.id} p={p} rank={i + 1} fmtMoney={fmtMoney} /> : <span key={`empty-${i}`} />;
+        return p ? <Step key={p.id} p={p} rank={i + 1} fmtMoney={fmtMoney} big={big} /> : <span key={`empty-${i}`} />;
       })}
     </div>
   );
 }
 
-function Step({ p, rank, fmtMoney }) {
+function Step({ p, rank, fmtMoney, big = false }) {
   const first = rank === 1;
   // A coloured trophy only with something to show for it.
   const place = p.month_aed > 0 ? PLACES[rank - 1] : undefined;
@@ -335,7 +291,9 @@ function Step({ p, rank, fmtMoney }) {
       <Photo
         name={p.name}
         url={p.photo ?? null}
-        className={cn(first ? 'h-[clamp(3.4rem,3.9vw,5.6rem)] w-[clamp(3.4rem,3.9vw,5.6rem)]' : 'h-[clamp(2.8rem,3.1vw,4.5rem)] w-[clamp(2.8rem,3.1vw,4.5rem)]', 'rounded-[24%]')}
+        className={cn(big
+          ? (first ? 'h-[clamp(5rem,6.2vw,9rem)] w-[clamp(5rem,6.2vw,9rem)]' : 'h-[clamp(4rem,4.8vw,7rem)] w-[clamp(4rem,4.8vw,7rem)]')
+          : (first ? 'h-[clamp(3.4rem,3.9vw,5.6rem)] w-[clamp(3.4rem,3.9vw,5.6rem)]' : 'h-[clamp(2.8rem,3.1vw,4.5rem)] w-[clamp(2.8rem,3.1vw,4.5rem)]'), 'rounded-[24%]')}
         ring={place ? `var(--${place})` : 'var(--step-edge)'}
       />
       <p className={cn('mt-1.5 w-full truncate text-center font-semibold leading-tight', first ? T.title : T.body)} title={p.name}>{p.name}</p>
@@ -344,7 +302,9 @@ function Step({ p, rank, fmtMoney }) {
       <div className="mt-[clamp(0.3rem,0.45vw,0.7rem)] w-full">
         <div className="h-[clamp(0.7rem,0.85vw,1.2rem)] w-full bg-[color:var(--step-top)]" style={{ clipPath: 'polygon(9% 0, 91% 0, 100% 100%, 0 100%)' }} />
         <div className={cn('flex w-full flex-col items-center border-t border-[color:var(--step-edge)] bg-[color:var(--step-front)] px-1',
-          first ? 'pb-[clamp(0.9rem,1.3vw,1.9rem)] pt-[clamp(0.45rem,0.6vw,0.9rem)]' : 'pb-[clamp(0.4rem,0.55vw,0.8rem)] pt-[clamp(0.35rem,0.5vw,0.75rem)]')}>
+          big
+            ? (first ? 'pb-[clamp(2.4rem,3.6vw,5.5rem)] pt-[clamp(0.6rem,0.8vw,1.2rem)]' : rank === 2 ? 'pb-[clamp(1.2rem,1.9vw,2.9rem)] pt-[clamp(0.5rem,0.7vw,1rem)]' : 'pb-[clamp(0.6rem,0.9vw,1.4rem)] pt-[clamp(0.5rem,0.7vw,1rem)]')
+            : (first ? 'pb-[clamp(0.9rem,1.3vw,1.9rem)] pt-[clamp(0.45rem,0.6vw,0.9rem)]' : 'pb-[clamp(0.4rem,0.55vw,0.8rem)] pt-[clamp(0.35rem,0.5vw,0.75rem)]'))}>
           <span
             className="grid h-[clamp(1.6rem,1.8vw,2.6rem)] w-[clamp(1.6rem,1.8vw,2.6rem)] place-items-center rounded-[28%]"
             style={place ? { background: `var(--${place})`, color: `var(--${place}-on)` } : { background: 'var(--step-top)', color: 'var(--mute)' }}
@@ -364,13 +324,13 @@ function Step({ p, rank, fmtMoney }) {
   );
 }
 
-function PersonRow({ p, rank, money }) {
+function PersonRow({ p, rank, money, top = false }) {
   const zero = 'text-[color:var(--mute)]';
   return (
-    <li className={cn(COLS, 'num border-b border-[color:var(--line)] px-[clamp(0.6rem,0.7vw,1rem)] py-[clamp(0.3rem,0.4vw,0.6rem)] last:border-b-0', T.body)}>
+    <li className={cn(COLS, 'num border-b border-[color:var(--line)] px-[clamp(0.6rem,0.7vw,1rem)] py-[clamp(0.3rem,0.4vw,0.6rem)] last:border-b-0', top && 'rounded-xl bg-[color:var(--panel2)]', T.body)}>
       <span className={cn('font-medium text-[color:var(--mute)]', T.tiny)}>#{String(rank).padStart(2, '0')}</span>
       <span className="flex min-w-0 items-center gap-[clamp(0.4rem,0.5vw,0.75rem)]">
-        <Photo name={p.name} url={p.photo ?? null} className="hidden h-[clamp(1.7rem,1.9vw,2.7rem)] w-[clamp(1.7rem,1.9vw,2.7rem)] rounded-full min-[1500px]:grid" />
+        <Photo name={p.name} url={p.photo ?? null} className="h-[clamp(1.7rem,1.9vw,2.7rem)] w-[clamp(1.7rem,1.9vw,2.7rem)] rounded-full" ring={top ? `var(--${PLACES[rank - 1]})` : undefined} />
         <span className="min-w-0">
           <span className="block truncate font-medium leading-tight">{p.name}</span>
           <span className={cn('block truncate leading-tight text-[color:var(--mute)]', T.tiny)}>{p.team || '—'}</span>
@@ -414,6 +374,43 @@ function Photo({ name, url, className, ring }) {
   const style = ring ? { boxShadow: `0 0 0 2px ${ring}` } : undefined;
   if (url && !failed) return <img src={url} alt={name} className={cn('shrink-0 object-cover', className)} style={style} onError={() => setFailed(true)} referrerPolicy="no-referrer" />;
   return <span className={cn('grid shrink-0 place-items-center bg-[color:var(--step-top)] font-semibold text-[color:var(--ink2)]', className)} style={style}>{initials(name)}</span>;
+}
+
+/** Every CS of the location, ranked — the members' list, drifting down and back up by itself (the user, 2026-10-22). */
+function AllCs({ people, money }) {
+  const body = useRef(null);
+  useAutoScroll(body, people.length);
+  const head = cn('text-right font-medium text-[color:var(--ink2)]', T.tiny);
+  const t = people.reduce((a, p) => ({ m: a.m + p.payments, d: a.d + (p.today_payments || 0), r: a.r + p.month_aed, x: a.x + p.today_aed }), { m: 0, d: 0, r: 0, x: 0 });
+  return (
+    <section className="flex min-h-0 flex-[3] flex-col overflow-hidden rounded-[clamp(1rem,1.2vw,1.6rem)] border border-[color:var(--line)] bg-[color:var(--panel)]">
+      <div className="flex items-center gap-2.5 px-[clamp(0.8rem,1vw,1.4rem)] py-[clamp(0.6rem,0.8vw,1.1rem)]">
+        <span className="h-[0.7em] w-[0.7em] shrink-0 rounded-full bg-[color:var(--gold)]" />
+        <h2 className={cn('truncate font-semibold', T.title)}>Standings</h2>
+        <span className={cn('num ml-auto rounded-full bg-[color:var(--head)] px-3 py-0.5 font-semibold', T.body)}>{people.length}</span>
+      </div>
+      <div className={cn(COLS, 'mx-[clamp(0.4rem,0.5vw,0.8rem)] rounded-full bg-[color:var(--head)] px-[clamp(0.6rem,0.7vw,1rem)] py-[clamp(0.35rem,0.45vw,0.65rem)]')}>
+        <span className={cn(head, 'text-left')}>#</span>
+        <span className={cn(head, 'text-left')}>CS</span>
+        <span className={head} title="Course payments this month">Month</span>
+        <span className={head} title="Course payments today">Today</span>
+        <span className={head} title="Collected this month">Collected</span>
+        <span className={head} title="Collected today">Today</span>
+      </div>
+      <div ref={body} className="stv-scroll min-h-0 flex-1 overflow-y-auto px-[clamp(0.4rem,0.5vw,0.8rem)]">
+        {people.length === 0
+          ? <p className={cn('px-2 py-4 text-center text-[color:var(--mute)]', T.small)}>No CSs yet.</p>
+          : <ol>{people.map((p, i) => <PersonRow key={p.id} p={p} rank={i + 1} money={money} top={i < 3} />)}</ol>}
+      </div>
+      <div className={cn(COLS, 'num border-t border-[color:var(--line)] px-[clamp(1rem,1.2vw,1.8rem)] py-[clamp(0.4rem,0.55vw,0.8rem)] font-semibold whitespace-nowrap', T.body)}>
+        <span className={cn('col-span-2 truncate font-medium text-[color:var(--mute)]', T.small)}>Total · {people.length} people</span>
+        <span className="text-right">{fmtInt(t.m)}</span>
+        <span className="text-right">{fmtInt(t.d)}</span>
+        <span className="text-right text-[color:var(--money)]">{fmtInt(money(t.r))}</span>
+        <span className="text-right text-[color:var(--good)]">{fmtInt(money(t.x))}</span>
+      </div>
+    </section>
+  );
 }
 
 // ── Side panels ────────────────────────────────────────────────────────────────
