@@ -155,8 +155,8 @@ export default function CsTvBoard({ fetcher, location, rotate = 0, onRotate }) {
       ) : (
         <div className={cn('mt-[clamp(0.5rem,0.7vw,1.1rem)] grid min-h-0 flex-1', gap, wide ? 'grid-cols-[minmax(0,1.15fr)_minmax(0,1fr)] grid-rows-[minmax(0,1fr)]' : 'grid-cols-1 grid-rows-[auto_minmax(0,1fr)]')}>
           <div className={cn('flex min-h-0 flex-col', gap)}>
-            {/* The podium, for the whole location — 75% of the column, the teams 25% (the user, 2026-10-22) */}
-            <section className={cn(box, wide && 'min-h-0 flex-[3_1_0%]')}>
+            {/* The podium, for the whole location — 65% of the column, the teams 35% (the user, 2026-10-22) */}
+            <section className={cn(box, wide && 'min-h-0 flex-[65_1_0%]')}>
               <div className="flex flex-wrap items-center gap-2.5 px-[clamp(0.8rem,1vw,1.4rem)] pt-[clamp(0.6rem,0.8vw,1.1rem)]">
                 <span className="h-[0.7em] w-[0.7em] shrink-0 rounded-full bg-[color:var(--accent)]" />
                 <h2 className={cn('truncate font-semibold', T.title)}>Top CSs</h2>
@@ -170,7 +170,7 @@ export default function CsTvBoard({ fetcher, location, rotate = 0, onRotate }) {
                 ? <p className={cn('px-3 py-10 text-center text-[color:var(--mute)]', T.small)}>No CSs on this board yet.</p>
                 : <div className="flex flex-1 items-end"><div className="w-full"><Podium people={people.slice(0, 3)} fmtMoney={fmtMoney} big /></div></div>}
             </section>
-            {wide && <TeamsPanel teams={data.teams ?? []} fmtMoney={fmtMoney} className="flex-[1_1_0%]" />}
+            {wide && <TeamsPanel teams={data.teams ?? []} fmtMoney={fmtMoney} className="flex-[35_1_0%]" />}
           </div>
 
           <div className={cn('flex min-h-0 flex-col', gap)}>
