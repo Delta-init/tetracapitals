@@ -25,6 +25,9 @@ export async function creditCommission(req: Request, _user: AuthUser): Promise<R
   return json(result);
 }
 
+/** How long a claim to credit a transaction holds before another run may take it (creditCommissionFor). */
+const CLAIM_MS = 10 * 60_000;
+
 /**
  * The same, called by the server itself — a deposit approved in Delta finance
  * is credited when the decision arrives (finance/funding.ts), with nobody's
@@ -48,6 +51,18 @@ export async function creditCommissionFor(txId: string, opts: { preview?: boolea
   // A preview (scripts/backfill-commission-by-role.ts) works the credits out without writing them.
   const already = opts.preview ? 0 : await col("commission_credits").countDocuments({ transaction_id: txId });
   if (already > 0) return { ok: true, skipped: true, reason: "Already credited", count: already };
+  // Claimed first (2026-10-23): two approvals arriving together each counted none and both credited. A claim older
+  // than CLAIM_MS with nothing credited (a run that died) may be taken again.
+  if (!opts.preview) {
+    const claimedAt = new Date().toISOString();
+    const claim = await col("funding_transactions").updateOne(
+      { _id: oid, $or: [{ commission_claimed_at: { $exists: false } }, { commission_claimed_at: { $lt: new Date(Date.now() - CLAIM_MS).toISOString() } }] } as any,
+      { $set: { commission_claimed_at: claimedAt } },
+    );
+    if (claim.modifiedCount !== 1) return { ok: true, skipped: true, reason: "Being credited already" };
+    const meanwhile = await col("commission_credits").countDocuments({ transaction_id: txId });
+    if (meanwhile > 0) return { ok: true, skipped: true, reason: "Already credited", count: meanwhile };
+  }
 
   // Which method? Bonus type comes from the tag.
   let methodKey: "bonus_with" | "bonus_without" | "deposit" = "deposit";
@@ -253,4 +268,19 @@ export function roleOfPosition(label: unknown): string | null {
   if (/senior/.test(l)) return "senior_mentor";
   if (/chief/.test(l)) return "chief_mentor";
   return null;
+}
+
+/**
+ * A transaction approved and then turned back (crud.ts, 2026-10-23): its credits nobody has been paid yet (accrued, or
+ * pooled) are removed, the rest — released or paid — kept and marked tx_reversed_at; its claim is cleared, so approving
+ * it again credits it again. → how many were removed and kept.
+ */
+export async function reverseCommissionFor(txId: string, byName = ""): Promise<{ removed: number; kept: number }> {
+  const now = new Date().toISOString();
+  const removed = await col("commission_credits").deleteMany({ transaction_id: txId, status: { $in: ["accrued", "pooled"] } });
+  const kept = await col("commission_credits").updateMany({ transaction_id: txId }, { $set: { tx_reversed_at: now, tx_reversed_by: byName } });
+  const oid = toObjectId(txId);
+  if (oid) await col("funding_transactions").updateOne({ _id: oid }, { $unset: { commission_claimed_at: "" } });
+  if (removed.deletedCount || kept.modifiedCount) console.log(`[commission] ${txId} turned back: ${removed.deletedCount} credit(s) removed, ${kept.modifiedCount} kept (paid or released)`);
+  return { removed: removed.deletedCount, kept: kept.modifiedCount };
 }

@@ -38,6 +38,8 @@ type LmsAccess = {
 
 const BY = { byName: "Delta Finance approval", byEmail: "" };
 const RETRY_MS = 15 * 60_000;
+/** A course not in the student's academy is asked about again this often (it rarely changes within the hour). */
+const MISSING_RETRY_MS = 6 * 3600_000;
 const TICK_MS = 5 * 60_000;
 
 /** How many of a course's `n` modules a paid share opens: rounded up, all once paid in full, none before any payment. */
@@ -63,14 +65,14 @@ async function courseName(code: string): Promise<string> {
  * they aren't on it (the rest locked) — never locking one open. → what changed, e.g. ["DSLP (4 of 10 open)"]. Throws
  * the LMS's refusal.
  */
-export async function openModules(email: string, targets: LmsTarget[], share: number): Promise<string[]> {
+export async function openModules(email: string, targets: LmsTarget[], share: number, missing?: string[]): Promise<string[]> {
   const done: string[] = [];
   let access = await callLms<LmsAccess>("/students/course-access", { method: "POST", body: { email }, verb: "share their courses" });
   for (const t of targets) {
     const on = access.courses.find((c) => sameTitle(c.title, t.title));
     const offered = on ? null : access.offered.find((c) => sameTitle(c.title, t.title));
     const course = on ?? offered;
-    if (!course) continue;   // not one of their academy's courses — nothing to open there
+    if (!course) { missing?.push(t.title); continue; }   // not one of their academy's courses — nothing to open there
     const want = modulesFor(share, t.firstModules ?? course.modules.length);
     const open = new Set(course.modules.slice(0, want).map((m) => m.id));
     if (on) {
@@ -154,7 +156,15 @@ async function courseShareOf(studentId: string, product: string): Promise<{ shar
   const mine = txs.filter((t) => productKey(t.course_payment?.product) === productKey(product));
   if (!mine.length) return { share: 0, products: [] };
   const products = [...new Set(mine.flatMap((t) => [t.course_payment.product, ...(Array.isArray(t.tags) ? t.tags : [])]).map(String))];
-  if (mine.some((t) => t.course_payment.kind === "full")) return { share: 1, products };
+  const fulls = mine.filter((t) => t.course_payment.kind === "full");
+  if (fulls.some((t) => !(Number(t.course_payment.short_aed) > 1))) return { share: 1, products };
+  // Full, but short of the price (2026-10-23: it opened the whole course): what was paid of the price.
+  if (fulls.length) {
+    const priceAed = Math.max(...fulls.map((t) => (Number(t.course_payment.price) || 0) * (t.course_payment.price_currency === "AED" ? 1 : 3.67)));
+    const paidAed = mine.reduce((sum, t) => sum + (Number(t.course_payment.paid_today_aed) || 0), 0);
+    if (!(priceAed > 0) || priceAed - paidAed <= 1) return { share: 1, products };
+    return { share: Math.min(1, Math.round((paidAed / priceAed) * 10_000) / 10_000), products };
+  }
   const latest = [...mine].sort((a, b) => String(b.requested_at ?? b.created_date ?? "").localeCompare(String(a.requested_at ?? a.created_date ?? "")))[0];
   const plan = Number(latest.course_payment.plan_aed) || 0;
   const paid = mine.reduce((sum, t) => sum + (Number(t.course_payment.paid_today_aed) || 0), 0);
@@ -176,21 +186,29 @@ export async function syncCoursePaymentLms(studentId: string, product: string): 
     return { ok: false, share, error: why };
   };
   const targets = lmsTargetsOfProducts(products);
+  const mapping = mappingOf(targets);
   if (!targets.length) {
-    await col("students").updateOne({ _id: oid }, { $set: { [`course_lms_sync.${key}`]: { product, share, at: new Date().toISOString(), courses: [], unmapped: true } } });
+    await col("students").updateOne({ _id: oid }, { $set: { [`course_lms_sync.${key}`]: { product, share, at: new Date().toISOString(), courses: [], unmapped: true, mapping } } });
     return { ok: true, share, courses: [] };
   }
   if (!lmsConfigured()) return fail("The LMS isn't connected on this server");
   const email = String(student.email ?? "").trim().toLowerCase();
   if (!email) return fail("The student has no email here to find their LMS account by");
   let done: string[];
+  const missing: string[] = [];
   try {
-    done = await openModules(email, targets, share);
+    done = await openModules(email, targets, share, missing);
   } catch (err) {
     return fail(err instanceof LmsError ? err.message : "The LMS could not be asked");
   }
+  // None of its courses in their academy (2026-10-23: kept as done, never tried again): a failure, tried again later —
+  // the course added to the academy, or the student moved, and it opens.
+  if (missing.length === targets.length) {
+    await col("students").updateOne({ _id: oid }, { $set: { [`course_lms_sync.${key}`]: { ...was, product, error: `Not in their LMS academy: ${missing.join(", ")}`, failed_at: new Date().toISOString(), retry_at: new Date(Date.now() + MISSING_RETRY_MS).toISOString(), mapping } } });
+    return { ok: false, share, error: `Not in their LMS academy: ${missing.join(", ")}` };
+  }
   const now = new Date().toISOString();
-  await col("students").updateOne({ _id: oid }, { $set: { [`course_lms_sync.${key}`]: { product, share, at: now, courses: done } } });
+  await col("students").updateOne({ _id: oid }, { $set: { [`course_lms_sync.${key}`]: { product, share, at: now, courses: done, mapping, ...(missing.length ? { missing } : {}) } } });
   if (done.length) {
     const pct = Math.round(share * 100);
     await recordHistory([{
@@ -226,9 +244,17 @@ export async function coursePaymentsToSync(now = Date.now()): Promise<{ studentI
   for (const p of pairs.values()) {
     const st = states.get(p.studentId)?.[productKey(p.product)];
     if (st?.retry_at && Date.parse(st.retry_at) > now) continue;
-    if ((await courseShareOf(p.studentId, p.product)).share > (Number(st?.share) || 0)) out.push(p);
+    const { share, products } = await courseShareOf(p.studentId, p.product);
+    // Ahead of what was opened — or opened by another mapping than today's (2026-10-23: MSNR moved from MMC to its own
+    // course on 2026-10-18 and earlier payers kept MMC; a product mapped later stayed unmapped), or a try that failed.
+    if (share > (Number(st?.share) || 0) || (share > 0 && (st?.mapping ?? "") !== mappingOf(lmsTargetsOfProducts(products))) || (share > 0 && st?.error)) out.push(p);
   }
   return out;
+}
+
+/** Which LMS courses a mapping opens, as one string — kept with what was opened, so a changed mapping is opened again. */
+function mappingOf(targets: LmsTarget[]): string {
+  return targets.map((t) => `${t.title}${t.firstModules !== undefined ? `:${t.firstModules}` : ""}`).sort().join("|");
 }
 
 const toObjectIdSafe = (id: string) => (ObjectId.isValid(id) ? new ObjectId(id) : null);

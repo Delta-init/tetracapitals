@@ -40,14 +40,44 @@ export async function priceList(): Promise<CoursePrice[]> {
   return Array.isArray(doc?.courses) && doc.courses.length ? (doc.courses as CoursePrice[]) : DEFAULT_PRICE_LIST;
 }
 
-/** What the student has: entered by their CS, plus every upgrade finished since. */
+/** The price list's course a Bonus course payment's product is (its name), or null. */
+export function codeOfProduct(name: unknown): CourseCode | null {
+  const k = String(name ?? "").toUpperCase().replace(/[^A-Z0-9]/g, "");
+  if (!k) return null;
+  if (k.includes("DQMP")) return "DQMP";
+  if (k.includes("DSLP")) return k.includes("OFFER") ? "DSLP_OFFER" : "DSLP_PRO";
+  if (k.includes("MSNR") || k.includes("MALAYSIAN")) return "MSNR";
+  if (k.includes("DWT") || k.includes("DELTAWAVE")) return "DWT";
+  if (k.includes("MBT") || k.includes("BREAKOUT")) return "MBT";
+  return null;
+}
+
+/**
+ * What the student has: entered by their CS, every upgrade finished since — and (2026-10-23) every course paid
+ * through an approved Bonus request (its course_payment): before, an upgrade could be quoted for a course already
+ * paid that way, with nothing counted for it. A course entered by the CS as well counts once, at the larger amount.
+ */
 async function ownedOf(studentId: string): Promise<{ owned: OwnedCourse[]; entered: boolean }> {
-  const [doc, done] = await Promise.all([
+  const [doc, done, bonusPaid] = await Promise.all([
     col("student_courses").findOne({ student_id: studentId }) as Promise<any>,
     col("course_upgrades").find({ student_id: studentId, status: "done" }).toArray().then(withPayments),
+    col("funding_transactions").find(
+      { student_id: studentId, type: "BONUS", status: "APPROVED", "course_payment.product": { $exists: true }, bonus_credit: { $in: [null, ""] } },
+      { projection: { course_payment: 1 } },
+    ).toArray() as Promise<any[]>,
   ]);
   const owned: OwnedCourse[] = (doc?.owned ?? []).map((o: any) => ({ code: o.code, paidAed: Number(o.paid_aed) || 0 }));
   for (const u of done) owned.push({ code: u.course, paidAed: progressOf(u.quote, paymentsOf(u)).paidAed });
+  const paidBy = new Map<CourseCode, number>();
+  for (const t of bonusPaid) {
+    const code = codeOfProduct(t.course_payment?.product);
+    if (code) paidBy.set(code, (paidBy.get(code) ?? 0) + (Number(t.course_payment?.paid_today_aed) || 0));
+  }
+  for (const [code, paidAed] of paidBy) {
+    const have = owned.find((o) => o.code === code);
+    if (have) have.paidAed = Math.max(have.paidAed, paidAed);
+    else owned.push({ code, paidAed });
+  }
   return { owned, entered: !!doc };
 }
 

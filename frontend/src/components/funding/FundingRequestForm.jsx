@@ -97,10 +97,18 @@ export const hasBonusPlan = (product) => Number(product?.bonus_usd) > 0;
 export const paymentKinds = (plan, beforeAed) =>
   plan.instalments > 0 ? (beforeAed > 0 ? ['partial'] : ['full', 'partial']) : ['full'];
 
+/** A course's name as it is matched: case, spaces and signs aside (the server's productKey) — a renamed tag still matches. */
+const courseKey = (name) => String(name ?? '').toUpperCase().replace(/[^A-Z0-9]/g, '');
+
 /** What the student paid for `course` before: their earlier course payments that weren't turned down. */
 export const paidBefore = (transactions, course) => (transactions || [])
-  .filter(t => t.type === 'BONUS' && !['REJECTED', 'CANCELLED'].includes(t.status) && t.course_payment?.product === course)
+  .filter(t => t.type === 'BONUS' && !t.bonus_credit && !['REJECTED', 'CANCELLED'].includes(t.status) && courseKey(t.course_payment?.product) === courseKey(course))
   .reduce((s, t) => s + (Number(t.course_payment.paid_today_aed) || 0), 0);
+
+/** An earlier payment that paid `course` in full (not short of the price) — the server refuses another one for it. */
+export const paidInFullBefore = (transactions, course) => (transactions || [])
+  .find(t => t.type === 'BONUS' && !t.bonus_credit && !['REJECTED', 'CANCELLED'].includes(t.status) && t.course_payment?.kind === 'full'
+    && !(Number(t.course_payment.short_aed) > 1) && courseKey(t.course_payment?.product) === courseKey(course)) || null;
 
 /**
  * Today's payment on a course. Full: the whole bonus at once, nothing left to pay. Partial: $500 per full AED 2,000
@@ -326,6 +334,7 @@ export default function FundingRequestForm({ students, allStudents = [], current
   const money = convert(typed, formData.currency);
   const plan = coursePlan(product);
   const beforeAed = product ? paidBefore(earlier, product.name) : 0;
+  const fullBefore = product ? paidInFullBefore(earlier, product.name) : null;
   const kinds = paymentKinds(plan, beforeAed);
   const kind = kinds.length === 1 ? kinds[0] : formData.payment_kind;
   const payment = product && kind ? coursePayment({ plan, kind, beforeAed, todayAed: money.aed }) : null;
@@ -411,6 +420,11 @@ export default function FundingRequestForm({ students, allStudents = [], current
     // One course, one way: while an upgrade is in progress its payments are recorded on the upgrade (the Courses tab), never as a Bonus too.
     if (formData.type === 'BONUS' && studentCourses?.active) {
       toast.error(`${selectedStudent.full_name || 'This student'} has a course upgrade in progress (${studentCourses.active.courseName}) — record its payments on their Courses tab`);
+      return;
+    }
+    // Paid in full already (2026-10-23): the server refuses a second payment for the course — said here first.
+    if (formData.type === 'BONUS' && fullBefore) {
+      toast.error(`${product.name} is paid in full already for ${selectedStudent.full_name || 'this student'} — a second payment isn't taken for it`);
       return;
     }
     if (formData.type === 'BONUS' && (!formData.tags || formData.tags.length === 0)) {
@@ -641,6 +655,11 @@ export default function FundingRequestForm({ students, allStudents = [], current
 
           {product && (
             <div className="md:col-span-2">
+              {fullBefore && (
+                <p className="mb-2 rounded-md bg-rose-50 px-3 py-2 text-sm font-medium text-rose-700">
+                  {product.name} is paid in full already{fullBefore.status === 'PENDING' ? ' (waiting for approval)' : ''} — a second payment isn't taken for it.
+                </p>
+              )}
               <PaymentKind value={kind} kinds={kinds} onChange={chooseKind} started={plan.instalments > 0 && beforeAed > 0} />
               {plan.instalments > 0 && beforeAed > 0 && (
                 <p className="mt-2 rounded-md bg-amber-50 px-3 py-2 text-sm text-amber-800">

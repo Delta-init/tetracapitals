@@ -194,6 +194,9 @@ export async function createEntity(req: Request, entityName: string): Promise<Re
     dropServerFields(data);
     const missing = bonusMissing(data) ?? depositReceiptMissing(data);
     if (missing) return error(missing, 400);
+    // The same course paid in full twice (2026-10-23).
+    const paidTwice = await (await import("../finance/funding")).coursePaidInFullRefusal(data);
+    if (paidTwice) return error(paidTwice, 409);
     // A rejected request, corrected and sent again: that one claimed, once (finance/funding.ts).
     const refused = await claimResubmit(data, ctx.user);
     if (refused) return error(refused.message, refused.status);
@@ -319,9 +322,11 @@ export async function updateEntity(req: Request, entityName: string, id: string)
     history = await prepareStudentUpdate(existing, data, ctx.user);
   }
   // A request Delta finance is deciding is decided there, not here.
+  let wasApproved = false;
   if (entityName === "FundingTransaction") {
     const existing = await col(ctx.cfg.collection).findOne({ _id: oid });
     if (!existing) return notFound();
+    wasApproved = existing.status === "APPROVED";
     dropServerFields(data);
     const locked = financeLock(existing, data);
     if (locked) return error(locked, 409);
@@ -348,6 +353,13 @@ export async function updateEntity(req: Request, entityName: string, id: string)
   if (entityName === "FundingTransaction" && (doc as any).status === "APPROVED") {
     try { await (await import("../functions/creditCommission")).creditCommissionFor(String(oid)); }
     catch (err) { console.error("[commission] after approval", err); }
+  }
+  // Approved, then turned back (rejected or cancelled — 2026-10-23): the commission it earned and nobody has been paid
+  // yet is taken back; what was released or paid already stays, marked. The LMS modules it opened stay open (a module
+  // open is never locked again — courses/upgradeLms.ts).
+  if (entityName === "FundingTransaction" && wasApproved && (doc as any).status !== "APPROVED") {
+    try { await (await import("../functions/creditCommission")).reverseCommissionFor(String(oid), ctx.user.full_name ?? ""); }
+    catch (err) { console.error("[commission] after reversal", err); }
   }
   // A course paid through a Bonus request, just approved: its LMS modules open as far as it is paid (courses/upgradeLms.ts).
   const paidCourse = entityName === "FundingTransaction" && (doc as any).type === "BONUS" && (doc as any).status === "APPROVED" && (doc as any).course_payment?.product;

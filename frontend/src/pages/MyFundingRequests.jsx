@@ -43,6 +43,16 @@ const two = (n) => (n || 0).toLocaleString('en-US', { minimumFractionDigits: 2, 
 /** A USD figure in AED only, at 3.67 (the user, 2026-10-14: mentors' commission in AED too). */
 const aedM = (n) => localFromUsd(n, { decimals: true }); // INR on a Bangalore team (2026-10-14)
 
+/** A request's course first — its course payment's product — then its other tags, each once whatever its case. */
+const courseKey = (v) => String(v ?? '').toUpperCase().replace(/[^A-Z0-9]/g, '');
+const courseTags = (t) => {
+  const out = [];
+  for (const v of [t?.course_payment?.product, ...(Array.isArray(t?.tags) ? t.tags : [])]) {
+    if (v && !out.some((o) => courseKey(o) === courseKey(v))) out.push(v);
+  }
+  return out;
+};
+
 export default function MyFundingRequests() {
   const [currentUser, setCurrentUser] = useState(null);
   const [showAddDialog, setShowAddDialog] = useState(false);
@@ -852,8 +862,9 @@ export default function MyFundingRequests() {
                                   )}
                                   <TableCell className="min-w-[170px] text-xs"><PaidCell t={rowOf(transaction)} title={transaction.student_name} /></TableCell>
                                   <TableCell>
-                                    {transaction.tags && transaction.tags.length > 0
-                                      ? <TagChips tags={transaction.tags} />
+                                    {/* The course paid first (2026-10-23: only the tags showed, and they can differ from it). */}
+                                    {courseTags(transaction).length > 0
+                                      ? <TagChips tags={courseTags(transaction)} />
                                       : <span className="text-gray-400">-</span>}
                                   </TableCell>
                                   <TableCell className="text-sm">

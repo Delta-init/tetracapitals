@@ -10,6 +10,7 @@ import { recomputeCoMentorContribution } from "../functions/referrals";
 import { notify } from "../lib/notify";
 import { csManagerReach } from "../lib/userLocation";
 import { bonusDeciderIds, bonusLocationOf } from "./bonusLocation";
+import { productKey } from "../courses/lmsMapping";
 
 /* ────────────────────────────────────────────────────────────────────────────
    Bonus requests are approved in Delta finance first.
@@ -198,6 +199,29 @@ export function bonusMissing(doc: any): string | null {
     return "Every payment of a bonus needs its receipt";
   }
   return null;
+}
+
+/** A Full course payment that paid the price (not short of it by more than rounding). */
+const paidInFull = (cp: any) => cp?.kind === "full" && !(Number(cp?.short_aed) > 1);
+
+/**
+ * A course paid in full already can't be paid again (the user, 2026-10-23: the form offered Full again for a course
+ * with no instalments — a second MT5 bonus and a second commission): a new Bonus for the same course — Full or
+ * Partial — is refused while an earlier one paid in full stands (pending or approved). Matched by the course's name
+ * whatever its case or spacing. A sales-close credit is not a payment.
+ */
+export async function coursePaidInFullRefusal(doc: any): Promise<string | null> {
+  if (doc?.type !== "BONUS" || doc?.bonus_credit || !doc?.student_id) return null;
+  const key = productKey(doc?.course_payment?.product);
+  if (!key) return null;
+  const earlier = (await col("funding_transactions").find(
+    { type: "BONUS", student_id: String(doc.student_id), status: { $nin: ["REJECTED", "CANCELLED"] }, "course_payment.kind": "full", bonus_credit: { $in: [null, ""] } },
+    { projection: { course_payment: 1, status: 1, requested_at: 1, created_date: 1 } },
+  ).toArray()) as any[];
+  const paid = earlier.find((t) => productKey(t.course_payment?.product) === key && paidInFull(t.course_payment));
+  if (!paid) return null;
+  const when = String(paid.requested_at ?? paid.created_date ?? "").slice(0, 10);
+  return `${doc.course_payment.product} is paid in full already${when ? ` (${when}` : " ("}${paid.status === "PENDING" ? ", waiting for approval" : ""}) — a second payment isn't taken for it`;
 }
 
 /**
@@ -944,17 +968,39 @@ export function approvedAmountSet(tx: any, amountMinor: number, currency = ""): 
   const inr = (currency || String(tx?.finance_approval?.currency ?? "")).toUpperCase() === "INR";
   if (!inr) {
     const set: Record<string, unknown> = { amount_usd: amountMinor / 100 };
-    if (amountMinor !== Math.round(Number(tx?.amount_usd || 0) * 100)) set.requested_amount_usd = tx?.amount_usd;
+    if (amountMinor !== Math.round(Number(tx?.amount_usd || 0) * 100)) {
+      set.requested_amount_usd = tx?.amount_usd;
+      Object.assign(set, coursePaidSet(tx, Math.round((amountMinor / 100) * AED_PER_USD * 100) / 100));
+    }
     return set;
   }
   const sent = Number(tx?.finance_approval?.amount_minor) > 0 ? Number(tx.finance_approval.amount_minor) : rupeesMinorOf(tx);
   if (amountMinor === sent) return {};
   const usd = Math.round((amountMinor / 100) * usdPerInrOf(tx) * 100) / 100;
+  const aed = Math.round(usd * AED_PER_USD * 100) / 100;
   return {
     amount_usd: usd,
-    amount_aed: Math.round(usd * AED_PER_USD * 100) / 100,
+    amount_aed: aed,
     ...(String(tx?.amount_currency ?? "").toUpperCase() === "INR" ? { amount_original: amountMinor / 100 } : {}),
     requested_amount_usd: tx?.amount_usd,
+    ...coursePaidSet(tx, aed),
+  };
+}
+
+/**
+ * A course payment approved for another amount (the user, 2026-10-23): what the student paid today becomes finance's
+ * figure — commission (creditCommission.ts) and the LMS share (courses/upgradeLms.ts) read it, and they used to keep
+ * the CS's — the CS's kept as requested_paid_today_aed. The MT5 bonus is left as it was: that is the broker's decision.
+ */
+export function coursePaidSet(tx: any, aed: number): Record<string, unknown> {
+  const cp = tx?.course_payment;
+  if (tx?.type !== "BONUS" || !cp?.product || !(aed > 0)) return {};
+  const before = Number(cp.paid_before_aed) || 0;
+  return {
+    amount_aed: aed,
+    "course_payment.paid_today_aed": aed,
+    "course_payment.paid_total_aed": Math.round((before + aed) * 100) / 100,
+    "course_payment.requested_paid_today_aed": Number(cp.paid_today_aed) || 0,
   };
 }
 

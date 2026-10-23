@@ -61,12 +61,15 @@ export const productKey = (name: unknown) => String(name ?? "").toUpperCase().re
 export function lmsTargetOfProduct(name: unknown): LmsTarget | null {
   const k = productKey(name);
   if (!k) return null;
-  if (k.startsWith("DSLP") && k.includes("OFFER")) return { ...CSE_LMS.DSLP_OFFER[0]! };
-  if (k.startsWith("DSLP")) return { ...CSE_LMS.DSLP_PRO[0]! };
-  if (k.startsWith("DWT") || k.includes("DELTAWAVE")) return { ...CSE_LMS.DWT[0]! };
-  if (k.startsWith("MSNR") || k.includes("MALAYSIAN")) return { ...MSNR_COURSE };
-  if (k.startsWith("MMC") || k.includes("MARKETMAKING")) return { ...MMC_COURSE };
-  if (k.startsWith("MBT") || k.includes("BREAKOUT")) return { ...CSE_LMS.MBT[0]! };
+  // By how the name starts, as before; else by the code anywhere in it (2026-10-23: "Pro Trader – DSLP" opened nothing).
+  for (const has of [(code: string) => k.startsWith(code), (code: string) => k.includes(code)]) {
+    if (has("DSLP") && k.includes("OFFER")) return { ...CSE_LMS.DSLP_OFFER[0]! };
+    if (has("DSLP")) return { ...CSE_LMS.DSLP_PRO[0]! };
+    if (has("DWT") || k.includes("DELTAWAVE")) return { ...CSE_LMS.DWT[0]! };
+    if (has("MSNR") || k.includes("MALAYSIAN")) return { ...MSNR_COURSE };
+    if (has("MMC") || k.includes("MARKETMAKING")) return { ...MMC_COURSE };
+    if (has("MBT") || k.includes("BREAKOUT")) return { ...CSE_LMS.MBT[0]! };
+  }
   return null;
 }
 
