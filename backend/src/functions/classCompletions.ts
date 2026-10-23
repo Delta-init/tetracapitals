@@ -3,9 +3,8 @@ import { json } from "../lib/response";
 import { toObjectId } from "../lib/id";
 import type { AuthUser } from "../auth/middleware";
 import { visibleMentorIds, studentsOf } from "../students/followups";
-import { COMPLETIONS, settleCalls } from "../students/classCompletions";
+import { COMPLETIONS, settleCalls, shownCompletions } from "../students/classCompletions";
 
-const SHOWN_DAYS = 60;
 
 /**
  * POST /api/functions/getClassCompletions
@@ -17,10 +16,8 @@ const SHOWN_DAYS = 60;
  */
 export async function getClassCompletions(_req: Request, user: AuthUser): Promise<Response> {
   const now = new Date();
-  const filter: Record<string, any> = {
-    notified_at: { $exists: true },
-    ended_at: { $gte: new Date(now.getTime() - SHOWN_DAYS * 86_400_000).toISOString() },
-  };
+  // The sidebar's own filter (shownCompletions, 2026-10-23): it counted older ones, and this showed "not a student"s.
+  const filter: Record<string, any> = { ...shownCompletions(now) };
   const visible = await visibleMentorIds(user);
   if (visible) {
     const ids = (await col("students").find(studentsOf(visible), { projection: { _id: 1 } }).toArray()).map((s) => String(s._id));

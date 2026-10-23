@@ -4,7 +4,7 @@ import { callLms, lmsConfigured } from "../lib/lms";
 import { sendMail, type SendResult } from "../lib/mailer";
 import { notify } from "../lib/notify";
 import { toObjectId } from "../lib/id";
-import { keepClassCompletion, sendDueClassNotices, type LmsClass } from "./classCompletions";
+import { keepClassCompletion, sendDueClassNotices, withdrawClassCompletion, type LmsClass } from "./classCompletions";
 
 /* ────────────────────────────────────────────────────────────────────────────
    A student's LMS help desk and class assignments, told to their CS.
@@ -48,7 +48,7 @@ const MAIL_BATCH = 50;
 /** One thing a student did, as the LMS reports it. */
 export interface LmsActivity {
   key: string;
-  type: "ticket_opened" | "ticket_reply" | "assignment_submitted" | "assignment_reviewed" | "class_attended";
+  type: "ticket_opened" | "ticket_reply" | "assignment_submitted" | "assignment_reviewed" | "class_attended" | "class_unattended";
   at: string;
   student: { lmsUserId: string; email: string; name: string };
   ticket?: { id: string; subject: string; category: string; status: string; message: string };
@@ -57,6 +57,8 @@ export interface LmsActivity {
     attempt: number; status: string; decision?: "approved" | "rejected"; reason?: string;
   };
   class?: LmsClass;
+  /** A seat marked missed or cancelled after all (class_unattended, 2026-10-23). */
+  booking?: { id: string; status: string; classId: string };
 }
 
 export interface LmsActivityRun {
@@ -70,6 +72,7 @@ export interface LmsActivityRun {
   mailed: number;          // emails the mail server accepted this run
   mail_failed: number;
   class_notices?: number;  // class completions told this run
+  class_matched_late?: number;  // classes whose student was found on a later run
 }
 
 type Send = (msg: { to: string; subject: string; html: string; text: string }) => Promise<SendResult>;
@@ -109,7 +112,9 @@ async function studentFor(ev: LmsActivity): Promise<any | null> {
   }
   const email = String(ev.student?.email ?? "").trim().toLowerCase();
   if (!email.includes("@")) return null;
-  const matches = await col("students").find({ email: { $regex: `^\\s*${escapeRegex(email)}\\s*$`, $options: "i" } }).toArray();
+  let matches = await col("students").find({ email: { $regex: `^\\s*${escapeRegex(email)}\\s*$`, $options: "i" } }).toArray();
+  // Else the address as one of several on the record ("a@x.com, b@y.com" — 2026-10-23: those were never matched).
+  if (!matches.length) matches = await col("students").find({ email: { $regex: `(^|[\\s,;<>/])${escapeRegex(email)}($|[\\s,;<>/])`, $options: "i" } }).limit(20).toArray();
   if (matches.length <= 1) return matches[0] ?? null;
   // The same address on two students (an import and a sign-up): the one an active CS holds, else the newest.
   for (const s of matches) if (await activeCs(s.primary_mentor_id)) return s;
@@ -218,27 +223,56 @@ ${button}
 
 /* ── The run ────────────────────────────────────────────────────────────── */
 
-/** A class a student attended, now over: kept as a class completion — told later (sendDueClassNotices), never emailed. */
+/** How long a class whose student isn't here yet (added later, another email) is matched again (2026-10-23). */
+const UNMATCHED_RETRY_MS = 7 * 86_400_000;
+
+/**
+ * A class a student attended, now over: kept as a class completion — told later (sendDueClassNotices), never emailed.
+ * The completion first, then the event marked seen (2026-10-23: the other way round, a failed second write lost it for
+ * good). No student here: kept as not_a_student, matched again each run for UNMATCHED_RETRY_MS (retryUnmatchedClasses).
+ */
 async function takeClass(ev: LmsActivity, now: Date): Promise<"told" | "not_told" | "seen"> {
+  if (await col("lms_activity").findOne({ _id: ev.key } as any, { projection: { _id: 1 } })) return "seen";
   const student = ev.class ? await studentFor(ev) : null;
+  if (student) await keepClassCompletion(ev.key, ev.class!, student, now);
   try {
     await col("lms_activity").insertOne({
       _id: ev.key, type: ev.type, at: ev.at, lms_student: ev.student, class: ev.class ?? null,
       outcome: student ? "class_completion" : "not_a_student", student_id: student ? String(student._id) : null,
+      ...(student ? {} : { retry_until: new Date(now.getTime() + UNMATCHED_RETRY_MS).toISOString() }),
       mail: { state: "none", attempts: 0, sent_to: [] }, created_date: now.toISOString(),
     } as any);
   } catch (err) {
     if ((err as { code?: number }).code === 11000) return "seen";
     throw err;
   }
-  if (!student) return "not_told";
-  await keepClassCompletion(ev.key, ev.class!, student, now);
-  return "told";
+  return student ? "told" : "not_told";
+}
+
+/** Classes whose student wasn't found: matched again — a student added since, or the address now on their record. */
+export async function retryUnmatchedClasses(now: Date): Promise<number> {
+  const rows = (await col("lms_activity").find({ type: "class_attended", outcome: "not_a_student", retry_until: { $gt: now.toISOString() } } as any)
+    .sort({ at: -1 }).limit(300).toArray()) as any[];
+  let found = 0;
+  for (const r of rows) {
+    if (!r.class) continue;
+    const student = await studentFor({ key: String(r._id), type: "class_attended", at: r.at, student: r.lms_student } as LmsActivity);
+    if (!student) continue;
+    await keepClassCompletion(String(r._id), r.class, student, now);
+    await col("lms_activity").updateOne({ _id: r._id } as any, { $set: { outcome: "class_completion", student_id: String(student._id), matched_late_at: now.toISOString() }, $unset: { retry_until: "" } });
+    found++;
+  }
+  return found;
 }
 
 /** Kept, and the bell rung, for one event not seen before; "seen" when it was kept already. */
 async function take(ev: LmsActivity, now: Date): Promise<"told" | "not_told" | "seen"> {
   if (ev.type === "class_attended") return takeClass(ev, now);
+  // A seat missed or cancelled after all: its completion taken back, nothing kept or told (2026-10-23).
+  if (ev.type === "class_unattended") {
+    await withdrawClassCompletion(String(ev.booking?.id ?? ""), String(ev.booking?.status ?? ""), now);
+    return "seen";
+  }
   const student = await studentFor(ev);
   const base = { _id: ev.key, type: ev.type, at: ev.at, lms_student: ev.student, ticket: ev.ticket ?? null, assignment: ev.assignment ?? null, created_date: now.toISOString() };
   const record: any = student
@@ -322,7 +356,7 @@ export async function runLmsActivity(opts: { now?: Date; send?: Send } = {}): Pr
       return finish({ ...run, ok: true }, { cursor: run.at, started_at: run.at });
     }
     const since = new Date(new Date(settings.cursor).getTime() - OVERLAP_MS).toISOString();
-    const data = await callLms<{ events: LmsActivity[]; until: string }>("/student-activity", { query: { since, include: "classes" }, verb: "share what students did" });
+    const data = await callLms<{ events: LmsActivity[]; until: string }>("/student-activity", { query: { since, include: "classes,unattended" }, verb: "share what students did" });
     const events = Array.isArray(data?.events) ? data.events : [];
     run.events = events.length;
     for (const ev of events) {
@@ -332,6 +366,7 @@ export async function runLmsActivity(opts: { now?: Date; send?: Send } = {}): Pr
       run.new++;
       if (r === "told") run.told++; else run.not_told++;
     }
+    run.class_matched_late = await retryUnmatchedClasses(now);
     run.class_notices = await sendDueClassNotices(now);
     const mail = await sendWaitingMail(opts.send ?? sendMail);
     run.mailed = mail.sent;

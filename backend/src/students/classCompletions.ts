@@ -17,8 +17,14 @@ import { IS_STUDENT, OF_A_STUDENT } from "./notStudent";
 
    It waits for a call until one is logged after the class ended: a follow-up
    Log (or a follow-up opened with what the student said — the call flow does
-   that after a call), or a 3CX call with the student. Then it is called, with
-   when and how; until then the Class Completions page and the sidebar count it.
+   that after a call), or an answered 3CX call with the student (2026-10-23: a
+   call nobody picked up no longer counts) — on their record or another record
+   of the same person (the same email or LMS account). Then it is called, with
+   when and how; until then the Class Completions page and the sidebar count it,
+   the same ones (OPEN_COMPLETION: the last SHOWN_DAYS days, students only).
+
+   A seat the LMS later says was missed or cancelled (class_unattended) takes
+   back one nobody has called about: withdrawn_at, and it is shown no more.
 
    class_completions: _id (LMS key) · student_id/name/code · class {…} ·
    notify_at · notified_at · told [{id, name, role}] · told_to · called_at ·
@@ -27,6 +33,13 @@ import { IS_STUDENT, OF_A_STUDENT } from "./notStudent";
 
 export const COMPLETIONS = "class_completions";
 export const NOTIFY_AFTER_MS = 10 * 60_000;
+/** How far back the page and the sidebar look (the same for both, 2026-10-23 — the sidebar counted older ones too). */
+export const SHOWN_DAYS = 60;
+/** What waits on the page and in the sidebar: told, students only, not taken back, the last SHOWN_DAYS days. */
+export const shownCompletions = (now = new Date()) => ({
+  notified_at: { $exists: true }, withdrawn_at: { $exists: false }, ...OF_A_STUDENT,
+  ended_at: { $gte: new Date(now.getTime() - SHOWN_DAYS * 86_400_000).toISOString() },
+});
 const NOTICE_BATCH = 200;
 
 /** A class the LMS reported a student attended (its class_attended event's `class`). */
@@ -58,6 +71,8 @@ export async function keepClassCompletion(key: string, cls: LmsClass, student: a
       class: cls,
       ended_at: cls.endedAt,
       notify_at: notifyAt.toISOString(),
+      // A student marked "not a student" already: kept, never shown or told (2026-10-23 — only a later mark set it).
+      ...(student.not_student === true ? { student_not_student: true } : {}),
       created_date: now.toISOString(),
     } as any);
     return true;
@@ -79,7 +94,7 @@ async function whoToTell(studentId: string): Promise<{ to: "cs" | "super_admins"
 
 /** The bell and a push for every completion whose time has come. → how many were told. */
 export async function sendDueClassNotices(now: Date): Promise<number> {
-  const due = (await col(COMPLETIONS).find({ notified_at: { $exists: false }, notify_at: { $lte: now.toISOString() } } as any)
+  const due = (await col(COMPLETIONS).find({ notified_at: { $exists: false }, withdrawn_at: { $exists: false }, ...OF_A_STUDENT, notify_at: { $lte: now.toISOString() } } as any)
     .sort({ notify_at: 1 }).limit(NOTICE_BATCH).toArray()) as any[];
   let told = 0;
   for (const c of due) {
@@ -110,23 +125,55 @@ export async function sendDueClassNotices(now: Date): Promise<number> {
  * or a 3CX call with the student, after the class ended → called, with when, how and by whom (kept). Returns the docs,
  * the settled ones updated.
  */
+/**
+ * Each student with the other records of the same person — the same email or LMS account (an import and a sign-up) —
+ * so a call logged on either settles a completion kept on one (2026-10-23).
+ */
+async function sameStudents(ids: string[]): Promise<Map<string, string>> {
+  const owner = new Map<string, string>(ids.map((id) => [id, id]));
+  const own = (await col("students").find({ _id: { $in: ids.map((id) => toObjectId(id)).filter(Boolean) as any[] } }, { projection: { email: 1, lms_user_id: 1 } }).toArray()) as any[];
+  const byEmail = new Map<string, string>(), byLms = new Map<string, string>();
+  for (const s of own) {
+    const email = String(s.email ?? "").trim().toLowerCase();
+    if (email.includes("@")) byEmail.set(email, String(s._id));
+    if (s.lms_user_id) byLms.set(String(s.lms_user_id), String(s._id));
+  }
+  if (!byEmail.size && !byLms.size) return owner;
+  const esc = (x: string) => x.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const others = (await col("students").find({
+    _id: { $nin: own.map((s) => s._id) },
+    $or: [
+      ...(byEmail.size ? [{ email: { $regex: `^\\s*(${[...byEmail.keys()].map(esc).join("|")})\\s*$`, $options: "i" } }] : []),
+      ...(byLms.size ? [{ lms_user_id: { $in: [...byLms.keys()] } }] : []),
+    ],
+  }, { projection: { email: 1, lms_user_id: 1 } }).limit(500).toArray()) as any[];
+  for (const o of others) {
+    const to = byLms.get(String(o.lms_user_id ?? "")) ?? byEmail.get(String(o.email ?? "").trim().toLowerCase());
+    if (to) owner.set(String(o._id), to);
+  }
+  return owner;
+}
+
 export async function settleCalls(docs: any[]): Promise<any[]> {
   const open = docs.filter((d) => !d.called_at);
   if (!open.length) return docs;
-  const ids = [...new Set(open.map((d) => d.student_id))];
+  const owner = await sameStudents([...new Set(open.map((d) => String(d.student_id)))]);
+  const ids = [...owner.keys()];
   const since = open.map((d) => d.ended_at).sort()[0];
   const [logs, calls] = await Promise.all([
     col("student_followup_events").find(
       { student_id: { $in: ids }, at: { $gt: since }, $or: [{ kind: "logged" }, { kind: "created", client_said: { $exists: true, $ne: "" } }] } as any,
       { projection: { student_id: 1, at: 1, by_name: 1, kind: 1 } },
     ).sort({ at: 1 }).toArray(),
-    col("student_calls").find({ student_id: { $in: ids }, started_at: { $gt: since } } as any, { projection: { student_id: 1, started_at: 1, user_name: 1 } })
+    // Answered only (2026-10-23): a call nobody picked up isn't the call the student is waiting for.
+    col("student_calls").find({ student_id: { $in: ids }, started_at: { $gt: since }, answered: true } as any, { projection: { student_id: 1, started_at: 1, user_name: 1 } })
       .sort({ started_at: 1 }).toArray(),
   ]);
   const byStudent = new Map<string, { at: string; via: string; by: string }[]>();
   const push = (sid: string, x: { at: string; via: string; by: string }) => (byStudent.get(sid) ?? byStudent.set(sid, []).get(sid)!).push(x);
-  for (const l of logs as any[]) push(String(l.student_id), { at: String(l.at), via: "follow-up log", by: String(l.by_name ?? "") });
-  for (const c of calls as any[]) push(String(c.student_id), { at: String(c.started_at), via: "3CX call", by: String(c.user_name ?? "") });
+  const whose = (sid: unknown) => owner.get(String(sid)) ?? String(sid);
+  for (const l of logs as any[]) push(whose(l.student_id), { at: String(l.at), via: "follow-up log", by: String(l.by_name ?? "") });
+  for (const c of calls as any[]) push(whose(c.student_id), { at: String(c.started_at), via: "3CX call", by: String(c.user_name ?? "") });
   for (const d of open) {
     const first = (byStudent.get(d.student_id) ?? []).filter((x) => x.at > d.ended_at).sort((a, b) => a.at.localeCompare(b.at))[0];
     if (!first) continue;
@@ -140,11 +187,24 @@ export async function settleCalls(docs: any[]): Promise<any[]> {
 /** These students' completions — told, and not called yet — that wait for a call (null: everyone's). */
 export async function callNeeded(studentIds: string[] | null): Promise<any[]> {
   const docs = (await col(COMPLETIONS).find({
-    notified_at: { $exists: true }, called_at: { $exists: false }, ...OF_A_STUDENT,
+    ...shownCompletions(), called_at: { $exists: false },
     ...(studentIds ? { student_id: { $in: studentIds } } : {}),
-  } as any).limit(2000).toArray()) as any[];
+  } as any).sort({ ended_at: -1 }).limit(2000).toArray()) as any[];
   if (!docs.length) return [];
   return (await settleCalls(docs)).filter((d) => !d.called_at);
+}
+
+/**
+ * The LMS says the seat was missed or cancelled after all (class_unattended): the completion is taken back — unless
+ * someone has called already, when it stays as it was. → whether one was taken back.
+ */
+export async function withdrawClassCompletion(bookingId: string, status: string, now: Date): Promise<boolean> {
+  if (!bookingId) return false;
+  const r = await col(COMPLETIONS).updateOne(
+    { _id: `class-attended:${bookingId}`, called_at: { $exists: false }, withdrawn_at: { $exists: false } } as any,
+    { $set: { withdrawn_at: now.toISOString(), withdrawn_reason: status === "cancelled" ? "seat cancelled" : "marked missed" } },
+  );
+  return r.modifiedCount === 1;
 }
 
 /** How many of them there are — the sidebar's number. */
