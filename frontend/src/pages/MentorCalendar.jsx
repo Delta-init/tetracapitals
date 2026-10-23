@@ -13,7 +13,7 @@ import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Popover, PopoverAnchor, PopoverContent } from '@/components/ui/popover';
-import { ArrowLeft, CalendarDays, ChevronLeft, ChevronRight, Clock, Loader2, Plus, Search, UserRound, Users2, X } from 'lucide-react';
+import { ArrowLeft, CalendarDays, ChevronLeft, ChevronRight, CircleSlash, Clock, Loader2, Plus, Search, UserRound, Users2, X } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { createPageUrl } from '@/utils';
 import { TablePagination, usePagination } from '@/components/common/TablePagination';
@@ -34,6 +34,11 @@ import { ClassInfoSection } from '@/components/classes/ClassInfo';
    offers the students you can see on the Students page; picking one fills
    their name and address. A meeting is online (a link, or a Google Meet the
    LMS makes) or in person (a place, and no link).
+
+   Time off (the user, 2026-10-23): a mentor marks when they're not available —
+   a chief mentor for their team, an admin for anyone (may_mark_time_off) —
+   and nobody can book them then, here or anywhere (the LMS refuses it). It
+   shows as amber "Not available"; its reason only to whoever may mark it.
 ──────────────────────────────────────────────────────────────────────────── */
 
 const KIND_LABEL = { staff: 'Staff', student: 'Student', client: 'Client' };
@@ -105,6 +110,24 @@ const weekStart = (d) => {
 /** A column is a calendar date, read straight off its own year, month and day (no zone). */
 const columnKey = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 
+/** A wall-clock date and time in `tz` as an instant — whatever zone the browser itself is in. */
+const wallInZone = (dateKey, hhmm, tz) => {
+  const guess = new Date(`${dateKey}T${hhmm}:00Z`);
+  const parts = new Intl.DateTimeFormat('en-US', { timeZone: tz, hourCycle: 'h23', year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit' }).formatToParts(guess);
+  const get = (t) => Number(parts.find(p => p.type === t)?.value ?? 0);
+  // What that instant reads as on the zone's clock, taken as if it were UTC: the difference is the zone's offset.
+  const asIfUtc = Date.UTC(get('year'), get('month') - 1, get('day'), get('hour') % 24, get('minute'), get('second'));
+  return new Date(guess.getTime() - (asIfUtc - guess.getTime()));
+};
+/** "Fri 24 Oct, 14:00–18:00", "Fri 24 Oct (all day)", "Fri 24 Oct – Sun 26 Oct". */
+const timeOffLabel = (t, tz) => {
+  const day = (d) => d.toLocaleDateString('en-GB', { timeZone: tz, weekday: 'short', day: 'numeric', month: 'short' });
+  const hm = (d) => d.toLocaleTimeString('en-GB', { timeZone: tz, hour: '2-digit', minute: '2-digit', hour12: false });
+  const a = new Date(t.startsAt), b = new Date(t.endsAt);
+  if (t.allDay) { const last = new Date(b.getTime() - 1); return day(a) === day(last) ? `${day(a)} (all day)` : `${day(a)} – ${day(last)}`; }
+  return day(a) === day(b) ? `${day(a)}, ${hm(a)}–${hm(b)}` : `${day(a)}, ${hm(a)} – ${day(b)}, ${hm(b)}`;
+};
+
 const emptyForm = { title: '', kind: 'staff', time: '10:00', durationMins: '30', inPerson: false, location: '', meetingUrl: '', notes: '' };
 
 export default function MentorCalendar() {
@@ -149,6 +172,14 @@ export default function MentorCalendar() {
   // A meeting is a real instant: which day it falls on *there*.
   const sameDay = (iso, day) => new Date(iso).toLocaleDateString('en-CA', { timeZone: tz }) === columnKey(day);
   const at = (iso) => new Date(iso).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', timeZone: tz });
+  /** The part of a time off on this column's day, in the zone's minutes: { from, to, label } or null. */
+  const offOnDay = (t, day) => {
+    const dayFrom = wallInZone(columnKey(day), '00:00', tz).getTime(), dayTo = dayFrom + 864e5;
+    const a = Math.max(new Date(t.startsAt).getTime(), dayFrom), b = Math.min(new Date(t.endsAt).getTime(), dayTo);
+    if (b <= a) return null;
+    const from = Math.round((a - dayFrom) / 60_000), to = Math.round((b - dayFrom) / 60_000);
+    return { from, to, label: from === 0 && to >= 1440 ? 'All day' : `${at(new Date(a).toISOString())}–${b === dayTo ? '24:00' : at(new Date(b).toISOString())}` };
+  };
 
   // The person looking, when they are one of the mentors (same email): their own week first (the user, 2026-10-08).
   const { data: me } = useQuery({ queryKey: ['me'], queryFn: () => base44.auth.me(), staleTime: 5 * 60_000 });
@@ -183,6 +214,7 @@ export default function MentorCalendar() {
     return [
       ...myMentor.classes.filter(c => c.mine && c.status !== 'cancelled' && classShown(c)).map(c => ({ id: `c${c.id}`, startsAt: c.startsAt, mins: c.durationMins, what: c.title || 'Class', sub: `Class · ${c.booked}/${c.capacity} booked`, kind: 'class' })),
       ...myMentor.meetings.filter(meetingShown).map(v => ({ id: `m${v.id}`, startsAt: v.startsAt, mins: v.durationMins, what: v.title, sub: `${KIND_LABEL[v.kind] ?? v.kind}${v.attendeeNames?.length ? ` · with ${v.attendeeNames.join(', ')}` : ''}${v.inPerson ? ` · in person, ${v.location}` : ''}`, kind: 'meeting' })),
+      ...(myMentor.timeOff ?? []).map(t => ({ id: `o${t.id}`, startsAt: t.startsAt, mins: Math.round((new Date(t.endsAt) - new Date(t.startsAt)) / 60_000), what: 'Not available', sub: `${timeOffLabel(t, tz)}${t.reason ? ` · ${t.reason}` : ''}`, kind: 'off' })),
     ].filter(i => new Date(i.startsAt).getTime() + (i.mins || 0) * 60_000 > now).sort((a, b) => a.startsAt.localeCompare(b.startsAt));
   }, [myMentor, needle, course, mod]);
 
@@ -238,6 +270,15 @@ export default function MentorCalendar() {
     },
     onError: (e) => toast.error(errorText(e, 'Could not cancel that')),
   });
+
+  /* ── time off: marked for a mentor this person may (their own; a chief mentor's team; an admin anyone's) ── */
+  const [timeOffFor, setTimeOffFor] = useState(null); // { mentor, day? }
+  const removeTimeOff = useMutation({
+    mutationFn: (body) => fn('removeMentorTimeOff', body),
+    onSuccess: () => { toast.success('Taken away — they can be booked then again'); qc.invalidateQueries({ queryKey: ['mentors', 'schedule'] }); },
+    onError: (e) => toast.error(errorText(e, 'Could not take that away')),
+  });
+  const openTimeOff = (mentor, day) => setTimeOffFor({ mentor, day: day ?? null });
 
   const openBooking = (mentor, day) => {
     setBooking({ mentor, day });
@@ -299,6 +340,8 @@ export default function MentorCalendar() {
       ...mentor.meetings
         .filter(v => sameDay(v.startsAt, day) && v.id !== editingId)
         .map(v => { const f = minutesInZone(v.startsAt); return { from: f, to: f + (v.durationMins || 0), what: v.attendeeNames?.join(', ') || v.title }; }),
+      // Their time off: never offered (the LMS refuses it anyway).
+      ...(mentor.timeOff ?? []).map(t => offOnDay(t, day)).filter(Boolean).map(o => ({ from: o.from, to: o.to, what: 'Not available' })),
     ];
     const free = mentor.slots.filter(sl => sl.dayOfWeek === day.getDay());
     const inHours = (start) => free.length === 0 || free.some(sl => {
@@ -314,6 +357,9 @@ export default function MentorCalendar() {
     }
     return out;
   }, [booking, form.durationMins, tz, schedule.data, editingId]);
+
+  /* Nothing free on the day (a whole day off, say): the start left on a taken time — Book stays off. */
+  const chosenTaken = booking ? (slotList.find(sl => sl.value === form.time)?.taken || '') : '';
 
   // Stretching a meeting can take away its start: then the next free slot is picked.
   useEffect(() => {
@@ -365,10 +411,24 @@ export default function MentorCalendar() {
     const slots = m.slots.filter(s => s.dayOfWeek === day.getDay());
     const classes = m.classes.filter(c => sameDay(c.startsAt, day) && classShown(c));
     const meetings = m.meetings.filter(v => sameDay(v.startsAt, day) && meetingShown(v));
-    if (!work && !slots.length && !classes.length && !meetings.length) return null;
+    const offs = (m.timeOff ?? []).map(t => ({ t, on: offOnDay(t, day) })).filter(x => x.on);
+    if (!work && !slots.length && !classes.length && !meetings.length && !offs.length) return null;
     return (
       <div className="space-y-1">
         {work && <WorkChip day={work} />}
+        {offs.map(({ t, on }) => (
+          <div key={t.id} onClick={(e) => e.stopPropagation()}
+            title={`Not available ${timeOffLabel(t, tz)}${t.reason ? ` — ${t.reason}` : ''}${t.createdByName ? ` · marked by ${t.createdByName}` : ''} — nobody can book ${m.name || 'them'} then`}
+            className="flex cursor-default items-start justify-between gap-1 rounded border border-amber-300 bg-amber-50 px-1.5 py-0.5 text-[11px] text-amber-800">
+            <span><span className="tabular">{on.label}</span> · Not available{t.reason ? <span className="block truncate text-[10px] opacity-75">{t.reason}</span> : null}</span>
+            {m.may_mark_time_off && (
+              <button type="button" aria-label="Take this time off away" className="opacity-60 hover:opacity-100" disabled={removeTimeOff.isPending}
+                onClick={() => { if (window.confirm(`Take away "${timeOffLabel(t, tz)}"? ${m.name || 'They'} can be booked then again.`)) removeTimeOff.mutate({ mentorEmail: m.email, timeOffId: t.id }); }}>
+                <X className="h-3 w-3" />
+              </button>
+            )}
+          </div>
+        ))}
         {slots.map((s, i) => (
           <div key={`${s.startTime}-${i}`} className="rounded border border-emerald-200 bg-emerald-50 px-1.5 py-0.5 text-[11px] text-emerald-700">
             {s.startTime}–{s.endTime}
@@ -416,6 +476,7 @@ export default function MentorCalendar() {
     ['border-blue-200 bg-blue-50', 'Class'],
     ['border-violet-200 bg-violet-50', 'Meeting'],
     ['border-slate-200 bg-slate-100', 'Other academy'],
+    ['border-amber-300 bg-amber-50', 'Not available — can\'t be booked'],
   ];
 
   return (
@@ -464,16 +525,19 @@ export default function MentorCalendar() {
             <CardContent className="space-y-3 p-4">
               <div className="flex flex-wrap items-center justify-between gap-2">
                 <p className="text-sm font-semibold text-slate-900">Your schedule{offset === 0 ? ' this week' : ''} · {myItems.length ? `${myItems.length} coming up` : 'nothing booked'}</p>
-                <Button size="sm" variant={onlyMe ? 'default' : 'outline'} className="h-8" onClick={() => setOnlyMe(v => !v)}>{onlyMe ? 'Showing only you — show everyone' : 'Only me'}</Button>
+                <div className="flex flex-wrap gap-2">
+                  <Button size="sm" variant="outline" className="h-8 gap-1.5 border-amber-300 text-amber-800 hover:bg-amber-50" onClick={() => openTimeOff(myMentor)}><CircleSlash className="h-3.5 w-3.5" /> I'm not available…</Button>
+                  <Button size="sm" variant={onlyMe ? 'default' : 'outline'} className="h-8" onClick={() => setOnlyMe(v => !v)}>{onlyMe ? 'Showing only you — show everyone' : 'Only me'}</Button>
+                </div>
               </div>
               {myItems.length > 0 && (
                 <ul className="divide-y divide-slate-100 rounded-lg border border-slate-200">
                   {myItems.map(i => (
                     <li key={i.id} className="flex flex-wrap items-baseline gap-x-3 gap-y-0.5 px-3 py-2 text-sm">
                       <span className="w-40 shrink-0 tabular-nums text-slate-600">{new Date(i.startsAt).toLocaleString('en-GB', { weekday: 'short', day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit', timeZone: tz })}</span>
-                      <span className={cn('h-2 w-2 shrink-0 rounded-full', i.kind === 'class' ? 'bg-blue-500' : 'bg-violet-500')} />
+                      <span className={cn('h-2 w-2 shrink-0 rounded-full', i.kind === 'class' ? 'bg-blue-500' : i.kind === 'off' ? 'bg-amber-500' : 'bg-violet-500')} />
                       <span className="font-medium text-slate-900">{i.what}</span>
-                      <span className="text-xs text-slate-500">{i.sub} · {i.mins} min</span>
+                      <span className="text-xs text-slate-500">{i.kind === 'off' ? i.sub : `${i.sub} · ${i.mins} min`}</span>
                     </li>
                   ))}
                 </ul>
@@ -575,7 +639,10 @@ export default function MentorCalendar() {
                   </div>
                   <div className="space-y-2 px-3 py-2.5">
                     {cell ?? <p className="text-xs text-slate-400">Nothing on this day.</p>}
-                    <Button variant="outline" size="sm" className="w-full gap-1.5" onClick={() => openBooking(m, day)}><Plus className="h-3.5 w-3.5" /> Book time</Button>
+                    <div className="flex gap-2">
+                      <Button variant="outline" size="sm" className="flex-1 gap-1.5" onClick={() => openBooking(m, day)}><Plus className="h-3.5 w-3.5" /> Book time</Button>
+                      {m.may_mark_time_off && <Button variant="outline" size="sm" className="gap-1.5 border-amber-300 text-amber-800" onClick={() => openTimeOff(m, day)}><CircleSlash className="h-3.5 w-3.5" /> Not available</Button>}
+                    </div>
                   </div>
                 </Card>
               );
@@ -606,6 +673,11 @@ export default function MentorCalendar() {
                         <p className="truncate font-medium text-slate-900">{m.name || m.email}</p>
                         <p className="truncate text-xs text-slate-400">{m.email}</p>
                         <WorkLine work={m.work} hrms={hrms} />
+                        {m.may_mark_time_off && (
+                          <button type="button" onClick={() => openTimeOff(m)} className="mt-1 inline-flex items-center gap-1 text-[11px] font-medium text-amber-700 hover:underline">
+                            <CircleSlash className="h-3 w-3" /> Mark not available
+                          </button>
+                        )}
                         {bothAcademies && m.academy && <Badge variant="outline" className={cn('mt-1 text-[10px]', academyOf(m) === 'bangalore' ? 'border-amber-200 bg-amber-50 text-amber-800' : 'border-sky-200 bg-sky-50 text-sky-800')}>{academyOf(m) === 'bangalore' ? 'Bangalore' : 'Dubai'}</Badge>}
                       </td>
                       {days.map(day => (
@@ -624,6 +696,11 @@ export default function MentorCalendar() {
           </Card>
         )}
       </div>
+
+      {timeOffFor && (
+        <TimeOffDialog mentor={timeOffFor.mentor} day={timeOffFor.day} tz={tz} isMe={String(timeOffFor.mentor.email || '').toLowerCase() === myEmail}
+          onClose={() => setTimeOffFor(null)} onSaved={() => qc.invalidateQueries({ queryKey: ['mentors', 'schedule'] })} />
+      )}
 
       {/* Booking — and changing a booking: the same fields either way. */}
       <Dialog open={Boolean(booking)} onOpenChange={(o) => { if (!o) setBooking(null); }}>
@@ -707,9 +784,10 @@ export default function MentorCalendar() {
             </div>
           </div>
 
+          {chosenTaken && <p className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">No free time left on this day{chosenTaken === 'Not available' ? ` — ${booking?.mentor.name || 'the mentor'} is not available` : ''}. Pick another day.</p>}
           <DialogFooter className="gap-2 sm:gap-0">
             <Button variant="outline" onClick={() => setBooking(null)}>Cancel</Button>
-            <Button disabled={book.isPending || form.title.trim().length < 3 || !guests.some(g => g.name.trim()) || (form.inPerson && form.location.trim().length < 2)} onClick={() => book.mutate()}>
+            <Button disabled={Boolean(chosenTaken) || book.isPending || form.title.trim().length < 3 || !guests.some(g => g.name.trim()) || (form.inPerson && form.location.trim().length < 2)} onClick={() => book.mutate()}>
               {book.isPending && <Loader2 className="h-4 w-4 animate-spin" />} {editingId ? 'Save changes' : 'Book it'}
             </Button>
           </DialogFooter>
@@ -915,5 +993,82 @@ function StudentNameInput({ value, onChange, onPick }) {
         ))}
       </PopoverContent>
     </Popover>
+  );
+}
+
+/* "Not available" for a mentor: whole days, or from one time to another (the academy's zone). What was already booked
+   inside it is shown back — it stays; whoever booked it moves or cancels it. */
+function TimeOffDialog({ mentor, day, tz, isMe, onClose, onSaved }) {
+  const first = day ? columnKey(day) : new Date().toLocaleDateString('en-CA', { timeZone: tz });
+  const today = new Date().toLocaleDateString('en-CA', { timeZone: tz });
+  const [f, setF] = useState({ allDay: true, fromDate: first < today ? today : first, toDate: first < today ? today : first, fromTime: '14:00', toTime: '18:00', reason: '' });
+  const [booked, setBooked] = useState(null);
+  const set = (k, v) => setF(x => ({ ...x, [k]: v }));
+  const span = useMemo(() => {
+    if (f.allDay) {
+      const end = new Date(`${f.toDate}T00:00:00Z`); end.setUTCDate(end.getUTCDate() + 1);
+      return { startsAt: wallInZone(f.fromDate, '00:00', tz), endsAt: wallInZone(end.toISOString().slice(0, 10), '00:00', tz) };
+    }
+    return { startsAt: wallInZone(f.fromDate, f.fromTime, tz), endsAt: wallInZone(f.toDate, f.toTime, tz) };
+  }, [f, tz]);
+  const valid = !Number.isNaN(span.startsAt.getTime()) && !Number.isNaN(span.endsAt.getTime()) && span.endsAt > span.startsAt;
+  const mark = useMutation({
+    mutationFn: () => fn('markMentorTimeOff', { mentorEmail: mentor.email, startsAt: span.startsAt.toISOString(), endsAt: span.endsAt.toISOString(), allDay: f.allDay, reason: f.reason.trim() }),
+    onSuccess: (d) => {
+      onSaved();
+      toast.success(`${isMe ? 'You are' : `${mentor.name || mentor.email} is`} marked not available — nobody can book ${isMe ? 'you' : 'them'} then`);
+      if (d?.alreadyBooked?.length) setBooked(d.alreadyBooked); else onClose();
+    },
+    onError: (e) => toast.error(errorText(e, 'Could not mark that')),
+  });
+  const when = (iso) => new Date(iso).toLocaleString('en-GB', { timeZone: tz, weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
+  return (
+    <Dialog open onOpenChange={(o) => { if (!o) onClose(); }}>
+      <DialogContent className="sm:max-w-md">
+        <DialogHeader>
+          <DialogTitle className="text-brand-navy">{booked ? 'Already booked in that time' : isMe ? "Mark yourself not available" : `Mark ${mentor.name || mentor.email} not available`}</DialogTitle>
+          <DialogDescription>
+            {booked ? 'These still stand — move or cancel them if they shouldn\'t.' : `Nobody can book ${isMe ? 'you' : 'them'} in this time — no session or class, here, in the LMS or the CRMs. Times ${tz.replace('_', ' ')}.`}
+          </DialogDescription>
+        </DialogHeader>
+        {booked ? (
+          <>
+            <ul className="divide-y divide-slate-100 rounded-lg border border-slate-200 text-sm">
+              {booked.map(b => (
+                <li key={`${b.kind}-${b.id}`} className="flex items-center justify-between gap-2 px-3 py-2">
+                  <span className="font-medium text-slate-900">{b.title || (b.kind === 'class' ? 'Class' : 'Session')} <span className="text-xs font-normal text-slate-400">{b.kind === 'class' ? 'class' : 'session'}</span></span>
+                  <span className="shrink-0 text-xs text-slate-500">{when(b.startsAt)}</span>
+                </li>
+              ))}
+            </ul>
+            <DialogFooter><Button onClick={onClose}>Done</Button></DialogFooter>
+          </>
+        ) : (
+          <>
+            <div className="space-y-3">
+              <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={f.allDay} onChange={e => set('allDay', e.target.checked)} /> Whole day(s)</label>
+              <div className="grid grid-cols-2 gap-2">
+                <div className="space-y-1.5"><Label htmlFor="toFrom">From</Label><Input id="toFrom" type="date" min={today} value={f.fromDate} onChange={e => { set('fromDate', e.target.value); if (e.target.value > f.toDate) set('toDate', e.target.value); }} /></div>
+                {!f.allDay && <div className="space-y-1.5"><Label htmlFor="toFromT">at</Label><Input id="toFromT" type="time" value={f.fromTime} onChange={e => set('fromTime', e.target.value)} /></div>}
+                <div className="space-y-1.5"><Label htmlFor="toTo">{f.allDay ? 'To (included)' : 'To'}</Label><Input id="toTo" type="date" min={f.fromDate} value={f.toDate} onChange={e => set('toDate', e.target.value)} /></div>
+                {!f.allDay && <div className="space-y-1.5"><Label htmlFor="toToT">at</Label><Input id="toToT" type="time" value={f.toTime} onChange={e => set('toTime', e.target.value)} /></div>}
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="toWhy">Reason <span className="font-normal text-slate-400">(optional — only {isMe ? 'you' : 'the mentor'}, their chief and admins see it)</span></Label>
+                <Input id="toWhy" maxLength={300} value={f.reason} onChange={e => set('reason', e.target.value)} placeholder="Leave, appointment, training…" />
+              </div>
+              {valid ? <p className="text-xs text-slate-500">Not available: {timeOffLabel({ startsAt: span.startsAt.toISOString(), endsAt: span.endsAt.toISOString(), allDay: f.allDay }, tz)}</p>
+                : <p className="text-xs text-rose-600">The end must be after the start.</p>}
+            </div>
+            <DialogFooter className="gap-2 sm:gap-0">
+              <Button variant="outline" onClick={onClose}>Cancel</Button>
+              <Button disabled={!valid || mark.isPending} onClick={() => mark.mutate()} className="bg-amber-600 hover:bg-amber-700">
+                {mark.isPending && <Loader2 className="h-4 w-4 animate-spin" />} Mark not available
+              </Button>
+            </DialogFooter>
+          </>
+        )}
+      </DialogContent>
+    </Dialog>
   );
 }

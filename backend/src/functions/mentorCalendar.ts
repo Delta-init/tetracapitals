@@ -2,6 +2,10 @@ import { json, error } from "../lib/response";
 import type { AuthUser } from "../auth/middleware";
 import { callLms, LmsError } from "../lib/lms";
 import { mentorHours } from "../students/mentorHours";
+import { col } from "../db";
+import { toObjectId } from "../lib/id";
+import { getDownlineIds } from "../lib/scope";
+import { isAdmin } from "../students/followups";
 
 /* ────────────────────────────────────────────────────────────────────────────
    The Mentor Calendar — the Sales CRM's, ported: the academy's mentors, when
@@ -12,6 +16,12 @@ import { mentorHours } from "../students/mentorHours";
    Who booked a meeting, or who is asking, is always the signed-in person —
    never taken from the request. Super Admins may change anyone's, as the
    CRM's super admin can; everyone else only their own (the LMS checks).
+
+   Time off (the user, 2026-10-23): a mentor marks when they're not available
+   and nobody books them then — here, in the LMS or the CRMs (the LMS refuses
+   it). Marked for themselves, by a chief mentor for their team, by an admin
+   for anyone. The reason is shown to the same people; everyone else sees
+   "Not available".
 ──────────────────────────────────────────────────────────────────────────── */
 
 /** Longest window the LMS answers for. */
@@ -35,11 +45,26 @@ async function lms(run: () => Promise<unknown>): Promise<Response> {
 }
 
 /**
+ * Whose time off this person marks — and reads the reason of: null for anyone (an admin), else these addresses —
+ * their own, and a chief mentor's team too.
+ */
+async function timeOffReach(user: AuthUser): Promise<Set<string> | null> {
+  if (isAdmin(user)) return null;
+  const mine = new Set([String(user.email ?? "").trim().toLowerCase()].filter(Boolean));
+  if (user.app_role !== "chief_mentor") return mine;
+  const ids = (await getDownlineIds(user.id)).map(toObjectId).filter(Boolean) as any[];
+  const team = (await col("users").find({ _id: { $in: ids } }, { projection: { email: 1 } }).toArray()) as any[];
+  for (const u of team) if (u.email) mine.add(String(u.email).trim().toLowerCase());
+  return mine;
+}
+const reaches = (reach: Set<string> | null, email: unknown) => reach === null || reach.has(String(email ?? "").trim().toLowerCase());
+
+/**
  * POST /api/functions/getMentorSchedule { from?, to? } → { timezone, from, to, hrms, mentors }
  * Each mentor with `work` — their HRMS working hours and leave in Dubai time (students/mentorHours.ts), or null when
  * the HRMS does not know their email; `hrms` says whether it was asked and answered.
  */
-export async function getMentorSchedule(req: Request, _user: AuthUser): Promise<Response> {
+export async function getMentorSchedule(req: Request, user: AuthUser): Promise<Response> {
   const body: any = await req.json().catch(() => ({}));
   const from = body?.from ? new Date(body.from) : new Date();
   if (Number.isNaN(from.getTime())) return error("from is not a date", 400);
@@ -49,8 +74,17 @@ export async function getMentorSchedule(req: Request, _user: AuthUser): Promise<
   if (to.getTime() - from.getTime() > MAX_WINDOW_DAYS * 864e5) return error(`At most ${MAX_WINDOW_DAYS} days at a time`, 400);
   return lms(async () => {
     // Both academies' mentors — Dubai's and Bangalore's (the user, 2026-10-15); an LMS before that sends its own only.
-    const data: any = await callLms("/mentors", { query: { from: from.toISOString(), to: to.toISOString(), allAcademies: "1" }, verb: "list its mentors" });
-    const mentors = (data?.mentors ?? []).map((m: any) => ({ ...m, slots: m.slots ?? [], classes: m.classes ?? [], meetings: m.meetings ?? [] }));
+    const data: any = await callLms("/mentors", { query: { from: from.toISOString(), to: to.toISOString(), allAcademies: "1", timeOffReasons: "all" }, verb: "list its mentors" });
+    // Time off with its reason only for whom it's theirs to mark; may_mark_time_off says so to the page.
+    const reach = await timeOffReach(user);
+    const mentors = (data?.mentors ?? []).map((m: any) => {
+      const mine = reaches(reach, m.email);
+      return {
+        ...m, slots: m.slots ?? [], classes: m.classes ?? [], meetings: m.meetings ?? [],
+        timeOff: (m.timeOff ?? []).map((t: any) => ({ ...t, reason: mine ? t.reason ?? "" : null })),
+        may_mark_time_off: mine,
+      };
+    });
     const hours = await mentorHours(mentors.map((m: any) => m.email), from, to);
     return {
       timezone: data?.timezone || "",
@@ -154,5 +188,44 @@ export async function cancelMentorMeeting(req: Request, user: AuthUser): Promise
       verb: "cancel that meeting",
       body: { actorEmail: user.email, actorIsRootAdmin: isRootAdmin(user) },
     }),
+  );
+}
+
+/**
+ * POST /api/functions/markMentorTimeOff { mentorEmail, startsAt, endsAt, allDay?, reason? }
+ *   → { timeOff, mentor, alreadyBooked } — what was already booked inside it stays; the page shows it.
+ * Their own; a chief mentor their team's; an admin anyone's.
+ */
+export async function markMentorTimeOff(req: Request, user: AuthUser): Promise<Response> {
+  const body: any = await req.json().catch(() => ({}));
+  const mentorEmail = str(body?.mentorEmail, 200).toLowerCase();
+  if (!mentorEmail) return error("Choose a mentor", 400);
+  if (!reaches(await timeOffReach(user), mentorEmail)) return error("You can mark only your own time off — or your team's, as their chief mentor", 403);
+  return lms(() =>
+    callLms("/mentor-time-off", {
+      method: "POST",
+      verb: "mark that time off",
+      body: {
+        mentorEmail,
+        startsAt: str(body?.startsAt, 40),
+        endsAt: str(body?.endsAt, 40),
+        allDay: body?.allDay === true,
+        reason: str(body?.reason, 300),
+        byEmail: user.email,
+        byName: user.full_name || user.email,
+      },
+    }),
+  );
+}
+
+/** POST /api/functions/removeMentorTimeOff { mentorEmail, timeOffId } — the same people as marking it. */
+export async function removeMentorTimeOff(req: Request, user: AuthUser): Promise<Response> {
+  const body: any = await req.json().catch(() => ({}));
+  const mentorEmail = str(body?.mentorEmail, 200).toLowerCase();
+  const timeOffId = str(body?.timeOffId, 100);
+  if (!mentorEmail || !timeOffId) return error("mentorEmail and timeOffId are required", 400);
+  if (!reaches(await timeOffReach(user), mentorEmail)) return error("You can take away only your own time off — or your team's, as their chief mentor", 403);
+  return lms(() =>
+    callLms(`/mentor-time-off/${encodeURIComponent(timeOffId)}/remove`, { method: "POST", verb: "take that time off away", body: { mentorEmail } }),
   );
 }
