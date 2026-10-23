@@ -39,6 +39,80 @@ function Rating({ avg, reviews, low }) {
   );
 }
 
+const STAR_TONE = { 5: 'bg-emerald-500', 4: 'bg-emerald-400', 3: 'bg-amber-400', 2: 'bg-orange-500', 1: 'bg-rose-500' };
+const when = (iso) => (iso ? new Date(iso).toLocaleString('en-GB', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Dubai' }) : '');
+
+/** A mentor's reviews in the dates (2026-10-23): how many of each star, and every review — the student, class, words. */
+function MentorReviews({ m, from, to }) {
+  const counts = m.total.ratingCounts || {};
+  const max = Math.max(1, ...[1, 2, 3, 4, 5].map(k => counts[k] || 0));
+  const [pages, setPages] = useState(1);
+  const queries = useQuery({
+    queryKey: ['mentor-reviews', m.lms_id, from, to, pages], retry: false, enabled: !!m.lms_id,
+    queryFn: async () => {
+      const all = [];
+      let total = 0;
+      for (let page = 1; page <= pages; page++) {
+        const r = await fn('getInstructorReviewList', { instructorId: m.lms_id, from, to, page });
+        all.push(...(r?.reviews ?? []));
+        total = r?.total ?? all.length;
+      }
+      return { reviews: all, total };
+    },
+  });
+  const reviews = queries.data?.reviews ?? [];
+  return (
+    <div className="grid gap-4 rounded-xl border border-slate-200 bg-white p-4 md:grid-cols-[220px_1fr]">
+      <div>
+        <p className="text-[11px] font-semibold uppercase tracking-wider text-slate-500">Reviews</p>
+        <p className="mt-1 flex items-center gap-1.5 text-2xl font-bold text-slate-900">
+          <Star className="h-5 w-5 fill-amber-400 text-amber-400" />{m.total.avgRating ?? '—'}
+          <span className="text-sm font-normal text-slate-400">· {m.total.reviews} review{m.total.reviews === 1 ? '' : 's'}</span>
+        </p>
+        <div className="mt-3 space-y-1.5">
+          {[5, 4, 3, 2, 1].map(k => (
+            <div key={k} className="flex items-center gap-2 text-xs text-slate-500">
+              <span className="flex w-7 items-center gap-0.5">{k}<Star className="h-3 w-3 fill-amber-400 text-amber-400" /></span>
+              <span className="h-2 flex-1 overflow-hidden rounded-full bg-slate-100">
+                <span className={cn('block h-full rounded-full', STAR_TONE[k])} style={{ width: `${((counts[k] || 0) / max) * 100}%` }} />
+              </span>
+              <span className="w-6 text-right tabular-nums">{counts[k] || 0}</span>
+            </div>
+          ))}
+        </div>
+      </div>
+      <div className="min-w-0">
+        {!m.lms_id ? <p className="text-sm text-slate-400">Not matched to an LMS instructor.</p>
+          : queries.isLoading ? <p className="flex items-center gap-2 text-sm text-slate-500"><Loader2 className="h-4 w-4 animate-spin" />Loading the reviews…</p>
+          : queries.error ? <p className="text-sm text-amber-700">{/not found|404|route/i.test(String(queries.error?.message)) ? 'The reviews need the LMS update.' : queries.error.message}</p>
+          : !reviews.length ? <p className="text-sm text-slate-400">No reviews in these dates.</p>
+          : (
+            <div className="max-h-96 divide-y divide-slate-100 overflow-y-auto pr-1">
+              {reviews.map(v => (
+                <div key={v._id || v.id} className="py-2.5 first:pt-0">
+                  <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-sm">
+                    <span className="inline-flex items-center gap-0.5">
+                      {[1, 2, 3, 4, 5].map(i => <Star key={i} className={cn('h-3.5 w-3.5', v.rating >= i ? 'fill-amber-400 text-amber-400' : 'text-slate-200')} />)}
+                    </span>
+                    <span className="font-medium text-slate-800">{v.studentId?.name || 'A student'}</span>
+                    {v.liveClassId?.title && <span className="text-xs text-slate-500">· {v.liveClassId.title}</span>}
+                    <span className="ml-auto text-xs text-slate-400">{when(v.createdAt)}</span>
+                  </div>
+                  {v.comment ? <p className="mt-1 text-sm text-slate-700">{v.comment}</p> : <p className="mt-1 text-xs italic text-slate-400">No comment</p>}
+                </div>
+              ))}
+              {queries.data?.total > reviews.length && (
+                <button type="button" onClick={() => setPages(p => p + 1)} className="w-full py-2 text-center text-xs font-medium text-brand-navy hover:underline">
+                  Show more ({queries.data.total - reviews.length} left)
+                </button>
+              )}
+            </div>
+          )}
+      </div>
+    </div>
+  );
+}
+
 const n = (v, tone) => <span className={cn(!v ? 'text-slate-300' : tone)}>{v || 0}</span>;
 
 /** The figures of one row — a mentor's total or one of their days. */
@@ -184,6 +258,9 @@ export default function MentorReport() {
                             )) : (
                               <tr className="bg-slate-50/60"><td colSpan={10} className="py-3 pl-12 text-sm text-slate-400">Nothing in these dates.</td></tr>
                             ))}
+                            {isOpen && m.total.reviews > 0 && (
+                              <tr className="bg-slate-50/60"><td colSpan={10} className="px-4 pb-4 pt-1 sm:pl-12"><MentorReviews m={m} from={from} to={to} /></td></tr>
+                            )}
                           </Fragment>
                         );
                       })}

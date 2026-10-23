@@ -45,14 +45,16 @@ export async function getInstructorReviews(req: Request, user: AuthUser): Promis
   }
 }
 
-/** POST /api/functions/getInstructorReviewList { instructorId, page? } → { reviews, total, page, perPage } */
+/** POST /api/functions/getInstructorReviewList { instructorId, page?, from?, to? } → { reviews, total, page, perPage } — from/to (days): the Mentor Report's dates (2026-10-23). */
 export async function getInstructorReviewList(req: Request, user: AuthUser): Promise<Response> {
   if (!mayView(user)) return forbidden();
   const body: any = await req.json().catch(() => ({}));
   const id = String(body?.instructorId ?? "");
   if (!/^[a-f\d]{24}$/i.test(id)) return error("instructorId is required", 400);
   try {
-    return json(await callLms(`/instructor-reviews/${id}`, { query: { page: String(Math.max(1, Number(body?.page) || 1)), per_page: "50" }, verb: "share the reviews" }));
+    const day = (v: unknown) => (typeof v === "string" && /^\d{4}-\d{2}-\d{2}$/.test(v) ? v : "");
+    const range = { ...(day(body?.from) ? { from: day(body.from) } : {}), ...(day(body?.to) ? { to: day(body.to) } : {}) };
+    return json(await callLms(`/instructor-reviews/${id}`, { query: { page: String(Math.max(1, Number(body?.page) || 1)), per_page: "50", ...range }, verb: "share the reviews" }));
   } catch (err) {
     return error(lmsTrouble(err), 502);
   }

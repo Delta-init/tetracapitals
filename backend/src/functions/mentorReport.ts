@@ -86,7 +86,7 @@ export async function getMentorReport(req: Request, user: AuthUser): Promise<Res
   for (const m of lmsRows) {
     const key = String(m.email ?? "").toLowerCase();
     const row = rows.get(key) ?? { id: "", name: m.name, email: m.email, role: "", in_lms: true, total: { ...blank }, days: [] };
-    Object.assign(row, { in_lms: true, total: { ...blank, ...m.total }, days: (m.days ?? []).map((d: any) => ({ ...blank, ...d })) });
+    Object.assign(row, { in_lms: true, lms_id: String(m.instructorId ?? ""), total: { ...blank, ...m.total }, days: (m.days ?? []).map((d: any) => ({ ...blank, ...d })) });
     rows.set(key, row);
   }
   const mentors = [...rows.values()].map((r) => {
