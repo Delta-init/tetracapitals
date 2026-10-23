@@ -10,7 +10,9 @@ import { Badge } from '@/components/ui/badge';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import SearchableSelect from '@/components/common/SearchableSelect';
-import { AlertTriangle, Clock, Eye, Gift, Loader2, MailCheck, MailMinus, MailX, Phone } from 'lucide-react';
+import { AlertTriangle, CalendarDays, Clock, Eye, Gift, Loader2, MailCheck, MailMinus, MailX, Phone, X } from 'lucide-react';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import { Calendar } from '@/components/ui/calendar';
 import { dialInfo } from './phone';
 import { HistoryEntry } from './FollowupNotes';
 import { Mt5LoginField, useStudentMt5 } from '../students/mt5Accounts';
@@ -74,12 +76,66 @@ export const fmtTime = (t) => {
 /** A follow-up's next date, with its time when it has one — the CS is reminded 15 minutes before and at it. */
 export const fmtDue = (f) => `${fmtDate(f?.next_followup_date)}${f?.next_followup_date && f?.next_followup_time ? ` · ${fmtTime(f.next_followup_time)}` : ''}`;
 
-/** The next follow-up's date and optional time, side by side (the time can only go with a date). */
-export function NextFollowupInput({ date, time, onDate, onTime, min }) {
+const ymd = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+const asDate = (v) => (/^\d{4}-\d{2}-\d{2}$/.test(v || '') ? new Date(Number(v.slice(0, 4)), Number(v.slice(5, 7)) - 1, Number(v.slice(8, 10))) : undefined);
+const addDays = (v, n) => { const d = asDate(v) ?? new Date(); d.setDate(d.getDate() + n); return ymd(d); };
+
+/**
+ * A date picked from a calendar pop-up (2026-10-23: the browser's own date box was squeezed in the follow-up popup and
+ * its calendar would not open). `value` / `onChange` are "YYYY-MM-DD" strings, `min` the first day that may be picked.
+ */
+export function DateField({ value, onChange, min, max, placeholder = 'Pick a date', clearable = false, className = '' }) {
+  const [open, setOpen] = useState(false);
+  const selected = asDate(value);
+  const disabled = [min && { before: asDate(min) }, max && { after: asDate(max) }].filter(Boolean);
   return (
-    <div className="flex gap-2">
-      <Input type="date" value={date || ''} min={min} onChange={(e) => { onDate(e.target.value); if (!e.target.value) onTime(''); }} className="min-w-0 flex-1" />
-      <Input type="time" value={time || ''} disabled={!date} onChange={(e) => onTime(e.target.value)} className="w-32" title="Optional — you are reminded 15 minutes before and at this time (UAE)" />
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger asChild>
+        <Button type="button" variant="outline" className={`h-10 w-full justify-start gap-2 px-3 font-normal ${selected ? 'text-slate-900' : 'text-slate-400'} ${className}`}>
+          <CalendarDays className="h-4 w-4 shrink-0 text-slate-500" />
+          <span className="truncate">{selected ? selected.toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' }) : placeholder}</span>
+          {clearable && selected && (
+            <span role="button" tabIndex={-1} aria-label="Clear the date" className="ml-auto rounded p-0.5 text-slate-400 hover:bg-slate-100 hover:text-slate-700"
+              onPointerDown={(e) => { e.preventDefault(); e.stopPropagation(); onChange(''); }}>
+              <X className="h-3.5 w-3.5" />
+            </span>
+          )}
+        </Button>
+      </PopoverTrigger>
+      <PopoverContent className="w-auto p-0" align="start">
+        <Calendar mode="single" selected={selected} defaultMonth={selected ?? asDate(min)} disabled={disabled}
+          onSelect={(d) => { if (d) { onChange(ymd(d)); setOpen(false); } }} initialFocus />
+      </PopoverContent>
+    </Popover>
+  );
+}
+
+/**
+ * The next follow-up: a date from the calendar or a quick pick (Today, Tomorrow, In 3 days, Next week), and an optional
+ * time beside it — the time can only go with a date.
+ */
+export function NextFollowupInput({ date, time, onDate, onTime, min }) {
+  const base = min || ymd(new Date());
+  const quick = [['Today', base], ['Tomorrow', addDays(base, 1)], ['In 3 days', addDays(base, 3)], ['Next week', addDays(base, 7)]];
+  const pick = (v) => { onDate(v); if (!v) onTime(''); };
+  return (
+    <div className="space-y-2">
+      <div className="flex flex-col gap-2 sm:flex-row">
+        <DateField value={date} onChange={pick} min={min} placeholder="Pick the next follow-up date" clearable className="sm:flex-1" />
+        <div className="relative sm:w-40">
+          <Clock className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-500" />
+          <Input type="time" value={time || ''} disabled={!date} onChange={(e) => onTime(e.target.value)} className="h-10 pl-9"
+            title="Optional — you are reminded 15 minutes before and at this time (UAE)" aria-label="Time (optional)" />
+        </div>
+      </div>
+      <div className="flex flex-wrap gap-1.5">
+        {quick.map(([label, v]) => (
+          <button key={label} type="button" onClick={() => pick(v)}
+            className={`rounded-full border px-2.5 py-0.5 text-xs font-medium transition-colors ${date === v ? 'border-brand-navy bg-brand-navy text-white' : 'border-slate-200 text-slate-600 hover:bg-slate-50'}`}>
+            {label}
+          </button>
+        ))}
+      </div>
     </div>
   );
 }
@@ -297,7 +353,7 @@ export function LogFollowupDialog({ followup, onClose, onSaved }) {
 
   return (
     <Dialog open={!!followup} onOpenChange={(o) => { if (!o && !busy) onClose(); }}>
-      <DialogContent className="max-w-lg">
+      <DialogContent className="max-w-xl">
         <DialogHeader>
           <DialogTitle className="text-brand-navy">Log follow-up · {followup?.student_name}</DialogTitle>
           <DialogDescription className="flex flex-wrap items-center gap-x-3 gap-y-1">
@@ -370,7 +426,7 @@ export function LogFollowupDialog({ followup, onClose, onSaved }) {
             </Select>
           </div>
           {!closed && (
-            <div className="space-y-1.5">
+            <div className="space-y-1.5 sm:col-span-2">
               <Label>Next follow-up <span className="font-normal text-slate-400">· time optional</span></Label>
               <NextFollowupInput date={form.nextFollowupDate} time={form.nextFollowupTime} min={today} onDate={set('nextFollowupDate')} onTime={set('nextFollowupTime')} />
             </div>
@@ -392,7 +448,7 @@ export function LogFollowupDialog({ followup, onClose, onSaved }) {
             <>
               <div className="space-y-1.5">
                 <Label>Converted date *</Label>
-                <Input type="date" value={form.convertedDate} onChange={set('convertedDate')} />
+                <DateField value={form.convertedDate} onChange={set('convertedDate')} max={today} placeholder="When it closed" />
               </div>
               <div className="space-y-1.5">
                 <Label>Deal value (USD) *</Label>
@@ -477,7 +533,7 @@ export function NewFollowupDialog({ open, onClose, onCancel, onSaved, onLog, stu
 
   return (
     <Dialog open={open} onOpenChange={(o) => { if (!o && !busy) { onCancel?.(); onClose(); } }}>
-      <DialogContent className="max-w-lg">
+      <DialogContent className="max-w-xl">
         <DialogHeader>
           <DialogTitle className="text-brand-navy">{title || `New follow-up${student ? ` · ${student.full_name}` : ''}`}</DialogTitle>
           <DialogDescription>{description || 'One follow-up per student — while it is open, each call is logged on it.'}</DialogDescription>
@@ -501,14 +557,14 @@ export function NewFollowupDialog({ open, onClose, onCancel, onSaved, onLog, stu
           </div>
         ) : (
           <div className="grid gap-4 sm:grid-cols-2">
-            <div className="space-y-1.5">
+            <div className="space-y-1.5 sm:col-span-2">
               <Label>Target outcome</Label>
               <Select value={outcome || undefined} onValueChange={(v) => v && setOutcome(v)}>
                 <SelectTrigger><SelectValue placeholder="Pick one" /></SelectTrigger>
                 <SelectContent>{outcomes.map(o => <SelectItem key={o} value={o}>{o}</SelectItem>)}</SelectContent>
               </Select>
             </div>
-            <div className="space-y-1.5">
+            <div className="space-y-1.5 sm:col-span-2">
               <Label>Next follow-up <span className="font-normal text-slate-400">· time optional</span></Label>
               <NextFollowupInput date={next} time={nextTime} min={today} onDate={setNext} onTime={setNextTime} />
             </div>
