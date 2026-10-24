@@ -35,7 +35,7 @@ def widths(ws):
 wb = Workbook()
 ws = wb.active
 ws.title = "Students and CS"
-header(ws, ["#", "Name in Meet", "Match", "Student", "Student code", "CS", "Team", "Location", "Email", "Phone", "Note"])
+header(ws, ["#", "Name in Meet", "Match", "Student", "Student code", "CS", "Team", "Location", "On the LMS", "Last LMS class", "Email", "Phone", "Note"])
 n, last = 0, None
 for r in rows:
     if r["name"] != last:
@@ -47,8 +47,10 @@ for r in rows:
         "pick the right one" if str(r["match"]).startswith("Possible") else "",
     ] if x)
     ws.append([n, r["name"], r["match"], r.get("student", ""), r.get("code", ""), r.get("cs", ""), r.get("team", ""),
-               (r.get("location") or "").title(), r.get("email", ""), r.get("phone", ""), note])
-    fill = PatternFill("solid", fgColor=TONE.get(r["match"], POSSIBLE))
+               (r.get("location") or "").title(), ("Yes" if r.get("lms") else "No") if r.get("student") else "", r.get("last_class", ""),
+               r.get("email", ""), r.get("phone", ""), note])
+    kind = "Found" if str(r["match"]).startswith("Found") else r["match"]
+    fill = PatternFill("solid", fgColor=TONE.get(kind, POSSIBLE))
     for c in ws[ws.max_row]:
         c.fill = fill
 widths(ws)
@@ -57,7 +59,7 @@ by = wb.create_sheet("By CS")
 header(by, ["CS", "Team", "Students (found)", "Names"])
 groups = OrderedDict()
 for r in rows:
-    if r["match"] != "Found":
+    if not str(r["match"]).startswith("Found"):
         continue
     groups.setdefault((r.get("cs", ""), r.get("team", "")), []).append(f'{r.get("student", "")} ({r.get("code", "")})')
 for (cs, team), names in sorted(groups.items(), key=lambda kv: (-len(kv[1]), kv[0][0])):
@@ -66,7 +68,7 @@ for (cs, team), names in sorted(groups.items(), key=lambda kv: (-len(kv[1]), kv[
 widths(by)
 by.column_dimensions["D"].width = 90
 
-found = len({r["name"] for r in rows if r["match"] == "Found"})
+found = len({r["name"] for r in rows if str(r["match"]).startswith("Found")})
 possible = len({r["name"] for r in rows if str(r["match"]).startswith("Possible")})
 summary = wb.create_sheet("Summary", 0)
 for line in [[title], [], ["Names in the attendance", data["names"]], ["Found (one student)", found],
