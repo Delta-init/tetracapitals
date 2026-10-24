@@ -52,10 +52,18 @@ export async function getInstructorReviewList(req: Request, user: AuthUser): Pro
   const id = String(body?.instructorId ?? "");
   if (!/^[a-f\d]{24}$/i.test(id)) return error("instructorId is required", 400);
   try {
-    const day = (v: unknown) => (typeof v === "string" && /^\d{4}-\d{2}-\d{2}$/.test(v) ? v : "");
-    const range = { ...(day(body?.from) ? { from: day(body.from) } : {}), ...(day(body?.to) ? { to: day(body.to) } : {}) };
-    return json(await callLms(`/instructor-reviews/${id}`, { query: { page: String(Math.max(1, Number(body?.page) || 1)), per_page: "50", ...range }, verb: "share the reviews" }));
+    return json(await instructorReviewList(id, body?.page, body?.from, body?.to));
   } catch (err) {
     return error(lmsTrouble(err), 502);
   }
 }
+
+/** One instructor's reviews from the LMS, 50 a page, in the dates if given — here and for Root's Reports → Mentors (2026-10-24). */
+export async function instructorReviewList(id: string, page: unknown, from: unknown, to: unknown) {
+  const day = (v: unknown) => (typeof v === "string" && /^\d{4}-\d{2}-\d{2}$/.test(v) ? v : "");
+  const range = { ...(day(from) ? { from: day(from) } : {}), ...(day(to) ? { to: day(to) } : {}) };
+  return callLms(`/instructor-reviews/${id}`, { query: { page: String(Math.max(1, Number(page) || 1)), per_page: "50", ...range }, verb: "share the reviews" });
+}
+
+/** Why the LMS couldn't share them, in words — for Root too. */
+export const reviewTrouble = (err: unknown) => lmsTrouble(err);

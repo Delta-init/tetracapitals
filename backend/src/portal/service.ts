@@ -12,6 +12,8 @@ import { loadTeams } from "../students/teams";
 import { studentWorkflow, studentWorkflowStudents, isWorkflowBox } from "../students/studentWorkflow";
 import { csOverview, csDetail, type Period } from "./csOverview";
 import { CallFilterError, callsForPortal, recordingLinkForPortal } from "./calls";
+import { mentorReport, mentorReportDates } from "../functions/mentorReport";
+import { instructorReviewList, reviewTrouble } from "../functions/instructorReviews";
 
 /* ────────────────────────────────────────────────────────────────────────────
    /api/v1/service/*   — the Root portal asking about roles and people.
@@ -134,6 +136,24 @@ export async function handlePortalService(req: Request, path: string): Promise<R
     const q = Object.fromEntries(url.searchParams.entries());
     const report = await csReportForPortal(q);
     return typeof report === "string" ? refuse(400, "VALIDATION_ERROR", report) : ok(report);
+  }
+
+  /* GET /mentor-report?from&to — every mentor's classes, bookings, cancellations, meetings and reviews from the LMS,
+     with their commission, day by day (functions/mentorReport.ts, as a Super Admin sees it) — Root's Reports → Mentors
+     tab (2026-10-24). GET /mentor-reviews?instructorId&from&to&page — one mentor's reviews in those dates. */
+  if (path === "/mentor-report" && req.method === "GET") {
+    const from = url.searchParams.get("from"), to = url.searchParams.get("to");
+    const why = mentorReportDates(from, to);
+    return why ? refuse(400, "VALIDATION_ERROR", why) : ok(await mentorReport(null, from!, to!));
+  }
+  if (path === "/mentor-reviews" && req.method === "GET") {
+    const id = String(url.searchParams.get("instructorId") ?? "");
+    if (!/^[a-f\d]{24}$/i.test(id)) return refuse(400, "VALIDATION_ERROR", "instructorId is required");
+    try {
+      return ok(await instructorReviewList(id, url.searchParams.get("page"), url.searchParams.get("from"), url.searchParams.get("to")));
+    } catch (err) {
+      return refuse(502, "LMS_UNAVAILABLE", reviewTrouble(err));
+    }
   }
 
   /* GET /student-workflow[?period|from&to, location, team, cs] and /student-workflow/students[?…, box|stage, teamId,

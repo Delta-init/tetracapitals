@@ -25,11 +25,11 @@ const nextDay = (day: string) => new Date(new Date(`${day}T00:00:00+04:00`).getT
 const dubaiDay = (iso: string) => new Date(new Date(iso).getTime() + 4 * 3600_000).toISOString().slice(0, 10);
 const round = (n: number) => Math.round(n * 100) / 100;
 
-/** The portal's mentors this person may see — everyone with a mentor role for an admin. */
-async function mentorsFor(user: AuthUser): Promise<any[]> {
+/** The portal's mentors this person may see — everyone with a mentor role for an admin (or for the Root portal: null). */
+async function mentorsFor(user: AuthUser | null): Promise<any[]> {
   const roles = { app_role: { $in: [...BUILTIN_MENTOR_ROLES] }, status: { $ne: "inactive" } };
   const projection = { full_name: 1, email: 1, app_role: 1 };
-  if (isAdmin(user)) return (await col("users").find(roles, { projection }).toArray()) as any[];
+  if (!user || isAdmin(user)) return (await col("users").find(roles, { projection }).toArray()) as any[];
   const reach = await csManagerReach(user);
   const ids = reach ? reach.ids : [...((await visibleMentorIds(user)) ?? new Set([user.id]))];
   return (await col("users").find({ _id: { $in: ids.map(toObjectId).filter(Boolean) as any[] }, ...roles }, { projection }).toArray()) as any[];
@@ -43,7 +43,20 @@ export async function getMentorReport(req: Request, user: AuthUser): Promise<Res
   if (!mayView(user)) return forbidden();
   const body: any = await req.json().catch(() => ({}));
   if (!isDay(body?.from) || !isDay(body?.to) || body.to < body.from) return error("Pick the dates", 400);
+  return json(await mentorReport(user, body.from, body.to));
+}
 
+/** The dates are YYYY-MM-DD, in order — what the report needs; a reason when they aren't. */
+export const mentorReportDates = (from: unknown, to: unknown): string | null =>
+  !isDay(from) || !isDay(to) || to < from ? "Pick the dates" : null;
+
+/**
+ * The report itself, for a person here (their reach) or for the Root portal's Reports → Mentors (null: every mentor,
+ * as a Super Admin sees it — 2026-10-24).
+ */
+export async function mentorReport(user: AuthUser | null, from: string, to: string) {
+  const everyone = !user || isAdmin(user);
+  const body = { from, to };
   const portal = await mentorsFor(user);
   const byEmail = new Map(portal.map((u) => [String(u.email ?? "").trim().toLowerCase(), u]));
 
@@ -71,8 +84,8 @@ export async function getMentorReport(req: Request, user: AuthUser): Promise<Res
     try {
       // An admin: everyone the LMS has (instructors who aren't in the portal too); anyone else: their team by address.
       const query: Record<string, string> = { from: body.from, to: body.to };
-      if (!isAdmin(user)) query.emails = [...byEmail.keys()].filter(Boolean).join(",");
-      lmsRows = !isAdmin(user) && !query.emails ? [] : ((await callLms("/mentor-report", { query, verb: "share the mentors' report" })) as any)?.mentors ?? [];
+      if (!everyone) query.emails = [...byEmail.keys()].filter(Boolean).join(",");
+      lmsRows = !everyone && !query.emails ? [] : ((await callLms("/mentor-report", { query, verb: "share the mentors' report" })) as any)?.mentors ?? [];
     } catch (err) {
       lms = { available: false, message: err instanceof LmsError && /route \S+ \S+ not found|cannot get/i.test(err.message) ? "The mentors' report needs the LMS update" : err instanceof Error ? err.message : "The LMS did not answer" };
     }
@@ -97,5 +110,5 @@ export async function getMentorReport(req: Request, user: AuthUser): Promise<Res
     return { ...r, total: { ...r.total, commission_usd: total }, days: [...days.values()].sort((a, b) => b.day.localeCompare(a.day)) };
   }).sort((a, b) => b.total.held - a.total.held || b.total.bookings - a.total.bookings || b.total.commission_usd - a.total.commission_usd || String(a.name).localeCompare(String(b.name)));
 
-  return json({ from: body.from, to: body.to, everyone: isAdmin(user), mentors, lms });
+  return { from: body.from, to: body.to, everyone, mentors, lms };
 }
