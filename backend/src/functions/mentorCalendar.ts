@@ -121,6 +121,8 @@ export async function bookMentorMeeting(req: Request, user: AuthUser): Promise<R
         mentorEmail,
         title: str(body?.title, 200),
         kind: str(body?.kind, 20),
+        // What it's for (2026-10-25): course_pitch | overview | other, or none.
+        category: str(body?.category, 20),
         scheduledStart: str(body?.scheduledStart, 40),
         durationMins: Number(body?.durationMins ?? 0),
         // In person: a place, and no link (the LMS makes no Google Meet for it).
@@ -163,6 +165,7 @@ export async function updateMentorMeeting(req: Request, user: AuthUser): Promise
       body: {
         ...(has("title") ? { title: str(body.title, 200) } : {}),
         ...(has("kind") ? { kind: str(body.kind, 20) } : {}),
+        ...(has("category") ? { category: str(body.category, 20) } : {}),
         ...(has("scheduledStart") ? { scheduledStart: str(body.scheduledStart, 40) } : {}),
         ...(has("durationMins") ? { durationMins: Number(body.durationMins) } : {}),
         ...(has("inPerson") ? { inPerson: body.inPerson === true } : {}),

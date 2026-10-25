@@ -53,6 +53,7 @@ export interface LmsEnrolmentRun {
   back_to_lms: number;           // hand-set, now agreeing — the LMS decides again
   classes?: { ok: boolean; with_classes?: number; error?: string };
   courses?: { ok: boolean; with_courses?: number; error?: string };
+  programs?: { ok: boolean; completed?: number; error?: string };
 }
 
 /** One LMS course a student is on, as kept on them for the Students table. */
@@ -125,7 +126,7 @@ export async function syncLmsEnrolment(by = "Schedule"): Promise<LmsEnrolmentRun
   }
   try {
     const students = (await col("students")
-      .find({}, { projection: { email: 1, enrolment_status: 1, enrolment_manual: 1, lms_account: 1, lms_classes: 1, lms_courses: 1, birth_date: 1 } })
+      .find({}, { projection: { email: 1, enrolment_status: 1, enrolment_manual: 1, lms_account: 1, lms_classes: 1, lms_courses: 1, birth_date: 1, categories: 1, program_completions: 1 } })
       .toArray()) as any[];
     run.students = students.length;
     const emailOf = (s: any) => String(s.email ?? "").trim().toLowerCase();
@@ -175,6 +176,7 @@ export async function syncLmsEnrolment(by = "Schedule"): Promise<LmsEnrolmentRun
     await recordHistory(history);
     run.classes = await syncClassCounts(students, emails, emailOf);
     run.courses = await syncCourseLists(students, emails, emailOf);
+    run.programs = await syncProgramCompletions(students, emailOf);
     run.ok = true;
     await col("app_settings").updateOne({ _id: SETTINGS_ID } as any, { $set: { last_run: run, last_ok_run: run, running_until: null } }, { upsert: true });
     return run;
@@ -182,6 +184,42 @@ export async function syncLmsEnrolment(by = "Schedule"): Promise<LmsEnrolmentRun
     run.error = err instanceof Error ? err.message : String(err);
     await col("app_settings").updateOne({ _id: SETTINGS_ID } as any, { $set: { last_run: run, running_until: null } }, { upsert: true });
     return run;
+  }
+}
+
+/**
+ * The LMS programs each student completed (the user, 2026-10-25: "Program Completion Students"): every ended program
+ * they attended any of, with attended / held (program_completions), and the category program_completion while one is
+ * complete — every held class attended (LMS /service/program-completions). Written only where it changed; an LMS from
+ * before it leaves everyone as they were. Never throws.
+ */
+export async function syncProgramCompletions(students: any[], emailOf: (s: any) => string): Promise<{ ok: boolean; completed?: number; error?: string }> {
+  try {
+    const data = await callLms<{ completions: any[] }>("/program-completions", { verb: "share the program completions" });
+    if (!Array.isArray(data?.completions)) throw new Error("The LMS did not list the program completions");
+    const byEmail = new Map<string, any[]>();
+    for (const c of data.completions) {
+      const e = String(c.email ?? "").toLowerCase();
+      byEmail.set(e, [...(byEmail.get(e) ?? []), { program_id: String(c.programId), title: String(c.title ?? ""), ended_on: String(c.endedOn ?? ""), attended: Number(c.attended) || 0, held: Number(c.held) || 0, completed: c.completed === true }]);
+    }
+    const ops: any[] = [];
+    let completed = 0;
+    for (const s of students) {
+      const list = (byEmail.get(emailOf(s)) ?? []).sort((a, b) => b.ended_on.localeCompare(a.ended_on));
+      const done = list.some((p) => p.completed);
+      if (done) completed++;
+      const had = Array.isArray(s.categories) && s.categories.includes("program_completion");
+      const same = JSON.stringify(s.program_completions ?? []) === JSON.stringify(list);
+      if (same && had === done) continue;
+      ops.push({ updateOne: { filter: { _id: s._id }, update: {
+        ...(list.length ? { $set: { program_completions: list } } : { $unset: { program_completions: "" } }),
+        ...(done ? { $addToSet: { categories: "program_completion" } } : { $pull: { categories: "program_completion" } }),
+      } } });
+    }
+    for (let i = 0; i < ops.length; i += 1000) await col("students").bulkWrite(ops.slice(i, i + 1000), { ordered: false });
+    return { ok: true, completed };
+  } catch (err) {
+    return { ok: false, error: err instanceof Error ? err.message : String(err) };
   }
 }
 

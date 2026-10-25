@@ -65,7 +65,7 @@ export default function ClassCompletions() {
         <tbody>
           {list.map(c => {
             const ended = ENDED[c.class.endSource] || ENDED.timetable;
-            const student = { id: c.student.id, full_name: c.student.name, phone: c.student.phone };
+            const student = { id: c.student.id, full_name: c.student.name, phone: c.student.phone, call_from: 'class_completion' };
             return (
               <tr key={c.id} className="border-b border-slate-100 align-top hover:bg-slate-50/60">
                 <td className="px-3 py-2.5">

@@ -15,6 +15,7 @@ import { getEffectiveUser } from '@/components/utils/ImpersonationContext';
 import { createPageUrl } from '@/utils';
 import {
   useOutcomes, OUTCOMES, STAGES, StatusBadge, StageBadge, ReminderBadge, NewFollowupDialog, fmtDate, fmtDue, money,
+  FOLLOWUP_CATEGORIES, CATEGORY_LABEL, CategoryBadge,
 } from '@/components/followups/followupUi';
 import { CallButton, useCallFlow } from '@/components/followups/CallFlow';
 import ReminderLog from '@/components/followups/ReminderLog';
@@ -69,6 +70,8 @@ export default function StudentFollowups() {
   useEffect(() => { const t = tabInUrl(); if (t) setTab(t); }, [location.search]);
   const [stage, setStage] = useState('all');
   const [outcome, setOutcome] = useState('all');
+  // By category (2026-10-25): 'none' for follow-ups from before categories.
+  const [category, setCategory] = useState('all');
   // The courses on the Products page and the rest; the filter also keeps the old sheet's DSLP / DQMP for older follow-ups.
   const outcomeChoices = useOutcomes();
   const [team, setTeam] = useState('all');
@@ -89,6 +92,7 @@ export default function StudentFollowups() {
   const base = followups.filter(f =>
     (stage === 'all' || f.stage === stage) &&
     (outcome === 'all' || f.target_outcome === outcome) &&
+    (category === 'all' || (f.category || 'none') === category) &&
     (team === 'all' || f.team_name === team) &&
     (cs === 'all' || (f.mentor_id || 'none') === cs) &&
     (tag === 'all' || (f.tag_names || []).includes(tag)) &&
@@ -97,14 +101,14 @@ export default function StudentFollowups() {
   const today = data?.today;
   const counts = Object.fromEntries(Object.entries(TABS).map(([k, t]) => [k, base.filter(f => t.test(f, today)).length]));
   const rows = base.filter(f => TABS[tab].test(f, today));
-  const { pageItems, bar } = usePagination(rows, { resetKey: `${tab}|${stage}|${outcome}|${team}|${cs}|${tag}|${needle}` });
+  const { pageItems, bar } = usePagination(rows, { resetKey: `${tab}|${stage}|${outcome}|${category}|${team}|${cs}|${tag}|${needle}` });
   const refresh = () => queryClient.invalidateQueries({ queryKey: ['followups'] });
   const showMentor = new Set(followups.map(f => f.mentor_id)).size > 1;
 
   const exportCsv = () => {
-    const head = ['Student', 'Code', 'Phone', 'Mentor', 'Team', 'Target Outcome', 'Stage', 'Last Contact Date', 'Next Follow-up Due', 'Follow-up Status', 'Reminder Email', 'Follow-up Count', 'What Client Said', 'Objection / Lost Reason', 'Converted Date', 'Deal Value', 'Notes'];
+    const head = ['Student', 'Code', 'Phone', 'Mentor', 'Team', 'Target Outcome', 'Category', 'Stage', 'Last Contact Date', 'Next Follow-up Due', 'Follow-up Status', 'Reminder Email', 'Follow-up Count', 'What Client Said', 'Objection / Lost Reason', 'Converted Date', 'Deal Value', 'Notes'];
     const reminder = (r) => (r ? `${r.status === 'sent' && r.seen_at ? 'seen' : r.status} ${r.date}${r.status === 'skipped' || r.status === 'failed' ? ` (${r.reason})` : ''}` : '');
-    const lines = [head, ...rows.map(f => [f.student_name, f.student_code, f.phone, f.mentor_name, f.team_name, f.target_outcome, f.stage, f.last_contact_date, f.next_followup_date, f.followup_status, reminder(f.reminder), f.followup_count, f.client_said, f.objection_reason, f.converted_date, f.deal_value ?? '', f.notes])];
+    const lines = [head, ...rows.map(f => [f.student_name, f.student_code, f.phone, f.mentor_name, f.team_name, f.target_outcome, CATEGORY_LABEL[f.category] || '', f.stage, f.last_contact_date, f.next_followup_date, f.followup_status, reminder(f.reminder), f.followup_count, f.client_said, f.objection_reason, f.converted_date, f.deal_value ?? '', f.notes])];
     const csv = lines.map(r => r.map(v => `"${String(v ?? '').replace(/"/g, '""')}"`).join(',')).join('\n');
     const a = document.createElement('a');
     a.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv' }));
@@ -155,6 +159,14 @@ export default function StudentFollowups() {
               <Select value={outcome} onValueChange={(v) => v && setOutcome(v)}>
                 <SelectTrigger className="h-9 w-52"><SelectValue /></SelectTrigger>
                 <SelectContent><SelectItem value="all">All target outcomes</SelectItem>{[...new Set([...outcomeChoices, ...OUTCOMES])].map(o => <SelectItem key={o} value={o}>{o}</SelectItem>)}</SelectContent>
+              </Select>
+              <Select value={category} onValueChange={(v) => v && setCategory(v)}>
+                <SelectTrigger className="h-9 w-48"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All categories</SelectItem>
+                  {FOLLOWUP_CATEGORIES.map(([k, l]) => <SelectItem key={k} value={k}>{l}</SelectItem>)}
+                  <SelectItem value="none">No category</SelectItem>
+                </SelectContent>
               </Select>
               <Select value={tag} onValueChange={(v) => v && setTag(v)}>
                 <SelectTrigger className="h-9 w-48"><SelectValue /></SelectTrigger>
@@ -222,7 +234,7 @@ export default function StudentFollowups() {
                       </td>
                       <td className="whitespace-nowrap px-3 py-2.5 text-slate-600">{String(f.phone || '').replace(/^[\s'`"]+/, '') || '—'}</td>
                       {showMentor && <td className="px-3 py-2.5 text-slate-600">{f.mentor_name}<div className="text-xs text-slate-400">{f.team_name}</div></td>}
-                      <td className="whitespace-nowrap px-3 py-2.5 text-slate-700">{f.target_outcome}</td>
+                      <td className="whitespace-nowrap px-3 py-2.5 text-slate-700">{f.target_outcome}{f.category && <div className="mt-0.5"><CategoryBadge category={f.category} className="text-[10px]" /></div>}</td>
                       <td className="px-3 py-2.5"><StageBadge stage={f.stage} /></td>
                       <td className="whitespace-nowrap px-3 py-2.5 text-slate-600">{fmtDate(f.last_contact_date)}<LastCallLine call={f.last_call} /></td>
                       <td className="whitespace-nowrap px-3 py-2.5 text-slate-600">{fmtDue(f)}</td>

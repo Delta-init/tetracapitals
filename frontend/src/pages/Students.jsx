@@ -6,6 +6,7 @@ import { LANGUAGES } from '@/components/students/languages';
 import { OnboardedSwitch } from '@/components/students/onboarding';
 import { BonusPendingBadge, bonusPendingText } from '@/components/students/bonusPending';
 import { BirthdayTag, birthdayText } from '@/components/students/Birthday';
+import { StudentCategoryTags, STUDENT_CATEGORIES } from '@/components/students/StudentCategories';
 import { isStudentOf } from '@/components/students/common';
 import { StudentTagChips, tagNamesOf, useStudentTagCatalog } from '@/components/students/tags';
 import PageHeader from '@/components/common/PageHeader';
@@ -103,6 +104,7 @@ const EXPORT_COLUMNS = [
   { header: 'Priority', value: s => PRIORITY[priorityOf(s)].label },
   { header: 'Language', value: s => s.language },
   { header: 'Birthday', value: s => birthdayText(s.birth_date) },
+  { header: 'Category', value: s => (s.categories || []).map(c => Object.fromEntries(STUDENT_CATEGORIES)[c] || c).join(', ') },
   // A bonus not decided yet: its amount and where it waits (components/students/bonusPending.jsx).
   { header: 'Bonus pending', width: 30, value: s => bonusPendingText(s.bonus_pending) },
   { header: 'Classes Attended', type: 'number', value: s => s.lms_classes?.attended },
@@ -138,6 +140,8 @@ export default function Students() {
   const [filterStatus, setFilterStatus] = useUrlState('status');
   const [filterEnrolment, setFilterEnrolment] = useUrlState('enrolment');
   const [filterPriority, setFilterPriority] = useUrlState('priority');
+  // Category — Class Completion / Program Completion students (2026-10-25).
+  const [filterCategory, setFilterCategory] = useUrlState('category');
   const [filterLanguage, setFilterLanguage] = useUrlState('language');
   const [filterOnboarding, setFilterOnboarding] = useUrlState('onboarding');
   const [filterClasses, setFilterClasses] = useUrlState('classes');
@@ -211,12 +215,12 @@ export default function Students() {
     return null;
   }, [filterDateRange, customDateFrom, customDateTo]);
   const listFilters = useMemo(() => ({
-    search: debouncedSearch, onlyNew, tag: filterTag, enrolment: filterEnrolment, priority: filterPriority, language: filterLanguage, onboarding: filterOnboarding, classes: filterClasses, followup: filterFollowup,
+    search: debouncedSearch, onlyNew, tag: filterTag, enrolment: filterEnrolment, priority: filterPriority, category: filterCategory, language: filterLanguage, onboarding: filterOnboarding, classes: filterClasses, followup: filterFollowup,
     course: filterCourse, balance: filterBalance, bonus: filterBonus,
     birthday: filterBirthday, bday_from: bdayFrom, bday_to: bdayTo,
     from: dateRange ? new Date(dateRange.from).toISOString() : '', to: dateRange ? new Date(dateRange.to).toISOString() : '',
     status: filterStatus, team: filterTeam, level: filterLevel, mentor: filterMentor, location: filterLocation,
-  }), [debouncedSearch, onlyNew, filterTag, filterEnrolment, filterPriority, filterLanguage, filterOnboarding, filterClasses, filterFollowup, filterCourse, filterBalance, filterBonus, filterBirthday, bdayFrom, bdayTo, dateRange, filterStatus, filterTeam, filterLevel, filterMentor, filterLocation]);
+  }), [debouncedSearch, onlyNew, filterTag, filterEnrolment, filterPriority, filterCategory, filterLanguage, filterOnboarding, filterClasses, filterFollowup, filterCourse, filterBalance, filterBonus, filterBirthday, bdayFrom, bdayTo, dateRange, filterStatus, filterTeam, filterLevel, filterMentor, filterLocation]);
   const filtersKey = JSON.stringify(listFilters);
   // A new tab, search or filter starts at page 1 with nothing ticked — not the first time the list is known (the user
   // loading, or the address's own page coming back), which would throw away the page the address asked for.
@@ -761,6 +765,18 @@ export default function Students() {
                 </SelectContent>
               </Select>
 
+              {/* Category Filter — Class / Program Completion students (2026-10-25) */}
+              <Select value={filterCategory} onValueChange={(v) => v && setFilterCategory(v)}>
+                <SelectTrigger className="w-full md:w-48">
+                  <SelectValue placeholder="Category" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">Any category</SelectItem>
+                  {STUDENT_CATEGORIES.map(([k, l]) => <SelectItem key={k} value={k}>{l} students</SelectItem>)}
+                  <SelectItem value="none">Neither</SelectItem>
+                </SelectContent>
+              </Select>
+
               {/* Language Filter — everyone, on every tab */}
               <Select value={filterLanguage} onValueChange={(v) => v && setFilterLanguage(v)}>
                 <SelectTrigger className="w-full md:w-40">
@@ -1054,6 +1070,7 @@ export default function Students() {
                               {student.email && <div className="text-xs text-slate-500">{student.email}</div>}
                               <BonusPendingBadge info={student.bonus_pending} student={student} className="mt-1" />
 <BirthdayTag date={student.birth_date} className="mt-1 ml-1" />
+<StudentCategoryTags student={student} className="mt-1 ml-1" />
                             </TableCell>
                             <TableCell><div className="text-sm font-mono">{student.phone}</div><div className="mt-1.5"><LanguagePicker student={student} currentUser={currentUser} /></div></TableCell>
 <TableCell className="whitespace-nowrap font-mono text-sm">{student.mt5_primary ? <span title={student.mt5_count > 1 ? `Primary of ${student.mt5_count} MT5 accounts` : "Primary MT5"}>{student.mt5_primary}{student.mt5_count > 1 && <span className="ml-1 font-sans text-[10px] text-gray-400">+{student.mt5_count - 1}</span>}</span> : <span className="text-gray-300">—</span>}</TableCell>
@@ -1156,6 +1173,7 @@ export default function Students() {
                            {student.email && <div className="text-xs text-slate-500">{student.email}</div>}
                            <BonusPendingBadge info={student.bonus_pending} student={student} className="mt-1" />
 <BirthdayTag date={student.birth_date} className="mt-1 ml-1" />
+<StudentCategoryTags student={student} className="mt-1 ml-1" />
                          </TableCell>
                          <TableCell><div className="text-sm font-mono">{student.phone}</div><div className="mt-1.5"><LanguagePicker student={student} currentUser={currentUser} /></div></TableCell>
 <TableCell className="whitespace-nowrap font-mono text-sm">{student.mt5_primary ? <span title={student.mt5_count > 1 ? `Primary of ${student.mt5_count} MT5 accounts` : "Primary MT5"}>{student.mt5_primary}{student.mt5_count > 1 && <span className="ml-1 font-sans text-[10px] text-gray-400">+{student.mt5_count - 1}</span>}</span> : <span className="text-gray-300">—</span>}</TableCell>
@@ -1285,6 +1303,7 @@ export default function Students() {
                             {student.email && <div className="text-xs text-slate-500">{student.email}</div>}
                             <BonusPendingBadge info={student.bonus_pending} student={student} className="mt-1" />
 <BirthdayTag date={student.birth_date} className="mt-1 ml-1" />
+<StudentCategoryTags student={student} className="mt-1 ml-1" />
                           </TableCell>
                           <TableCell><div className="text-sm font-mono">{student.phone}</div><div className="mt-1.5"><LanguagePicker student={student} currentUser={currentUser} /></div></TableCell>
 <TableCell className="whitespace-nowrap font-mono text-sm">{student.mt5_primary ? <span title={student.mt5_count > 1 ? `Primary of ${student.mt5_count} MT5 accounts` : "Primary MT5"}>{student.mt5_primary}{student.mt5_count > 1 && <span className="ml-1 font-sans text-[10px] text-gray-400">+{student.mt5_count - 1}</span>}</span> : <span className="text-gray-300">—</span>}</TableCell>
@@ -1387,6 +1406,7 @@ export default function Students() {
                           {student.email && <div className="text-xs text-slate-500">{student.email}</div>}
                           <BonusPendingBadge info={student.bonus_pending} student={student} className="mt-1" />
 <BirthdayTag date={student.birth_date} className="mt-1 ml-1" />
+<StudentCategoryTags student={student} className="mt-1 ml-1" />
                         </TableCell>
                         <TableCell><div className="text-sm font-mono">{student.phone}</div><div className="mt-1.5"><LanguagePicker student={student} currentUser={currentUser} /></div></TableCell>
 <TableCell className="whitespace-nowrap font-mono text-sm">{student.mt5_primary ? <span title={student.mt5_count > 1 ? `Primary of ${student.mt5_count} MT5 accounts` : "Primary MT5"}>{student.mt5_primary}{student.mt5_count > 1 && <span className="ml-1 font-sans text-[10px] text-gray-400">+{student.mt5_count - 1}</span>}</span> : <span className="text-gray-300">—</span>}</TableCell>
@@ -1496,6 +1516,7 @@ export default function Students() {
                         {student.email && <div className="text-xs text-slate-500">{student.email}</div>}
                         <BonusPendingBadge info={student.bonus_pending} student={student} className="mt-1" />
 <BirthdayTag date={student.birth_date} className="mt-1 ml-1" />
+<StudentCategoryTags student={student} className="mt-1 ml-1" />
                       </TableCell>
                       <TableCell><div className="text-sm font-mono">{student.phone}</div><div className="mt-1.5"><LanguagePicker student={student} currentUser={currentUser} /></div></TableCell>
 <TableCell className="whitespace-nowrap font-mono text-sm">{student.mt5_primary ? <span title={student.mt5_count > 1 ? `Primary of ${student.mt5_count} MT5 accounts` : "Primary MT5"}>{student.mt5_primary}{student.mt5_count > 1 && <span className="ml-1 font-sans text-[10px] text-gray-400">+{student.mt5_count - 1}</span>}</span> : <span className="text-gray-300">—</span>}</TableCell>

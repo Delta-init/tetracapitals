@@ -5,7 +5,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { TablePagination, usePagination } from '@/components/common/TablePagination';
 import { PhoneCall, Plus } from 'lucide-react';
-import { StatusBadge, StageBadge, ReminderBadge, NewFollowupDialog, fmtDate, fmtDue, money, reminderKind, isOpenFollowup } from './followupUi';
+import { CategoryBadge, StatusBadge, StageBadge, ReminderBadge, NewFollowupDialog, fmtDate, fmtDue, money, reminderKind, isOpenFollowup } from './followupUi';
 import { CallButton, useCallFlow } from './CallFlow';
 import FollowupNotes from './FollowupNotes';
 
@@ -83,7 +83,7 @@ export default function StudentFollowupsSection({ student }) {
                           {f.can_edit && <Button size="sm" variant="outline" className="h-8" onClick={() => callFlow?.openLog({ ...f, phone: student?.phone })}>Log</Button>}
                         </div>
                       </td>
-                      <td className="whitespace-nowrap px-3 py-2.5 font-medium text-slate-800">{f.target_outcome}</td>
+                      <td className="whitespace-nowrap px-3 py-2.5 font-medium text-slate-800">{f.target_outcome}{f.category && <div className="mt-0.5"><CategoryBadge category={f.category} className="text-[10px]" /></div>}</td>
                       <td className="px-3 py-2.5"><StageBadge stage={f.stage} /></td>
                       <td className="whitespace-nowrap px-3 py-2.5 text-slate-600">{fmtDate(f.last_contact_date)}</td>
                       <td className="whitespace-nowrap px-3 py-2.5 text-slate-600">{fmtDue(f)}</td>

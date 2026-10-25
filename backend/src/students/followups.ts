@@ -226,3 +226,27 @@ export async function autoConvert(followups: any[]): Promise<number> {
   }
   return converted;
 }
+
+/* ── Categories (the user, 2026-10-25) ──────────────────────────────────── */
+
+/** What a follow-up is about. Picked by the CS, else worked out (followupCategoryFor). */
+export const FOLLOWUP_CATEGORIES = ["course_pitch", "new_data", "class_completion", "onboarding"] as const;
+export type FollowupCategory = (typeof FOLLOWUP_CATEGORIES)[number];
+export const isFollowupCategory = (v: unknown): v is FollowupCategory => (FOLLOWUP_CATEGORIES as readonly string[]).includes(String(v));
+/** A student this new is "new data": a follow-up opened within these days of their arrival. */
+export const NEW_DATA_DAYS = 14;
+
+/**
+ * A follow-up's category when the CS didn't pick one: an onboarding call is Onboarding; one opened from the Class
+ * Completions page (from: "class_completion") is Class Completion; a student who arrived in the last NEW_DATA_DAYS is
+ * New Data; else Course Pitch.
+ */
+export function followupCategoryFor(opts: { picked?: unknown; outcome?: string; from?: unknown; studentCreated?: unknown; now?: Date }): FollowupCategory {
+  if (isFollowupCategory(opts.picked)) return opts.picked;
+  if (opts.outcome === "Onboarding call") return "onboarding";
+  if (opts.from === "class_completion") return "class_completion";
+  const created = Date.parse(String(opts.studentCreated ?? ""));
+  if (!Number.isNaN(created) && (opts.now ?? new Date()).getTime() - created <= NEW_DATA_DAYS * 86_400_000) return "new_data";
+  return "course_pitch";
+}
+

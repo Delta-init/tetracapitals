@@ -121,6 +121,10 @@ function MentorReviews({ m, from, to }) {
   );
 }
 
+/** The meetings by category (2026-10-25, LMS): "Pitch 2 · Overview 1 · Other 1 · — 1". */
+const meetingCats = (r) => [['Pitch', r.mCoursePitch], ['Overview', r.mOverview], ['Other', r.mOther], ['—', r.mNone]]
+  .filter(([, v]) => v > 0).map(([l, v]) => `${l} ${v}`).join(' · ');
+
 const n = (v, tone) => <span className={cn(!v ? 'text-slate-300' : tone)}>{v || 0}</span>;
 
 /** The figures of one row — a mentor's total or one of their days. */
@@ -133,7 +137,10 @@ function Cells({ r }) {
       <td className="px-3 py-2.5 text-right">{n(r.bookingsCancelled, 'text-rose-600')}</td>
       <td className="px-3 py-2.5 text-right">{n(r.attended, 'text-emerald-600')}</td>
       <td className="px-3 py-2.5 text-right">{n(r.missed, 'text-amber-600')}</td>
-      <td className="px-3 py-2.5 text-right">{n((r.meetings || 0) - (r.meetingsCancelled || 0), 'text-slate-800')}{r.meetingsCancelled ? <span className="text-rose-500"> · {r.meetingsCancelled}✕</span> : null}</td>
+      <td className="px-3 py-2.5 text-right">
+        {n((r.meetings || 0) - (r.meetingsCancelled || 0), 'text-slate-800')}{r.meetingsCancelled ? <span className="text-rose-500"> · {r.meetingsCancelled}✕</span> : null}
+        {meetingCats(r) && <div className="whitespace-nowrap text-[10px] text-slate-400" title="Course Pitch · Overview · Other · no category">{meetingCats(r)}</div>}
+      </td>
       <td className="px-3 py-2.5"><Rating avg={r.avgRating} reviews={r.reviews} low={r.lowRatings} /></td>
       <td className={cn('px-3 py-2.5 text-right font-semibold', r.commission_usd ? 'text-emerald-700' : 'text-slate-300')}>{usd(r.commission_usd)}</td>
     </>
@@ -153,7 +160,7 @@ export default function MentorReport() {
   const needle = q.trim().toLowerCase();
   const rows = useMemo(() => (data?.mentors ?? []).filter(m => !needle || `${m.name} ${m.email}`.toLowerCase().includes(needle)), [data, needle]);
   const sum = useMemo(() => {
-    const t = { held: 0, classes: 0, classesCancelled: 0, bookings: 0, bookingsCancelled: 0, attended: 0, missed: 0, meetings: 0, meetingsCancelled: 0, reviews: 0, ratingSum: 0, commission_usd: 0 };
+    const t = { held: 0, classes: 0, classesCancelled: 0, bookings: 0, bookingsCancelled: 0, attended: 0, missed: 0, meetings: 0, meetingsCancelled: 0, mCoursePitch: 0, mOverview: 0, mOther: 0, mNone: 0, reviews: 0, ratingSum: 0, commission_usd: 0 };
     for (const m of rows) {
       for (const k of Object.keys(t)) if (k !== 'ratingSum') t[k] += Number(m.total?.[k]) || 0;
       t.ratingSum += (Number(m.total?.avgRating) || 0) * (Number(m.total?.reviews) || 0);
@@ -167,7 +174,7 @@ export default function MentorReport() {
   const cards = [
     ['Classes held', `${sum.held} / ${sum.classes}`, `${sum.classesCancelled} cancelled`],
     ['Bookings', sum.bookings, `${sum.bookingsCancelled} cancelled · ${sum.attended} attended`],
-    ['Meetings', sum.meetings - sum.meetingsCancelled, `${sum.meetingsCancelled} cancelled`],
+    ['Meetings', sum.meetings - sum.meetingsCancelled, [meetingCats(sum), `${sum.meetingsCancelled} cancelled`].filter(Boolean).join(' · ')],
     ['Reviews', sum.reviews, sum.reviews ? `★ ${Math.round((sum.ratingSum / sum.reviews) * 10) / 10} average` : 'none yet'],
     ['Commission', usd(sum.commission_usd), 'credited, pool shares included'],
   ];

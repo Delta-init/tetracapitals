@@ -79,10 +79,15 @@ export function CallFlowProvider({ children }) {
   const startCall = useCallback(async (student, followup = null) => {
     if (!student?.id) return;
     const suggested = student.call_for === 'onboarding' ? 'Onboarding call' : '';
+    // Its category to start with (2026-10-25): a call from Class Completions is a Class Completion follow-up, the
+    // call after onboarding an Onboarding one — the CS can pick another.
+    const category = student.call_from === 'class_completion' ? 'class_completion' : suggested ? 'onboarding' : '';
     // From the Not onboarded page: the log asks whether the call connected, and a connected one opens the welcome.
     const extra = {
       ...(suggested ? { suggested_outcome: suggested } : {}),
       ...(student.ask_connected ? { ask_connected: true } : {}),
+      ...(category ? { default_category: category } : {}),
+      ...(student.call_from ? { call_from: student.call_from } : {}),
     };
     const withOutcome = (f) => ({ ...f, ...extra });
     if (followup && followup.can_edit && isOpen(followup)) {
@@ -95,7 +100,7 @@ export function CallFlowProvider({ children }) {
       const withPhone = (f) => withOutcome({ ...f, phone: f.phone || student.phone });
       if (open.length === 1) setLogging(withPhone(open[0]));
       else if (open.length > 1) setChoosing({ student, followups: open.map(withPhone), canCreate: !!data?.can_create });
-      else if (data?.can_create) setCreating({ student, afterCall: true, outcome: suggested });
+      else if (data?.can_create) setCreating({ student, afterCall: true, outcome: suggested, category, from: student.call_from || '' });
       else toast.info(`Calling ${student.full_name || 'the student'} with 3CX`);
     } catch {
       // Dialling already happened; not being able to open the log is not worth an error.
@@ -168,6 +173,8 @@ export function CallFlowProvider({ children }) {
         student={creating?.student ? { id: creating.student.id, full_name: creating.student.full_name } : null}
         title={creating?.afterCall ? `Log the call · ${creating.student.full_name}` : null}
         defaultOutcome={creating?.outcome || ''}
+        defaultCategory={creating?.category || ''}
+        from={creating?.from || ''}
         description={creating?.afterCall ? 'No open follow-up for this student yet — open one for this call, then record what they said.' : null}
         onSaved={(id, input) => {
           refresh();
@@ -177,7 +184,7 @@ export function CallFlowProvider({ children }) {
             setLogging({
               id, student_id: s.id, student_name: s.full_name, phone: s.phone, target_outcome: input.targetOutcome,
               stage: 'New', client_said: input.clientSaid || '', notes: input.notes || '', objection_reason: '',
-              converted_date: '', deal_value: null, can_edit: true,
+              converted_date: '', deal_value: null, can_edit: true, category: input.category || creating?.category || '',
               ...(s.ask_connected ? { ask_connected: true } : {}),
             });
           }

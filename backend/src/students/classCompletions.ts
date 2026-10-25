@@ -75,6 +75,8 @@ export async function keepClassCompletion(key: string, cls: LmsClass, student: a
       ...(student.not_student === true ? { student_not_student: true } : {}),
       created_date: now.toISOString(),
     } as any);
+    // The student is a Class Completion student from now on (the user, 2026-10-25), with their latest class.
+    await col("students").updateOne({ _id: toObjectId(String(student._id)) as any }, { $addToSet: { categories: "class_completion" }, $max: { class_completion_at: cls.endedAt } } as any);
     return true;
   } catch (err) {
     if ((err as { code?: number }).code === 11000) return false;

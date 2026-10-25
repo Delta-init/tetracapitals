@@ -28,6 +28,7 @@ import StudentCoursesCard from "../components/students/StudentCoursesCard";
 import { SalesCrmBadge, salesCrmOfStudent } from "@/components/students/salesCrm";
 import { BonusPendingBadge, useStudentBonusPending } from "@/components/students/bonusPending";
 import { RaiseCreditRequestButton } from "@/components/funding/CreditRequests";
+import { StudentCategoryTags } from '@/components/students/StudentCategories';
 import { BirthdayTag } from "@/components/students/Birthday";
 import { BangaloreBadge } from "@/components/common/LocationFilter";
 import StudentHistory, { useStudentHistory } from "../components/students/StudentHistory";
@@ -327,6 +328,7 @@ export default function StudentDetail() {
                 <BonusPendingBadge info={bonusPending} student={student} onClick={() => changeTab('funding')} />
                 {/* Their birthday, from the LMS — "Birthday today" on the day (2026-10-14) */}
                 <BirthdayTag date={displayStudent.birth_date} />
+                <StudentCategoryTags student={displayStudent} />
                 {/* A bonus still not in their MT5 — to the broker admins (Not Credited Yet) */}
                 {!salesOnly && <RaiseCreditRequestButton student={student} currentUser={currentUser} />}
               </p>

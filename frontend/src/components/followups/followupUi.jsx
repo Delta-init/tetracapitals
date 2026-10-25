@@ -62,6 +62,33 @@ export const STAGE_CLS = {
   Lost: 'bg-rose-50 text-rose-700',
 };
 
+/* What a follow-up is about (the user, 2026-10-25) — picked, else worked out by the server (students/followups.ts
+   followupCategoryFor): an onboarding call, opened from Class Completions, a student new in the last two weeks, else
+   a course pitch. */
+export const FOLLOWUP_CATEGORIES = [
+  ['course_pitch', 'Course Pitch'], ['new_data', 'New Data'], ['class_completion', 'Class Completion'], ['onboarding', 'Onboarding'],
+];
+export const CATEGORY_LABEL = Object.fromEntries(FOLLOWUP_CATEGORIES);
+const CATEGORY_CLS = {
+  course_pitch: 'bg-indigo-50 text-indigo-700', new_data: 'bg-sky-50 text-sky-700',
+  class_completion: 'bg-violet-50 text-violet-700', onboarding: 'bg-teal-50 text-teal-700',
+};
+export const CategoryBadge = ({ category, className = '' }) => (category && CATEGORY_LABEL[category]
+  ? <Badge variant="outline" className={`border-transparent ${CATEGORY_CLS[category] || ''} ${className}`}>{CATEGORY_LABEL[category]}</Badge>
+  : null);
+/** The category picker: one of the four, or "" — the server works it out. */
+function CategorySelect({ value, onChange }) {
+  return (
+    <Select value={value || '__auto__'} onValueChange={(v) => onChange(v === '__auto__' ? '' : v)}>
+      <SelectTrigger><SelectValue /></SelectTrigger>
+      <SelectContent>
+        <SelectItem value="__auto__">Work it out for me</SelectItem>
+        {FOLLOWUP_CATEGORIES.map(([k, l]) => <SelectItem key={k} value={k}>{l}</SelectItem>)}
+      </SelectContent>
+    </Select>
+  );
+}
+
 export const StatusBadge = ({ status }) => <Badge variant="outline" className={STATUS_CLS[status] || STATUS_CLS['-']}>{status}</Badge>;
 export const StageBadge = ({ stage }) => <Badge variant="outline" className={`border-transparent ${STAGE_CLS[stage] || ''}`}>{stage}</Badge>;
 
@@ -287,6 +314,8 @@ export function LogFollowupDialog({ followup, onClose, onSaved }) {
       // What the call is about: the follow-up's own — or, for the call after onboarding, "Onboarding call" (CallFlow).
       targetOutcome: followup.suggested_outcome || followup.target_outcome || '',
       connected: '',
+      // Its category, or the one its call suggests (from Class Completions, an onboarding call — CallFlow).
+      category: followup.category || followup.default_category || '',
     });
   }, [followup]);
 
@@ -334,6 +363,8 @@ export function LogFollowupDialog({ followup, onClose, onSaved }) {
         ...(sendMt5 ? { mt5Login: mt5 } : {}),
         ...(askConnected ? { connected: form.connected === 'yes' } : {}),
         ...(form.targetOutcome && form.targetOutcome !== followup.target_outcome ? { targetOutcome: form.targetOutcome } : {}),
+        ...(form.category && form.category !== followup.category ? { category: form.category } : {}),
+        ...(followup.call_from ? { from: followup.call_from } : {}),
       })).data;
       toast.success(['Follow-up logged', res?.mt5_saved && 'MT5 saved', res?.bonus_credits && 'the sales-close bonus went to the admins to credit'].filter(Boolean).join(' · '));
       onSaved?.();
@@ -425,6 +456,10 @@ export function LogFollowupDialog({ followup, onClose, onSaved }) {
               <SelectContent>{STAGES.map(s => <SelectItem key={s} value={s}>{s}</SelectItem>)}</SelectContent>
             </Select>
           </div>
+          <div className="space-y-1.5">
+            <Label>Category</Label>
+            <CategorySelect value={form.category} onChange={set('category')} />
+          </div>
           {!closed && (
             <div className="space-y-1.5 sm:col-span-2">
               <Label>Next follow-up <span className="font-normal text-slate-400">· time optional</span></Label>
@@ -483,9 +518,10 @@ export const isOpenFollowup = (f) => !!f && f.followup_status !== 'Closed' && f.
  * (the user, 2026-10-04): a student who already has one open is marked in the list, and picked shows that follow-up
  * with "Log the call" (onLog) instead of opening a second — the server refuses a second too.
  */
-export function NewFollowupDialog({ open, onClose, onCancel, onSaved, onLog, student = null, students = [], followups = [], title = null, description = null, defaultOutcome = '' }) {
+export function NewFollowupDialog({ open, onClose, onCancel, onSaved, onLog, student = null, students = [], followups = [], title = null, description = null, defaultOutcome = '', defaultCategory = '', from = '' }) {
   const [studentId, setStudentId] = useState('');
   const [outcome, setOutcome] = useState('');
+  const [category, setCategory] = useState('');
   const outcomes = useOutcomes(defaultOutcome);
   const [next, setNext] = useState('');
   const [nextTime, setNextTime] = useState('');
@@ -497,7 +533,7 @@ export function NewFollowupDialog({ open, onClose, onCancel, onSaved, onLog, stu
 
   useEffect(() => {
     if (!open) return;
-    setStudentId(student?.id || ''); setOutcome(defaultOutcome || ''); setNext(today); setNextTime(''); setClientSaid(''); setNotes(''); setError(null); setBusy(false);
+    setStudentId(student?.id || ''); setOutcome(defaultOutcome || ''); setCategory(defaultCategory || ''); setNext(today); setNextTime(''); setClientSaid(''); setNotes(''); setError(null); setBusy(false);
   }, [open, student?.id]);
 
   // The picked student's follow-ups: one already open means log on it, not open another.
@@ -520,9 +556,9 @@ export function NewFollowupDialog({ open, onClose, onCancel, onSaved, onLog, stu
     if (!outcome) { setError('Pick a target outcome.'); return; }
     setBusy(true); setError(null);
     try {
-      const res = await base44.functions.invoke('createFollowup', { studentId, targetOutcome: outcome, nextFollowupDate: next, nextFollowupTime: next ? nextTime : '', clientSaid, notes });
+      const res = await base44.functions.invoke('createFollowup', { studentId, targetOutcome: outcome, nextFollowupDate: next, nextFollowupTime: next ? nextTime : '', clientSaid, notes, ...(category ? { category } : {}), ...(from ? { from } : {}) });
       toast.success('Follow-up opened');
-      onSaved?.(res?.data?.id, { studentId, targetOutcome: outcome, nextFollowupDate: next, clientSaid, notes });
+      onSaved?.(res?.data?.id, { studentId, targetOutcome: outcome, nextFollowupDate: next, clientSaid, notes, category });
       onClose();
     } catch (e) {
       setError(e?.message || 'Could not open the follow-up');
@@ -557,7 +593,11 @@ export function NewFollowupDialog({ open, onClose, onCancel, onSaved, onLog, stu
           </div>
         ) : (
           <div className="grid gap-4 sm:grid-cols-2">
-            <div className="space-y-1.5 sm:col-span-2">
+            <div className="space-y-1.5">
+              <Label>Category</Label>
+              <CategorySelect value={category} onChange={setCategory} />
+            </div>
+            <div className="space-y-1.5">
               <Label>Target outcome</Label>
               <Select value={outcome || undefined} onValueChange={(v) => v && setOutcome(v)}>
                 <SelectTrigger><SelectValue placeholder="Pick one" /></SelectTrigger>

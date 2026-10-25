@@ -7,6 +7,7 @@ import { tagNamesOf } from "../students/tags";
 import {
   targetOutcomes, isTargetOutcome, STAGES, LOST_REASONS, CLOSED_STAGES,
   businessToday, followupStatus, visibleMentorIds, canWorkOn, studentsOf, recordEvents, autoConvert,
+  FOLLOWUP_CATEGORIES, followupCategoryFor, isFollowupCategory,
 } from "../students/followups";
 import { theirStudents } from "../students/closedBy";
 import { MT5_LOGIN, mt5LoginOf, mt5Of, mt5Owner, keepMt5 } from "../students/mt5";
@@ -154,6 +155,8 @@ export async function getFollowups(req: Request, user: AuthUser): Promise<Respon
         team_name: s.team_name ?? "",
         tag_names: tagNamesOf(s),
         target_outcome: f.target_outcome,
+        // course_pitch | new_data | class_completion | onboarding — "" for one from before categories (2026-10-25).
+        category: f.category ?? "",
         stage: f.stage,
         last_contact_date: f.last_contact_date ?? "",
         next_followup_date: f.next_followup_date ?? "",
@@ -280,6 +283,10 @@ export async function createFollowup(req: Request, user: AuthUser): Promise<Resp
     created_date: now,
     updated_date: now,
   };
+  // Its category (2026-10-25): the CS's pick, else worked out — an onboarding call, opened from Class Completions, a
+  // student new in the last two weeks, else a course pitch.
+  if (body?.category && !isFollowupCategory(body.category)) return error(`Pick a category: ${FOLLOWUP_CATEGORIES.join(", ")}`, 400);
+  (doc as any).category = followupCategoryFor({ picked: body?.category, outcome, from: body?.from, studentCreated: student.created_date });
   const res = await col("student_followups").insertOne(doc as any);
   await recordEvents([{
     followup_id: String(res.insertedId), student_id: doc.student_id, at: now, by_id: user.id, by_name: who(user),
@@ -430,6 +437,10 @@ export async function logFollowup(req: Request, user: AuthUser): Promise<Respons
     updated_date: new Date().toISOString(),
     ...(retarget ? { target_outcome: target } : {}),
   };
+  // A category picked with the call (2026-10-25); one from before categories gets its worked-out one on its first log.
+  if (body?.category && !isFollowupCategory(body.category)) return error(`Pick a category: ${FOLLOWUP_CATEGORIES.join(", ")}`, 400);
+  if (isFollowupCategory(body?.category)) patch.category = body.category;
+  else if (!f.category) patch.category = followupCategoryFor({ outcome: target || f.target_outcome, from: body?.from });
   // What was written this time — the follow-up keeps the latest, and the log keeps each one (historyOf).
   const said = str(body?.clientSaid);
   const noteText = str(body?.notes);

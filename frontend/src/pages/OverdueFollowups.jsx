@@ -12,7 +12,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { AlarmClock, BellRing, CalendarX2, Download, Search, Users } from 'lucide-react';
 import { getEffectiveUser } from '@/components/utils/ImpersonationContext';
 import { createPageUrl } from '@/utils';
-import { StageBadge, ReminderBadge, fmtDate, fmtDue, hhmm } from '@/components/followups/followupUi';
+import { StageBadge, ReminderBadge, fmtDate, fmtDue, hhmm, CategoryBadge } from '@/components/followups/followupUi';
 import { CallButton, useCallFlow } from '@/components/followups/CallFlow';
 import { LastCallLine } from '@/components/calls/callUi';
 import { TagChip, useStudentTagCatalog } from '@/components/students/tags';
@@ -114,7 +114,7 @@ export default function OverdueFollowups() {
                 )}
               </td>
               <td className="whitespace-nowrap px-3 py-2.5 text-slate-600">{String(f.phone || '').replace(/^[\s'`"]+/, '') || '—'}</td>
-              <td className="whitespace-nowrap px-3 py-2.5 text-slate-700">{f.target_outcome}</td>
+              <td className="whitespace-nowrap px-3 py-2.5 text-slate-700">{f.target_outcome}{f.category && <div className="mt-0.5"><CategoryBadge category={f.category} className="text-[10px]" /></div>}</td>
               <td className="px-3 py-2.5"><StageBadge stage={f.stage} /></td>
               <td className="whitespace-nowrap px-3 py-2.5">
                 <div className="text-slate-600">{fmtDue(f)}</div>

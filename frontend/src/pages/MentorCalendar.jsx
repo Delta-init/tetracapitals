@@ -42,6 +42,10 @@ import { ClassInfoSection } from '@/components/classes/ClassInfo';
 ──────────────────────────────────────────────────────────────────────────── */
 
 const KIND_LABEL = { staff: 'Staff', student: 'Student', client: 'Client' };
+/* What a meeting is for (the user, 2026-10-25) — beside its kind; kept in the LMS. */
+const MEETING_CATEGORIES = [['course_pitch', 'Course Pitch'], ['overview', 'Overview'], ['other', 'Other']];
+const CATEGORY_LABEL = Object.fromEntries(MEETING_CATEGORIES);
+const kindAndCategory = (v) => [KIND_LABEL[v.kind] ?? v.kind, CATEGORY_LABEL[v.category]].filter(Boolean).join(' · ');
 
 /* ── Working hours and leave from the HRMS (backend/src/students/mentorHours.ts), in Dubai time ── */
 const DAY_NAMES = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
@@ -128,7 +132,7 @@ const timeOffLabel = (t, tz) => {
   return day(a) === day(b) ? `${day(a)}, ${hm(a)}–${hm(b)}` : `${day(a)}, ${hm(a)} – ${day(b)}, ${hm(b)}`;
 };
 
-const emptyForm = { title: '', kind: 'staff', time: '10:00', durationMins: '30', inPerson: false, location: '', meetingUrl: '', notes: '' };
+const emptyForm = { title: '', kind: 'staff', category: '', time: '10:00', durationMins: '30', inPerson: false, location: '', meetingUrl: '', notes: '' };
 
 export default function MentorCalendar() {
   const qc = useQueryClient();
@@ -193,6 +197,8 @@ export default function MentorCalendar() {
   const [find, setFind] = useState('');
   const [course, setCourse] = useState('');
   const [mod, setMod] = useState('');
+  // Meetings of one category ('none': without one) — classes are left out while it's set (2026-10-25).
+  const [meetCat, setMeetCat] = useState('');
   const { courses, modules } = useMemo(() => {
     const cs = new Map(), ms = new Map();
     for (const m of schedule.data?.mentors ?? []) for (const c of m.classes ?? []) {
@@ -203,17 +209,17 @@ export default function MentorCalendar() {
     return { courses: sorted(cs), modules: sorted(ms) };
   }, [schedule.data, course]);
   const needle = find.trim().toLowerCase();
-  const filtering = !!(needle || course);
+  const filtering = !!(needle || course || meetCat);
   const has = (...vs) => vs.some(v => String(v ?? '').toLowerCase().includes(needle));
-  const classShown = (c) => (!course || c.courseId === course) && (!mod || c.moduleId === mod) && (!needle || (c.mine && has(c.title, c.course, c.module)));
-  const meetingShown = (v) => !needle || has(v.title, ...(v.attendeeNames ?? []));
+  const classShown = (c) => !meetCat && (!course || c.courseId === course) && (!mod || c.moduleId === mod) && (!needle || (c.mine && has(c.title, c.course, c.module)));
+  const meetingShown = (v) => (!meetCat || (meetCat === 'none' ? !v.category : v.category === meetCat)) && (!needle || has(v.title, ...(v.attendeeNames ?? [])));
 
   const myItems = useMemo(() => {
     if (!myMentor) return [];
     const now = Date.now();
     return [
       ...myMentor.classes.filter(c => c.mine && c.status !== 'cancelled' && classShown(c)).map(c => ({ id: `c${c.id}`, startsAt: c.startsAt, mins: c.durationMins, what: c.title || 'Class', sub: `Class · ${c.booked}/${c.capacity} booked`, kind: 'class' })),
-      ...myMentor.meetings.filter(meetingShown).map(v => ({ id: `m${v.id}`, startsAt: v.startsAt, mins: v.durationMins, what: v.title, sub: `${KIND_LABEL[v.kind] ?? v.kind}${v.attendeeNames?.length ? ` · with ${v.attendeeNames.join(', ')}` : ''}${v.inPerson ? ` · in person, ${v.location}` : ''}`, kind: 'meeting' })),
+      ...myMentor.meetings.filter(meetingShown).map(v => ({ id: `m${v.id}`, startsAt: v.startsAt, mins: v.durationMins, what: v.title, sub: `${kindAndCategory(v)}${v.attendeeNames?.length ? ` · with ${v.attendeeNames.join(', ')}` : ''}${v.inPerson ? ` · in person, ${v.location}` : ''}`, kind: 'meeting' })),
       ...(myMentor.timeOff ?? []).map(t => ({ id: `o${t.id}`, startsAt: t.startsAt, mins: Math.round((new Date(t.endsAt) - new Date(t.startsAt)) / 60_000), what: 'Not available', sub: `${timeOffLabel(t, tz)}${t.reason ? ` · ${t.reason}` : ''}`, kind: 'off' })),
     ].filter(i => new Date(i.startsAt).getTime() + (i.mins || 0) * 60_000 > now).sort((a, b) => a.startsAt.localeCompare(b.startsAt));
   }, [myMentor, needle, course, mod]);
@@ -306,6 +312,7 @@ export default function MentorCalendar() {
     setForm({
       title: d.title,
       kind: d.kind,
+      category: d.category || '',
       time: when.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', timeZone: tz }),
       durationMins: String(d.durationMins),
       inPerson: Boolean(d.inPerson),
@@ -383,6 +390,7 @@ export default function MentorCalendar() {
         mentorEmail: booking.mentor.email,
         title: form.title.trim(),
         kind: form.kind,
+        category: form.category || '',
         scheduledStart: startsAt.toISOString(),
         durationMins: Number(form.durationMins),
         attendees: guests.map(g => ({ name: g.name.trim(), email: g.email.trim() })).filter(g => g.name),
@@ -462,7 +470,7 @@ export default function MentorCalendar() {
             title={`${v.title} · with ${v.attendeeNames?.join(', ')} · ${v.durationMins} minutes${v.inPerson ? ` · in person, ${v.location}` : ''}`}
             className="w-full rounded border border-violet-200 bg-violet-50 px-1.5 py-0.5 text-left text-[11px] text-violet-700 hover:bg-violet-100"
           >
-            <span className="tabular">{at(v.startsAt)}</span> {KIND_LABEL[v.kind] ?? v.kind}{v.inPerson ? ' · in person' : ''} · {v.attendeeNames?.join(', ')}
+            <span className="tabular">{at(v.startsAt)}</span> {kindAndCategory(v)}{v.inPerson ? ' · in person' : ''} · {v.attendeeNames?.join(', ')}
           </button>
         ))}
       </div>
@@ -579,7 +587,13 @@ export default function MentorCalendar() {
             <option value="">{course && !modules.length ? 'No modules' : 'All modules'}</option>
             {modules.map(([id, title]) => <option key={id} value={id}>{title}</option>)}
           </select>
-          {filtering && <Button variant="ghost" size="sm" className="h-9" onClick={() => { setFind(''); setCourse(''); setMod(''); }}>Clear</Button>}
+          <select value={meetCat} onChange={e => setMeetCat(e.target.value)} aria-label="Meeting category"
+            className="h-9 rounded-md border border-input bg-background px-2 text-sm">
+            <option value="">Classes and meetings</option>
+            {MEETING_CATEGORIES.map(([k, l]) => <option key={k} value={k}>{l} meetings</option>)}
+            <option value="none">Meetings with no category</option>
+          </select>
+          {filtering && <Button variant="ghost" size="sm" className="h-9" onClick={() => { setFind(''); setCourse(''); setMod(''); setMeetCat(''); }}>Clear</Button>}
         </div>
 
         {schedule.isPending && (
@@ -599,7 +613,7 @@ export default function MentorCalendar() {
             {query.trim() || filtering ? (
               <>
                 <p className="mt-3 text-sm font-medium text-slate-700">{filtering ? 'Nothing this week matches' : 'Nobody matches that'}</p>
-                <button onClick={() => { setQuery(''); setFind(''); setCourse(''); setMod(''); }} className="mt-2 text-xs text-cyan-700 hover:underline">Clear the search</button>
+                <button onClick={() => { setQuery(''); setFind(''); setCourse(''); setMod(''); setMeetCat(''); }} className="mt-2 text-xs text-cyan-700 hover:underline">Clear the search</button>
               </>
             ) : (
               <>
@@ -725,6 +739,13 @@ export default function MentorCalendar() {
                 <option value="client">Outside client</option>
               </select>
             </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="mcat">Category</Label>
+              <select id="mcat" value={form.category || ''} onChange={e => setForm(f => ({ ...f, category: e.target.value }))} className={selectCls}>
+                <option value="">No category</option>
+                {MEETING_CATEGORIES.map(([k, l]) => <option key={k} value={k}>{l} meeting</option>)}
+              </select>
+            </div>
             <div className="grid grid-cols-2 gap-2">
               <div className="space-y-1.5">
                 <Label htmlFor="mtime">Start</Label>
@@ -807,7 +828,7 @@ export default function MentorCalendar() {
               <>
                 <DialogHeader>
                   <DialogTitle className="text-brand-navy">{d.title}</DialogTitle>
-                  <DialogDescription>{KIND_LABEL[d.kind] ?? d.kind} · {d.durationMins} minutes · {d.inPerson ? 'In person' : 'Online'}</DialogDescription>
+                  <DialogDescription>{kindAndCategory(d)} · {d.durationMins} minutes · {d.inPerson ? 'In person' : 'Online'}</DialogDescription>
                 </DialogHeader>
                 <div className="space-y-3 text-sm">
                   <Field label="When">
