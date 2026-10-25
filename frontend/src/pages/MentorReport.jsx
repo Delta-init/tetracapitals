@@ -96,9 +96,17 @@ function MentorReviews({ m, from, to }) {
                     </span>
                     <span className="font-medium text-slate-800">{v.studentId?.name || 'A student'}</span>
                     {v.liveClassId?.title && <span className="text-xs text-slate-500">· {v.liveClassId.title}</span>}
+                    {/* Which kind (2026-10-25): a mentor rating, or the feedback left after the class. */}
+                    {v.kind && (
+                      <span className={cn('rounded px-1.5 py-0.5 text-[10px] font-medium', v.kind === 'class_feedback' ? 'bg-sky-50 text-sky-700' : 'bg-slate-100 text-slate-600')}>
+                        {v.kind === 'class_feedback' ? 'Class feedback' : 'Mentor rating'}
+                      </span>
+                    )}
                     <span className="ml-auto text-xs text-slate-400">{when(v.createdAt)}</span>
                   </div>
-                  {v.comment ? <p className="mt-1 text-sm text-slate-700">{v.comment}</p> : <p className="mt-1 text-xs italic text-slate-400">No comment</p>}
+                  {v.comment && <p className="mt-1 text-sm text-slate-700">{v.comment}</p>}
+                  {v.classComment && <p className="mt-1 text-sm text-slate-700"><span className="text-xs font-medium text-sky-700">After the class: </span>{v.classComment}</p>}
+                  {!v.comment && !v.classComment && <p className="mt-1 text-xs italic text-slate-400">No comment</p>}
                 </div>
               ))}
               {queries.data?.total > reviews.length && (
