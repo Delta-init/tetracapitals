@@ -212,7 +212,7 @@ function DecideDialog({ row, action, onClose, onDone }) {
   const [text, setText] = useState('');
   const [busy, setBusy] = useState(false);
   const title = action === 'credited' ? 'Mark credited' : action === 'already_credited' ? 'Already credited' : 'Reject';
-  const ok = action === 'credited' ? txn.trim() && /^\d{4,15}$/.test(mt5.trim()) : text.trim().length >= 3;
+  const ok = action === 'credited' ? /^\d{4,15}$/.test(mt5.trim()) : text.trim().length >= 3;
   const linkedPending = row.funding_tx?.status === 'PENDING' && !row.funding_tx?.with_finance;
   const save = async () => {
     setBusy(true);
@@ -239,7 +239,7 @@ function DecideDialog({ row, action, onClose, onDone }) {
           <p className="rounded-lg bg-slate-50 px-3 py-2 text-xs text-slate-600">{row.note}</p>
           {action === 'credited' && (
             <>
-              <div className="space-y-1.5"><Label>Transaction ID *</Label><Input value={txn} onChange={(e) => setTxn(e.target.value)} autoFocus /></div>
+              <div className="space-y-1.5"><Label>Transaction ID (optional)</Label><Input value={txn} onChange={(e) => setTxn(e.target.value)} autoFocus /></div>
               <div className="space-y-1.5"><Label>Credited in MT5 *</Label><Input inputMode="numeric" value={mt5} onChange={(e) => setMt5(e.target.value)} className="font-mono" /></div>
             </>
           )}

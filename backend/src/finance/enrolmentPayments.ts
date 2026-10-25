@@ -164,7 +164,7 @@ export async function decideEnrolmentPayment(
     "finance_approval.state": "decided",
     "finance_approval.decision": d.decision,
     ...(approved
-      ? { approved_amount_minor: d.amountMinor, transaction_id: d.transactionId, ...(d.note ? { finance_note: d.note } : {}) }
+      ? { approved_amount_minor: d.amountMinor, ...(d.transactionId ? { transaction_id: d.transactionId } : {}), ...(d.note ? { finance_note: d.note } : {}) }
       : { reason: d.reason }),
   };
   const res = await col(ENROLMENT_PAYMENTS).updateOne({ _id: oid, status: "pending" }, { $set: set });
@@ -175,7 +175,7 @@ export async function decideEnrolmentPayment(
   await recordHistory([{
     student_id: p.student_id, at: d.at, type: "course_fees", by_id: null, by_name: `${d.byName} (Delta Finance)`,
     text: approved
-      ? `Balance payment of ${moneyText(amount, p.currency)}${corrected} on ${p.course || "a course"}${p.invoice_number ? `, invoice ${p.invoice_number}` : ""} approved by Delta Finance (transaction ${d.transactionId})`
+      ? `Balance payment of ${moneyText(amount, p.currency)}${corrected} on ${p.course || "a course"}${p.invoice_number ? `, invoice ${p.invoice_number}` : ""} approved by Delta Finance${d.transactionId ? ` (transaction ${d.transactionId})` : ""}`
       : `Balance payment of ${moneyText(amount, p.currency)} on ${p.course || "a course"} turned down by Delta Finance: ${d.reason}`,
   }]);
   await tellCs({ ...p, amount_minor: amount }, approved, d.reason);

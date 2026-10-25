@@ -157,22 +157,10 @@ export default function ProcessFundingDialog({ transaction, open, onClose, onPro
       setTransactionIdError('Say when or where it was credited');
       return;
     }
-    if (!credited && (!formData.transaction_id || formData.transaction_id.trim() === '')) {
-      setTransactionIdError('Transaction ID is required');
-      return;
-    }
+    // The transaction ID is optional (the user, 2026-10-25).
     // A sales-close bonus credit has no product (see the box below), so only other bonuses need one.
     if (transaction.type === 'BONUS' && !transaction.bonus_credit && (!formData.tags || formData.tags.length === 0)) {
       setTransactionIdError('Please pick a product for this bonus before approving');
-      return;
-    }
-
-    const duplicate = formData.transaction_id?.trim() && allTransactions.find(
-      t => t.transaction_id === formData.transaction_id && t.id !== transaction.id
-    );
-    
-    if (duplicate) {
-      setTransactionIdError('This Transaction ID already exists');
       return;
     }
 
@@ -465,7 +453,7 @@ export default function ProcessFundingDialog({ transaction, open, onClose, onPro
 
             <div className="space-y-2 md:col-span-2">
               <Label htmlFor="transaction_id">
-                Transaction ID {mayMarkCredited && alreadyCredited ? <span className="text-xs font-normal text-slate-500">(optional)</span> : <span className="text-red-500">*</span>}
+                Transaction ID <span className="text-xs font-normal text-slate-500">(optional)</span>
               </Label>
               <Input
                 id="transaction_id"
@@ -474,13 +462,21 @@ export default function ProcessFundingDialog({ transaction, open, onClose, onPro
                   setFormData({ ...formData, transaction_id: e.target.value });
                   setTransactionIdError('');
                 }}
-                placeholder="Enter unique transaction ID"
+                placeholder="Transaction ID, if there is one"
                 className={transactionIdError ? 'border-red-500' : ''}
               />
               {financeTxnId && <p className="text-xs text-slate-500">Finance's ID: {financeTxnId} — type the MT5 transaction ID here.</p>}
               {transactionIdError && (
                 <p className="text-sm text-red-600">{transactionIdError}</p>
               )}
+              {/* A transaction ID another request has: allowed now, and said so (2026-10-25). */}
+              {(() => {
+                const id = formData.transaction_id?.trim();
+                const other = id && allTransactions.find((t) => String(t.transaction_id ?? '') === id && t.id !== transaction.id);
+                return other ? (
+                  <p className="text-xs text-amber-700">Same transaction ID as {other.student_code || other.student_name || 'another request'} — it will still be approved.</p>
+                ) : null;
+              })()}
             </div>
 
             {isCoManagedWithdrawal && (

@@ -250,10 +250,8 @@ r = await decide({ fundingId: d1, decision: "approved", amountMinor: 95000, tran
 check("no secret: refused", r.status === 401, show(r));
 r = await decide({ fundingId: d1, decision: "approved", amountMinor: 95000, transactionId: "T" }, "not-the-secret");
 check("the wrong secret: refused", r.status === 401, show(r));
-r = await approve(d1, { transactionId: "" });
-check("approving needs a transaction ID", r.status === 400, show(r));
 r = await approve(d1, { amountMinor: 0 });
-check("and an amount", r.status === 400, show(r));
+check("approving needs an amount", r.status === 400, show(r));
 r = await reject(d1, { reason: "" });
 check("rejecting needs a reason", r.status === 400, show(r));
 r = await decide({ fundingId: d1, decision: "maybe" });
@@ -272,16 +270,6 @@ check("finance's decision on it is refused", r.status === 409 && r.body?.error?.
 r = await patch(String(legacy.insertedId), { status: "APPROVED", transaction_id: "TXN-L1", approved_by_name: "Super Admin" });
 check("and it is approved here, as before", r.status === 200 && r.body?.status === "APPROVED", show(r));
 
-step("A transaction ID already used is refused");
-await txs.insertMany([
-  { type: "DEPOSIT", status: "APPROVED", student_id: String(other._id), student_name: "Other Olga", amount_usd: 50, transaction_id: "TXN-OLD", created_date: now },
-  { type: "DEPOSIT", status: "APPROVED", student_id: String(other._id), student_name: "Other Olga", amount_usd: 60, transaction_id: 777, created_date: now },
-]);
-r = await approve(d1, { transactionId: "TXN-OLD" });
-check("one another request has", r.status === 409 && r.body?.error?.code === "DUPLICATE_TRANSACTION_ID" && /TXN-OLD/.test(r.body?.error?.message), show(r));
-r = await approve(d1, { transactionId: "777" });
-check("even one imported as a number", r.status === 409 && r.body?.error?.code === "DUPLICATE_TRANSACTION_ID", show(r));
-check("and it is still pending, with nothing credited", (await txOf(d1))?.status === "PENDING" && (await credits(d1)).length === 0);
 
 step("Approved in finance: approved here, with everything an approval does");
 r = await approve(d1);
@@ -471,6 +459,28 @@ r = await fn("updateCoMentorContribution", { student_id: String(student._id), me
 check("updateCoMentorContribution answers as it did", r.status === 200 && r.body?.success === true, show(r));
 r = await fn("updateCoMentorContribution", { student_id: new ObjectId().toString(), mentor_id: "x" });
 check("and 404s an unknown student", r.status === 404, show(r));
+
+step("The transaction ID is optional, and one used before is accepted with a note (2026-10-25)");
+await txs.insertMany([
+  { type: "DEPOSIT", status: "APPROVED", student_id: String(other._id), student_name: "Other Olga", student_code: "STU-OLGA", amount_usd: 50, transaction_id: "TXN-OLD", created_date: now },
+  { type: "DEPOSIT", status: "APPROVED", student_id: String(other._id), student_name: "Other Olga", amount_usd: 60, transaction_id: 777, created_date: now },
+]);
+const dup = String((await raise({ student_id: String(other._id), student_name: other.full_name, amount_usd: 300 })).body?.id ?? "");
+await withFinanceAlready(dup);
+r = await approve(dup, { transactionId: "TXN-OLD", amountMinor: 30000, note: "Checked" });
+let td: any = await txOf(dup);
+check("one another request has: approved, not refused", r.status === 200 && td?.status === "APPROVED" && td.transaction_id === "TXN-OLD", show(r));
+check("…and it says which request shares it, in finance's note too", td?.transaction_id_shared_with?.student_code === "STU-OLGA"
+  && /Checked · Same transaction ID as another request \(STU-OLGA Other Olga\)/.test(td?.finance_approval?.note ?? ""), JSON.stringify([td?.transaction_id_shared_with, td?.finance_approval?.note]));
+const num = String((await raise({ student_id: String(other._id), student_name: other.full_name, amount_usd: 200 })).body?.id ?? "");
+await withFinanceAlready(num);
+r = await approve(num, { transactionId: "777", amountMinor: 20000 });
+check("even one imported as a number: approved, noted", r.status === 200 && (await txOf(num))?.transaction_id_shared_with?.student_name === "Other Olga", show(r));
+const none = String((await raise({ student_id: String(other._id), student_name: other.full_name, amount_usd: 100 })).body?.id ?? "");
+await withFinanceAlready(none);
+r = await approve(none, { transactionId: "", amountMinor: 10000 });
+td = await txOf(none);
+check("no transaction ID at all: approved, with none set", r.status === 200 && td?.status === "APPROVED" && !td.transaction_id && !td.transaction_id_shared_with, show(r));
 
 finance.stop(true);
 await client.close();

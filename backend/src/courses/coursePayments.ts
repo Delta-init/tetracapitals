@@ -161,7 +161,7 @@ export async function decideCoursePayment(
     "finance_approval.state": "decided",
     "finance_approval.decision": d.decision,
     ...(approved
-      ? { approved_amount_aed: d.amountMinor / 100, transaction_id: d.transactionId, ...(d.note ? { finance_note: d.note } : {}) }
+      ? { approved_amount_aed: d.amountMinor / 100, ...(d.transactionId ? { transaction_id: d.transactionId } : {}), ...(d.note ? { finance_note: d.note } : {}) }
       : { reason: d.reason }),
   };
   const res = await col("course_payments").updateOne({ _id: oid, status: "pending" }, { $set: set });
@@ -192,7 +192,7 @@ export async function decideCoursePayment(
   await recordHistory([{
     student_id: p.student_id, at: d.at, type: "course_upgrade", by_id: null, by_name: `${d.byName} (Delta Finance)`,
     text: approved
-      ? `Course payment of ${aed(d.amountMinor / 100)} approved by Delta Finance (transaction ${d.transactionId})${bonusUsd > 0 ? ` — MT5 bonus of $${bonusUsd.toLocaleString("en-US")} sent to MT5 Bonus Approvals` : ""}${done ? " — the upgrade is paid in full" : ""}`
+      ? `Course payment of ${aed(d.amountMinor / 100)} approved by Delta Finance${d.transactionId ? ` (transaction ${d.transactionId})` : ""}${bonusUsd > 0 ? ` — MT5 bonus of $${bonusUsd.toLocaleString("en-US")} sent to MT5 Bonus Approvals` : ""}${done ? " — the upgrade is paid in full" : ""}`
       : `Course payment of ${aed(p.amount_aed)} rejected by Delta Finance: ${d.reason}`,
   }]);
   return ok({ fundingId: String(p._id), status: set.status, upgradeDone: done });

@@ -857,7 +857,7 @@ export async function handleFundingDecision(req: Request): Promise<Response> {
   const transactionId = text(body.transactionId, 100);
   const amountMinor = Number(body.amountMinor);
   if (decision === "approved") {
-    if (!transactionId) return refuse(400, "VALIDATION_ERROR", "transactionId is required to approve");
+    // The transaction ID is optional (the user, 2026-10-25: "not mandatory when finance approves").
     if (!Number.isSafeInteger(amountMinor) || amountMinor <= 0) {
       return refuse(400, "VALIDATION_ERROR", "amountMinor must be a positive whole number of cents");
     }
@@ -905,21 +905,22 @@ export async function handleFundingDecision(req: Request): Promise<Response> {
   };
 
   if (decision === "approved") {
-    // The same check the approval dialog makes: one transaction ID, one request.
-    const dup: any = await txs.findOne(
-      { transaction_id: sameIdentifier(transactionId), _id: { $ne: oid } },
-      { projection: { student_name: 1 } },
-    );
+    /* A transaction ID another request has: accepted, and said so (the user, 2026-10-25 — refusing it left finance's
+       approval stuck as "did not go through"). Kept on the request and in finance's note, for whoever checks it. */
+    const dup: any = transactionId
+      ? await txs.findOne({ transaction_id: sameIdentifier(transactionId), _id: { $ne: oid } }, { projection: { student_name: 1, student_code: 1 } })
+      : null;
     if (dup) {
-      return refuse(409, "DUPLICATE_TRANSACTION_ID",
-        `Transaction ID ${transactionId} is already used by another funding request${dup.student_name ? ` (${dup.student_name})` : ""}`);
+      const who = [dup.student_code, dup.student_name].filter(Boolean).join(" ");
+      set.transaction_id_shared_with = { id: String(dup._id), student_code: dup.student_code ?? "", student_name: dup.student_name ?? "" };
+      set["finance_approval.note"] = [note, `Same transaction ID as another request${who ? ` (${who})` : ""}`].filter(Boolean).join(" · ");
     }
     if (!firstOfTwo) {
       set.status = "APPROVED";
       // Claimed in the same write that approves it: finishing it is this request's job.
       set["finance_approval.effects_claimed_at"] = now;
     }
-    set.transaction_id = transactionId;
+    if (transactionId) set.transaction_id = transactionId;
     Object.assign(set, approvedAmountSet(tx, amountMinor, text(body.currency, 3).toUpperCase()));
     const paymentMethod = text(body.paymentMethod, 60);
     if (paymentMethod) set.payment_method = paymentMethod;

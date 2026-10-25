@@ -183,11 +183,13 @@ export async function decideCreditRequest(req: Request, user: AuthUser): Promise
   const now = new Date().toISOString();
   const decided: Record<string, any> = { at: now, by_id: user.id, by_name: who(user) };
   if (action === "credited") {
+    // Optional, and a transaction ID used before is accepted with a note of it (the user, 2026-10-25).
     const txnId = str(body?.transactionId, 100);
-    if (!txnId) return error("The transaction ID is required", 400);
-    const taken = (await col("funding_transactions").findOne({ transaction_id: txnId, _id: { $ne: ObjectId.isValid(r.funding_tx_id) ? new ObjectId(r.funding_tx_id) : new ObjectId() } }, { projection: { _id: 1 } }))
-      || (await col(COLL).findOne({ "decided.transaction_id": txnId }, { projection: { _id: 1 } }));
-    if (taken) return error("That transaction ID is used already", 409);
+    const taken: any = txnId
+      ? (await col("funding_transactions").findOne({ transaction_id: txnId, _id: { $ne: ObjectId.isValid(r.funding_tx_id) ? new ObjectId(r.funding_tx_id) : new ObjectId() } }, { projection: { student_code: 1 } }))
+        || (await col(COLL).findOne({ "decided.transaction_id": txnId }, { projection: { student_code: 1 } }))
+      : null;
+    if (taken) decided.transaction_id_shared_with = String(taken.student_code ?? taken._id);
     const login = mt5LoginOf(body?.mt5Login) || r.mt5_login;
     if (!MT5_LOGIN.test(login)) return error("The MT5 login is its number — digits only", 400);
     Object.assign(decided, { transaction_id: txnId, mt5_login: login, note: str(body?.note, 500) });
