@@ -28,7 +28,11 @@ export default function CsTv() {
   useEffect(() => { document.title = `CS TV — ${location === 'bangalore' ? 'Bangalore' : 'Dubai'}`; }, [location]);
   // Each payment said in the owner's own voice when the API has it (2026-10-26); the browser's voice otherwise.
   useEffect(() => {
-    setOwnVoice((sale) => `${API}/api/public/cs-tv/voice?location=${location}&id=${encodeURIComponent(sale.test ? 'test' : sale.id)}`);
+    const idOf = (sale) => encodeURIComponent(sale.test ? 'test' : sale.id);
+    setOwnVoice(
+      (sale) => `${API}/api/public/cs-tv/voice?location=${location}&id=${idOf(sale)}`,
+      (sale) => `${API}/api/public/cs-tv/voice-plan?location=${location}&id=${idOf(sale)}`,
+    );
     return () => setOwnVoice(null);
   }, [location]);
 

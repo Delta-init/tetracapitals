@@ -222,6 +222,8 @@ export default function Layout({ children, currentPageName }) {
     if (item.name === 'InstructorReviews' && item.roles.includes(currentUser?.app_role)) return true;
     // …and the Mentor Report the same way (2026-10-23).
     if (item.name === 'MentorReport' && item.roles.includes(currentUser?.app_role)) return true;
+    // …and Voice recordings for Super Admins (2026-10-26).
+    if (item.name === 'VoiceRecordings' && item.roles.includes(currentUser?.app_role)) return true;
     if (Array.isArray(allowedPages)) return allowedPages.includes(item.sameAccessAs || item.name);
     return item.roles.includes('all') || item.roles.includes(currentUser?.app_role);
   });

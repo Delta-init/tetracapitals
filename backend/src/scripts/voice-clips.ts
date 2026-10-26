@@ -3,8 +3,7 @@ import { join } from "node:path";
 import { Binary } from "mongodb";
 import { connectDb, closeDb, col } from "../db";
 import { config } from "../config";
-import { loadTeams } from "../students/teams";
-import { csLine, courseLine, amountLine, CONGRATS, ROUND_AED, type VoiceLine } from "../lib/voiceLines";
+import { allVoiceLines } from "../functions/voiceRecordings";
 
 /**
  * The TV board's lines in the owner's own voice, made ahead (the user, 2026-10-26 — lib/voiceLines.ts):
@@ -28,34 +27,8 @@ import { csLine, courseLine, amountLine, CONGRATS, ROUND_AED, type VoiceLine } f
 const mode = process.argv[2];
 const option = (name: string) => process.argv.find((a) => a.startsWith(`--${name}=`))?.slice(name.length + 3)?.replace(/^~/, process.env.HOME ?? "~");
 const host = config.mongoUri.replace(/^mongodb(\+srv)?:\/\//, "").replace(/^[^@]*@/, "").split("/")[0];
-const INR_PER_AED = 1 / (3.67 * 0.01);
 
-async function allLines(): Promise<VoiceLine[]> {
-  const teams = await loadTeams();
-  const people = (await col("users").find({ app_role: "cs", status: { $ne: "inactive" }, email: { $not: /@deltatest\.dev$/i } }, { projection: { full_name: 1 } }).toArray()) as any[];
-  const since = new Date(Date.now() - 180 * 86_400_000).toISOString();
-  const paid = (await col("funding_transactions").find(
-    { type: "BONUS", status: "APPROVED", bonus_credit: { $in: [null, ""] }, "course_payment.product": { $exists: true }, approved_at: { $gte: since } },
-    { projection: { course_payment: 1, amount_aed: 1, initiating_mentor_id: 1, requested_by_id: 1 } },
-  ).toArray()) as any[];
-  const products = (await col("transaction_tags").find({ active: { $ne: false } }, { projection: { name: 1, bonus_usd: 1 } }).toArray()) as any[];
-
-  const lines = new Map<string, VoiceLine>();
-  const add = (l: VoiceLine) => { if (!lines.has(l.key)) lines.set(l.key, l); };
-  for (const u of people) add(csLine(String(u._id), String(u.full_name ?? ""), teams.teamOf(String(u._id))?.name));
-  for (const t of paid) if (t.course_payment?.product) add(courseLine(String(t.course_payment.product)));
-  for (const p of products) if (Number(p.bonus_usd) > 0 && p.name) add(courseLine(String(p.name)));
-  for (const a of ROUND_AED) add(amountLine(a, "AED"));
-  for (const t of paid) {
-    const aed = Math.round(Number(t.course_payment?.paid_today_aed) || Number(t.amount_aed) || 0);
-    if (aed <= 0) continue;
-    const by = String(t.initiating_mentor_id || t.requested_by_id || "");
-    if ((teams.teamOf(by)?.location ?? "dubai") === "bangalore") add(amountLine(Math.round(aed * INR_PER_AED), "INR"));
-    else add(amountLine(aed, "AED"));
-  }
-  add(CONGRATS);
-  return [...lines.values()];
-}
+const allLines = allVoiceLines;
 
 await connectDb();
 console.log(`${host}/${config.mongoDb}`);

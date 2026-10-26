@@ -115,6 +115,7 @@ import NotOnboarded from './pages/NotOnboarded';
 import InactiveStudents from './pages/InactiveStudents';
 import InstructorReviews from './pages/InstructorReviews';
 import MentorReport from './pages/MentorReport';
+import VoiceRecordings from './pages/VoiceRecordings';
 import BalancePayments from './pages/BalancePayments';
 import BonusApprovals from './pages/BonusApprovals';
 import NotCreditedYet from './pages/NotCreditedYet';
@@ -172,6 +173,7 @@ export const PAGES = {
     "InactiveStudents": InactiveStudents,
     "InstructorReviews": InstructorReviews,
     "MentorReport": MentorReport,
+    "VoiceRecordings": VoiceRecordings,
     "BalancePayments": BalancePayments,
     "BonusApprovals": BonusApprovals,
     "NotCreditedYet": NotCreditedYet,

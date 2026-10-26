@@ -59,14 +59,30 @@ export function numberWords(value: number): string {
   return parts.join(", ");
 }
 
-export type VoiceLine = { key: string; text: string };
+/**
+ * A line: its key (how the board finds the recording), the English words (for a voice that is made — Colab,
+ * ElevenLabs), and the Malayalam to read out when it is recorded by the owner (2026-10-26: "own Malayalam
+ * recordings" — only a prompt: say it however sounds right), with its group on the recording page.
+ */
+export type VoiceLine = { key: string; text: string; prompt?: string; group?: "people" | "courses" | "amounts" | "close" };
 
-export const csLine = (id: string, name: string, team?: string | null): VoiceLine =>
-  ({ key: `cs:${id}`, text: `Payment collected by ${spokenName(name)}${team && team !== "No team" ? `, in ${team}` : ""}!` });
-export const courseLine = (product: string): VoiceLine => ({ key: `course:${productKeyOf(product)}`, text: `${spokenCourse(product)}.` });
-export const amountLine = (amount: number, currency: "AED" | "INR"): VoiceLine =>
-  ({ key: `${currency.toLowerCase()}:${Math.round(amount)}`, text: `For ${numberWords(amount)} ${currency === "INR" ? "rupees" : "dirhams"}.` });
-export const CONGRATS: VoiceLine = { key: "congrats", text: "Congratulations!" };
+const amountShown = (n: number) => Math.round(n).toLocaleString("en-US");
+export const csLine = (id: string, name: string, team?: string | null): VoiceLine => ({
+  key: `cs:${id}`, group: "people",
+  text: `Payment collected by ${spokenName(name)}${team && team !== "No team" ? `, in ${team}` : ""}!`,
+  prompt: `${spokenName(name)}${team && team !== "No team" ? `, ${team}` : ""} — പേയ്‌മെന്റ് കളക്റ്റ് ചെയ്തു!`,
+});
+export const courseLine = (product: string): VoiceLine =>
+  ({ key: `course:${productKeyOf(product)}`, group: "courses", text: `${spokenCourse(product)}.`, prompt: String(product).trim() });
+export const amountLine = (amount: number, currency: "AED" | "INR"): VoiceLine => ({
+  key: `${currency.toLowerCase()}:${Math.round(amount)}`, group: "amounts",
+  text: `For ${numberWords(amount)} ${currency === "INR" ? "rupees" : "dirhams"}.`,
+  prompt: `${amountShown(amount)} ${currency === "INR" ? "രൂപ" : "ദിർഹം"}`,
+});
+export const CONGRATS: VoiceLine = { key: "congrats", group: "close", text: "Congratulations!", prompt: "അഭിനന്ദനങ്ങൾ!" };
+
+/** Keys a recording may be kept under — so nothing else is put in the bucket. */
+export const VOICE_KEY = /^(cs:[a-f0-9]{24}|course:[A-Z0-9]{1,40}|aed:\d{1,7}|inr:\d{1,9}|congrats)$/;
 export const GAP_KEY = "gap";
 
 /** Round amounts always recorded: every 500 from 500 to 50,000 dirhams. */

@@ -182,3 +182,34 @@ async function stitchedVoice(p: any, location: "dubai" | "bangalore"): Promise<R
   return new Response(new Uint8Array(Buffer.concat(parts)), { headers: { "content-type": "audio/mpeg", "cache-control": "public, max-age=3600", "access-control-allow-origin": "*" } });
 }
 
+/**
+ * GET /api/public/cs-tv/voice-plan?location=&id=<payment | test> → { urls } — the owner's own recordings for a payment
+ * on the board (R2 — functions/voiceRecordings.ts), in the order said: who collected it, the course, the amount when it
+ * was recorded (else left out — the screen shows it), "Congratulations". Empty when the person isn't recorded: the
+ * board then speaks as before. The Test: the first person recorded, 2,000 dirhams.
+ */
+export async function handleCsTvVoicePlan(req: Request): Promise<Response> {
+  const { csLine, courseLine, amountLine, CONGRATS } = await import("../lib/voiceLines");
+  const url = new URL(req.url);
+  const location = url.searchParams.get("location") === "bangalore" ? "bangalore" : "dubai";
+  const id = String(url.searchParams.get("id") ?? "");
+  const clips = col("tv_voice_clips");
+  let p: any = null;
+  if (id !== "test") {
+    const had = cache.get(location);
+    const data = had && Date.now() - had.at < 5 * 60_000 ? had.data : await board(location);
+    p = (data.recent as any[]).find((r) => r.id === id);
+    if (!p) return error("Not a payment on the board", 404);
+  }
+  const first: any = p
+    ? await clips.findOne({ _id: csLine(String(p.cs_id), p.cs, p.team).key, url: { $exists: true } } as any, { projection: { url: 1 } })
+    : await clips.findOne({ _id: { $regex: "^cs:" }, url: { $exists: true } } as any, { projection: { url: 1 } });
+  const nocache = { "cache-control": "no-store", "access-control-allow-origin": "*" };
+  if (!first?.url) return json({ urls: [] }, { headers: nocache });
+  const currency = location === "bangalore" ? "INR" : "AED";
+  const amount = p ? Math.round((Number(p.aed) || 0) * (currency === "INR" ? INR_PER_AED : 1)) : 2000;
+  const keys = [p?.product ? courseLine(p.product).key : "", amount > 0 ? amountLine(amount, currency).key : "", CONGRATS.key].filter(Boolean);
+  const found = new Map(((await clips.find({ _id: { $in: keys }, url: { $exists: true } } as any, { projection: { url: 1 } }).toArray()) as any[]).map((c) => [String(c._id), c.url]));
+  return json({ urls: [first.url, ...keys.map((k) => found.get(k)).filter(Boolean)] }, { headers: nocache });
+}
+

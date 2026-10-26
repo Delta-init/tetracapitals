@@ -307,6 +307,7 @@ export function stopVoice() {
 
 export function voiceBusy() {
   if (playing && !playing.paused && !playing.ended) return true;
+  if (speakingOwn) return true;
   try {
     return Boolean(window.speechSynthesis?.speaking);
   } catch {
@@ -316,16 +317,63 @@ export function voiceBusy() {
 
 // ── Our own voice (the user, 2026-10-26) ──────────────────────────────────────
 
-/* Where a sale's line in the owner's own voice is made (the page sets it: CsTv.jsx → GET /api/public/cs-tv/voice).
-   Not set, or not answering: the browser's voice, as before. */
+/* Where a sale's line in the owner's own voice comes from (the page sets it, CsTv.jsx): first their own recordings, as
+   a list to play one after another (GET /api/public/cs-tv/voice-plan — kept in R2, 2026-10-26), else one made line
+   (GET /api/public/cs-tv/voice — ElevenLabs). Neither: the browser's voice, as before. */
 let ownVoiceUrl = null;
+let speakingOwn = false;
+let ownPlanUrl = null;
 let playing = null;
-export function setOwnVoice(urlFor) {
+export function setOwnVoice(urlFor, planFor = null) {
   ownVoiceUrl = typeof urlFor === "function" ? urlFor : null;
+  ownPlanUrl = typeof planFor === "function" ? planFor : null;
+}
+
+/** One recording, played to its end. Resolves true when it played through, false when it couldn't. */
+function playOne(url) {
+  return new Promise((resolve) => {
+    let done = false;
+    const finish = (ok) => { if (!done) { done = true; resolve(ok); } };
+    try {
+      const a = new Audio(url);
+      a.preload = "auto";
+      a.addEventListener("ended", () => finish(true), { once: true });
+      a.addEventListener("error", () => finish(false), { once: true });
+      window.setTimeout(() => { if (!done) { a.pause(); finish(false); } }, 30_000);
+      playing = a;
+      a.play().catch(() => finish(false));
+    } catch {
+      finish(false);
+    }
+  });
+}
+
+/** The owner's own recordings for the sale, one after another with a breath between. True when the first played. */
+async function playRecorded(sale) {
+  if (!ownPlanUrl || typeof Audio === "undefined") return false;
+  let urls = [];
+  try {
+    const res = await fetch(ownPlanUrl(sale), { cache: "no-store" });
+    if (res.ok) urls = (await res.json())?.urls ?? [];
+  } catch {
+    return false;
+  }
+  if (!urls.length) return false;
+  for (const [i, url] of urls.entries()) {
+    if (i) await sleep(220);
+    const ok = await playOne(url);
+    if (!ok && i === 0) return false;
+  }
+  return true;
 }
 
 /** Plays the sale's line in the own voice. Resolves true when it played, false to fall back to the browser's. */
-function playOwnVoice(sale) {
+async function playOwnVoice(sale) {
+  if (await playRecorded(sale)) return true;
+  return playMade(sale);
+}
+
+function playMade(sale) {
   if (!ownVoiceUrl || typeof Audio === "undefined") return Promise.resolve(false);
   return new Promise((resolve) => {
     let done = false;
@@ -390,7 +438,9 @@ export function announce(sale) {
     voiceTimer = window.setTimeout(async () => {
       if (!allowed()) return;
       // The owner's own voice when this server has it; else the browser's (2026-10-26).
-      if (await playOwnVoice(sale)) return;
+      speakingOwn = true;
+      const own = await playOwnVoice(sale).finally(() => { speakingOwn = false; });
+      if (own) return;
       if (allowed()) say(spokenLine(sale));
     }, playSparkle());
   })();

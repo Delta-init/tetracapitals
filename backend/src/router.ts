@@ -24,7 +24,7 @@ import { handleReminderOpen } from "./functions/followupReminders";
 import { handleProgramConfirm } from "./students/programNotices";
 import { streamRecording } from "./students/calls";
 import { streamWhatsAppMedia } from "./functions/whatsapp";
-import { handleCsTv, handleCsTvVoice } from "./functions/csTv";
+import { handleCsTv, handleCsTvVoice, handleCsTvVoicePlan } from "./functions/csTv";
 
 /**
  * Main HTTP router. The API is namespaced under /api.
@@ -69,6 +69,8 @@ export async function route(req: Request): Promise<Response> {
   if (path === "/api/public/cs-tv" && req.method === "GET") return handleCsTv(req);
   // The board's payments in the user's own voice (2026-10-26; functions/csTv.ts, lib/voice.ts).
   if (path === "/api/public/cs-tv/voice" && req.method === "GET") return handleCsTvVoice(req);
+  // The owner's own recordings, as a list to play (2026-10-26; R2 — functions/voiceRecordings.ts).
+  if (path === "/api/public/cs-tv/voice-plan" && req.method === "GET") return handleCsTvVoicePlan(req);
 
   // ---- The Root portal asking about roles and people (shared secret) ----
   if (path.startsWith("/api/v1/service/")) return handlePortalService(req, path.slice("/api/v1/service".length));
