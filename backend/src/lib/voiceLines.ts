@@ -24,9 +24,18 @@ export function spokenName(name: unknown): string {
   return n.split(/\s+/).filter(Boolean).map((w) => (w === w.toLowerCase() ? w[0]!.toUpperCase() + w.slice(1) : w)).join(" ");
 }
 
-/** A course as it should be said: short capitals are spelt out ("DSLP" → "D S L P"), the rest as written. */
+/** Short words that are words, not codes: said as written. */
+const SAID_AS_WORDS = new Set(["PRO", "FULL", "PLUS", "MAX", "MINI", "LIVE", "OFFER"]);
+/**
+ * A course as it should be said: a code is spelt out ("DSLP" → "D S L P", "mmc" → "M M C") — short capitals, or a
+ * short word with no vowel — and a word stays a word ("DSLP PRO" → "D S L P Pro").
+ */
 export function spokenCourse(product: unknown): string {
-  return String(product ?? "").trim().split(/(\s+|[-–/+&])/).map((w) => (/^[A-Z]{2,5}$/.test(w) ? w.split("").join(" ") : w)).join("").replace(/\s+/g, " ").trim();
+  return String(product ?? "").trim().split(/(\s+|[-–/+&])/).map((w) => {
+    if (SAID_AS_WORDS.has(w.toUpperCase())) return w[0]!.toUpperCase() + w.slice(1).toLowerCase();
+    if (/^[A-Za-z]{2,5}$/.test(w) && (/^[A-Z]+$/.test(w) || !/[aeiouy]/i.test(w))) return w.toUpperCase().split("").join(" ");
+    return w;
+  }).join("").replace(/\s+/g, " ").trim();
 }
 
 const ONES = ["zero", "one", "two", "three", "four", "five", "six", "seven", "eight", "nine", "ten", "eleven", "twelve", "thirteen", "fourteen", "fifteen", "sixteen", "seventeen", "eighteen", "nineteen"];
@@ -44,7 +53,9 @@ export function numberWords(value: number): string {
   for (const [size, word] of [[1_000_000, "million"], [1000, "thousand"]] as const) {
     if (n >= size) { parts.push(`${under1000(Math.floor(n / size))} ${word}`); n %= size; }
   }
-  if (n) parts.push(parts.length && n < 100 ? `and ${under1000(n)}` : under1000(n));
+  // "eleven thousand and twenty", "eleven thousand, three hundred and twenty".
+  if (n && parts.length && n < 100) return `${parts.join(", ")} and ${under1000(n)}`;
+  if (n) parts.push(under1000(n));
   return parts.join(", ");
 }
 
