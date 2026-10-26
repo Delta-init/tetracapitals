@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import CsTvBoard from '@/components/cstv/CsTvBoard';
+import { setOwnVoice } from '@/components/cstv/saleAnnouncement';
 
 /* ────────────────────────────────────────────────────────────────────────────
    The CS TV board for the office screens (the user, 2026-10-22) — the Root
@@ -25,6 +26,11 @@ export default function CsTv() {
   });
 
   useEffect(() => { document.title = `CS TV — ${location === 'bangalore' ? 'Bangalore' : 'Dubai'}`; }, [location]);
+  // Each payment said in the owner's own voice when the API has it (2026-10-26); the browser's voice otherwise.
+  useEffect(() => {
+    setOwnVoice((sale) => `${API}/api/public/cs-tv/voice?location=${location}&id=${encodeURIComponent(sale.test ? 'test' : sale.id)}`);
+    return () => setOwnVoice(null);
+  }, [location]);
 
   const turn = useCallback(() => setRotate(r => {
     const next = (r + 90) % 360;

@@ -102,3 +102,48 @@ export async function handleCsTv(req: Request): Promise<Response> {
   }
 }
 
+
+/* ── The voice (the user, 2026-10-26: the user's own, cloned — lib/voice.ts) ─────────────────────────────────────── */
+
+const CURRENCY_WORDS: Record<string, string> = { AED: "dirhams", INR: "rupees", USD: "dollars" };
+const INR_PER_AED = 1 / (3.67 * 0.01);
+
+/** What the board says for a payment — the same words as its browser voice (components/cstv/saleAnnouncement.js). */
+export function spokenLineFor(p: { cs?: string; team?: string; product?: string; aed?: number }, location: "dubai" | "bangalore"): string {
+  const currency = location === "bangalore" ? "INR" : "AED";
+  const amount = Math.round((Number(p.aed) || 0) * (currency === "INR" ? INR_PER_AED : 1));
+  let line = p.cs ? `Payment collected by ${p.cs}${p.team ? `, in ${p.team}` : ""}! ` : `Payment collected${p.team ? `, in ${p.team}` : ""}! `;
+  line += p.product || "A course payment";
+  if (amount > 0) line += `, for ${amount.toLocaleString("en-US")} ${CURRENCY_WORDS[currency]}`;
+  return `${line}. Congratulations!`;
+}
+
+/**
+ * GET /api/public/cs-tv/voice?location=&id=<payment id | test> → audio/mpeg: a payment on the board, said in the
+ * voice. Only a payment the board shows (its latest 20) or the Test line — so nobody can make it say anything else,
+ * or run up the bill; each line is made once (lib/voice.ts). 404 when there's no voice here: the board then speaks
+ * with the browser's own.
+ */
+export async function handleCsTvVoice(req: Request): Promise<Response> {
+  const { voiceConfigured, voiceMp3 } = await import("../lib/voice");
+  if (!voiceConfigured()) return error("No voice on this server", 404);
+  const url = new URL(req.url);
+  const location = url.searchParams.get("location") === "bangalore" ? "bangalore" : "dubai";
+  const id = String(url.searchParams.get("id") ?? "");
+  let text = "";
+  if (id === "test") text = spokenLineFor({ cs: "Test", team: "CS TV", product: "Sample course", aed: 2000 }, location);
+  else {
+    const had = cache.get(location);
+    const data = had && Date.now() - had.at < 5 * 60_000 ? had.data : await board(location);
+    const p = (data.recent as any[]).find((r) => r.id === id);
+    if (!p) return error("Not a payment on the board", 404);
+    text = spokenLineFor({ cs: p.cs, team: p.team, product: p.product, aed: p.aed }, location);
+  }
+  try {
+    const mp3 = await voiceMp3(text);
+    return new Response(new Uint8Array(mp3), { headers: { "content-type": "audio/mpeg", "cache-control": "public, max-age=86400", "access-control-allow-origin": "*" } });
+  } catch (err) {
+    console.error("[cs tv voice]", err instanceof Error ? err.message : err);
+    return error("The voice couldn't be made", 502);
+  }
+}

@@ -296,6 +296,8 @@ export function say(text) {
 }
 
 export function stopVoice() {
+  try { playing?.pause(); } catch { /* nothing playing */ }
+  playing = null;
   try {
     window.speechSynthesis?.cancel();
   } catch {
@@ -304,11 +306,43 @@ export function stopVoice() {
 }
 
 export function voiceBusy() {
+  if (playing && !playing.paused && !playing.ended) return true;
   try {
     return Boolean(window.speechSynthesis?.speaking);
   } catch {
     return false;
   }
+}
+
+// ── Our own voice (the user, 2026-10-26) ──────────────────────────────────────
+
+/* Where a sale's line in the owner's own voice is made (the page sets it: CsTv.jsx → GET /api/public/cs-tv/voice).
+   Not set, or not answering: the browser's voice, as before. */
+let ownVoiceUrl = null;
+let playing = null;
+export function setOwnVoice(urlFor) {
+  ownVoiceUrl = typeof urlFor === "function" ? urlFor : null;
+}
+
+/** Plays the sale's line in the own voice. Resolves true when it played, false to fall back to the browser's. */
+function playOwnVoice(sale) {
+  if (!ownVoiceUrl || typeof Audio === "undefined") return Promise.resolve(false);
+  return new Promise((resolve) => {
+    let done = false;
+    const finish = (ok) => { if (!done) { done = true; resolve(ok); } };
+    try {
+      const a = new Audio(ownVoiceUrl(sale));
+      a.preload = "auto";
+      a.addEventListener("error", () => finish(false), { once: true });
+      a.addEventListener("playing", () => finish(true), { once: true });
+      // Made on demand the first time: wait up to 12 s for it, then the browser's voice.
+      window.setTimeout(() => { if (!done) { a.pause(); finish(false); } }, 12_000);
+      playing = a;
+      a.play().catch(() => finish(false));
+    } catch {
+      finish(false);
+    }
+  });
 }
 
 // ── One tab says it ───────────────────────────────────────────────────────────
@@ -353,7 +387,10 @@ export function announce(sale) {
     if (!allowed()) return;
     if (!sale.test && !(await claimToSay(sale.id))) return;
     if (!allowed()) return;
-    voiceTimer = window.setTimeout(() => {
+    voiceTimer = window.setTimeout(async () => {
+      if (!allowed()) return;
+      // The owner's own voice when this server has it; else the browser's (2026-10-26).
+      if (await playOwnVoice(sale)) return;
       if (allowed()) say(spokenLine(sale));
     }, playSparkle());
   })();
