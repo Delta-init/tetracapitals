@@ -60,7 +60,7 @@ async function board(location: "dubai" | "bangalore") {
     const aed = Number(t.course_payment?.paid_today_aed) || Number(t.amount_aed) || 0;
     r.month_aed += aed; r.payments += 1;
     if (String(t.approved_at) >= todayStart) { r.today_aed += aed; r.today_payments += 1; }
-    if (recent.length < 20) recent.push({ id: String(t._id), cs: r.name, team: r.team, aed: round(aed), product: String(t.course_payment?.product ?? (t.tags ?? [])[0] ?? ""), at: t.approved_at });
+    if (recent.length < 20) recent.push({ id: String(t._id), cs_id: r.id, cs: r.name, team: r.team, aed: round(aed), product: String(t.course_payment?.product ?? (t.tags ?? [])[0] ?? ""), at: t.approved_at });
   }
   const photos = await hrmsPhotos([...row.values()].map((r) => ({ email: r.email, name: r.name })));
   const cs = [...row.values()]
@@ -91,11 +91,13 @@ export async function handleCsTv(req: Request): Promise<Response> {
   const url = new URL(req.url);
   const location = url.searchParams.get("location") === "bangalore" ? "bangalore" : "dubai";
   const had = cache.get(location);
-  if (had && Date.now() - had.at < CACHE_MS) return json(had.data);
+  // Who collected each payment is kept for the voice (its recordings are by person), not shown.
+  const shown = (data: any) => ({ ...data, recent: (data.recent ?? []).map(({ cs_id: _id, ...r }: any) => r) });
+  if (had && Date.now() - had.at < CACHE_MS) return json(shown(had.data));
   try {
     const data = await board(location);
     cache.set(location, { at: Date.now(), data });
-    return json(data);
+    return json(shown(data));
   } catch (err) {
     console.error("[cs tv]", err);
     return error("The board couldn't be made — try again", 500);
@@ -126,19 +128,20 @@ export function spokenLineFor(p: { cs?: string; team?: string; product?: string;
  */
 export async function handleCsTvVoice(req: Request): Promise<Response> {
   const { voiceConfigured, voiceMp3 } = await import("../lib/voice");
-  if (!voiceConfigured()) return error("No voice on this server", 404);
   const url = new URL(req.url);
   const location = url.searchParams.get("location") === "bangalore" ? "bangalore" : "dubai";
   const id = String(url.searchParams.get("id") ?? "");
-  let text = "";
-  if (id === "test") text = spokenLineFor({ cs: "Test", team: "CS TV", product: "Sample course", aed: 2000 }, location);
-  else {
+  let p: any = null;
+  if (id !== "test") {
     const had = cache.get(location);
     const data = had && Date.now() - had.at < 5 * 60_000 ? had.data : await board(location);
-    const p = (data.recent as any[]).find((r) => r.id === id);
+    p = (data.recent as any[]).find((r) => r.id === id);
     if (!p) return error("Not a payment on the board", 404);
-    text = spokenLineFor({ cs: p.cs, team: p.team, product: p.product, aed: p.aed }, location);
   }
+  // No ElevenLabs: the owner's own recordings, stitched (2026-10-26, Chatterbox on Colab — lib/voiceLines.ts).
+  if (!voiceConfigured()) return stitchedVoice(p, location);
+  const text = p ? spokenLineFor({ cs: p.cs, team: p.team, product: p.product, aed: p.aed }, location)
+    : spokenLineFor({ cs: "Test", team: "CS TV", product: "Sample course", aed: 2000 }, location);
   try {
     const mp3 = await voiceMp3(text);
     return new Response(new Uint8Array(mp3), { headers: { "content-type": "audio/mpeg", "cache-control": "public, max-age=86400", "access-control-allow-origin": "*" } });
@@ -147,3 +150,35 @@ export async function handleCsTvVoice(req: Request): Promise<Response> {
     return error("The voice couldn't be made", 502);
   }
 }
+
+/**
+ * A payment said from the recordings made ahead (tv_voice_clips — scripts/voice-clips.ts upload): who collected it,
+ * the course, the amount when that amount was recorded, "Congratulations!", with a short pause between. Without the
+ * person's recording: 404, and the board speaks with the browser's own voice. The Test line: the first CS recorded.
+ */
+async function stitchedVoice(p: any, location: "dubai" | "bangalore"): Promise<Response> {
+  const { csLine, courseLine, amountLine, CONGRATS, GAP_KEY } = await import("../lib/voiceLines");
+  const clips = col("tv_voice_clips");
+  let first: any = null;
+  if (p) first = await clips.findOne({ _id: csLine(String(p.cs_id), p.cs, p.team).key } as any);
+  else first = await clips.findOne({ _id: { $regex: "^cs:" } } as any);
+  if (!first?.mp3) return error("No recording for them yet", 404);
+  const currency = location === "bangalore" ? "INR" : "AED";
+  const amount = p ? Math.round((Number(p.aed) || 0) * (currency === "INR" ? INR_PER_AED : 1)) : 2000;
+  const keys = [
+    p?.product ? courseLine(p.product).key : "",
+    amount > 0 ? amountLine(amount, currency).key : "",
+    CONGRATS.key,
+  ].filter(Boolean);
+  const found = new Map(((await clips.find({ _id: { $in: [...keys, GAP_KEY] } } as any).toArray()) as any[]).map((c) => [String(c._id), c]));
+  const gap = found.get(GAP_KEY)?.mp3;
+  const parts: Buffer[] = [Buffer.from(first.mp3.buffer ?? first.mp3)];
+  for (const k of keys) {
+    const c = found.get(k);
+    if (!c?.mp3) continue;   // an amount nobody recorded: left out (the screen shows it)
+    if (gap) parts.push(Buffer.from(gap.buffer ?? gap));
+    parts.push(Buffer.from(c.mp3.buffer ?? c.mp3));
+  }
+  return new Response(new Uint8Array(Buffer.concat(parts)), { headers: { "content-type": "audio/mpeg", "cache-control": "public, max-age=3600", "access-control-allow-origin": "*" } });
+}
+
