@@ -150,13 +150,23 @@ export default function StudentMovesPanel({ teamId = null, showMap = true, title
                   <Link to={`${createPageUrl('StudentDetail')}?id=${m.studentId}`} className="font-medium text-slate-900 hover:text-blue-600">{m.studentName}</Link>
                   <div className="font-mono text-xs text-slate-400">{m.studentCode}</div>
                 </td>
-                <td className="px-4 py-2.5 text-slate-600">{NEW_KINDS.includes(m.kind) ? <span className="text-slate-400">new</span> : who(m.from)}</td>
-                <td className="px-1 py-2.5 text-slate-300"><ArrowRight className="h-4 w-4" /></td>
-                <td className="px-4 py-2.5 font-medium text-slate-800">{who(m.to)}</td>
-                <td className="px-4 py-2.5 text-slate-500">{m.now && m.now.id !== m.to?.id ? who(m.now) : <span className="text-slate-300">same</span>}</td>
-                <td className="px-4 py-2.5 text-right">
-                  <Button variant="ghost" size="sm" onClick={() => setPathOf(m)} title="Full path"><Route className="h-4 w-4" /></Button>
-                </td>
+                {/* New and still with whoever got them (the user, 2026-10-26): one line, no path to show. */}
+                {NEW_KINDS.includes(m.kind) && (!m.now || m.now.id === m.to?.id) ? (
+                  <>
+                    <td colSpan={4} className="px-4 py-2.5 text-slate-600">Came directly to <span className="font-medium text-slate-800">{who(m.to)}</span></td>
+                    <td />
+                  </>
+                ) : (
+                  <>
+                    <td className="px-4 py-2.5 text-slate-600">{NEW_KINDS.includes(m.kind) ? <span className="text-slate-400">new</span> : who(m.from)}</td>
+                    <td className="px-1 py-2.5 text-slate-300"><ArrowRight className="h-4 w-4" /></td>
+                    <td className="px-4 py-2.5 font-medium text-slate-800">{who(m.to)}</td>
+                    <td className="px-4 py-2.5 text-slate-500">{m.now && m.now.id !== m.to?.id ? who(m.now) : <span className="text-slate-300">same</span>}</td>
+                    <td className="px-4 py-2.5 text-right">
+                      <Button variant="ghost" size="sm" onClick={() => setPathOf(m)} title="Full path"><Route className="h-4 w-4" /></Button>
+                    </td>
+                  </>
+                )}
               </tr>
             ))}
           </tbody>
