@@ -31,6 +31,16 @@ function NextDue({ f }) {
   );
 }
 
+/** Every receipt of a course fee: the close's declared payments' (else the close's one), then each recorded payment's. */
+function receiptsOf(f) {
+  const seen = new Set();
+  const declared = (f.declared_payments || []).filter(p => p.receipt_url);
+  return [
+    ...(declared.length ? declared : f.receipt_url ? [{ receipt_url: f.receipt_url, method: 'View' }] : []),
+    ...(f.payments || []).filter(p => p.receipt_url).map(p => ({ ...p, method: `${p.method || 'Payment'}${p.paid_on ? ` · ${p.paid_on}` : ''}` })),
+  ].filter(p => (seen.has(p.receipt_url) ? false : (seen.add(p.receipt_url), true)));
+}
+
 /** Under what was paid: how many payments finance has, and the latest one's date. */
 function PaymentsLine({ f }) {
   const list = Array.isArray(f.payments) ? f.payments : [];
@@ -142,25 +152,16 @@ export default function CourseFeesCard({ fees }) {
                     )}
                   </td>
                   <td className="p-3 text-sm">
-                    {/* Each payment's receipt, as the salesperson uploaded it (finance, 2026-10-12) */}
-                    {f.declared_payments?.some(p => p.receipt_url) ? (
+                    {/* Each payment's receipt, as the salesperson uploaded it (finance, 2026-10-12), and each one
+                        finance recorded since (2026-10-27) — the same receipt once */}
+                    {receiptsOf(f).length ? (
                       <div className="space-y-0.5">
-                        {f.declared_payments.filter(p => p.receipt_url).map((p, i) => (
-                          <a key={i} href={p.receipt_url} target="_blank" rel="noopener noreferrer" className="flex items-center gap-1 whitespace-nowrap text-blue-600 hover:underline">
+                        {receiptsOf(f).map((p) => (
+                          <a key={p.receipt_url} href={p.receipt_url} target="_blank" rel="noopener noreferrer" className="flex items-center gap-1 whitespace-nowrap text-blue-600 hover:underline">
                             <Receipt className="h-3.5 w-3.5" />{p.method || 'Receipt'}{p.amount_minor ? ` · ${money(p.amount_minor, f.currency)}` : ''}
                           </a>
                         ))}
                       </div>
-                    ) : f.receipt_url ? (
-                      <a
-                        href={f.receipt_url}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="inline-flex items-center gap-1 text-blue-600 hover:underline"
-                      >
-                        <Receipt className="h-3.5 w-3.5" />
-                        View
-                      </a>
                     ) : f.remarks ? (
                       <span className="text-xs text-gray-600">{f.remarks}</span>
                     ) : (

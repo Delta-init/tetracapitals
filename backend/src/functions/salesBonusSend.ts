@@ -55,6 +55,9 @@ async function waiting(student: any) {
       add(f.receipt_url, f.receipt_name, "Salesperson's receipt");
       (Array.isArray(f.declared_payments) ? f.declared_payments : []).forEach((p: any, i: number) =>
         add(p?.receipt_url, p?.receipt_name, `Payment ${i + 1}${p?.method ? ` · ${p.method}` : ""}`));
+      // And every payment finance recorded since, with its own receipt (2026-10-27) — the same one only once.
+      (Array.isArray(f.payments) ? f.payments : []).forEach((p: any) =>
+        add(p?.receipt_url, p?.receipt_name, `Recorded ${p?.method || "payment"}${p?.paid_on ? ` · ${p.paid_on}` : ""}`));
       const minor = (v: unknown) => (Number.isFinite(Number(v)) ? Math.round(Number(v)) / 100 : null);
       return {
         invoice_id: b.invoice_id, invoice_number: b.invoice_number, course: b.course,

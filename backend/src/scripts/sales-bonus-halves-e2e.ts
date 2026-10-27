@@ -154,6 +154,29 @@ await feeUpdate(s2, 200_000);
 r = await call("POST", "/api/functions/getSalesBonusToSend", { studentId: sid(s2) }, as(tCs));
 check("AED 2,000 paid: half can be sent now", r.body?.bonuses?.[0]?.half === true && r.body.bonuses[0].now === 500, show(r.body));
 
+step("2b. Every payment's receipt (2026-10-27: only the close's showed)");
+r = await call("POST", "/api/v1/integrations/finance/fee-updates", {
+  invoiceId: "inv-2", invoiceNumber: "IN-inv-2", email: s2.email, course: s2.course_fees[0].course, currency: "AED",
+  totalMinor: 550_000, paidMinor: 300_000, balanceMinor: 250_000, status: "partial", nextDueOn: null,
+  payments: [
+    { amountMinor: 112_500, paidOn: "2026-10-17", method: "Tabby", receipt: { url: "https://files.test/receipt.pdf", name: "Tabby receipt" } },
+    { amountMinor: 187_500, paidOn: "2026-10-23", method: "Card", receipt: { url: "https://files.test/card.jpg", name: "RCT-00042" } },
+    { amountMinor: 0, paidOn: "2026-10-24", method: "Cash", receipt: { url: "javascript:alert(1)", name: "bad" } },
+  ],
+  updatedAt: new Date(stamp += 1000).toISOString(),
+}, { "x-finance-secret": SECRET });
+const kept: any = (await db.collection("students").findOne({ _id: s2._id }))?.course_fees?.[0];
+check("each recorded payment keeps its receipt; a link a browser can't open is dropped", r.status === 200 && kept?.payments?.[1]?.receipt_url === "https://files.test/card.jpg"
+  && kept.payments[1].receipt_name === "RCT-00042" && !kept.payments[2].receipt_url, show(kept?.payments));
+r = await call("POST", "/api/functions/getSalesBonusToSend", { studentId: sid(s2) }, as(tCs));
+const urls = (r.body?.bonuses?.[0]?.receipts ?? []).map((x: any) => x.url);
+check("Send bonus for credit: the close's receipt and the Card payment's — the same one once", urls.join() === "https://files.test/receipt.pdf,https://files.test/card.jpg", show(r.body?.bonuses?.[0]?.receipts));
+await call("POST", "/api/functions/sendSalesBonusCredit", { studentId: sid(s2), mt5Login: "923072" }, as(tCs));
+const t2 = (await credits(s2))[0];
+const row2 = await approvalsRow(t2?._id);
+const inv2 = (row2?.student?.invoices ?? []).find((f: any) => f.invoice_number === "IN-inv-2");
+check("MT5 Approvals: the invoice's recorded payments with their receipts", inv2?.recorded_payments?.map((x: any) => x.receipt_url).join() === "https://files.test/receipt.pdf,https://files.test/card.jpg", show(inv2));
+
 step("3. A request for all of it, raised before");
 r = await approve(t3._id);
 check("refused while part paid, saying it is split on the next payment update", r.status === 409 && /AED 2,750\.00 is still owed on IN-inv-3 — half the sales bonus can be credited now: this request for all of it is split in two on the course's next payment update/.test(errOf(r)), show(r.body));

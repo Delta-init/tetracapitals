@@ -126,6 +126,11 @@ export async function getBonusApprovals(req: Request, user: AuthUser): Promise<R
                 method: String(p.method ?? ""), amount: (Number(p.amount_minor) || 0) / 100, paid_on: String(p.paid_on ?? ""),
                 receipt_url: String(p.receipt_url ?? ""), receipt_name: String(p.receipt_name ?? ""),
               })),
+              // Each payment finance recorded, with its own receipt (2026-10-27) — a second payment's too.
+              recorded_payments: (Array.isArray(f.payments) ? f.payments : []).filter((p: any) => /^https?:\/\//i.test(String(p?.receipt_url ?? ""))).map((p: any) => ({
+                method: String(p.method ?? ""), amount: (Number(p.amount_minor) || 0) / 100, paid_on: String(p.paid_on ?? ""),
+                receipt_url: String(p.receipt_url), receipt_name: String(p.receipt_name ?? ""),
+              })),
             })),
             finance_invoice_number: String(s.finance_invoice_number ?? ""),
             closed_by: (Array.isArray(s.closed_by) ? s.closed_by : []).map((c: any) => ({ name: String(c.name ?? c.email ?? ""), crm: String(c.crm ?? "") })),

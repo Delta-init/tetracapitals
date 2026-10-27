@@ -39,7 +39,8 @@ export interface FeeUpdate {
   balanceMinor: number;
   status: FeeStatus;
   nextDueOn: string | null;
-  payments: { amount_minor: number; paid_on: string; method: string }[];
+  /** Each recorded payment — with its receipt from a finance that sends it (2026-10-27). */
+  payments: { amount_minor: number; paid_on: string; method: string; receipt_url?: string; receipt_name?: string }[];
   updatedAt: string;
   /**
    * What the counsellor declared collected at the close, and how, with each declared payment and its receipt, and the
@@ -70,7 +71,12 @@ export function readFeeUpdate(body: unknown): { update: FeeUpdate } | { error: s
   const payments = (Array.isArray(b.payments) ? b.payments : []).slice(0, 500).flatMap((p: any) => {
     const amount = minor(p?.amountMinor);
     const on = String(p?.paidOn ?? "").slice(0, 10);
-    return amount !== null && isDay(on) ? [{ amount_minor: amount, paid_on: on, method: text(p?.method, 60) }] : [];
+    // Its own receipt (the user, 2026-10-27: a second payment's receipt never showed here — only the close's).
+    const receipt = p?.receipt && typeof p.receipt === "object" ? (p.receipt as Record<string, unknown>) : null;
+    const url = link(receipt?.url);
+    return amount !== null && isDay(on)
+      ? [{ amount_minor: amount, paid_on: on, method: text(p?.method, 60), ...(url ? { receipt_url: url, receipt_name: text(receipt?.name, 200) } : {}) }]
+      : [];
   });
   const hasDeclared = "declaredPaidMinor" in b || "declaredPayments" in b || "receipt" in b;
   const receipt = b.receipt && typeof b.receipt === "object" ? (b.receipt as Record<string, unknown>) : null;
