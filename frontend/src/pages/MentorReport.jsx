@@ -150,10 +150,48 @@ function Cells({ r, open, total }) {
         {meetingCats(r) && <div className="whitespace-nowrap text-[10px] text-slate-400" title="Course Pitch · Overview · Other · no category">{meetingCats(r)}</div>}
       </td>
       <td className="px-3 py-2.5"><Opens value={r.reviews} onOpen={() => open('classes', 'classes and their reviews')}><Rating avg={r.avgRating} reviews={r.reviews} low={r.lowRatings} /></Opens></td>
+      {/* Late to class (LMS) and the HRMS's clock-in / out (2026-10-27). */}
+      <td className="px-3 py-2.5 text-right">
+        <Opens value={r.lateJoins} onOpen={() => open('late_joins', 'joined late')} className="font-semibold text-amber-700">{r.lateJoins || 0}</Opens>
+        {r.lateMinutes ? <span className="text-xs text-slate-400"> · {r.lateMinutes} min</span> : null}
+        {r.notJoined ? <div className="whitespace-nowrap text-[10px]"><Opens value={r.notJoined} onOpen={() => open('not_joined', 'no join recorded')} className="text-rose-500">{r.notJoined} no join</Opens></div> : null}
+      </td>
+      <td className="px-3 py-2.5"><ClockCell r={r} total={total} open={open} /></td>
       <td className={cn('px-3 py-2.5 text-right font-semibold', r.commission_usd ? 'text-emerald-700' : 'text-slate-300')}>
         <Opens value={r.commission_usd} onOpen={() => open('commission', 'commission')} className="text-emerald-700">{usd(r.commission_usd)}</Opens>
       </td>
     </>
+  );
+}
+
+const clock = (iso) => (iso ? new Date(iso).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Dubai' }) : '—');
+
+/** The HRMS's day (2026-10-27): a day row its shift, clock-in (late by), clock-out; a mentor's total the late clock-ins and days. */
+function ClockCell({ r, total, open }) {
+  if (total) {
+    if (!r.daysPresent && !r.daysAbsent && !r.daysLeave && !r.lateClockIns) return <span className="text-slate-300">—</span>;
+    return (
+      <div className="whitespace-nowrap text-xs">
+        <Opens value={r.lateClockIns} onOpen={() => open('late_clockins', 'late clock-ins')} className="font-semibold text-amber-700">{r.lateClockIns || 0} late</Opens>
+        {r.lateClockInMinutes ? <span className="text-slate-400"> · {r.lateClockInMinutes} min</span> : null}
+        <div><Opens value={r.daysPresent + r.daysAbsent + r.daysLeave} onOpen={() => open('attendance', 'clock-in and out')} className="text-slate-600">{r.daysPresent} in</Opens>
+          {r.daysAbsent ? <span className="text-rose-600"> · {r.daysAbsent} absent</span> : null}{r.daysLeave ? <span className="text-sky-600"> · {r.daysLeave} leave</span> : null}</div>
+      </div>
+    );
+  }
+  const h = r.hrms;
+  if (!h) return <span className="text-slate-300">—</span>;
+  return (
+    <div className="whitespace-nowrap text-xs leading-tight">
+      {h.shift && <div className="text-slate-400">Shift {h.shift.from}–{h.shift.to}</div>}
+      {h.firstIn ? (
+        <div>
+          In <span className={h.lateMinutes > 0 ? 'font-semibold text-amber-700' : 'text-slate-700'}>{clock(h.firstIn)}</span>
+          {h.lateMinutes > 0 && <span className="text-amber-700"> ({h.lateMinutes} min late)</span>}
+          {' · '}Out <span className="text-slate-700">{h.lastOut ? clock(h.lastOut) : 'still in'}</span>
+        </div>
+      ) : <div className={h.leave ? 'text-sky-600' : h.status === 'absent' ? 'text-rose-600' : 'text-slate-400'}>{h.leave ? `On leave · ${h.leave.type}` : h.status === 'absent' ? 'Absent' : 'No clock-in'}</div>}
+    </div>
   );
 }
 
@@ -173,7 +211,8 @@ export default function MentorReport() {
   const needle = q.trim().toLowerCase();
   const rows = useMemo(() => (data?.mentors ?? []).filter(m => !needle || `${m.name} ${m.email}`.toLowerCase().includes(needle)), [data, needle]);
   const sum = useMemo(() => {
-    const t = { held: 0, classes: 0, classesCancelled: 0, bookings: 0, bookingsCancelled: 0, attended: 0, missed: 0, meetings: 0, meetingsCancelled: 0, mCoursePitch: 0, mOverview: 0, mOther: 0, mNone: 0, reviews: 0, ratingSum: 0, commission_usd: 0 };
+    const t = { held: 0, classes: 0, classesCancelled: 0, bookings: 0, bookingsCancelled: 0, attended: 0, missed: 0, meetings: 0, meetingsCancelled: 0, mCoursePitch: 0, mOverview: 0, mOther: 0, mNone: 0, reviews: 0, ratingSum: 0, commission_usd: 0,
+      lateJoins: 0, lateMinutes: 0, notJoined: 0, lateClockIns: 0, lateClockInMinutes: 0, daysPresent: 0 };
     for (const m of rows) {
       for (const k of Object.keys(t)) if (k !== 'ratingSum') t[k] += Number(m.total?.[k]) || 0;
       t.ratingSum += (Number(m.total?.avgRating) || 0) * (Number(m.total?.reviews) || 0);
@@ -201,6 +240,8 @@ export default function MentorReport() {
     ['Missed', sum.missed, 'booked, didn’t come', 'missed', sum.missed],
     ['Meetings', sum.meetings - sum.meetingsCancelled, [meetingCats(sum), `${sum.meetingsCancelled} cancelled`].filter(Boolean).join(' · '), 'meetings', sum.meetings],
     ['Reviews', sum.reviews, sum.reviews ? `★ ${Math.round((sum.ratingSum / sum.reviews) * 10) / 10} average · by class` : 'none yet', 'classes', sum.reviews],
+    ['Late to class', sum.lateJoins, `${sum.lateMinutes} min late · ${sum.notJoined} no join recorded`, 'late_joins', sum.lateJoins],
+    ['Late clock-ins', sum.lateClockIns, data?.hrms && !data.hrms.available ? 'HRMS not available' : `${sum.lateClockInMinutes} min late · ${sum.daysPresent} days in`, 'late_clockins', sum.lateClockIns],
     ['Commission', usd(sum.commission_usd), 'credited, pool shares included', 'commission', sum.commission_usd],
   ];
 
@@ -211,7 +252,7 @@ export default function MentorReport() {
           <div>
             <PageTitle eyebrow="Overview" icon={ClipboardList}>Mentor Report</PageTitle>
             <p className="mt-2 text-sm text-slate-500">
-              {data?.everyone ? 'Every mentor' : 'Your team’s mentors'} — classes, bookings, cancellations, meetings and reviews from the LMS, with their commission. Open a row for each day (Dubai time).
+              {data?.everyone ? 'Every mentor' : 'Your team’s mentors'} — classes, bookings, cancellations, meetings, reviews and late joins from the LMS, clock-ins from the HRMS, with their commission. Open a row for each day (Dubai time).
             </p>
           </div>
           <div className="flex flex-wrap items-center gap-2">
@@ -227,6 +268,9 @@ export default function MentorReport() {
           </div>
         </div>
 
+        {data?.hrms && !data.hrms.available && (
+          <p className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">Clock-ins aren’t available: {data.hrms.message}.</p>
+        )}
         {data?.lms && !data.lms.available && (
           <p className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">LMS figures aren’t available: {data.lms.message}. Commission still shows.</p>
         )}
@@ -245,7 +289,7 @@ export default function MentorReport() {
             {tab === 'programs' && <ProgramsTab from={from} to={to} onOpen={setSpec} />}
             {tab === 'meetings' && <MeetingsTab from={from} to={to} />}
             {tab === 'mentors' && <>
-            <div className="grid grid-cols-2 gap-3 md:grid-cols-5">
+            <div className="grid grid-cols-2 gap-3 md:grid-cols-6">
               {cards.map(([label, value, sub, kind, has]) => (
                 <button key={label} type="button" disabled={!has || isLoading}
                   onClick={() => (kind === 'meetings' && !one ? setTab('meetings') : openKind(kind, label.toLowerCase()))} className="text-left disabled:cursor-default">
@@ -281,12 +325,14 @@ export default function MentorReport() {
                         <th className="px-3 py-3 text-right font-semibold">Missed</th>
                         <th className="px-3 py-3 text-right font-semibold" title="1:1 meetings held or booked · cancelled">Meetings</th>
                         <th className="px-3 py-3 font-semibold" title="Reviews students left (average, how many, low = 1–2★)">Reviews</th>
+                        <th className="px-3 py-3 text-right font-semibold" title="Classes joined more than 5 minutes after the start (LMS) · minutes late · no join recorded">Late to class</th>
+                        <th className="px-3 py-3 font-semibold" title="From the HRMS: shift, clock-in (late by), clock-out">Clock in / out</th>
                         <th className="px-3 py-3 text-right font-semibold" title="Commission credited in these dates">Commission</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-100">
-                      {isLoading && <tr><td colSpan={11} className="px-4 py-10 text-center text-slate-400"><Loader2 className="mx-auto h-5 w-5 animate-spin" /></td></tr>}
-                      {!isLoading && !rows.length && <tr><td colSpan={11} className="px-4 py-10 text-center text-slate-400">No mentors to show.</td></tr>}
+                      {isLoading && <tr><td colSpan={13} className="px-4 py-10 text-center text-slate-400"><Loader2 className="mx-auto h-5 w-5 animate-spin" /></td></tr>}
+                      {!isLoading && !rows.length && <tr><td colSpan={13} className="px-4 py-10 text-center text-slate-400">No mentors to show.</td></tr>}
                       {rows.map(m => {
                         const key = m.email || m.id;
                         const isOpen = open === key;
@@ -310,10 +356,10 @@ export default function MentorReport() {
                                 <Cells r={d} open={(kind, label) => setSpec({ kind, from: d.day, to: d.day, mentorId: m.lms_id || m.id, title: `${m.name} — ${label}, ${dayLabel(d.day)}` })} />
                               </tr>
                             )) : (
-                              <tr className="bg-slate-50/60"><td colSpan={11} className="py-3 pl-12 text-sm text-slate-400">Nothing in these dates.</td></tr>
+                              <tr className="bg-slate-50/60"><td colSpan={13} className="py-3 pl-12 text-sm text-slate-400">Nothing in these dates.</td></tr>
                             ))}
                             {isOpen && m.total.reviews > 0 && (
-                              <tr className="bg-slate-50/60"><td colSpan={11} className="px-4 pb-4 pt-1 sm:pl-12"><MentorReviews m={m} from={from} to={to} /></td></tr>
+                              <tr className="bg-slate-50/60"><td colSpan={13} className="px-4 pb-4 pt-1 sm:pl-12"><MentorReviews m={m} from={from} to={to} /></td></tr>
                             )}
                           </Fragment>
                         );

@@ -26,6 +26,7 @@ export const KIND_TITLE = {
   classes: 'Classes', cancelled_classes: 'Cancelled classes', bookings: 'Bookings', cancelled_bookings: 'Cancelled bookings',
   attended: 'Attended', missed: 'Missed', students: 'Students', meetings: 'Meetings', cancelled_meetings: 'Cancelled meetings',
   programs: 'Programs', commission: 'Commission',
+  late_joins: 'Joined late', not_joined: 'No join recorded', attendance: 'Clock-in and out', late_clockins: 'Late clock-ins',
 };
 
 const Muted = ({ children }) => <span className="block text-xs text-slate-400">{children}</span>;
@@ -80,6 +81,29 @@ const COLUMNS = {
     ['Commission', r => <span className="font-semibold text-emerald-700">{usd(r.usd)}</span>],
   ],
 };
+/* Late to class (LMS: joined more than 5 minutes after the start) and the HRMS's clock-ins (2026-10-27). */
+const clock = (iso) => (iso ? new Date(iso).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Dubai' }) : '—');
+const hm = (mins) => (mins ? `${Math.floor(mins / 60)}h ${String(mins % 60).padStart(2, '0')}m` : '—');
+const HRMS_STATUS = { present: 'bg-emerald-50 text-emerald-700', late: 'bg-amber-50 text-amber-700', absent: 'bg-rose-50 text-rose-700', on_leave: 'bg-sky-50 text-sky-700', half_day: 'bg-violet-50 text-violet-700', early_out: 'bg-orange-50 text-orange-700' };
+COLUMNS.late_joins = [
+  ['Class', r => <>{r.title}<Muted>{[r.program, r.course].filter(Boolean).join(' · ') || '—'}</Muted></>, r => `${r.title} ${r.program} ${r.course}`],
+  ['Mentor', r => r.mentor, r => r.mentor],
+  ['Starts', r => when(r.start)],
+  ['Joined', r => (r.joinedAt ? when(r.joinedAt) : <span className="text-rose-600">no join recorded</span>)],
+  ['Late', r => (r.lateMins ? <span className="font-semibold text-amber-700">{r.lateMins} min</span> : '—')],
+  ['Booked', r => r.booked], ['Came', r => <span className="text-emerald-600">{r.attended}</span>],
+];
+COLUMNS.not_joined = COLUMNS.late_joins;
+COLUMNS.attendance = [
+  ['Day', r => r.day, r => r.day], ['Mentor', r => r.mentor, r => r.mentor],
+  ['Shift', r => (r.shift ? <>{r.shift.from}–{r.shift.to}{!r.shift.assigned && <Muted>HRMS default</Muted>}</> : '—')],
+  ['Clock in', r => <>{clock(r.firstIn)}{r.lateMinutes > 0 && <Muted><span className="text-amber-700">{r.lateMinutes} min late</span></Muted>}</>],
+  ['Clock out', r => (r.firstIn && !r.lastOut ? <span className="text-sky-700">still in</span> : clock(r.lastOut))],
+  ['Worked', r => hm(r.workedMinutes)],
+  ['Status', r => (r.status ? <Pill tone={HRMS_STATUS[r.status] || 'bg-slate-100 text-slate-600'}>{String(r.status).replace(/_/g, ' ')}{r.leave ? ` · ${r.leave.type}` : ''}{r.wfh ? ' · WFH' : ''}</Pill> : '—'), r => r.status],
+  ['Sessions', r => (r.sessions?.length > 1 ? r.sessions.map(x => `${clock(x.in)}–${x.out ? clock(x.out) : '…'}`).join(', ') : '')],
+];
+COLUMNS.late_clockins = COLUMNS.attendance;
 COLUMNS.cancelled_classes = COLUMNS.classes;
 COLUMNS.cancelled_bookings = COLUMNS.bookings;
 COLUMNS.attended = COLUMNS.bookings;

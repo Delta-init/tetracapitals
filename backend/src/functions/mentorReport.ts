@@ -6,6 +6,7 @@ import { isAdmin, visibleMentorIds } from "../students/followups";
 import { csManagerReach } from "../lib/userLocation";
 import { BUILTIN_MENTOR_ROLES } from "../lib/roles";
 import { callLms, lmsConfigured, LmsError } from "../lib/lms";
+import { mentorAttendance, attendanceTotal, type AttendanceDay } from "../students/mentorAttendance";
 
 /* ────────────────────────────────────────────────────────────────────────────
    The mentors' report (the user, 2026-10-23) — the Team area: each mentor,
@@ -15,10 +16,17 @@ import { callLms, lmsConfigured, LmsError } from "../lib/lms";
    commission credited to them (pool shares included). A chief mentor sees
    their own team (senior / junior mentors too; a CS Manager their location's),
    Super Admins and admins everyone. Matched to the LMS by address.
+
+   2026-10-27 (the user): every Chief Mentor sees every mentor, the four
+   Chiefs too; each class joined late (LMS: more than 5 minutes after the
+   start) or with no join recorded; and from the HRMS each day's shift,
+   clock-in and clock-out, late minutes and worked hours (mentorAttendance.ts).
 ──────────────────────────────────────────────────────────────────────────── */
 
 const SEES = new Set(["chief_mentor", "cs_manager", "senior_mentor", "junior_mentor", "subjunior_mentor"]);
 const mayView = (u: AuthUser) => isAdmin(u) || SEES.has(u.app_role);
+/** Every mentor: admin roles, every Chief Mentor (2026-10-27), and the Root portal (null). */
+const seesAll = (u: AuthUser | null) => !u || isAdmin(u) || u.app_role === "chief_mentor";
 const isDay = (v: unknown): v is string => typeof v === "string" && /^\d{4}-\d{2}-\d{2}$/.test(v);
 const dubaiStart = (day: string) => new Date(`${day}T00:00:00+04:00`).toISOString();
 const nextDay = (day: string) => new Date(new Date(`${day}T00:00:00+04:00`).getTime() + 86_400_000).toISOString();
@@ -29,7 +37,7 @@ const round = (n: number) => Math.round(n * 100) / 100;
 async function mentorsFor(user: AuthUser | null): Promise<any[]> {
   const roles = { app_role: { $in: [...BUILTIN_MENTOR_ROLES] }, status: { $ne: "inactive" } };
   const projection = { full_name: 1, email: 1, app_role: 1 };
-  if (!user || isAdmin(user)) return (await col("users").find(roles, { projection }).toArray()) as any[];
+  if (!user || seesAll(user)) return (await col("users").find(roles, { projection }).toArray()) as any[];
   const reach = await csManagerReach(user);
   const ids = reach ? reach.ids : [...((await visibleMentorIds(user)) ?? new Set([user.id]))];
   return (await col("users").find({ _id: { $in: ids.map(toObjectId).filter(Boolean) as any[] }, ...roles }, { projection }).toArray()) as any[];
@@ -55,7 +63,7 @@ export const mentorReportDates = (from: unknown, to: unknown): string | null =>
  * as a Super Admin sees it — 2026-10-24).
  */
 export async function mentorReport(user: AuthUser | null, from: string, to: string) {
-  const everyone = !user || isAdmin(user);
+  const everyone = seesAll(user);
   const body = { from, to };
   const portal = await mentorsFor(user);
   const byEmail = new Map(portal.map((u) => [String(u.email ?? "").trim().toLowerCase(), u]));
@@ -93,7 +101,7 @@ export async function mentorReport(user: AuthUser | null, from: string, to: stri
     }
   }
 
-  const blank = { classes: 0, held: 0, classesCancelled: 0, bookings: 0, bookingsCancelled: 0, attended: 0, missed: 0, meetings: 0, meetingsCancelled: 0, reviews: 0, lowRatings: 0, avgRating: null as number | null };
+  const blank = { classes: 0, held: 0, classesCancelled: 0, bookings: 0, bookingsCancelled: 0, attended: 0, missed: 0, meetings: 0, meetingsCancelled: 0, lateJoins: 0, lateMinutes: 0, notJoined: 0, reviews: 0, lowRatings: 0, avgRating: null as number | null };
   const rows = new Map<string, any>();
   for (const u of portal) {
     rows.set(String(u.email ?? "").trim().toLowerCase() || String(u._id), { id: String(u._id), name: u.full_name ?? u.email, email: u.email ?? "", role: u.app_role, in_lms: false, total: { ...blank }, days: [] });
@@ -104,23 +112,38 @@ export async function mentorReport(user: AuthUser | null, from: string, to: stri
     Object.assign(row, { in_lms: true, lms_id: String(m.instructorId ?? ""), total: { ...blank, ...m.total }, days: (m.days ?? []).map((d: any) => ({ ...blank, ...d })) });
     rows.set(key, row);
   }
+  // Clock-ins and clock-outs from the HRMS, by address (2026-10-27).
+  const att = await mentorAttendance([...rows.values()].map((r) => r.email), from, to);
   const mentors = [...rows.values()].map((r) => {
     const paid = r.id ? commission.get(r.id) : undefined;
     const days = new Map<string, any>(r.days.map((d: any) => [d.day, { ...d, commission_usd: 0 }]));
     for (const [day, usd] of paid ?? []) days.set(day, { ...(days.get(day) ?? { day, ...blank }), commission_usd: round(usd) });
+    const theirs = att.byEmail.get(String(r.email ?? "").toLowerCase());
+    for (const [day, a] of theirs ?? []) {
+      // A day off with nothing on it (not a working day, never clocked in) stays out of the list.
+      if (!a.workDay && !a.firstIn && !a.leave && !days.has(day)) continue;
+      days.set(day, { ...(days.get(day) ?? { day, ...blank, commission_usd: 0 }), hrms: a, ...attendanceTotal([a]) });
+    }
     const total = round([...(paid?.values() ?? [])].reduce((s, n) => s + n, 0));
-    return { ...r, total: { ...r.total, commission_usd: total }, days: [...days.values()].sort((a, b) => b.day.localeCompare(a.day)) };
+    return {
+      ...r, in_hrms: !!theirs?.size,
+      total: { ...r.total, commission_usd: total, ...attendanceTotal(theirs?.values() ?? []) },
+      days: [...days.values()].sort((a, b) => b.day.localeCompare(a.day)),
+    };
   }).sort((a, b) => b.total.held - a.total.held || b.total.bookings - a.total.bookings || b.total.commission_usd - a.total.commission_usd || String(a.name).localeCompare(String(b.name)));
 
   // Different students who booked and who came — the team's, each once (LMS, 2026-10-27; absent from an older LMS).
   const students = lmsRows.length || everyone ? (lmsAnswer?.students ?? null) : { booked: 0, attended: 0 };
-  return { from: body.from, to: body.to, everyone, mentors, lms, students };
+  const hrms = { available: att.available, ...(att.message ? { message: att.message } : {}) };
+  return { from: body.from, to: body.to, everyone, mentors, lms, students, hrms };
 }
 
 /* ── What is behind each number (the user, 2026-10-27: "each count we can break down … which ones") ──────────────── */
 
-const LMS_KINDS = ["classes", "cancelled_classes", "bookings", "cancelled_bookings", "attended", "missed", "students", "meetings", "cancelled_meetings", "programs"];
-export const DETAIL_KINDS = [...LMS_KINDS, "commission"];
+const LMS_KINDS = ["classes", "cancelled_classes", "bookings", "cancelled_bookings", "attended", "missed", "students", "meetings", "cancelled_meetings", "programs", "late_joins", "not_joined"];
+/** From the HRMS (2026-10-27): every day's clock-in and out, or only the late ones. */
+const HRMS_KINDS = ["attendance", "late_clockins"];
+export const DETAIL_KINDS = [...LMS_KINDS, ...HRMS_KINDS, "commission"];
 
 /**
  * The rows behind one number of the report — for everyone it covers, one mentor (`mentorId`: their portal id or LMS
@@ -135,7 +158,7 @@ export async function mentorReportDetail(user: AuthUser | null, q: Record<string
   if (why) return why;
   const from = String(q.from), to = String(q.to);
   for (const k of ["mentorId", "programId"]) if (q[k] && !/^[a-f\d]{24}$/i.test(String(q[k]))) return `Invalid ${k}`;
-  const everyone = !user || isAdmin(user);
+  const everyone = seesAll(user);
   const portal = await mentorsFor(user);
   // One mentor: by their portal id or their LMS id; outside this person's reach, nobody.
   let one: { portalId: string; lmsId: string; email: string } | null = null;
@@ -171,6 +194,22 @@ export async function mentorReportDetail(user: AuthUser | null, q: Record<string
         };
       }),
     };
+  }
+
+  if (HRMS_KINDS.includes(kind)) {
+    const people = one ? portal.filter((u) => String(u._id) === one!.portalId) : portal;
+    const att = await mentorAttendance(people.map((u) => String(u.email ?? "")), from, to);
+    if (!att.available) return { kind, total: 0, rows: [], lms: { available: false, message: att.message ?? "The HRMS did not answer" } };
+    const nameOf = new Map(people.map((u) => [String(u.email ?? "").toLowerCase(), String(u.full_name ?? u.email ?? "")]));
+    const rows: any[] = [];
+    for (const [email, days] of att.byEmail) {
+      for (const [day, a] of days as Map<string, AttendanceDay>) {
+        if (kind === "late_clockins" ? a.lateMinutes <= 0 : !a.workDay && !a.firstIn && !a.leave) continue;
+        rows.push({ id: `${email}|${day}`, mentor: nameOf.get(email) ?? email, day, ...a });
+      }
+    }
+    rows.sort((x, y) => y.day.localeCompare(x.day) || String(x.mentor).localeCompare(String(y.mentor)));
+    return { kind, total: rows.length, rows };
   }
 
   if (!lmsConfigured()) return { kind, total: 0, rows: [], lms: { available: false, message: "The LMS isn't linked to this server" } };
