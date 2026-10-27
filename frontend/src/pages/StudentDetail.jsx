@@ -53,6 +53,8 @@ import { canEditStudent, applyStudentMasking } from "../components/utils/Student
 import { getEffectiveUser } from "../components/utils/ImpersonationContext";
 import { toast } from "sonner";
 import { format } from "date-fns";
+import { MeetingStageBadge } from '@/components/meetings/meetingStage';
+import StudentMeetingOutcomes from '@/components/meetings/StudentMeetingOutcomes';
 
 // The student page's tabs, in this order (the user, 2026-10-05) — Details opens first. Only the open tab is
 // mounted, so only its cards load. `empty`: what a tab says when its card has nothing to show.
@@ -329,6 +331,12 @@ export default function StudentDetail() {
                 {/* Their birthday, from the LMS — "Birthday today" on the day (2026-10-14) */}
                 <BirthdayTag date={displayStudent.birth_date} />
                 <StudentCategoryTags student={displayStudent} />
+                {/* Where they stand after their latest meeting — the mentor's outcome; opens Follow-ups, where the outcomes are */}
+                {displayStudent.meeting_stage && (
+                  <button type="button" onClick={() => changeTab('followups')} title={displayStudent.meeting_stage_summary || undefined}>
+                    <MeetingStageBadge stage={displayStudent.meeting_stage} summary={displayStudent.meeting_stage_summary} />
+                  </button>
+                )}
                 {/* A bonus still not in their MT5 — to the broker admins (Not Credited Yet) */}
                 {!salesOnly && <RaiseCreditRequestButton student={student} currentUser={currentUser} />}
               </p>
@@ -559,6 +567,7 @@ export default function StudentDetail() {
 
           {/* Follow-ups: stage, what they said, next date, click-to-call */}
           <TabsContent {...panel('followups')}>
+            <StudentMeetingOutcomes student={displayStudent} />
             <StudentFollowupsSection student={displayStudent} />
           </TabsContent>
 

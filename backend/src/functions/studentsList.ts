@@ -14,6 +14,7 @@ import { loadTeams } from "../students/teams";
 import { LOCATIONS, currentLocationOf } from "../lib/location";
 import { bonusPendingOf, idsWithBonusPending } from "../students/bonusPending";
 import { IS_STUDENT, OF_A_STUDENT } from "../students/notStudent";
+import { MEETING_STAGES } from "../students/meetingOutcomes";
 const BONUS_FILTERS = ["pending", "sent_back", "after_payment", "needs_call", "with_finance", "waiting_broker"];
 
 /* ────────────────────────────────────────────────────────────────────────────
@@ -194,6 +195,9 @@ async function filters(user: AuthUser, tab: Tab, f: any): Promise<Record<string,
   // (program_completion), or neither.
   if (["class_completion", "program_completion"].includes(f?.category)) out.push({ categories: f.category });
   if (f?.category === "none") out.push({ categories: { $nin: ["class_completion", "program_completion"] } });
+  // Stage after their latest meeting (the mentor's outcome, students/meetingOutcomes.ts, 2026-10-27), or "none".
+  if ((MEETING_STAGES as readonly string[]).includes(f?.meetingStage)) out.push({ meeting_stage: f.meetingStage });
+  if (f?.meetingStage === "none") out.push({ meeting_stage: { $nin: [...MEETING_STAGES] } });
   if (f?.onboarding === "onboarded") out.push({ onboarded: true });
   if (f?.onboarding === "not_onboarded") out.push({ onboarded: { $ne: true } });
   // LMS classes in their own courses (the hourly LMS check keeps the counts on the student).
@@ -248,7 +252,7 @@ async function filters(user: AuthUser, tab: Tab, f: any): Promise<Record<string,
 /**
  * POST /api/functions/listStudents
  * Body: { tab, page?, pageSize? (25 | 50 | 100), all? (every match, up to 10,000 — export, select all),
- *         filters?: { search, onlyNew, tag, enrolment, priority, category, language, onboarding, classes, followup, course, balance, bonus, from, to, status, team, level, mentor, location } }
+ *         filters?: { search, onlyNew, tag, enrolment, priority, category, meetingStage, language, onboarding, classes, followup, course, balance, bonus, from, to, status, team, level, mentor, location } }
  *         (location: "dubai" | "bangalore" — by their team, or with none the location they arrived for;
  *          bonus: "pending" — a bonus not decided yet)
  * → { tab, tabs, rows, total, page, page_size, truncated?, counts: { new_for_me, co_managed?, admin_co_managed? },

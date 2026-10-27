@@ -15,6 +15,7 @@ import { startLmsEnrolmentWorker } from "./students/lmsEnrolment";
 import { startLmsActivityWorker } from "./students/lmsActivity";
 import { startLmsCsWorker } from "./students/lmsCs";
 import { startMentorScheduleWorker } from "./students/mentorScheduleAlerts";
+import { startMeetingOutcomeWorker } from "./students/meetingOutcomes";
 import { startGuestReminderWorker } from "./students/programNotices";
 import { callLms } from "./lib/lms";
 import { ensureSalesRole } from "./students/closedBy";
@@ -68,6 +69,8 @@ async function main() {
   startLmsCsWorker();
   // Each mentor told of sessions booked with them, moved or cancelled, and 30 minutes before (MENTOR_SCHEDULE_ALERTS=off).
   startMentorScheduleWorker();
+  // How student meetings went (the mentor's form, kept in the LMS) onto the students every 2 minutes.
+  startMeetingOutcomeWorker();
 }
 
 const shutdown = async (signal: string) => {

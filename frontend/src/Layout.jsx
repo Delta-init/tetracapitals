@@ -16,6 +16,7 @@ import { EASE } from '@/components/motion';
 import { NAV_ITEMS, NAV_GROUPS, NESTED_GROUPS, GROUP_OF, ROLE_HOME, ROLE_ONLY_PAGES, humanize, pageBlockedFor } from '@/components/utils/navigation';
 import { readsClosedOnly } from '@/components/utils/roles';
 import { CallFlowProvider } from '@/components/followups/CallFlow';
+import MeetingOutcomeGate from '@/components/meetings/MeetingOutcomeGate';
 import { forgetThisDevice } from '@/components/utils/usePushNotifications';
 
 const initials = (name = '') =>
@@ -618,6 +619,8 @@ export default function Layout({ children, currentPageName }) {
                 </div>
               ) : <div key={currency} className="contents">{children}</div>}
             </CallFlowProvider>
+            {/* How a student meeting went — the mentor's form, open until it is filled */}
+            {currentUser?.id && <MeetingOutcomeGate />}
           </motion.div>
         </main>
       </div>

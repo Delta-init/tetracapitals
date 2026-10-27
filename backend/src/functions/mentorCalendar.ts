@@ -134,6 +134,8 @@ export async function bookMentorMeeting(req: Request, user: AuthUser): Promise<R
         allAcademies: true,
         notes: body?.notes ? str(body.notes) : undefined,
         bookedByEmail: user.email,
+        // A student meeting booked here: its mentor says how it went once it is over (students/meetingOutcomes.ts).
+        askOutcome: true,
       },
     }),
   );
