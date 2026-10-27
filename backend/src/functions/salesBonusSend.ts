@@ -7,7 +7,7 @@ import { recordHistory } from "../students/history";
 import { MT5_LOGIN, mt5LoginOf, mt5Of, mt5Owner, keepMt5 } from "../students/mt5";
 import { salesBonusOf, raiseSalesBonusCredits } from "./studentFollowups";
 import { csManagerReach } from "../lib/userLocation";
-import { owedText } from "../students/salesBonusPaid";
+import { owedText, halfOf } from "../students/salesBonusPaid";
 
 /* ────────────────────────────────────────────────────────────────────────────
    Send a sales-close bonus for credit from its badge (the user, 2026-10-12).
@@ -24,6 +24,7 @@ import { owedText } from "../students/salesBonusPaid";
 ──────────────────────────────────────────────────────────────────────────── */
 
 const AED_PER_USD = 3.67;
+const usdOf = (amount: number, currency: string) => (currency === "USD" ? amount : Math.round((amount / AED_PER_USD) * 100) / 100);
 const who = (u: AuthUser) => u.full_name || u.email || "somebody";
 const isLink = (v: unknown) => /^https?:\/\//i.test(String(v ?? ""));
 // A CS Manager: their own location's students (2026-10-14).
@@ -40,8 +41,8 @@ async function waiting(student: any) {
     .toArray()) as any[]).map((t) => String(t.sales_close?.invoice_id ?? "")));
   const fees = new Map((student.course_fees ?? []).map((f: any) => [String(f?.invoice_id ?? ""), f]));
   return salesBonusOf(student)
-    // Its course still owing: held until it is paid in full (afterPayment — the user, 2026-10-17).
-    .filter((b: any) => b.given && b.amount > 0 && !raised.has(b.invoice_id) && !(b.owed_minor > 0))
+    // Its course owing under AED 2,000 paid: held until it is paid in full (afterPayment — the user, 2026-10-17).
+    .filter((b: any) => b.given && b.amount > 0 && !raised.has(b.invoice_id) && b.stage !== "held")
     .map((b: any) => {
       const f: any = fees.get(b.invoice_id) ?? {};
       const receipts: { url: string; name: string; label: string }[] = [];
@@ -58,7 +59,9 @@ async function waiting(student: any) {
       return {
         invoice_id: b.invoice_id, invoice_number: b.invoice_number, course: b.course,
         amount: b.amount, currency: b.currency,
-        usd: b.currency === "USD" ? b.amount : Math.round((b.amount / AED_PER_USD) * 100) / 100,
+        // Part paid (AED 2,000+): half of it goes now, the rest once the course is paid in full (2026-10-27).
+        ...(b.stage === "half" ? { half: true, now: halfOf(b.amount), owed: owedText(b.owed_minor, b.fee_currency) } : {}),
+        usd: usdOf(b.stage === "half" ? halfOf(b.amount) : b.amount, b.currency),
         aed: b.currency === "USD" ? Math.round(b.amount * AED_PER_USD * 100) / 100 : b.amount,
         fee_currency: String(f.currency ?? ""),
         collected: minor(f.collected_minor), collected_method: String(f.collected_method ?? ""),
@@ -77,7 +80,7 @@ async function afterPayment(student: any) {
     .find({ bonus_credit: "sales_close", student_id: String(student._id) }, { projection: { "sales_close.invoice_id": 1 } })
     .toArray()) as any[]).map((t) => String(t.sales_close?.invoice_id ?? "")));
   return salesBonusOf(student)
-    .filter((b: any) => b.given && b.amount > 0 && !raised.has(b.invoice_id) && b.owed_minor > 0)
+    .filter((b: any) => b.given && b.amount > 0 && !raised.has(b.invoice_id) && b.stage === "held")
     .map((b: any) => ({
       invoice_id: b.invoice_id, invoice_number: b.invoice_number, course: b.course, amount: b.amount, currency: b.currency,
       owed_minor: b.owed_minor, owed: owedText(b.owed_minor, b.fee_currency),
@@ -119,7 +122,7 @@ export async function sendSalesBonusCredit(req: Request, user: AuthUser): Promis
   const list = await waiting(student);
   if (!list.length) {
     const held = await afterPayment(student);
-    if (held.length) return error(`${held.map((b: any) => `${b.owed} is still owed on ${b.invoice_number || b.course || "the course"}`).join("; ")} — the sales bonus is sent once the course is paid in full`, 409);
+    if (held.length) return error(`${held.map((b: any) => `${b.owed} is still owed on ${b.invoice_number || b.course || "the course"}`).join("; ")} — the sales bonus is sent once the course is paid in full, or half of it once AED 2,000 is paid`, 409);
     return error("Nothing is waiting — this student's bonus was sent already", 409);
   }
   // An invoice finance sent no receipt for: one uploaded here, or nothing goes.
@@ -139,7 +142,7 @@ export async function sendSalesBonusCredit(req: Request, user: AuthUser): Promis
   if (sent) {
     await recordHistory([{
       student_id: String(student._id), at: new Date().toISOString(), type: "bonus_sent", by_id: user.id, by_name: who(user),
-      text: `Sales-close bonus sent for credit in MT5 ${login} from the Bonus pending badge — ${list.map((b: any) => `${b.course || "course"} ${b.currency === "USD" ? `$${b.amount}` : `${b.currency} ${b.amount}`}`).join(", ")}${receipts.size ? ` (receipt uploaded for ${receipts.size})` : ""}`.slice(0, 400),
+      text: `Sales-close bonus sent for credit in MT5 ${login} from the Bonus pending badge — ${list.map((b: any) => `${b.course || "course"} ${b.currency === "USD" ? `$${b.half ? b.now : b.amount}` : `${b.currency} ${b.half ? b.now : b.amount}`}${b.half ? " (first half, the course part paid)" : ""}`).join(", ")}${receipts.size ? ` (receipt uploaded for ${receipts.size})` : ""}`.slice(0, 400),
     } as any]);
   }
   return json({ sent, mt5: kept });

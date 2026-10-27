@@ -15,7 +15,45 @@ import { toObjectId } from "../lib/id";
    sales CRM's commission for the close waits too. Paid in full, it goes as
    before. Only the sales-close bonus: a course-upgrade bonus, and every bonus a
    CS raises, are not held.
+
+   Half of it before the full payment (the user, 2026-10-27: "minimum 2k+ partial
+   payment … he gets 500 USD … if he pays full he gets full", a fixed half):
+   once AED 2,000 of the course is paid, half the promised bonus goes to be
+   credited (bonus_part "first_half"); paid in full, the rest (bonus_part
+   "rest") — or, the first half not approved yet, that one becomes the whole
+   bonus again (functions/studentFollowups.ts settleSalesBonusHalves, run on
+   every fee update from finance). A credit with no bonus_part is the whole
+   bonus. Bangalore's INR courses wait for the full payment, as before.
 ──────────────────────────────────────────────────────────────────────────── */
+
+/** Paid this much on the course (AED, in fils), half the sales bonus can be credited before the rest is paid. */
+export const HALF_FROM_AED_MINOR = 200_000;
+const AED_PER_USD = 3.67;
+
+/** What can be credited of a course's sales bonus now: all of it, half of it, or none yet. */
+export type SalesBonusStage = "full" | "half" | "held";
+export type BonusPart = "first_half" | "rest";
+
+/** What has been paid on a course, in AED fils — null in another currency than AED or USD (Bangalore's INR: left for now). */
+function paidAedMinorOf(fee: any): number | null {
+  const paid = Number.isFinite(Number(fee?.paid_minor)) ? Number(fee.paid_minor) : Number(fee?.fee_minor) - Number(fee?.balance_minor);
+  if (!Number.isFinite(paid)) return null;
+  const currency = String(fee?.currency || "AED").toUpperCase();
+  return currency === "AED" ? paid : currency === "USD" ? Math.round(paid * AED_PER_USD) : null;
+}
+
+/** All of the sales bonus once the course is paid in full (or its balance is unknown); half from AED 2,000 paid; else none. */
+export function salesBonusStageOf(fee: any): SalesBonusStage {
+  if (!owedOf(fee)) return "full";
+  const paid = paidAedMinorOf(fee);
+  return paid !== null && paid >= HALF_FROM_AED_MINOR ? "half" : "held";
+}
+
+/** The first half of a bonus, to the cent; the rest is what is left of it. */
+export const halfOf = (amount: number) => Math.round((amount * 100) / 2) / 100;
+
+/** Whether this credit — the whole bonus, its first half or its rest — can be approved at this stage of the course's payment. */
+const approvable = (part: unknown, stage: SalesBonusStage) => stage === "full" || (stage === "half" && part === "first_half");
 
 /** What is still owed on a course sold at a sales close, in its currency's minor units — 0 when paid, voided, or not known. */
 export function owedOf(fee: any): number {
@@ -30,7 +68,7 @@ export const owedText = (minor: number, currency: unknown) =>
   `${String(currency || "AED")} ${(minor / 100).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 
 /** The course fee a sales-close bonus credit is for. */
-const feeFor = (student: any, sc: any) =>
+export const feeFor = (student: any, sc: any) =>
   (Array.isArray(student?.course_fees) ? student.course_fees : []).find((f: any) =>
     (sc?.invoice_id && String(f?.invoice_id ?? "") === String(sc.invoice_id)) || (sc?.invoice_number && String(f?.invoice_number ?? "") === String(sc.invoice_number)));
 
@@ -41,12 +79,15 @@ export async function salesBonusOwedRefusal(tx: any): Promise<string | null> {
   if (!oid) return null;
   const student: any = await col("students").findOne({ _id: oid }, { projection: { course_fees: 1 } });
   const fee = feeFor(student, tx.sales_close);
-  const owed = owedOf(fee);
-  if (!owed) return null;
-  return `${owedText(owed, fee.currency)} is still owed on ${fee.invoice_number || "this course"} — the sales bonus is approved once the course is paid in full`;
+  const stage = salesBonusStageOf(fee);
+  if (approvable(tx.bonus_part, stage)) return null;
+  const owed = `${owedText(owedOf(fee), fee.currency)} is still owed on ${fee.invoice_number || "this course"}`;
+  if (tx.bonus_part === "rest") return `${owed} — the rest of the sales bonus is approved once the course is paid in full`;
+  if (stage === "half") return `${owed} — half the sales bonus can be credited now: this request for all of it is split in two on the course's next payment update`;
+  return `${owed} — the sales bonus is approved once the course is paid in full`;
 }
 
-/** Of these funding requests, the sales-close bonus credits whose course still owes: what each owes, by request id. */
+/** Of these funding requests, the sales-close bonus credits not to be approved yet — their course still owes: what each owes, by request id. */
 export async function owedSalesCredits(txs: any[]): Promise<Map<string, { minor: number; currency: string }>> {
   const out = new Map<string, { minor: number; currency: string }>();
   const credits = txs.filter((t) => t?.bonus_credit === "sales_close" && t?.student_id);
@@ -56,8 +97,7 @@ export async function owedSalesCredits(txs: any[]): Promise<Map<string, { minor:
     .map((s) => [String(s._id), s]));
   for (const t of credits) {
     const fee = feeFor(students.get(String(t.student_id)), t.sales_close);
-    const owed = owedOf(fee);
-    if (owed) out.set(String(t._id), { minor: owed, currency: String(fee.currency || "AED") });
+    if (!approvable(t.bonus_part, salesBonusStageOf(fee))) out.set(String(t._id), { minor: owedOf(fee), currency: String(fee.currency || "AED") });
   }
   return out;
 }

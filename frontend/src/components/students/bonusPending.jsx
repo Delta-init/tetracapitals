@@ -91,7 +91,7 @@ const money = (n, cur) => (n == null ? '—' : cur === 'USD' || !cur ? usd(n) : 
 function AfterPayment({ list }) {
   return (
     <div className="space-y-1.5 rounded-lg border border-violet-200 bg-violet-50 px-3 py-2 text-sm text-violet-900">
-      <p className="font-medium">The sales bonus is sent once the course is paid in full.</p>
+      <p className="font-medium">The sales bonus is sent once the course is paid in full — or half of it once AED 2,000 is paid.</p>
       {list.map(b => (
         <p key={b.invoice_id} className="text-xs">
           {b.course || 'Course'}{b.invoice_number ? ` · ${b.invoice_number}` : ''} — {money(b.amount, b.currency)} bonus · <b>{b.owed}</b> still owed
@@ -167,10 +167,16 @@ function SendSalesBonusDialog({ student, onClose }) {
                       <div className="text-xs text-slate-500">{b.invoice_number ? `Invoice ${b.invoice_number}` : 'From finance'}</div>
                     </div>
                     <div className="text-right">
-                      <div className="font-semibold text-emerald-700">{money(b.amount, b.currency)}</div>
-                      <div className="text-[11px] text-slate-500">{b.currency === 'USD' ? `AED ${Number(b.aed).toLocaleString('en-US')}` : usd(b.usd)}</div>
+                      {/* Part paid (AED 2,000+): half now, the rest once the course is paid in full (2026-10-27). */}
+                      <div className="font-semibold text-emerald-700">{money(b.half ? b.now : b.amount, b.currency)}</div>
+                      <div className="text-[11px] text-slate-500">{b.half ? `half of ${money(b.amount, b.currency)}` : b.currency === 'USD' ? `AED ${Number(b.aed).toLocaleString('en-US')}` : usd(b.usd)}</div>
                     </div>
                   </div>
+                  {b.half && (
+                    <p className="rounded-lg border border-violet-200 bg-violet-50 px-2.5 py-1.5 text-xs text-violet-900">
+                      Half now, rest after payment — the course is part paid (<b>{b.owed}</b> still owed). The other {money(b.amount - b.now, b.currency)} goes for credit by itself once it is paid in full.
+                    </p>
+                  )}
                   <div className="rounded-lg bg-slate-50 px-2.5 py-2 text-xs text-slate-600">
                     <div>Collected by the counsellor: <b>{money(b.collected, b.fee_currency)}</b>{b.collected_method ? ` · ${b.collected_method}` : ''}{b.total ? ` of ${money(b.total, b.fee_currency)}` : ''}</div>
                     {b.payments?.length > 0 && (

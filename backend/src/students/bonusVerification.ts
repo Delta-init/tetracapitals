@@ -32,6 +32,12 @@ export interface BonusCheck {
   state: BonusState;
   request_id?: string;
   requested_at?: string;
+  /**
+   * Credited in halves (2026-10-27): "first_half" — this request is half of `amount`; onboarding passes once it is
+   * approved. `rest`: the other half's request, once the course is paid in full.
+   */
+  part?: "first_half";
+  rest?: { state: BonusState; amount: number; request_id: string };
   /** Who approved or rejected it, and when. */
   decided_at?: string;
   decided_by?: string;
@@ -51,11 +57,11 @@ export interface BonusCheck {
 export type Verification = "none" | "pending" | "rejected" | "approved";
 
 const BONUS_FIELDS = {
-  student_id: 1, status: 1, sales_close: 1, requested_at: 1, created_date: 1, approved_at: 1, approved_by_name: 1,
+  student_id: 1, status: 1, sales_close: 1, bonus_part: 1, amount_original: 1, requested_at: 1, created_date: 1, approved_at: 1, approved_by_name: 1,
   rejected_at: 1, rejected_by_name: 1, rejection_reason: 1, updated_date: 1, resubmit_count: 1,
 };
 
-type Promised = { invoice_id: string; invoice_number: string; course: string; given: boolean; amount: number; currency: string; owed_minor: number; fee_currency: string };
+type Promised = { invoice_id: string; invoice_number: string; course: string; given: boolean; amount: number; currency: string; owed_minor: number; fee_currency: string; stage: string };
 
 /** Every bonus promised at these students' sales closes, with where its request stands — by student id. */
 export async function bonusChecksFor(students: any[]): Promise<Map<string, BonusCheck[]>> {
@@ -67,12 +73,18 @@ export async function bonusChecksFor(students: any[]): Promise<Map<string, Bonus
         .find({ student_id: { $in: ids }, bonus_credit: "sales_close" }, { projection: BONUS_FIELDS })
         .toArray()) as any[])
     : [];
-  const byKey = new Map(txs.map((t) => [`${t.student_id}|${String(t.sales_close?.invoice_id ?? "")}`, t]));
+  // The whole bonus's request, or its first half's — what onboarding waits for; the rest kept beside it.
+  const byKey = new Map(txs.filter((t) => t.bonus_part !== "rest").map((t) => [`${t.student_id}|${String(t.sales_close?.invoice_id ?? "")}`, t]));
+  const restOf = new Map(txs.filter((t) => t.bonus_part === "rest").map((t) => [`${t.student_id}|${String(t.sales_close?.invoice_id ?? "")}`, t]));
+  const stateOf = (t: any): BonusState => {
+    const status = String(t?.status ?? "").toUpperCase();
+    return !t ? "not_requested" : status === "APPROVED" ? "approved" : status === "REJECTED" ? "rejected" : "pending";
+  };
   for (const p of promised) {
     out.set(p.id, p.given.map((b) => {
       const t = byKey.get(`${p.id}|${b.invoice_id}`);
-      const status = String(t?.status ?? "").toUpperCase();
-      const state: BonusState = !t ? "not_requested" : status === "APPROVED" ? "approved" : status === "REJECTED" ? "rejected" : "pending";
+      const rest = restOf.get(`${p.id}|${b.invoice_id}`);
+      const state = stateOf(t);
       const decided = state === "approved" || state === "rejected";
       return {
         invoice_id: b.invoice_id,
@@ -81,6 +93,8 @@ export async function bonusChecksFor(students: any[]): Promise<Map<string, Bonus
         amount: b.amount,
         currency: b.currency,
         state,
+        ...(t?.bonus_part === "first_half" ? { part: "first_half" as const } : {}),
+        ...(rest ? { rest: { state: stateOf(rest), amount: Number(rest.amount_original) || 0, request_id: String(rest._id) } } : {}),
         ...(t ? { request_id: String(t._id), requested_at: String(t.requested_at ?? t.created_date ?? "") } : {}),
         // The approval screens write approved_by / approved_at for a rejection too.
         ...(decided
@@ -91,7 +105,8 @@ export async function bonusChecksFor(students: any[]): Promise<Map<string, Bonus
           : {}),
         ...(state === "rejected" && t.rejection_reason ? { reason: String(t.rejection_reason) } : {}),
         ...(Number(t?.resubmit_count) > 0 ? { resubmitted: Number(t.resubmit_count) } : {}),
-        ...(state !== "approved" && b.owed_minor > 0 ? { after_payment: true, owed: owedText(b.owed_minor, b.fee_currency) } : {}),
+        // Owing under AED 2,000 paid (2026-10-27: from there half of it goes now) — or a pending request for all of it.
+        ...(state !== "approved" && b.owed_minor > 0 && (b.stage === "held" || (t && !t.bonus_part)) ? { after_payment: true, owed: owedText(b.owed_minor, b.fee_currency) } : {}),
       };
     }));
   }

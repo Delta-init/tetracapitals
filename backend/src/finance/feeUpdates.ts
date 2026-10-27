@@ -128,10 +128,17 @@ async function applyTo(studentId: unknown, u: FeeUpdate): Promise<Outcome> {
     );
     if (res.modifiedCount) {
       await recordChange(String(studentId), entry, u);
+      // Its sales bonus in halves, in step with what is paid now (2026-10-27) — never failing the update itself.
+      await settleHalves(studentId).catch((err) => console.error("[fee updates] sales bonus halves not settled", { studentId: String(studentId), err }));
       return "applied";
     }
   }
   throw new Error("The course fees kept changing while this update was written");
+}
+
+async function settleHalves(studentId: unknown): Promise<void> {
+  const student = await col("students").findOne({ _id: studentId as never });
+  if (student) await (await import("../functions/studentFollowups")).settleSalesBonusHalves(student);
 }
 
 /** One history line when something a person would notice changed: paid, balance, status or the next due date. */

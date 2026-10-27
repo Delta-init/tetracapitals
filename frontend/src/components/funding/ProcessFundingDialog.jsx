@@ -12,6 +12,7 @@ import TagsPicker from "./TagsPicker";
 import { DEPOSIT_METHODS as DEPOSIT_PAYMENT_METHODS, PaymentsList, paymentsOf } from "./payments";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import StudentPayments, { useStudentZohoInvoices, paymentsCount } from "./StudentPayments";
+import { partLabel } from "./mt5Cells";
 
 const WITHDRAWAL_PAYMENT_METHODS = [
   'AED TRANSFER',
@@ -340,10 +341,16 @@ export default function ProcessFundingDialog({ transaction, open, onClose, onPro
               (backend creditCommission skips bonus credits) — nothing to pick, for anyone. */}
           {transaction.type === 'BONUS' && transaction.bonus_credit && (
             <div className="space-y-1 bg-violet-50 p-4 rounded-lg border-2 border-violet-200">
-              <p className="text-base font-semibold">Sales-close bonus — no product needed</p>
+              <p className="text-base font-semibold">
+                Sales-close bonus — no product needed
+                {/* Credited in halves when the course is part paid (2026-10-27). */}
+                {transaction.bonus_part && <span className="ml-2 rounded-full bg-violet-200 px-2 py-0.5 text-xs font-medium text-violet-900">{partLabel(transaction)}</span>}
+              </p>
               <p className="text-sm text-violet-900">
                 Promised at the sales close
                 {transaction.sales_close?.course ? ` (${transaction.sales_close.course}${transaction.sales_close.invoice_number ? `, invoice ${transaction.sales_close.invoice_number}` : ''})` : ''}.
+                {transaction.bonus_part === 'first_half' && ' The course is part paid: credit this half now — the rest comes as its own request once it is paid in full.'}
+                {transaction.bonus_part === 'rest' && ' The first half was credited; the course is now paid in full — credit the rest.'}
                 {' '}No commission on it — credit it in MT5, then approve.
               </p>
             </div>

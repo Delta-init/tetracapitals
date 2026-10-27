@@ -12,7 +12,8 @@ import {
 import { theirStudents } from "../students/closedBy";
 import { MT5_LOGIN, mt5LoginOf, mt5Of, mt5Owner, keepMt5 } from "../students/mt5";
 import { bonusCurrencyOf } from "../students/salesCrm";
-import { owedOf } from "../students/salesBonusPaid";
+import { owedOf, salesBonusStageOf, halfOf } from "../students/salesBonusPaid";
+import { recordHistory } from "../students/history";
 
 const DATE = /^\d{4}-\d{2}-\d{2}$/;
 /** A follow-up's time, UAE: hours and minutes, 24-hour (the user, 2026-10-10 — a reminder goes before it and at it). */
@@ -44,8 +45,10 @@ export function salesBonusOf(student: any) {
       amount: f.bonus_given === true ? Math.round(Number(f.bonus_minor) || 0) / 100 : 0,
       // Its own; a sales CRM's with none is USD (the user, 2026-10-12); else the fee's.
       currency: bonusCurrencyOf(f),
-      // Still owed on the course (its own currency's minor units): the bonus waits for the full payment (2026-10-17).
+      // Still owed on the course (its own currency's minor units): the bonus waits for the full payment (2026-10-17) —
+      // half of it can go from AED 2,000 paid (2026-10-27): "full" | "half" | "held".
       owed_minor: owedOf(f),
+      stage: salesBonusStageOf(f),
       fee_currency: String(f.currency ?? ""),
     }));
 }
@@ -62,22 +65,23 @@ export async function raiseSalesBonusCredits(
   let raised = 0;
   for (const b of salesBonusOf(student)) {
     if (!b.given || !(b.amount > 0)) continue;
-    // Not while the course still owes: the sales bonus is for a course paid in full (the user, 2026-10-17).
-    if (b.owed_minor > 0) continue;
+    // Not while the course owes under AED 2,000 paid (the user, 2026-10-17); from there, half of it (2026-10-27).
+    if (b.stage === "held") continue;
     if (opts.only && !opts.only.has(b.invoice_id)) continue;
     const receipt = opts.receipts?.get(b.invoice_id);
-    const usd = b.currency === "USD" ? b.amount : Math.round((b.amount / AED_PER_USD) * 100) / 100;
-    const aed = b.currency === "USD" ? Math.round(b.amount * AED_PER_USD * 100) / 100 : b.amount;
-    const money = b.currency === "USD" ? `$${b.amount.toLocaleString("en-US")}` : `${b.currency} ${b.amount.toLocaleString("en-US")}`;
+    const half = b.stage === "half";
+    const amount = half ? halfOf(b.amount) : b.amount;
+    const money = moneyOf(b.amount, b.currency);
     const now = new Date().toISOString();
-    // Once per invoice: an upsert, so a second log (or two at once) finds it there.
+    // Once per invoice: an upsert, so a second log (or two at once) finds it there — the first half too.
     const res = await col("funding_transactions").updateOne(
       { student_id: String(student._id), bonus_credit: "sales_close", "sales_close.invoice_id": b.invoice_id },
       {
         $setOnInsert: {
           type: "BONUS", status: "PENDING", bonus_credit: "sales_close",
+          ...(half ? { bonus_part: "first_half" } : {}),
           sales_close: { invoice_id: b.invoice_id, invoice_number: b.invoice_number, course: b.course },
-          amount_currency: b.currency, amount_original: b.amount, amount_aed: aed, amount_usd: usd, fx_rate_aed_per_usd: AED_PER_USD,
+          ...amountsOf(amount, b.currency),
           mt5_login: login, tags: [], payment_method: "", screenshot_url: receipt?.url ?? "",
           ...(receipt ? { payments: [{ method: "", amount: b.amount, currency: b.currency, receipt_url: receipt.url, receipt_name: receipt.name }] } : {}),
           student_id: String(student._id), student_name: student.full_name ?? "", student_code: student.student_code ?? "",
@@ -85,7 +89,9 @@ export async function raiseSalesBonusCredits(
           senior_mentor_id: student.senior_mentor_id ?? null, senior_mentor_name: student.senior_mentor_name ?? null,
           initiating_mentor_id: user.id, initiating_mentor_name: who(user), upline_commission_percentage: 0,
           requested_by_id: user.id, requested_by_name: who(user), requested_at: now,
-          notes: `Sales-close bonus credit — ${b.course || "the course"}${b.invoice_number ? `, invoice ${b.invoice_number}` : ""}: ${money} promised at the close. Credit it in MT5 ${login}. No commission on it.${opts.via ? ` ${opts.via}` : ""}`,
+          notes: half
+            ? `Sales-close bonus credit, first half — ${b.course || "the course"}${b.invoice_number ? `, invoice ${b.invoice_number}` : ""}: ${money} promised at the close; the course is part paid, so ${moneyOf(amount, b.currency)} now and the rest once it is paid in full. Credit ${moneyOf(amount, b.currency)} in MT5 ${login}. No commission on it.${opts.via ? ` ${opts.via}` : ""}`
+            : `Sales-close bonus credit — ${b.course || "the course"}${b.invoice_number ? `, invoice ${b.invoice_number}` : ""}: ${money} promised at the close. Credit it in MT5 ${login}. No commission on it.${opts.via ? ` ${opts.via}` : ""}`,
           created_date: now, updated_date: now,
         },
       },
@@ -93,8 +99,97 @@ export async function raiseSalesBonusCredits(
     );
     if (res.upsertedCount) raised++;
   }
+  // A first half approved and the course since paid in full: its rest (2026-10-27).
+  await settleSalesBonusHalves(student);
   return raised;
 }
+
+const moneyOf = (amount: number, currency: string) =>
+  currency === "USD" ? `$${amount.toLocaleString("en-US")}` : `${currency} ${amount.toLocaleString("en-US")}`;
+/** A credit's amounts, as every sales-close credit carries them: USD as it is, anything else read as AED. */
+const amountsOf = (amount: number, currency: string) => ({
+  amount_currency: currency, amount_original: amount,
+  amount_aed: currency === "USD" ? Math.round(amount * AED_PER_USD * 100) / 100 : amount,
+  amount_usd: currency === "USD" ? amount : Math.round((amount / AED_PER_USD) * 100) / 100,
+  fx_rate_aed_per_usd: AED_PER_USD,
+});
+
+export type HalvesChange = { invoice_number: string; course: string; change: "split" | "merged" | "rest_raised"; amount: number; currency: string; request_id: string };
+
+/**
+ * A sales-close bonus credited in halves (the user, 2026-10-27), kept in step with what the course has been paid —
+ * run on every fee update from finance, after raising, and by scripts/sales-bonus-halves.ts for those raised before:
+ *   - part paid (AED 2,000+), a pending request for the whole bonus → it becomes the first half;
+ *   - paid in full, the first half still pending → it becomes the whole bonus again (credited once);
+ *   - paid in full, the first half approved → the rest goes to MT5 Approvals, for the same MT5.
+ * A decided whole bonus, or a rejected first half, is left as it is. `dryRun`: only says what it would do.
+ */
+export async function settleSalesBonusHalves(student: any, opts: { dryRun?: boolean } = {}): Promise<HalvesChange[]> {
+  const sid = String(student?._id ?? "");
+  const promised = salesBonusOf(student).filter((b: any) => b.given && b.amount > 0);
+  if (!sid || !promised.length) return [];
+  const credits = (await col("funding_transactions").find({ student_id: sid, bonus_credit: "sales_close" }).toArray()) as any[];
+  const changes: HalvesChange[] = [];
+  const now = new Date().toISOString();
+  for (const b of promised) {
+    const mine = credits.filter((t) => String(t.sales_close?.invoice_id ?? "") === b.invoice_id);
+    const main = mine.find((t) => t.bonus_part !== "rest");
+    if (!main) continue;
+    const on = `${b.course || "the course"}${b.invoice_number ? `, invoice ${b.invoice_number}` : ""}`;
+    const change = (kind: HalvesChange["change"], amount: number, id: unknown) =>
+      changes.push({ invoice_number: b.invoice_number, course: b.course, change: kind, amount, currency: b.currency, request_id: String(id) });
+
+    if (b.stage === "half" && !main.bonus_part && main.status === "PENDING") {
+      const half = halfOf(b.amount);
+      change("split", half, main._id);
+      if (opts.dryRun) continue;
+      const res = await col("funding_transactions").updateOne({ _id: main._id, status: "PENDING", bonus_part: { $exists: false } }, {
+        $set: { bonus_part: "first_half", ...amountsOf(half, b.currency), updated_date: now,
+          notes: [main.notes, `Now the first half: the course is part paid, so ${moneyOf(half, b.currency)} of the ${moneyOf(b.amount, b.currency)} now and the rest once it is paid in full (${now.slice(0, 10)}).`].filter(Boolean).join("\n") },
+      });
+      if (res.modifiedCount) await history(sid, `Sales-close bonus, ${on}: the course is part paid — half (${moneyOf(half, b.currency)}) can be credited now, the rest once it is paid in full`);
+    } else if (b.stage === "full" && main.bonus_part === "first_half" && main.status === "PENDING") {
+      change("merged", b.amount, main._id);
+      if (opts.dryRun) continue;
+      const res = await col("funding_transactions").updateOne({ _id: main._id, status: "PENDING", bonus_part: "first_half" }, {
+        $set: { ...amountsOf(b.amount, b.currency), updated_date: now,
+          notes: [main.notes, `Now the whole bonus: the course was paid in full before the first half was approved — credit ${moneyOf(b.amount, b.currency)} (${now.slice(0, 10)}).`].filter(Boolean).join("\n") },
+        $unset: { bonus_part: "" },
+      });
+      if (res.modifiedCount) await history(sid, `Sales-close bonus, ${on}: paid in full before the first half was approved — one request for all of it (${moneyOf(b.amount, b.currency)})`);
+    } else if (b.stage === "full" && main.bonus_part === "first_half" && main.status === "APPROVED" && !mine.some((t) => t.bonus_part === "rest")) {
+      const rest = Math.round((b.amount - (Number(main.amount_original) || 0)) * 100) / 100;
+      if (!(rest > 0)) continue;
+      change("rest_raised", rest, main._id);
+      if (opts.dryRun) continue;
+      const res = await col("funding_transactions").updateOne(
+        { student_id: sid, bonus_credit: "sales_close", "sales_close.invoice_id": b.invoice_id, bonus_part: "rest" },
+        {
+          $setOnInsert: {
+            type: "BONUS", status: "PENDING", bonus_credit: "sales_close", bonus_part: "rest",
+            sales_close: { invoice_id: b.invoice_id, invoice_number: b.invoice_number, course: b.course },
+            ...amountsOf(rest, b.currency),
+            mt5_login: main.mt5_login ?? "", tags: [], payment_method: "", screenshot_url: main.screenshot_url ?? "",
+            ...(Array.isArray(main.payments) ? { payments: main.payments } : {}),
+            student_id: sid, student_name: student.full_name ?? main.student_name ?? "", student_code: student.student_code ?? main.student_code ?? "",
+            primary_mentor_id: student.primary_mentor_id ?? main.primary_mentor_id ?? "", primary_mentor_name: student.primary_mentor_name ?? main.primary_mentor_name ?? "",
+            senior_mentor_id: student.senior_mentor_id ?? null, senior_mentor_name: student.senior_mentor_name ?? null,
+            initiating_mentor_id: main.initiating_mentor_id ?? null, initiating_mentor_name: main.initiating_mentor_name ?? "", upline_commission_percentage: 0,
+            requested_by_id: null, requested_by_name: "Paid in full", requested_at: now,
+            notes: `Sales-close bonus credit, the rest — ${on}: ${moneyOf(b.amount, b.currency)} promised at the close, the first half (${moneyOf(Number(main.amount_original) || 0, b.currency)}) credited; the course is now paid in full. Credit ${moneyOf(rest, b.currency)} in MT5 ${main.mt5_login ?? ""}. No commission on it.`,
+            created_date: now, updated_date: now,
+          },
+        },
+        { upsert: true },
+      );
+      if (res.upsertedCount) await history(sid, `Sales-close bonus, ${on}: paid in full — the rest (${moneyOf(rest, b.currency)}) sent for credit in MT5 ${main.mt5_login ?? ""}`);
+    }
+  }
+  return changes;
+}
+
+const history = (studentId: string, text: string) =>
+  recordHistory([{ student_id: studentId, at: new Date().toISOString(), type: "bonus_sent", by_id: null, by_name: "Tetra Commission", text: text.slice(0, 400) } as any]);
 
 /**
  * POST /api/functions/getFollowups

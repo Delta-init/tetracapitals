@@ -15,7 +15,11 @@ export const aedText = (n) => localFromAed(n);
 /** A bonus's amount column is the MT5 bonus to credit, in USD only (the user, 2026-10-13): a course payment's bonus —
  *  not the payment — else the request's amount. */
 export const bonusUsdOf = (t) => (t.type === 'BONUS' && t.course_payment ? Number(t.course_payment.bonus_usd) || 0 : Number(t.amount_usd) || 0);
-export const bonusLabel = (t) => (t.bonus_credit === 'sales_close' ? 'Sales-close bonus credit · no commission'
+/** A sales-close bonus credited in halves (the course part paid, 2026-10-27): "First half · $500" / "Rest after full payment · $500". */
+export const partLabel = (t) => (t.bonus_part === 'first_half' ? `First half · ${usdText(t.amount_usd)}`
+  : t.bonus_part === 'rest' ? `Rest after full payment · ${usdText(t.amount_usd)}` : '');
+export const bonusLabel = (t) => (t.bonus_part ? `Sales-close bonus credit · ${partLabel(t)} · no commission`
+  : t.bonus_credit === 'sales_close' ? 'Sales-close bonus credit · no commission'
   : t.bonus_credit === 'course_upgrade' || t.course_upgrade ? 'Course upgrade bonus'
   : t.course_payment && !(Number(t.course_payment.bonus_usd) > 0) ? 'No MT5 bonus yet — on hold'
   : 'MT5 bonus');

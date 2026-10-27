@@ -22,7 +22,7 @@ import ProcessFundingDialog from '@/components/funding/ProcessFundingDialog';
 import TagChips from '@/components/funding/TagChips';
 import { PaymentDetails } from '@/components/funding/FundingRequestForm';
 import { ReceiptsButton, methodsText } from '@/components/funding/payments';
-import { usdText, bonusUsdOf, bonusLabel, receivedOf, sourceLabel, paidLines, upgradeReceiptsOf, receiptTxOf, extraReceiptsOf } from '@/components/funding/mt5Cells';
+import { usdText, bonusUsdOf, bonusLabel, partLabel, receivedOf, sourceLabel, paidLines, upgradeReceiptsOf, receiptTxOf, extraReceiptsOf } from '@/components/funding/mt5Cells';
 import { useUrlState } from '@/components/utils/urlState';
 
 /*
@@ -90,6 +90,7 @@ const EXPORT_COLUMNS = [
   { header: 'Source', value: t => sourceLabel(t) },
   { header: 'Raised by', value: t => t.resubmitted_by_name || t.requested_by_name || '' },
   { header: 'Course still owes', value: t => t.course_owed || '' },
+  { header: 'Bonus part', value: t => partLabel(t) },
   { header: 'Sold by', value: t => (t.source === 'sales_close' ? (t.student?.closed_by || []).map(c => c.name).join('; ') : '') },
   { header: 'Txn ID', value: t => t.transaction_id },
   { header: 'Already credited', value: t => (t.already_credited?.at ? `Yes — ${t.already_credited.note || ''} (${t.already_credited.by_name || ''})` : '') },
@@ -415,6 +416,8 @@ export default function BonusApprovals() {
                             </td>
                             <td className="min-w-[160px] px-3 py-2.5 text-xs">
                               {t.sales_close?.invoice_number && <div className="font-mono font-medium text-slate-800">{t.sales_close.invoice_number}</div>}
+                              {/* Credited in halves, the course part paid (2026-10-27). */}
+                              {t.bonus_part && <div className="mt-0.5 rounded bg-violet-100 px-1.5 py-0.5 font-medium text-violet-900">{partLabel(t)}</div>}
                               {/* Its course still owes: approved once it is paid in full (2026-10-17). */}
                               {t.course_owed && <div className="mt-0.5 rounded bg-violet-50 px-1.5 py-0.5 font-medium text-violet-800">{t.course_owed} still owed — approve after full payment</div>}
                               {(t.student?.invoices || []).filter(f => f.invoice_number !== t.sales_close?.invoice_number).map((f) => (

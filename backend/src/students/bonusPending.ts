@@ -2,7 +2,7 @@ import { col } from "../db";
 import { toObjectId } from "../lib/id";
 import { withFinance } from "../finance/funding";
 import { salesBonusOf } from "../functions/studentFollowups";
-import { owedSalesCredits } from "./salesBonusPaid";
+import { owedSalesCredits, halfOf } from "./salesBonusPaid";
 
 /* ────────────────────────────────────────────────────────────────────────────
    "Bonus pending" on the Students page and the student page (the user,
@@ -93,7 +93,11 @@ export async function notSentOf(match: Record<string, any>): Promise<Map<string,
     const fees = new Map((st.course_fees ?? []).map((f: any) => [String(f?.invoice_id ?? ""), f]));
     const left = salesBonusOf(st)
       .filter((b: SalesBonus) => b.given && b.amount > 0 && !raised.has(`${sid}|${b.invoice_id}`))
-      .map((b: SalesBonus) => ({ usd: salesUsd(b), since: String((fees.get(b.invoice_id) as any)?.recorded_at || st.created_date || ""), owed: (b as any).owed_minor > 0 }));
+      // Owing under AED 2,000 paid: after the full payment; from there half of it can go now (2026-10-27).
+      .map((b: SalesBonus) => ({
+        usd: salesUsd((b as any).stage === "half" ? { ...b, amount: halfOf(b.amount) } : b),
+        since: String((fees.get(b.invoice_id) as any)?.recorded_at || st.created_date || ""), owed: (b as any).stage === "held",
+      }));
     if (left.length) out.set(sid, left);
   }
   return out;
