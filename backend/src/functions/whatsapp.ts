@@ -41,13 +41,15 @@ const fail = (err: unknown) =>
 const MEDIA_TTL_S = 60 * 60;
 const sign = (payload: string) => createHmac("sha256", `${config.jwtSecret}|whatsapp-media`).update(payload).digest("base64url");
 function mediaUrl(messageId: string, userId: string): string {
-  const e = Math.floor(Date.now() / 1000) + MEDIA_TTL_S;
+  // Rounded up to the hour, so a message keeps the same link while its chat refreshes every few seconds — a new
+  // link each time made the player drop a voice note part way through (the user, 2026-10-27). Good for 1–2 hours.
+  const e = (Math.floor(Date.now() / 1000 / MEDIA_TTL_S) + 2) * MEDIA_TTL_S;
   const q = new URLSearchParams({ m: messageId, e: String(e), u: userId, s: sign(`${messageId}.${e}.${userId}`) });
   return `/api/whatsapp/media?${q}`;
 }
 
 /** GET /api/whatsapp/media?m=&e=&u=&s= — a photo or file from a chat, for whoever was given the link. */
-export async function streamWhatsAppMedia(url: URL): Promise<Response> {
+export async function streamWhatsAppMedia(url: URL, req?: Request): Promise<Response> {
   const m = url.searchParams.get("m") ?? "", e = url.searchParams.get("e") ?? "", u = url.searchParams.get("u") ?? "", s = url.searchParams.get("s") ?? "";
   if (!/^[a-f0-9]{24}$/.test(m) || !/^\d{9,11}$/.test(e) || !/^[a-f0-9]{24}$/.test(u) || !s) return notFound();
   if (Number(e) < Date.now() / 1000) return error("This link has expired — reopen the chat", 410);
@@ -58,9 +60,23 @@ export async function streamWhatsAppMedia(url: URL): Promise<Response> {
   const file = Bun.file(mediaPath(doc.media.file));
   if (!(await file.exists())) return notFound();
   const name = String(doc.media.file_name || doc.media.file.split("/").pop() || "file").replace(/[^\w.\- ]+/g, "_");
-  return new Response(file, {
-    headers: { "Content-Type": doc.media.mime || "application/octet-stream", "Content-Disposition": `inline; filename="${name}"`, "Cache-Control": "private, max-age=3600" },
-  });
+  const headers: Record<string, string> = {
+    "Content-Type": doc.media.mime || "application/octet-stream", "Content-Disposition": `inline; filename="${name}"`,
+    "Cache-Control": "private, max-age=3600", "Accept-Ranges": "bytes",
+  };
+  // A part of the file when the player asks for one: seeking, and Safari plays audio and video only this way.
+  const size = file.size;
+  const range = /^bytes=(\d*)-(\d*)$/.exec(req?.headers.get("range") ?? "");
+  if (range && (range[1] || range[2])) {
+    const start = range[1] ? Number(range[1]) : Math.max(0, size - Number(range[2]));
+    const end = range[1] && range[2] ? Math.min(Number(range[2]), size - 1) : size - 1;
+    if (start >= size || start > end) return new Response(null, { status: 416, headers: { ...headers, "Content-Range": `bytes */${size}` } });
+    return new Response(file.slice(start, end + 1), {
+      status: 206,
+      headers: { ...headers, "Content-Range": `bytes ${start}-${end}/${size}`, "Content-Length": String(end - start + 1) },
+    });
+  }
+  return new Response(file, { headers });
 }
 
 const shape = (m: any, viewer: string) => ({

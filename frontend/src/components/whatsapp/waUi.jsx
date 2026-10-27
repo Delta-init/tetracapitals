@@ -40,14 +40,18 @@ export const shortTime = (iso) => {
 
 const KIND = { image: '📷 Photo', sticker: '🔖 Sticker', video: '🎥 Video', audio: '🎵 Audio', document: '📄 Document' };
 
+/** Media keeps the link it started with while the chat refreshes, so a playing voice note or video is never
+ *  reloaded part way (the user, 2026-10-27); only when that link has run out does it move to the newest one. */
 function Media({ media }) {
   const [broken, setBroken] = useState(false);
+  const [url, setUrl] = useState(media?.url || '');
+  useEffect(() => { if (!url && media?.url) setUrl(media.url); }, [url, media?.url]);
   if (!media) return null;
-  const src = media.url ? apiUrl(media.url) : '';
+  const src = url ? apiUrl(url) : '';
   if (!src) return <p className="text-xs italic opacity-70">{media.type === 'document' ? media.file_name || 'Document' : 'File'} — not kept (too large)</p>;
   // A file the server no longer has shows as such, never as an empty space.
   if (broken) return <p className="text-xs italic opacity-70">{KIND[media.type] || 'File'} — couldn't load</p>;
-  const fail = () => setBroken(true);
+  const fail = () => (media.url && media.url !== url ? setUrl(media.url) : setBroken(true));
   if (media.type === 'sticker') return <img src={src} alt="Sticker" onError={fail} className="h-36 w-36 object-contain" />;
   if (media.type === 'image') {
     return <a href={src} target="_blank" rel="noopener noreferrer"><img src={src} alt="" onError={fail} className="mb-1 max-h-64 max-w-full rounded-md object-contain" /></a>;
