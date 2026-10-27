@@ -5,7 +5,7 @@ import { toast } from 'sonner';
 import { base44 } from '@/api/base44Client';
 import { PageTitle } from '@/components/common/PageHeader';
 import StatsCard from '@/components/dashboard/StatsCard';
-import SearchableSelect from '@/components/common/SearchableSelect';
+import MultiSelect from '@/components/common/MultiSelect';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -21,7 +21,6 @@ import { CallPerson, CallResult, RecordingPlayer, SyncNote, RESULTS, fmtDuration
 
 const RANGES = [['today', 'Today'], ['7', '7 days'], ['30', '30 days'], ['90', '90 days']];
 const PAGE = 200;
-const EVERYONE = '__none__';
 
 /**
  * Calls with students, from 3CX — in or out, answered or missed, who took it,
@@ -36,29 +35,32 @@ export default function StudentCalls() {
   const [range, setRange] = useState('7');
   const [status, setStatus] = useState('all');
   const [direction, setDirection] = useState('all');
-  const [person, setPerson] = useState(EVERYONE);
+  const [teamIds, setTeamIds] = useState([]);
+  const [personKeys, setPersonKeys] = useState([]);
   const [q, setQ] = useState('');
   const [shown, setShown] = useState(PAGE);
   const [syncing, setSyncing] = useState(false);
   const [testing, setTesting] = useState(false);
 
   const { data, isLoading, isFetching, error } = useQuery({
-    queryKey: ['calls', 'list', range, status, direction, person],
+    queryKey: ['calls', 'list', range, status, direction, teamIds, personKeys],
     queryFn: async () => (await base44.functions.invoke('getCalls', {
       range,
       status: status === 'all' ? '' : status,
       direction: direction === 'all' ? '' : direction,
-      person: person === EVERYONE ? '' : person,
+      teams: teamIds,
+      people: personKeys,
     })).data,
     enabled: !!currentUser,
     refetchInterval: 60_000,
     placeholderData: keepPreviousData,
   });
-  useEffect(() => setShown(PAGE), [range, status, direction, person, q]);
+  useEffect(() => setShown(PAGE), [range, status, direction, teamIds, personKeys, q]);
 
   const calls = data?.calls || [];
   const stats = data?.stats || {};
   const people = data?.people || [];
+  const teams = data?.teams || [];
   const needle = q.trim().toLowerCase();
   const digits = needle.replace(/\D/g, '');
   const rows = needle
@@ -67,9 +69,16 @@ export default function StudentCalls() {
       (digits.length >= 3 && String(c.number || '').replace(/\D/g, '').includes(digits)))
     : calls;
   const personOptions = useMemo(
-    () => people.map(p => ({ value: p.key, label: `${p.name}${p.extension && !p.name.includes(p.extension) ? ` · Ext ${p.extension}` : ''} (${p.calls})` })),
+    () => people.map(p => ({ value: p.key, label: `${p.name}${p.extension && !p.name.includes(p.extension) ? ` · Ext ${p.extension}` : ''}`, hint: p.calls })),
     [people],
   );
+  const teamOptions = useMemo(() => teams.map(t => ({ value: t.id, label: t.name, hint: t.calls })), [teams]);
+  const togglePerson = (key) => setPersonKeys(keys => (keys.includes(key) ? keys.filter(k => k !== key) : [...keys, key]));
+  // Ticking teams lets go of people on other teams.
+  const pickTeams = (ids) => {
+    setTeamIds(ids);
+    if (ids.length) setPersonKeys(keys => keys.filter(k => ids.includes(people.find(p => p.key === k)?.team_id)));
+  };
   const named = people.filter(p => p.key !== '-');
 
   const syncNow = async () => {
@@ -141,19 +150,20 @@ export default function StudentCalls() {
                 <table className="w-full text-sm">
                   <thead className="sticky top-0 z-10">
                     <tr className="border-b bg-slate-50">
-                      <TH>Person</TH><TH right>Calls</TH><TH right>Answered</TH><TH right>Missed</TH><TH right>No answer</TH><TH right>Talk time</TH><TH right>Average call</TH>
+                      <TH>Person</TH>{teams.length > 0 && <TH>Team</TH>}<TH right>Calls</TH><TH right>Answered</TH><TH right>Missed</TH><TH right>No answer</TH><TH right>Talk time</TH><TH right>Average call</TH>
                     </tr>
                   </thead>
                   <tbody>
                     {people.map(p => (
                       <tr key={p.key}
-                        title={person === p.key ? 'Show everyone' : `Show only ${p.name}'s calls`}
-                        onClick={() => setPerson(person === p.key ? EVERYONE : p.key)}
-                        className={`cursor-pointer border-b border-slate-100 hover:bg-cyan-50/40 ${person === p.key ? 'bg-cyan-50' : ''}`}>
+                        title={personKeys.includes(p.key) ? `Leave out ${p.name}` : `Add ${p.name}'s calls to the filter`}
+                        onClick={() => togglePerson(p.key)}
+                        className={`cursor-pointer border-b border-slate-100 hover:bg-cyan-50/40 ${personKeys.includes(p.key) ? 'bg-cyan-50' : ''}`}>
                         <td className="px-3 py-2.5">
                           <div className={p.key === '-' ? 'text-slate-500' : 'font-medium text-slate-800'}>{p.name}</div>
                           {p.extension && !p.name.includes(p.extension) && <div className="text-xs text-slate-400">Ext {p.extension}{!p.user_id && ' · not linked to a portal user'}</div>}
                         </td>
+                        {teams.length > 0 && <td className="px-3 py-2.5 text-slate-600">{p.team_name || dash}</td>}
                         <td className="tabular px-3 py-2.5 text-right font-medium text-slate-800">{p.calls}</td>
                         <td className="tabular px-3 py-2.5 text-right text-emerald-700">{p.answered || dash}</td>
                         <td className="tabular px-3 py-2.5 text-right text-rose-600">{p.missed || dash}</td>
@@ -193,10 +203,16 @@ export default function StudentCalls() {
                   <SelectItem value="out">Outgoing</SelectItem>
                 </SelectContent>
               </Select>
-              {named.length > 1 && (
+              {(teams.length > 1 || teamIds.length > 0) && (
+                <div className="w-56">
+                  <MultiSelect value={teamIds} onChange={pickTeams} options={teamOptions}
+                    allLabel="All teams" noun="team" searchPlaceholder="Team…" />
+                </div>
+              )}
+              {(named.length > 1 || personKeys.length > 0) && (
                 <div className="w-64">
-                  <SearchableSelect value={person} onValueChange={(v) => v && setPerson(v)} options={personOptions}
-                    noneLabel="Everyone" noneValue={EVERYONE} placeholder="Everyone" searchPlaceholder="Name or extension…" />
+                  <MultiSelect value={personKeys} onChange={setPersonKeys} options={personOptions}
+                    allLabel="Everyone" noun="person" nounPlural="people" searchPlaceholder="Name or extension…" />
                 </div>
               )}
               <div className="relative">

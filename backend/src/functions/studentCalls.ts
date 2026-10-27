@@ -7,6 +7,7 @@ import { isAdmin, visibleMentorIds, isStudentOf, studentsOf } from "../students/
 import { closedBy, seesClosedOnly, theirStudents } from "../students/closedBy";
 import { threecxConfigured, threecxFetch, threecxJson, threecxPost } from "../lib/threecx";
 import { csManagerReach, studentsOfIds } from "../lib/userLocation";
+import { loadTeams } from "../students/teams";
 import {
   CALLS, BACKFILL_DAYS, LINK_TTL_S, getCallSettings, syncCalls, syncExtensions, recordingPath, recordingSource, recordingCount,
   callLogPath, groupRows, parseCall, studentsByPhone, phoneKey,
@@ -100,9 +101,10 @@ const count = (status: string) => ({ $sum: { $cond: [{ $eq: ["$status", status] 
 /**
  * POST /api/functions/getCalls
  * Body: { studentId } — that student's calls; or
- *       { range: "today"|"7"|"30"|"90", status?, direction?, person? } — calls in that period.
- * Returns: { calls (newest first, capped), total, truncated, stats, people, threecx, can_sync }
- * — stats and people cover every matching call, not only the ones listed.
+ *       { range: "today"|"7"|"30"|"90", status?, direction?, teams?: string[], people?: string[] } — calls in that period.
+ *       (`person`, one key, still works.) Ticked teams and people narrow the list and totals together (the user, 2026-10-27).
+ * Returns: { calls (newest first, capped), total, truncated, stats, people, teams, threecx, can_sync }
+ * — stats and people cover every matching call, not only the ones listed; `people` only the ticked teams'.
  */
 export async function getCalls(req: Request, user: AuthUser): Promise<Response> {
   const body: any = await req.json().catch(() => ({}));
@@ -144,28 +146,45 @@ export async function getCalls(req: Request, user: AuthUser): Promise<Response> 
       },
     },
   ]).toArray();
+  const index = await loadTeams();
   const people = new Map<string, any>();
   for (const g of grouped as any[]) {
     const key = personKey(g._id.u, g._id.x);
+    const team = index.teamOf(g._id.u);
     const p = people.get(key) ?? {
       key,
       user_id: g._id.u,
       extension: g._id.x,
       name: g.user_name || g.agent_name || (g._id.x ? `Ext ${g._id.x}` : "Nobody — not answered"),
+      team_id: team?.id ?? "",
+      team_name: team?.name ?? "",
       calls: 0, answered: 0, missed: 0, no_answer: 0, talk_seconds: 0, recorded: 0,
     };
     for (const k of ["calls", "answered", "missed", "no_answer", "talk_seconds", "recorded"]) p[k] += g[k] ?? 0;
     people.set(key, p);
   }
 
-  const person = str(body?.person, 80);
-  const onePerson = person ? personFilter(person) : null;
-  const pick = onePerson ? [people.get(person)].filter(Boolean) : [...people.values()];
+  // The teams anybody here is on, with their calls.
+  const teams = new Map<string, { id: string; name: string; calls: number }>();
+  for (const p of people.values()) {
+    if (!p.team_id) continue;
+    const t = teams.get(p.team_id) ?? { id: p.team_id, name: p.team_name, calls: 0 };
+    t.calls += p.calls;
+    teams.set(p.team_id, t);
+  }
+
+  const list = (v: unknown) => (Array.isArray(v) ? v : v ? [v] : []).map((x) => str(x, 80)).filter(Boolean).slice(0, 500);
+  const teamIds = new Set(list(body?.teams));
+  const personKeys = new Set([...list(body?.people), ...list(body?.person)]);
+  const inTeams = [...people.values()].filter((p) => !teamIds.size || teamIds.has(p.team_id));
+  const pick = inTeams.filter((p) => !personKeys.size || personKeys.has(p.key));
   const stats = { calls: 0, answered: 0, missed: 0, no_answer: 0, talk_seconds: 0, recorded: 0 } as Record<string, number>;
   for (const p of pick) for (const k of Object.keys(stats)) stats[k] += p[k] ?? 0;
 
   const limit = studentId ? 500 : 2000;
-  const match = onePerson ? { $and: [...and, onePerson] } : base;
+  const narrowed = teamIds.size || personKeys.size;
+  const tookBy = pick.map((p) => personFilter(p.key)).filter(Boolean) as Record<string, any>[];
+  const match = !narrowed ? base : tookBy.length ? { $and: [...and, { $or: tookBy }] } : { _id: { $in: [] } };
   const docs = await col(CALLS).find(match).sort({ started_at: -1 }).limit(limit).toArray();
 
   const s = await getCallSettings();
@@ -174,7 +193,8 @@ export async function getCalls(req: Request, user: AuthUser): Promise<Response> 
     total: stats.calls,
     truncated: stats.calls > docs.length,
     stats,
-    people: [...people.values()].sort((a, b) => b.calls - a.calls),
+    people: inTeams.sort((a, b) => b.calls - a.calls),
+    teams: [...teams.values()].sort((a, b) => b.calls - a.calls),
     range,
     threecx: {
       connected: threecxConfigured(),
