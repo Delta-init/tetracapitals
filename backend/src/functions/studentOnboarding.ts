@@ -10,6 +10,7 @@ import { join } from "node:path";
 import { sendMail, mailConfigured, type MailAttachment } from "../lib/mailer";
 import { status as whatsAppStatus, sendText, intlNumbers } from "../whatsapp/service";
 import { isCsLike } from "../lib/roles";
+import { loadTeams } from "../students/teams";
 
 /* ────────────────────────────────────────────────────────────────────────────
    Onboarding: a student is Onboarded once they have been sent their welcome —
@@ -108,7 +109,7 @@ By completing your registration, you confirm your agreement to the terms outline
 To foster collaboration and communication, please join our community channels using the links below:
 
 - Join the Community: https://chat.whatsapp.com/LkFhNduBBae4Nj3c4e0dim
-- Student Online Community: https://chat.whatsapp.com/DIXG2tN38ePJGvubmHg63j
+- Student Online Community: https://chat.whatsapp.com/DIXG2tN38ePJGvubmHg63j{team_community}
 
 Once again, welcome to Delta Trading Academy. We look forward to your active participation and commitment. Should you have any questions or require further assistance regarding the LMS or your course, please do not hesitate to contact us.
 
@@ -122,10 +123,28 @@ T: 971 4 399 9128
 M: 971 52 419 2022
 www.deltainstitutions.com`;
 
+/**
+ * Each team's own WhatsApp community, by its name (the user, 2026-10-27). The welcome carries the link of the
+ * student's team — the link only, never the team's name; a team not here (Bangalore, none) gets no extra line.
+ */
+const TEAM_COMMUNITIES: [RegExp, string][] = [
+  [/money\s*heist/i, "https://chat.whatsapp.com/L8VA47toxll8DDovyITOLF"],
+  [/wall\s*street/i, "https://chat.whatsapp.com/K8wtJeEY86k8nR7nARm4Nk"],
+  [/gladiator/i, "https://chat.whatsapp.com/GLyHhwKbEpq5uJbxE10t9Q"],
+  [/exp[ae]ndable/i, "https://chat.whatsapp.com/HeET0BqUgbjJxuqbWvHlLk"],
+];
+/** The student's team's community link: the team of their CS now, else the team stored on them; "" for none. */
+async function teamCommunityOf(s: any): Promise<string> {
+  const team = s.primary_mentor_id ? (await loadTeams()).teamOf(s.primary_mentor_id) : null;
+  const name = String(team?.name || s.team_name || "");
+  return TEAM_COMMUNITIES.find(([re]) => re.test(name))?.[1] ?? "";
+}
+
 /** The welcome for this student — the email (subject, message) and the WhatsApp (the same message). */
-function welcome(s: any) {
+function welcome(s: any, teamCommunity = "") {
   const name = firstName(s.full_name);
-  const message = WELCOME.replace("{name}", name || "Student");
+  const message = WELCOME.replace("{name}", name || "Student")
+    .replace("{team_community}", teamCommunity ? `\n- Your Team Community: ${teamCommunity}` : "");
   return { subject: `Welcome to Delta Trading Academy${name ? `, ${name}` : ""}!`, body: message, text: message };
 }
 
@@ -199,7 +218,7 @@ export async function getOnboardingDraft(req: Request, user: AuthUser): Promise<
   const body: any = await req.json().catch(() => ({}));
   const s = await studentFor(body, user);
   if (s instanceof Response) return s;
-  const w = welcome(s);
+  const w = welcome(s, await teamCommunityOf(s));
   const emails = String(s.email ?? "").match(/[^\s,;<>]+@[^\s,;<>]+\.[^\s,;<>]+/g) ?? [];
   const numbers = intlNumbers(s.phone);
   const whatsAppWhyNot = !isCsLike(user.app_role) ? "WhatsApp goes from a CS's own WhatsApp — only a CS or CS Manager can send it"
