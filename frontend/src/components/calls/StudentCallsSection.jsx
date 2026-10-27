@@ -7,6 +7,36 @@ import { PhoneIncoming } from 'lucide-react';
 import { CallPerson, CallResult, RecordingPlayer, SyncNote, fmtDuration, fmtTalkTotal, fmtWhen } from './callUi';
 
 const FIRST = 8;
+const dash = <span className="text-slate-300">—</span>;
+
+/** Calls as rows: when, in or out and the result, who, how long, the recording — and the student, with `withStudent`. */
+export function CallsTable({ calls, withStudent = false }) {
+  const heads = ['When', ...(withStudent ? ['Student'] : []), 'Call', 'Who', 'Talk', 'Ring', 'Recording'];
+  return (
+    <table className="w-full text-sm">
+      <thead>
+        <tr className="border-b bg-slate-50/80">
+          {heads.map(h => (
+            <th key={h} className={`whitespace-nowrap px-3 py-3 text-[11px] font-semibold uppercase tracking-wider text-slate-500 ${h === 'Talk' || h === 'Ring' ? 'text-right' : 'text-left'}`}>{h}</th>
+          ))}
+        </tr>
+      </thead>
+      <tbody>
+        {calls.map(c => (
+          <tr key={c.id} className="border-b border-slate-100 align-top">
+            <td className="whitespace-nowrap px-3 py-2.5 text-slate-700">{fmtWhen(c.started_at)}</td>
+            {withStudent && <td className="whitespace-nowrap px-3 py-2.5 text-slate-700">{c.student_name || dash}<div className="text-xs text-slate-400">{c.student_code}</div></td>}
+            <td className="px-3 py-2.5"><CallResult call={c} /></td>
+            <td className="px-3 py-2.5"><CallPerson call={c} /></td>
+            <td className="tabular whitespace-nowrap px-3 py-2.5 text-right text-slate-700">{c.talk_seconds ? fmtDuration(c.talk_seconds) : dash}</td>
+            <td className="tabular whitespace-nowrap px-3 py-2.5 text-right text-slate-500">{c.ring_seconds ? fmtDuration(c.ring_seconds) : dash}</td>
+            <td className="px-3 py-2"><RecordingPlayer call={c} /></td>
+          </tr>
+        ))}
+      </tbody>
+    </table>
+  );
+}
 
 /** A student's calls through 3CX on their page: when, in or out, answered or missed, who, how long, the recording. */
 export default function StudentCallsSection({ student }) {
@@ -51,27 +81,7 @@ export default function StudentCallsSection({ student }) {
           <p className="py-8 text-center text-sm text-slate-400">No calls with this student yet.</p>
         ) : (
           <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b bg-slate-50/80">
-                  {['When', 'Call', 'Who', 'Talk', 'Ring', 'Recording'].map(h => (
-                    <th key={h} className={`whitespace-nowrap px-3 py-3 text-[11px] font-semibold uppercase tracking-wider text-slate-500 ${h === 'Talk' || h === 'Ring' ? 'text-right' : 'text-left'}`}>{h}</th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {list.map(c => (
-                  <tr key={c.id} className="border-b border-slate-100 align-top">
-                    <td className="whitespace-nowrap px-3 py-2.5 text-slate-700">{fmtWhen(c.started_at)}</td>
-                    <td className="px-3 py-2.5"><CallResult call={c} /></td>
-                    <td className="px-3 py-2.5"><CallPerson call={c} /></td>
-                    <td className="tabular whitespace-nowrap px-3 py-2.5 text-right text-slate-700">{c.talk_seconds ? fmtDuration(c.talk_seconds) : <span className="text-slate-300">—</span>}</td>
-                    <td className="tabular whitespace-nowrap px-3 py-2.5 text-right text-slate-500">{c.ring_seconds ? fmtDuration(c.ring_seconds) : <span className="text-slate-300">—</span>}</td>
-                    <td className="px-3 py-2"><RecordingPlayer call={c} /></td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+            <CallsTable calls={list} />
             {calls.length > FIRST && (
               <div className="border-t px-3 py-2 text-center">
                 <Button variant="ghost" size="sm" onClick={() => setAll(a => !a)}>{all ? 'Show fewer' : `Show all ${calls.length} calls`}</Button>

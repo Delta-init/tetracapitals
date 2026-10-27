@@ -11,9 +11,10 @@ import { Badge } from '@/components/ui/badge';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import SearchableSelect from '@/components/common/SearchableSelect';
-import { ArrowLeft, Link2, Loader2, Maximize2, MessageCircle, Minimize2, Plus, Search, Smartphone, Unlink } from 'lucide-react';
+import { ArrowLeft, Link2, PhoneCall, Loader2, Maximize2, MessageCircle, Minimize2, Plus, Search, Smartphone, Unlink } from 'lucide-react';
 import { getEffectiveUser } from '@/components/utils/ImpersonationContext';
 import { createPageUrl } from '@/utils';
+import CallsDialog from '@/components/calls/CallsDialog';
 import { Composer, Thread, WA_GREEN, shortTime, numbersOf } from '@/components/whatsapp/waUi';
 
 /* ────────────────────────────────────────────────────────────────────────────
@@ -126,6 +127,7 @@ export default function WhatsApp() {
   const [draft, setDraft] = useState(null);       // a chat started from a student, before its first message
   const [picking, setPicking] = useState(null);   // a student with several numbers: which one
   const [linking, setLinking] = useState(false);
+  const [callsOpen, setCallsOpen] = useState(false);
   // Full screen: the chats and the chat fill the window — the browser's own full screen where it has one; Esc leaves.
   const [full, setFull] = useState(false);
   const toggleFull = () => {
@@ -347,6 +349,9 @@ export default function WhatsApp() {
                         <Badge variant="outline" className="hover:bg-slate-100">{s.code}</Badge>
                       </Link>
                     ))}
+                    <Button variant="outline" size="sm" onClick={() => setCallsOpen(true)} title="3CX calls and recordings">
+                      <PhoneCall className="h-4 w-4 sm:mr-1" /><span className="hidden sm:inline">Calls</span>
+                    </Button>
                     {chat.students?.length === 0 && thread?.messages?.length > 0 && (
                       <Button variant="outline" size="sm" onClick={() => setLinking(true)}><Link2 className="mr-1 h-4 w-4" />Link to a student</Button>
                     )}
@@ -370,6 +375,7 @@ export default function WhatsApp() {
         <Card><CardContent className="p-6 text-center text-sm text-slate-500">No CS on your team has linked WhatsApp yet.</CardContent></Card>
       )}
 
+      <CallsDialog open={callsOpen} onOpenChange={setCallsOpen} students={chat?.students || []} title={chat?.name} />
       <LinkStudentDialog open={linking} onOpenChange={setLinking} ownerId={viewing} chat={chat} onLinked={refresh} />
     </div>
   );
