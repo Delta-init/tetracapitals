@@ -3,7 +3,6 @@
 // role's pages and lets admins override them (stored as page_permissions on
 // the role's commission_roles doc).
 import {
-  Mic,
   LayoutDashboard,
   FileCheck,
   ArrowUpCircle,
@@ -98,7 +97,6 @@ export const NAV_ITEMS = [
   // Each mentor's day — LMS classes, bookings, cancellations, meetings, reviews — and their commission (the user,
   // 2026-10-23; functions/mentorReport.ts): admins everyone, chiefs (and their mentors, CS Managers) their team.
   // The CS TV's voice — the owner's own recordings, kept in R2 (the user, 2026-10-26; functions/voiceRecordings.ts).
-  { name: 'VoiceRecordings', label: 'Voice recordings', page: 'VoiceRecordings', icon: Mic, roles: ['super_admin'], only: ['super_admin'] },
   { name: 'MentorReport', label: 'Mentor Report', page: 'MentorReport', icon: ClipboardList, roles: ['super_admin', 'admin', 'chief_mentor', 'senior_mentor', 'junior_mentor', 'subjunior_mentor', 'cs_manager'], only: ['super_admin', 'admin', 'chief_mentor', 'senior_mentor', 'junior_mentor', 'subjunior_mentor', 'cs_manager'] },
   { name: 'MentorPerformance', hidden: true, page: 'MentorPerformance', icon: Gauge, roles: ['super_admin', 'admin', 'broker_admin', 'academic_head', 'junior_mentor', 'chief_mentor', 'senior_mentor', 'finance_admin'] },
   { name: 'MasterAdmin', page: 'MasterAdmin', icon: ShieldCheck, roles: ['super_admin'] },
@@ -196,7 +194,7 @@ export const NESTED_GROUPS = {
   Reports: { icon: BarChart3, order: ['DepositReport', 'WithdrawalReport', 'FundingRequestReport', 'BonusReport', 'CommissionReports', 'Reports'] },
 };
 export const GROUP_OF = {
-  Dashboard: 'Overview', TeamDashboard: 'Overview', Teams: 'Overview', ActivityTracker: 'Overview', AIInsights: 'Overview', Leaderboard: 'Overview', InstructorReviews: 'Overview', MentorReport: 'Overview', VoiceRecordings: 'Overview', MentorPerformance: 'Overview', MentorTraining: 'Overview',
+  Dashboard: 'Overview', TeamDashboard: 'Overview', Teams: 'Overview', ActivityTracker: 'Overview', AIInsights: 'Overview', Leaderboard: 'Overview', InstructorReviews: 'Overview', MentorReport: 'Overview', MentorPerformance: 'Overview', MentorTraining: 'Overview',
   Personnel: 'People & Access', RolesManagement: 'People & Access', Hierarchy: 'People & Access', AcademicCounselors: 'People & Access', MasterAdmin: 'People & Access',
   Students: 'Students', CourseUpgrades: 'Students', NotOnboarded: 'Students', InactiveStudents: 'Students', BalancePayments: 'Students', StudentFollowups: 'Students', OverdueFollowups: 'Students', StudentCalls: 'Students', ClassCompletions: 'Students', WhatsApp: 'Students', MentorCalendar: 'Students', Programs: 'Students', SupportTickets: 'Students', LmsRequests: 'Students', Exams: 'Students', ZohoInvoices: 'Students', StudentLogs: 'Students', StudentLogHistoryPage: 'Students', MyStudentRequests: 'Students', StudentRequestApprovals: 'Students', RetentionManagement: 'Students', DrawAdminStudents: 'Students', MT5Accounts: 'Students', InactivityTransfers: 'Students', StudentWorkflow: 'Students', StudentTags: 'Students',
   FundingActivities: 'Funding', FundingRequests: 'Funding', BonusApprovals: 'Funding', NotCreditedYet: 'Funding', PaymentLinks: 'Funding', Transactions: 'Funding', TransactionTags: 'Funding',
