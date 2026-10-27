@@ -25,6 +25,13 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { toast } from "sonner";
 import { format } from "date-fns";
 import { logAction } from "../components/utils/AuditLogger";
+import LedgerBreakdown, { LedgerList } from "@/components/reports/LedgerBreakdown";
+
+/** A number that opens what is behind it (2026-10-27). */
+const Opens = ({ onClick, children }) => (
+  <button type="button" onClick={onClick} title="See what's behind this number"
+    className="cursor-pointer rounded text-left underline decoration-dotted decoration-1 underline-offset-4 hover:bg-cyan-50 hover:decoration-solid">{children}</button>
+);
 
 export default function CommissionReports() {
   const [currentUser, setCurrentUser] = useState(null);
@@ -37,6 +44,8 @@ export default function CommissionReports() {
   const [selectedLedger, setSelectedLedger] = useState(null);
   const [showApprovalDialog, setShowApprovalDialog] = useState(false);
   const [showHistoryDialog, setShowHistoryDialog] = useState(false);
+  const [openedLedger, setOpenedLedger] = useState(null);   // { ledgerId, field }
+  const [openedList, setOpenedList] = useState(null);       // { title, field, ledgers }
 
   const queryClient = useQueryClient();
 
@@ -250,19 +259,19 @@ export default function CommissionReports() {
           <Card className="border-none bg-gradient-to-br from-blue-100 to-indigo-100 shadow-lg">
             <CardContent className="p-5">
               <p className="text-sm font-semibold uppercase tracking-wider text-gray-700">Total Gross Commission</p>
-              <p className="text-3xl font-bold text-blue-700 mt-1"><Usd v={totalGrossCommission} /></p>
+              <p className="text-3xl font-bold text-blue-700 mt-1"><Opens onClick={() => setOpenedList({ title: 'Total gross commission', field: 'gross_commission_usd', ledgers: filteredLedgers })}><Usd v={totalGrossCommission} /></Opens></p>
             </CardContent>
           </Card>
           <Card className="border-none bg-gradient-to-br from-emerald-100 to-teal-100 shadow-lg">
             <CardContent className="p-5">
               <p className="text-sm font-semibold uppercase tracking-wider text-gray-700">Total Released</p>
-              <p className="text-3xl font-bold text-emerald-700 mt-1"><Usd v={totalReleased} /></p>
+              <p className="text-3xl font-bold text-emerald-700 mt-1"><Opens onClick={() => setOpenedList({ title: 'Total released', field: 'commission_release_usd', ledgers: filteredLedgers.filter(l => l.overall_status === 'released') })}><Usd v={totalReleased} /></Opens></p>
             </CardContent>
           </Card>
           <Card className="border-none bg-gradient-to-br from-amber-100 to-orange-100 shadow-lg">
             <CardContent className="p-5">
               <p className="text-sm font-semibold uppercase tracking-wider text-gray-700">Pending Release</p>
-              <p className="text-3xl font-bold text-amber-700 mt-1"><Usd v={totalPending} /></p>
+              <p className="text-3xl font-bold text-amber-700 mt-1"><Opens onClick={() => setOpenedList({ title: 'Pending release', field: 'commission_release_usd', ledgers: filteredLedgers.filter(l => l.overall_status !== 'released' && l.overall_status !== 'rejected') })}><Usd v={totalPending} /></Opens></p>
             </CardContent>
           </Card>
         </div>
@@ -388,16 +397,16 @@ export default function CommissionReports() {
                         <TableRow key={ledger.id} className="hover:bg-gray-50 transition-colors">
                           <TableCell className="font-medium">{ledger.mentor_name}</TableCell>
                           <TableCell className="font-semibold text-blue-600">{ledger.quarter}</TableCell>
-                          <TableCell className="font-semibold"><Usd v={ledger.net_deposit_usd} /></TableCell>
-                          <TableCell className="font-semibold"><Usd v={ledger.gross_commission_usd} /></TableCell>
+                          <TableCell className="font-semibold"><Opens onClick={() => setOpenedLedger({ ledgerId: ledger.id, field: 'net' })}><Usd v={ledger.net_deposit_usd} /></Opens></TableCell>
+                          <TableCell className="font-semibold"><Opens onClick={() => setOpenedLedger({ ledgerId: ledger.id, field: 'gross' })}><Usd v={ledger.gross_commission_usd} /></Opens></TableCell>
                           <TableCell className="font-semibold text-emerald-600">
-                            <Usd v={ledger.commission_release_usd} />
+                            <Opens onClick={() => setOpenedLedger({ ledgerId: ledger.id, field: 'release' })}><Usd v={ledger.commission_release_usd} /></Opens>
                           </TableCell>
                           <TableCell className="font-semibold text-amber-600">
-                            <Usd v={ledger.commission_buffer_usd} />
+                            <Opens onClick={() => setOpenedLedger({ ledgerId: ledger.id, field: 'buffer' })}><Usd v={ledger.commission_buffer_usd} /></Opens>
                           </TableCell>
-                          <TableCell><Usd v={ledger.buffer_carried_in_usd} /></TableCell>
-                          <TableCell><Usd v={ledger.buffer_carried_out_usd} /></TableCell>
+                          <TableCell><Opens onClick={() => setOpenedLedger({ ledgerId: ledger.id, field: 'buffer_in' })}><Usd v={ledger.buffer_carried_in_usd} /></Opens></TableCell>
+                          <TableCell><Opens onClick={() => setOpenedLedger({ ledgerId: ledger.id, field: 'buffer_out' })}><Usd v={ledger.buffer_carried_out_usd} /></Opens></TableCell>
                           <TableCell>
                             <Badge variant="outline" className={statusBadge.color}>
                               {statusBadge.label}
@@ -470,6 +479,10 @@ export default function CommissionReports() {
             {selectedLedger && <ApprovalHistory ledger={selectedLedger} />}
           </DialogContent>
         </Dialog>
+
+        <LedgerBreakdown open={openedLedger} onClose={() => setOpenedLedger(null)} />
+        <LedgerList open={openedList} onClose={() => setOpenedList(null)}
+          onOpenLedger={(l) => { setOpenedList(null); setOpenedLedger({ ledgerId: l.id, field: 'release' }); }} />
       </div>
     </div>
   );

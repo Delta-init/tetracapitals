@@ -31,6 +31,7 @@ import { getLmsExams, getStudentLmsExams } from "./lmsExams";
 import { previewCourseLms } from "./lmsPreview";
 import { sendFundingBack, correctFundingRequest, setFundingTransactionId } from "./fundingCorrections";
 import { getMoneyReport, getFundingRequestReport, getBonusReport, getReportFilters } from "./reports";
+import { getLedgerBreakdown } from "./commissionLedgerBreakdown";
 import { getStudentWorkflow, getStudentWorkflowStudents } from "./studentWorkflow";
 import { setEnrolment, setStudentPriority, getLmsEnrolment, syncLmsEnrolmentNow } from "./studentEnrolment";
 import { updateStudentDetails } from "./studentDetails";
@@ -137,6 +138,8 @@ const AUTHED: Record<string, AuthedHandler> = {
   getFundingRequestReport,
   getBonusReport,
   getReportFilters,
+  // What is behind a quarterly commission ledger on Commission Reports (2026-10-27)
+  getLedgerBreakdown,
   // The student workflow chart, and the students behind a box (2026-10-20)
   getStudentWorkflow,
   getStudentWorkflowStudents,
