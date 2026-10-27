@@ -10,7 +10,9 @@ import { CLOSED_STAGES, followupCategoryFor, outcomeMatches, recordEvents, targe
    LMS or here, a pop-up that stays until it is filled — saying where the client
    stands: interested (course, payment date, payment mode), follow-up (the CSE's
    or a revision, and when), a meeting with another mentor, a revision (course,
-   module, preferred mentor) or not interested (why), with a remark. The LMS
+   module, preferred mentor) or not interested (why), with the client's concern
+   and a remark — and, a second step, who the client is (experience, losses,
+   country, family in Dubai, occupation: students.client_profile). The LMS
    keeps it on the meeting; the first fill counts.
 
    Every 2 minutes (and at once after a fill here) the outcomes filled since the
@@ -38,7 +40,13 @@ const FOLLOW_UP_LABEL: Record<string, string> = { cse_follow_up: "CSE follow-up"
 export interface LmsOutcome {
   stage: string; courseId: string; courseTitle: string; paymentDate: string; paymentMode: string;
   followUpKind: string; followUpDate: string; withMentorName: string; withMentorEmail: string;
-  moduleTitle: string; reason: string; remark: string; filledByName: string; filledByEmail: string; filledVia: string; filledAt: string;
+  moduleTitle: string; reason: string; concern?: string; remark: string; filledByName: string; filledByEmail: string; filledVia: string; filledAt: string;
+  profile?: ClientProfile | null;
+}
+/** Who the client is, as the mentor learned it (the form's second step). */
+export interface ClientProfile {
+  experience: string; years: number | null; hadLosses: boolean; lossAmount: number | null; lossCurrency: string; lossHow: string[];
+  country: string; familyInDubai: boolean; occupation: string;
 }
 export interface LmsOutcomeMeeting {
   id: string; title: string; category: string; startsAt: string; durationMins: number;
@@ -131,7 +139,11 @@ export async function applyMeetingOutcome(m: LmsOutcomeMeeting, nowDate = new Da
   const mentorName = m.mentor?.name || o.filledByName;
   const reminders: any[] = [];
   for (const s of students) {
-    const stage = { meeting_stage: o.stage, meeting_stage_at: o.filledAt, meeting_stage_summary: outcomeSummary(o), meeting_stage_meeting_id: m.id };
+    const stage = {
+      meeting_stage: o.stage, meeting_stage_at: o.filledAt, meeting_stage_summary: outcomeSummary(o), meeting_stage_meeting_id: m.id,
+      ...(o.concern ? { meeting_concern: o.concern } : {}),
+      ...(o.profile ? { client_profile: { ...o.profile, at: o.filledAt, by: m.mentor?.name || o.filledByName } } : {}),
+    };
     await col("students").updateOne(
       { _id: s._id, $or: [{ meeting_stage_at: { $exists: false } }, { meeting_stage_at: { $lte: o.filledAt } }] } as any,
       { $set: stage },
@@ -144,7 +156,7 @@ export async function applyMeetingOutcome(m: LmsOutcomeMeeting, nowDate = new Da
       await notify(tell, {
         type: "meeting_outcome",
         title: `Meeting outcome: ${STAGE_LABEL[o.stage] ?? o.stage}`,
-        body: `${mentorName} met ${who} — ${outcomeSummary(o)}.${reminder ? ` Follow-up set for ${reminder.date}.` : ""} ${o.remark}`.trim(),
+        body: `${mentorName} met ${who} — ${outcomeSummary(o)}.${reminder ? ` Follow-up set for ${reminder.date}.` : ""}${o.concern ? ` Concern: ${o.concern}.` : ""} ${o.remark}`.trim(),
         link: `/StudentDetail?id=${String(s._id)}`,
         tag: `meeting-outcome-${m.id}-${String(s._id)}`,
       }).catch(() => {});

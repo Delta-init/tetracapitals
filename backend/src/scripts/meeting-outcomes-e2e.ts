@@ -86,7 +86,8 @@ const bells = async (u: any) => (await db.collection("notifications").find({ use
 
 console.log("\n\x1b[1mOutcomes from the LMS onto the students\x1b[0m");
 feed = [
-  outcomeMeeting("m1", ["s1@e2e.test"], { stage: "interested", courseTitle: "Market Breakout", paymentDate: "2026-11-02", paymentMode: "Tabby", remark: "Pays after salary", filledAt: "2026-10-27T07:00:00.000Z" }),
+  outcomeMeeting("m1", ["s1@e2e.test"], { stage: "interested", courseTitle: "Market Breakout", paymentDate: "2026-11-02", paymentMode: "Tabby", concern: "Afraid of losing again", remark: "Pays after salary", filledAt: "2026-10-27T07:00:00.000Z",
+    profile: { experience: "beginner", years: 2, hadLosses: true, lossAmount: 5000, lossCurrency: "AED", lossHow: ["scammed"], country: "UAE", familyInDubai: true, occupation: "Engineer" } }),
   outcomeMeeting("m2", ["s2@e2e.test", "stranger@e2e.test"], { stage: "follow_up", followUpKind: "revision_needed", followUpDate: "2026-10-30", remark: "Lost on entries", filledAt: "2026-10-27T07:05:00.000Z" }),
   outcomeMeeting("m3", ["nobody@e2e.test"], { stage: "not_interested", reason: "Price", remark: "Too dear", filledAt: "2026-10-27T07:10:00.000Z" }),
   outcomeMeeting("m4", ["s4@e2e.test"], { stage: "meeting_with", withMentorName: "BOB", withMentorEmail: "bob@e2e.test", remark: "Wants Bob", filledAt: "2026-10-27T07:15:00.000Z" }),
@@ -98,7 +99,8 @@ check("Saif: stage interested, with the summary", s1.meeting_stage === "interest
 const saifF = (await db.collection("student_followups").find({ student_id: String(saif._id) }).toArray()) as any[];
 check("…a new follow-up on the payment date, about the course, for his CS", saifF.length === 1 && saifF[0].next_followup_date === "2026-11-02" && saifF[0].target_outcome === "Market Breakout" && saifF[0].stage === "New" && saifF[0].notes === "Pays after salary", j(saifF));
 const mb = await bells(megha);
-check("…Megha (his CS) belled with what the mentor said", mb.some((b) => /Meeting outcome: Interested/.test(b.title) && /ANN met Saif/.test(b.message) && /Follow-up set for 2026-11-02/.test(b.message) && b.link === `/StudentDetail?id=${saif._id}`), j(mb));
+check("…the client's profile and concern on him", s1.client_profile?.occupation === "Engineer" && s1.client_profile.lossHow?.[0] === "scammed" && s1.client_profile.by === "ANN" && s1.meeting_concern === "Afraid of losing again", j(s1.client_profile));
+check("…Megha (his CS) belled with what the mentor said", mb.some((b) => /Meeting outcome: Interested/.test(b.title) && /ANN met Saif/.test(b.message) && /Concern: Afraid of losing again/.test(b.message) && /Follow-up set for 2026-11-02/.test(b.message) && b.link === `/StudentDetail?id=${saif._id}`), j(mb));
 const hamdaFs = (await db.collection("student_followups").find({ student_id: String(hamda._id) }).toArray()) as any[];
 check("Hamda: her open follow-up moved to the date (no second one), the time cleared", hamdaFs.length === 1 && hamdaFs[0].next_followup_date === "2026-10-30" && hamdaFs[0].next_followup_time === "" && hamdaFs[0].stage === "Contacted", j(hamdaFs));
 const ev = (await db.collection("student_followup_events").find({ followup_id: String(hamdaFollowup.insertedId) }).toArray()) as any[];
@@ -119,6 +121,7 @@ feed.push(outcomeMeeting("m5", ["s1@e2e.test"], { stage: "revision", courseTitle
 await db.collection("students").updateOne({ _id: saif._id }, { $set: { meeting_stage_at: "2026-10-27T07:25:00.000Z", meeting_stage: "interested" } });
 r = await syncMeetingOutcomes(new Date("2026-10-27T08:04:00.000Z"));
 s1 = await student(saif);
+check("a newer outcome without a second step keeps the profile there was", s1.client_profile?.occupation === "Engineer", j(s1.client_profile));
 check("an outcome older than the stage leaves it; a newer one takes over", r.applied === 2 && s1.meeting_stage === "revision" && s1.meeting_stage_summary === "Revision — Market Breakout · Price action, with BOB", j(s1));
 check("revision makes no reminder", (await db.collection("student_followups").countDocuments({ student_id: String(saif._id) })) === 1);
 
@@ -127,8 +130,10 @@ let res = await call(F.getPendingMeetingOutcomes, { ...megha, email: "ann@e2e.te
 check("pending: asked for the signed-in person's email", res.status === 200 && res.body.meetings?.[0]?.id === "m9" && seen.at(-1)?.query.mentorEmail === "ann@e2e.test", j(res));
 res = await call(F.getPendingMeetingOutcomes, megha);
 check("…somebody who is no mentor: none", res.body.meetings?.length === 0);
-res = await call(F.saveMeetingOutcome, { ...ravi, email: "ann@e2e.test" }, { meetingId: "m7", stage: "not_interested", reason: "Price", remark: "No budget", mentorEmail: "hacker@e2e.test" });
-check("saving: sent as the signed-in person, whatever the page says", res.status === 200 && seen.find((x) => x.path.endsWith("/m7/outcome"))?.body?.mentorEmail === "ann@e2e.test", j(res));
+res = await call(F.saveMeetingOutcome, { ...ravi, email: "ann@e2e.test" }, { meetingId: "m7", stage: "not_interested", reason: "Price", concern: "Money", remark: "No budget", mentorEmail: "hacker@e2e.test", profile: { experience: "fresher", country: "India" } });
+const sent = seen.find((x) => x.path.endsWith("/m7/outcome"))?.body;
+check("saving: sent as the signed-in person, whatever the page says", res.status === 200 && sent?.mentorEmail === "ann@e2e.test", j(res));
+check("…with the concern and the second step passed on", sent?.concern === "Money" && sent?.profile?.country === "India", j(sent));
 await new Promise((ok) => setTimeout(ok, 300));
 const n = await student(nitish);
 check("…and on the student at once", n.meeting_stage === "not_interested", j(n));

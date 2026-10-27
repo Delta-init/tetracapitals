@@ -7,6 +7,8 @@ export const STAGE_LABEL = {
   not_interested: 'Not interested',
 };
 export const FOLLOW_UP_LABEL = { cse_follow_up: 'CSE follow-up', revision_needed: 'Revision needed' };
+export const EXPERIENCE_LABEL = { fresher: 'Fresher', beginner: 'Beginner', expert: 'Expert' };
+export const LOSS_WAY_LABEL = { scammed: 'Scammed by someone', self_trading: 'Self trading', money_management: 'Given for money management' };
 
 const TONE = {
   interested: 'bg-emerald-50 text-emerald-700 border-emerald-200',

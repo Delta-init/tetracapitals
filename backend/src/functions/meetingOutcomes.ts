@@ -37,7 +37,7 @@ export async function getMeetingOutcomeOptions(_req: Request, _user: AuthUser): 
 }
 
 /**
- * POST /api/functions/saveMeetingOutcome { meetingId, stage, remark, courseId?, paymentDate?, paymentMode?, followUpKind?,
+ * POST /api/functions/saveMeetingOutcome { meetingId, stage, concern, remark, profile {…}, courseId?, paymentDate?, paymentMode?, followUpKind?,
  *   followUpDate?, withMentorEmail?, moduleId?, reason? } — as the signed-in mentor (the LMS checks it is theirs). Then
  * it is put on the student at once.
  */
@@ -46,11 +46,13 @@ export async function saveMeetingOutcome(req: Request, user: AuthUser): Promise<
   const meetingId = str(body?.meetingId, 100);
   if (!meetingId) return error("meetingId is required", 400);
   const fields: Record<string, string> = {};
-  for (const k of ["stage", "remark", "courseId", "paymentDate", "paymentMode", "followUpKind", "followUpDate", "withMentorEmail", "moduleId", "reason"]) {
+  for (const k of ["stage", "concern", "remark", "courseId", "paymentDate", "paymentMode", "followUpKind", "followUpDate", "withMentorEmail", "moduleId", "reason"]) {
     if (body?.[k] !== undefined) fields[k] = str(body[k], k === "remark" ? 2000 : 200);
   }
   try {
-    const saved = await callLms(`/mentor-meetings/${encodeURIComponent(meetingId)}/outcome`, { method: "POST", body: { ...fields, mentorEmail: user.email }, verb: "save the outcome" });
+    // The second step, about the client — the LMS checks every field of it.
+    const profile = body?.profile && typeof body.profile === "object" && !Array.isArray(body.profile) ? body.profile : undefined;
+    const saved = await callLms(`/mentor-meetings/${encodeURIComponent(meetingId)}/outcome`, { method: "POST", body: { ...fields, profile, mentorEmail: user.email }, verb: "save the outcome" });
     void syncMeetingOutcomes().catch(() => {});
     return json(saved);
   } catch (err) {
