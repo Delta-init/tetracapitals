@@ -11,6 +11,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Download, Loader2 } from 'lucide-react';
 import { useUrlState } from '@/components/utils/urlState';
 import { downloadExcel } from '@/components/utils/excelExport';
+import ReportDetails from './ReportDetails';
 
 /* ────────────────────────────────────────────────────────────────────────────
    One report page (the user, 2026-10-11 — the Reports section): the filters
@@ -44,6 +45,8 @@ const FIRST = {
 /**
  * fn: the server function; body: anything else it needs (e.g. { kind }); cards(d): [{ label, value, sub? }];
  * columns: [{ key, label, fmt?, type?: 'money' (a USD figure, shown in AED) | 'number', get?(row) }] — the same for every view.
+ * A card or column with `open` (a bucket the server counts — "count", "pending", "needs_call" …) opens the
+ * requests behind its number (2026-10-27).
  */
 export default function ReportShell({ title, description, fn, body = {}, cards, columns, sortNote }) {
   const [period, setPeriod] = useUrlState('period', 'month');
@@ -54,6 +57,7 @@ export default function ReportShell({ title, description, fn, body = {}, cards, 
   const [cs, setCs] = useUrlState('cs', 'all');
   const [view, setView] = useUrlState('view', 'people');
   const [exporting, setExporting] = useState(false);
+  const [opened, setOpened] = useState(null);
 
   const filters = useQuery({
     queryKey: ['report-filters'],
@@ -81,6 +85,21 @@ export default function ReportShell({ title, description, fn, body = {}, cards, 
     if (c.type === 'money') return aed(v);
     if (c.type === 'number') return num(v);
     return v ?? '—';
+  };
+
+  /** Which row a number is on, for the server: the total, a person, a team ("-" for none) or a month. */
+  const rowKey = (r) => (r === d?.total ? { view: 'total', key: '' }
+    : view === 'teams' ? { view: 'team', key: r.id || '-' } : view === 'months' ? { view: 'month', key: r.month } : { view: 'person', key: r.id });
+  const rowName = (r) => (r === d?.total ? 'everyone' : first.fmt ? first.fmt(r[first.key]) : r[first.key]);
+  /** A number that opens what is behind it — plain when there is nothing behind it. */
+  const opener = (bucket, r, label, children) => {
+    const n = Number(r?.[bucket]);
+    if (!bucket || !(n > 0)) return children;
+    return (
+      <button type="button" title="See what's behind this number"
+        onClick={() => setOpened({ bucket, ...rowKey(r), title: `${label} — ${rowName(r)}` })}
+        className="cursor-pointer rounded underline decoration-dotted decoration-1 underline-offset-4 hover:bg-cyan-50 hover:decoration-solid">{children}</button>
+    );
   };
 
   const exportIt = async () => {
@@ -170,7 +189,7 @@ export default function ReportShell({ title, description, fn, body = {}, cards, 
                   {cards(d).map(c => (
                     <div key={c.label} className={`rounded-2xl border p-4 shadow-soft ${CARD_TONE[c.tone] || 'border-slate-200/70 bg-white'}`}>
                       <p className="text-[13px] font-medium text-slate-500">{c.label}</p>
-                      <p className={`mt-2 break-words text-2xl font-bold ${TONE[c.tone] || 'text-brand-navy'}`}>{c.usd != null ? aed(c.usd) : c.value}</p>
+                      <p className={`mt-2 break-words text-2xl font-bold ${TONE[c.tone] || 'text-brand-navy'}`}>{opener(c.open, d.total, c.label, c.usd != null ? aed(c.usd) : c.value)}</p>
                       {c.sub && <p className="mt-1 text-xs text-slate-500">{c.sub}</p>}
                     </div>
                   ))}
@@ -202,14 +221,14 @@ export default function ReportShell({ title, description, fn, body = {}, cards, 
                                 <div className="font-medium text-slate-900">{first.fmt ? first.fmt(r[first.key]) : r[first.key]}</div>
                                 {first.sub && first.sub(r) && <div className="text-xs text-slate-500">{first.sub(r)}</div>}
                               </td>
-                              {columns.map(c => <td key={c.label} className={`whitespace-nowrap px-4 py-2.5 ${c.type ? 'text-right tabular-nums' : ''} ${TONE[c.tone] || ''}`}>{cell(c, r)}</td>)}
+                              {columns.map(c => <td key={c.label} className={`whitespace-nowrap px-4 py-2.5 ${c.type ? 'text-right tabular-nums' : ''} ${TONE[c.tone] || ''}`}>{opener(c.open, r, c.label, cell(c, r))}</td>)}
                             </tr>
                           ))}
                         </tbody>
                         <tfoot className="border-t border-slate-200 bg-slate-50 font-semibold">
                           <tr>
                             <td className="px-4 py-2.5">Total</td>
-                            {columns.map(c => <td key={c.label} className={`whitespace-nowrap px-4 py-2.5 ${c.type ? 'text-right tabular-nums' : ''} ${TONE[c.tone] || ''}`}>{cell(c, d.total)}</td>)}
+                            {columns.map(c => <td key={c.label} className={`whitespace-nowrap px-4 py-2.5 ${c.type ? 'text-right tabular-nums' : ''} ${TONE[c.tone] || ''}`}>{opener(c.open, d.total, c.label, cell(c, d.total))}</td>)}
                           </tr>
                         </tfoot>
                       </table>
@@ -219,6 +238,7 @@ export default function ReportShell({ title, description, fn, body = {}, cards, 
               </>
             )}
       </div>
+      <ReportDetails open={opened} onClose={() => setOpened(null)} fn={fn} ask={ask} />
     </div>
   );
 }

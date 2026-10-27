@@ -128,13 +128,33 @@ export function counts(ctx: ReportCtx, p: Person): boolean {
 export const inRange = (ctx: ReportCtx, t: number) => Number.isFinite(t) && t >= ctx.since && t < ctx.until;
 export const raisedBy = (t: any) => String(t.initiating_mentor_id || t.primary_mentor_id || "");
 
-/** Rows keyed by person, by team and by month, each with whatever `add` sums. */
-export function grouper<T extends Record<string, number>>(blank: () => T) {
+/**
+ * One number of a report opened to what is behind it (the user, 2026-10-27: "breakdown needed every count"): the
+ * bucket it counts (a column's key — "pending", "deposit", "needs_call" … — or "count" for all), and which row: the
+ * total, a person, a team or a month.
+ */
+export interface Pick { bucket: string; view: "total" | "person" | "team" | "month"; key: string }
+export function pickOf(body: any): Pick | null {
+  const d = body?.details;
+  if (!d || typeof d !== "object") return null;
+  const view = ["person", "team", "month"].includes(d.view) ? d.view : "total";
+  return { bucket: String(d.bucket ?? "count").slice(0, 40), view, key: String(d.key ?? "").slice(0, 40) };
+}
+
+/** Rows keyed by person, by team and by month, each with whatever `add` sums — and, with a `pick`, the items behind that one number. */
+export function grouper<T extends Record<string, number>>(blank: () => T, pick: Pick | null = null) {
+  const items: any[] = [];
   const people = new Map<string, Person & T>(), teams = new Map<string, { id: string; team: string; location: string } & T>(), months = new Map<string, { month: string } & T>();
   const total = blank();
   const sum = (into: T, add: Partial<T>) => { for (const [k, v] of Object.entries(add)) (into as any)[k] = cents(((into as any)[k] ?? 0) + (v as number)); };
   return {
-    add(p: Person, t: number, add: Partial<T>) {
+    add(p: Person, t: number, add: Partial<T>, item?: () => any) {
+      if (pick && item && Number((add as any)[pick.bucket]) > 0 && (pick.view === "total"
+        || (pick.view === "person" && pick.key === p.id)
+        || (pick.view === "team" && pick.key === (p.team_id || "-"))
+        || (pick.view === "month" && Number.isFinite(t) && pick.key === monthOf(t)))) {
+        items.push({ ...item(), raised_by: p.name, team: p.team });
+      }
       const row = people.get(p.id) ?? { ...p, ...blank() };
       sum(row, add); people.set(p.id, row);
       const tk = p.team_id || "-";
@@ -147,6 +167,15 @@ export function grouper<T extends Record<string, number>>(blank: () => T) {
       }
       sum(total, add);
     },
+    /** The items behind the picked number, newest first, with their students' names. */
+    async details() {
+      const ids = [...new Set(items.map((i) => i.student_id).filter(Boolean))];
+      const docs = (await col("students").find({ _id: { $in: ids.map((id) => toObjectId(id)).filter(Boolean) as any[] } }, { projection: { full_name: 1, student_code: 1 } }).toArray()) as any[];
+      const byId = new Map(docs.map((d) => [String(d._id), d]));
+      return items
+        .map((i) => ({ ...i, student_name: byId.get(String(i.student_id))?.full_name ?? i.student_name ?? "", student_code: byId.get(String(i.student_id))?.student_code ?? "" }))
+        .sort((a, b) => String(b.at ?? "").localeCompare(String(a.at ?? "")));
+    },
     out(sortKey: keyof T) {
       const by = (a: any, b: any) => (b[sortKey] ?? 0) - (a[sortKey] ?? 0);
       return {
@@ -158,6 +187,14 @@ export function grouper<T extends Record<string, number>>(blank: () => T) {
     },
   };
 }
+
+/** A funding request as a row of a breakdown. */
+const itemOf = (t: any, at: number, extra: Record<string, unknown> = {}) => ({
+  id: String(t._id), student_id: t.student_id ? String(t.student_id) : "", type: t.type, status: t.status,
+  usd: cents(creditUsdOf(t)), aed: cents(paidAedOf(t)), at: Number.isFinite(at) ? new Date(at).toISOString() : null,
+  decided_at: t.status === "PENDING" ? null : (t.approved_at || t.updated_date || null),
+  bonus: t.bonus_credit || (t.course_payment ? "course_payment" : ""), ...extra,
+});
 
 export const meta = (ctx: ReportCtx) => ({
   period: ctx.period,
@@ -175,11 +212,12 @@ export async function getMoneyReport(req: Request, user: AuthUser): Promise<Resp
   const body: any = await req.json().catch(() => ({}));
   const ctx = await reportCtx(body, user);
   if (ctx instanceof Response) return ctx;
+  const pick = pickOf(body);
   const type = body?.kind === "withdrawal" ? "WITHDRAWAL" : "DEPOSIT";
   const txs = (await col("funding_transactions")
-    .find({ type, status: "APPROVED" }, { projection: { amount_usd: 1, initiating_mentor_id: 1, primary_mentor_id: 1, primary_mentor_name: 1, student_id: 1, approved_at: 1, requested_at: 1, created_date: 1 } })
+    .find({ type, status: "APPROVED" }, { projection: { type: 1, status: 1, amount_usd: 1, amount_aed: 1, initiating_mentor_id: 1, primary_mentor_id: 1, primary_mentor_name: 1, student_id: 1, approved_at: 1, requested_at: 1, created_date: 1, updated_date: 1 } })
     .toArray()) as any[];
-  const g = grouper(() => ({ count: 0, usd: 0, students: 0 }));
+  const g = grouper(() => ({ count: 0, usd: 0, students: 0 }), pick);
   const studentsOf = new Map<string, Set<string>>();
   for (const t of txs) {
     const at = when(t.approved_at, t.requested_at, t.created_date);
@@ -190,8 +228,9 @@ export async function getMoneyReport(req: Request, user: AuthUser): Promise<Resp
     const fresh = t.student_id && !seen.has(String(t.student_id)) ? 1 : 0;
     if (t.student_id) seen.add(String(t.student_id));
     studentsOf.set(p.id, seen);
-    g.add(p, at, { count: 1, usd: usdOf(t), students: fresh });
+    g.add(p, at, { count: 1, usd: usdOf(t), students: fresh }, () => itemOf(t, at, { stage: "approved" }));
   }
+  if (pick) return json({ details: await g.details() });
   return json({ kind: type === "DEPOSIT" ? "deposit" : "withdrawal", ...meta(ctx), ...g.out("usd") });
 }
 
@@ -204,15 +243,17 @@ const STATUSES = ["PENDING", "APPROVED", "REJECTED"] as const;
  * a decision took (hours, on average) — per person, team and month.
  */
 export async function getFundingRequestReport(req: Request, user: AuthUser): Promise<Response> {
-  const ctx = await reportCtx(await req.json().catch(() => ({})), user);
+  const body: any = await req.json().catch(() => ({}));
+  const ctx = await reportCtx(body, user);
   if (ctx instanceof Response) return ctx;
+  const pick = pickOf(body);
   const txs = (await col("funding_transactions")
-    .find({ type: { $in: [...TYPES] } }, { projection: { type: 1, status: 1, amount_usd: 1, amount_aed: 1, course_payment: 1, bonus_credit: 1, initiating_mentor_id: 1, primary_mentor_id: 1, primary_mentor_name: 1, requested_at: 1, created_date: 1, approved_at: 1, updated_date: 1 } })
+    .find({ type: { $in: [...TYPES] } }, { projection: { type: 1, status: 1, amount_usd: 1, amount_aed: 1, course_payment: 1, bonus_credit: 1, initiating_mentor_id: 1, primary_mentor_id: 1, primary_mentor_name: 1, requested_at: 1, created_date: 1, approved_at: 1, updated_date: 1, student_id: 1 } })
     .toArray()) as any[];
   const blank = () => ({
     count: 0, usd: 0, aed: 0, pending: 0, approved: 0, rejected: 0, deposit: 0, withdrawal: 0, bonus: 0, decided: 0, decide_hours: 0,
   });
-  const g = grouper(blank);
+  const g = grouper(blank, pick);
   const grid: Record<string, Record<string, { count: number; usd: number; aed: number }>> = {};
   for (const ty of TYPES) { grid[ty] = {}; for (const st of STATUSES) grid[ty][st] = { count: 0, usd: 0, aed: 0 }; }
   for (const t of txs) {
@@ -227,11 +268,12 @@ export async function getFundingRequestReport(req: Request, user: AuthUser): Pro
       count: 1, usd: creditUsdOf(t), aed: paidAedOf(t),
       [status.toLowerCase()]: 1, [String(t.type).toLowerCase()]: 1,
       ...(Number.isFinite(hours) ? { decided: 1, decide_hours: hours } : {}),
-    } as any);
+    } as any, () => itemOf(t, at, { stage: status.toLowerCase(), hours: Number.isFinite(hours) ? cents(hours) : null }));
     grid[t.type][status].count++;
     grid[t.type][status].usd = cents(grid[t.type][status].usd + creditUsdOf(t));
     grid[t.type][status].aed = cents(grid[t.type][status].aed + paidAedOf(t));
   }
+  if (pick) return json({ details: await g.details() });
   const out = g.out("count");
   const avg = (r: any) => ({ ...r, avg_decide_hours: r.decided ? cents(r.decide_hours / r.decided) : null });
   return json({
@@ -247,18 +289,20 @@ export async function getFundingRequestReport(req: Request, user: AuthUser): Pro
  * USD per person, team and month.
  */
 export async function getBonusReport(req: Request, user: AuthUser): Promise<Response> {
-  const ctx = await reportCtx(await req.json().catch(() => ({})), user);
+  const body: any = await req.json().catch(() => ({}));
+  const ctx = await reportCtx(body, user);
   if (ctx instanceof Response) return ctx;
+  const pick = pickOf(body);
   const txs = (await col("funding_transactions")
-    .find({ type: "BONUS" }, { projection: { type: 1, course_payment: 1, status: 1, amount_usd: 1, initiating_mentor_id: 1, primary_mentor_id: 1, primary_mentor_name: 1, requested_at: 1, created_date: 1, finance_approval: 1, bonus_credit: 1, sales_close: 1, student_id: 1, amount_aed: 1 } })
+    .find({ type: "BONUS" }, { projection: { type: 1, course_payment: 1, status: 1, amount_usd: 1, initiating_mentor_id: 1, primary_mentor_id: 1, primary_mentor_name: 1, requested_at: 1, created_date: 1, finance_approval: 1, bonus_credit: 1, sales_close: 1, student_id: 1, amount_aed: 1, approved_at: 1, updated_date: 1, bonus_part: 1 } })
     .toArray()) as any[];
   // A sales-close bonus whose course still owes waits for the full payment (2026-10-17).
   const owed = await owedSalesCredits(txs.filter((t) => t.status === "PENDING"));
   const blank = () => ({
-    count: 0, usd: 0, aed: 0, approved_collected_aed: 0, after_payment: 0, after_payment_usd: 0, after_payment_aed: 0, needs_call: 0, needs_call_usd: 0, needs_call_aed: 0, with_finance: 0, with_finance_usd: 0, with_finance_aed: 0,
+    count: 0, usd: 0, aed: 0, approved_collected_aed: 0, still_pending: 0, after_payment: 0, after_payment_usd: 0, after_payment_aed: 0, needs_call: 0, needs_call_usd: 0, needs_call_aed: 0, with_finance: 0, with_finance_usd: 0, with_finance_aed: 0,
     waiting_broker: 0, waiting_broker_usd: 0, waiting_broker_aed: 0, approved: 0, approved_usd: 0, approved_aed: 0, rejected: 0, rejected_usd: 0, rejected_aed: 0,
   });
-  const g = grouper(blank);
+  const g = grouper(blank, pick);
   for (const t of txs) {
     const at = when(t.requested_at, t.created_date);
     if (!inRange(ctx, at)) continue;
@@ -276,7 +320,8 @@ export async function getBonusReport(req: Request, user: AuthUser): Promise<Resp
       : Number(t.amount_aed) > 0 ? Number(t.amount_aed) : usdOf(t) * 3.67;
     // Approved: the same AED as the Collected (approved) card.
     const paidHere = stage === "approved" ? collected : aedPaid;
-    g.add(p, at, { count: 1, usd, aed: paidHere, [stage]: 1, [`${stage}_usd`]: usd, [`${stage}_aed`]: paidHere, ...(collected ? { approved_collected_aed: collected } : {}) } as any);
+    g.add(p, at, { count: 1, usd, aed: paidHere, [stage]: 1, ...(stage === "approved" || stage === "rejected" ? {} : { still_pending: 1 }), [`${stage}_usd`]: usd, [`${stage}_aed`]: paidHere, ...(collected ? { approved_collected_aed: collected } : {}) } as any,
+      () => itemOf(t, at, { stage: raw, aed: cents(paidHere), part: t.bonus_part || "" }));
   }
   // Promised at a sales close and not sent to be credited yet — for the student's CS now.
   const students = await notSentOf({});
@@ -290,12 +335,16 @@ export async function getBonusReport(req: Request, user: AuthUser): Promise<Resp
       for (const x of left) {
         const at = when(x.since);
         if (!inRange(ctx, at)) continue;
+        // Not raised yet — a promise, not a request: no id of its own.
+        const item = () => ({ id: `${sid}|${x.since}`, student_id: sid, type: "BONUS", status: "NOT_SENT", stage: x.owed ? "after_payment" : "needs_call",
+          usd: cents(x.usd), aed: 0, at: Number.isFinite(at) ? new Date(at).toISOString() : null, decided_at: null, bonus: "sales_close", promised: true });
         g.add(p, at, x.owed
-          ? { count: 1, usd: x.usd, after_payment: 1, after_payment_usd: x.usd } as any
-          : { count: 1, usd: x.usd, needs_call: 1, needs_call_usd: x.usd } as any);
+          ? { count: 1, usd: x.usd, still_pending: 1, after_payment: 1, after_payment_usd: x.usd } as any
+          : { count: 1, usd: x.usd, still_pending: 1, needs_call: 1, needs_call_usd: x.usd } as any, item);
       }
     }
   }
+  if (pick) return json({ details: await g.details() });
   return json({ ...meta(ctx), ...g.out("usd") });
 }
 
