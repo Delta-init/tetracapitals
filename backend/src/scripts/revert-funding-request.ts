@@ -20,7 +20,7 @@ import { config } from "../config";
  * …or, for one never approved (no transaction ID — e.g. sent back, 2026-10-27), by the student's code, its MT5 login
  * and its amount (USD; a course-payment bonus by its MT5 bonus):
  *   bun src/scripts/revert-funding-request.ts --code=STU-2834 --mt5=919709 --usd=12000 --type=BONUS [--apply]
- * (--type DEPOSIT | WITHDRAWAL | BONUS narrows it when two match).
+ * (--type DEPOSIT | WITHDRAWAL | BONUS narrows it when two match); --id=<request id> picks one of those it lists.
  *   bun src/scripts/revert-funding-request.ts --undo=<file> [--apply]    puts back everything that file holds
  *
  * Uses the same database as the API (MONGO_URI / MONGO_DB, from this folder's .env).
@@ -50,7 +50,7 @@ if (undoFile) {
   process.exit(0);
 }
 
-const code = option("code")?.trim().toUpperCase() ?? "", mt5Login = option("mt5")?.trim() ?? "", type = option("type")?.trim().toUpperCase() ?? "";
+const code = option("code")?.trim().toUpperCase() ?? "", mt5Login = option("mt5")?.trim() ?? "", type = option("type")?.trim().toUpperCase() ?? "", pickId = option("id")?.trim() ?? "";
 let student = option("student") ?? "";
 const txn = option("txn") ?? "", usd = Number(option("usd"));
 const amountOf = (t: any) => [Number(t.amount_usd) || 0, Number(t.course_payment?.bonus_usd) || 0];
@@ -60,12 +60,12 @@ if (code) {
   if (!mt5Login || !Number.isFinite(usd)) { console.error("Say which request: --code=<STU code> --mt5=<MT5 login> --usd=<amount in USD>"); process.exit(1); }
   const studentIds = ((await col("students").find({ student_code: code }, { projection: { _id: 1 } }).toArray()) as any[]).map((x) => String(x._id));
   if (!studentIds.length) { console.error(`No student ${code} — nothing done.`); process.exit(1); }
-  const found = ((await col("funding_transactions").find({ student_id: { $in: studentIds }, mt5_login: { $in: [mt5Login, Number(mt5Login)] }, ...(type ? { type } : {}) }).toArray()) as any[])
+  const found = ((await col("funding_transactions").find({ student_id: { $in: studentIds }, mt5_login: { $in: [mt5Login, Number(mt5Login)] }, ...(type ? { type } : {}), ...(ObjectId.isValid(pickId) ? { _id: new ObjectId(pickId) } : {}) }).toArray()) as any[])
     .filter((t) => amountOf(t).some((a) => Math.abs(a - usd) < 0.01));
   if (found.length !== 1) {
     console.error(found.length ? `${found.length} requests for ${code}, MT5 ${mt5Login}, $${usd} — not one; nothing done:` : `No request for ${code}, MT5 ${mt5Login}, $${usd} — nothing done.`);
     for (const t of found) console.error(`  ${t._id} · ${t.type} · ${t.status} · ${t.requested_at ?? t.created_date ?? "—"}`);
-    if (found.length > 1 && !type) console.error("Add --type=DEPOSIT, WITHDRAWAL or BONUS to say which.");
+    if (found.length > 1) console.error(type ? "Add --id=<one of these> to say which." : "Add --type=DEPOSIT, WITHDRAWAL or BONUS, or --id=<one of these>, to say which.");
     process.exit(1);
   }
   request = found[0];
