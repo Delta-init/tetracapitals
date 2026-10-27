@@ -12,7 +12,7 @@ import { loadTeams } from "../students/teams";
 import { studentWorkflow, studentWorkflowStudents, isWorkflowBox } from "../students/studentWorkflow";
 import { csOverview, csDetail, type Period } from "./csOverview";
 import { CallFilterError, callsForPortal, recordingLinkForPortal } from "./calls";
-import { mentorReport, mentorReportDates } from "../functions/mentorReport";
+import { mentorReport, mentorReportDates, mentorReportDetail } from "../functions/mentorReport";
 import { instructorReviewList, reviewTrouble } from "../functions/instructorReviews";
 
 /* ────────────────────────────────────────────────────────────────────────────
@@ -145,6 +145,11 @@ export async function handlePortalService(req: Request, path: string): Promise<R
     const from = url.searchParams.get("from"), to = url.searchParams.get("to");
     const why = mentorReportDates(from, to);
     return why ? refuse(400, "VALIDATION_ERROR", why) : ok(await mentorReport(null, from!, to!));
+  }
+  /* GET /mentor-report/details?kind&from&to[&mentorId&programId] — the rows behind one number (2026-10-27). */
+  if (path === "/mentor-report/details" && req.method === "GET") {
+    const r = await mentorReportDetail(null, Object.fromEntries(url.searchParams.entries()));
+    return typeof r === "string" ? refuse(400, "VALIDATION_ERROR", r) : ok(r);
   }
   if (path === "/mentor-reviews" && req.method === "GET") {
     const id = String(url.searchParams.get("instructorId") ?? "");

@@ -156,7 +156,7 @@ check("AED 2,000 paid: half can be sent now", r.body?.bonuses?.[0]?.half === tru
 
 step("2b. Every payment's receipt (2026-10-27: only the close's showed)");
 r = await call("POST", "/api/v1/integrations/finance/fee-updates", {
-  invoiceId: "inv-2", invoiceNumber: "IN-inv-2", email: s2.email, course: s2.course_fees[0].course, currency: "AED",
+  invoiceId: "inv-2", invoiceNumber: "IN-inv-2", email: s2.email, course: (s2 as any).course_fees[0].course, currency: "AED",
   totalMinor: 550_000, paidMinor: 300_000, balanceMinor: 250_000, status: "partial", nextDueOn: null,
   payments: [
     { amountMinor: 112_500, paidOn: "2026-10-17", method: "Tabby", receipt: { url: "https://files.test/receipt.pdf", name: "Tabby receipt" } },

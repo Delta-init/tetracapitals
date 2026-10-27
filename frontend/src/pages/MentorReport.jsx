@@ -6,6 +6,7 @@ import { Card, CardContent } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { ChevronDown, ClipboardList, Loader2, Search, Star } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { BreakdownDialog, Opens, ProgramsTab, MeetingsTab } from '@/components/reports/MentorBreakdown';
 
 /* ────────────────────────────────────────────────────────────────────────────
    Mentor Report (the user, 2026-10-23) — each mentor of the team, from the LMS:
@@ -125,24 +126,33 @@ function MentorReviews({ m, from, to }) {
 const meetingCats = (r) => [['Pitch', r.mCoursePitch], ['Overview', r.mOverview], ['Other', r.mOther], ['—', r.mNone]]
   .filter(([, v]) => v > 0).map(([l, v]) => `${l} ${v}`).join(' · ');
 
-const n = (v, tone) => <span className={cn(!v ? 'text-slate-300' : tone)}>{v || 0}</span>;
 
-/** The figures of one row — a mentor's total or one of their days. */
-function Cells({ r }) {
+/**
+ * The figures of one row — a mentor's total or one of their days. Each number opens what is behind it (2026-10-27):
+ * `open(kind, label)`. A day row has no different-students count (only the whole dates do).
+ */
+function Cells({ r, open, total }) {
+  const o = (v, kind, label, tone) => <Opens value={v} onOpen={() => open(kind, label)} className={tone}>{v || 0}</Opens>;
   return (
     <>
-      <td className="px-3 py-2.5 text-right">{n(r.held, 'font-semibold text-slate-800')}<span className="text-slate-400"> / {r.classes || 0}</span></td>
-      <td className="px-3 py-2.5 text-right">{n(r.classesCancelled, 'text-rose-600')}</td>
-      <td className="px-3 py-2.5 text-right">{n(r.bookings, 'font-semibold text-slate-800')}</td>
-      <td className="px-3 py-2.5 text-right">{n(r.bookingsCancelled, 'text-rose-600')}</td>
-      <td className="px-3 py-2.5 text-right">{n(r.attended, 'text-emerald-600')}</td>
-      <td className="px-3 py-2.5 text-right">{n(r.missed, 'text-amber-600')}</td>
+      <td className="px-3 py-2.5 text-right">{o(r.held, 'classes', 'classes', 'font-semibold text-slate-800')}<span className="text-slate-400"> / {r.classes || 0}</span></td>
+      <td className="px-3 py-2.5 text-right">{o(r.classesCancelled, 'cancelled_classes', 'cancelled classes', 'text-rose-600')}</td>
+      <td className="px-3 py-2.5 text-right">{o(r.bookings, 'bookings', 'bookings', 'font-semibold text-slate-800')}</td>
+      <td className="px-3 py-2.5 text-right">{o(r.bookingsCancelled, 'cancelled_bookings', 'cancelled bookings', 'text-rose-600')}</td>
       <td className="px-3 py-2.5 text-right">
-        {n((r.meetings || 0) - (r.meetingsCancelled || 0), 'text-slate-800')}{r.meetingsCancelled ? <span className="text-rose-500"> · {r.meetingsCancelled}✕</span> : null}
+        {total ? <>{o(r.students, 'students', 'students', 'text-slate-800')}<span className="text-slate-400"> · {r.studentsAttended || 0} came</span></> : <span className="text-slate-300">·</span>}
+      </td>
+      <td className="px-3 py-2.5 text-right">{o(r.attended, 'attended', 'who came', 'text-emerald-600')}</td>
+      <td className="px-3 py-2.5 text-right">{o(r.missed, 'missed', 'who missed', 'text-amber-600')}</td>
+      <td className="px-3 py-2.5 text-right">
+        {o((r.meetings || 0) - (r.meetingsCancelled || 0), 'meetings', 'meetings', 'text-slate-800')}
+        {r.meetingsCancelled ? <span className="text-rose-500"> · <Opens value={r.meetingsCancelled} onOpen={() => open('cancelled_meetings', 'cancelled meetings')} className="text-rose-500">{r.meetingsCancelled}✕</Opens></span> : null}
         {meetingCats(r) && <div className="whitespace-nowrap text-[10px] text-slate-400" title="Course Pitch · Overview · Other · no category">{meetingCats(r)}</div>}
       </td>
-      <td className="px-3 py-2.5"><Rating avg={r.avgRating} reviews={r.reviews} low={r.lowRatings} /></td>
-      <td className={cn('px-3 py-2.5 text-right font-semibold', r.commission_usd ? 'text-emerald-700' : 'text-slate-300')}>{usd(r.commission_usd)}</td>
+      <td className="px-3 py-2.5"><Opens value={r.reviews} onOpen={() => open('classes', 'classes and their reviews')}><Rating avg={r.avgRating} reviews={r.reviews} low={r.lowRatings} /></Opens></td>
+      <td className={cn('px-3 py-2.5 text-right font-semibold', r.commission_usd ? 'text-emerald-700' : 'text-slate-300')}>
+        <Opens value={r.commission_usd} onOpen={() => open('commission', 'commission')} className="text-emerald-700">{usd(r.commission_usd)}</Opens>
+      </td>
     </>
   );
 }
@@ -152,6 +162,9 @@ export default function MentorReport() {
   const [range, setRange] = useState(() => PRESETS[0][2]());
   const [q, setQ] = useState('');
   const [open, setOpen] = useState(null);
+  // Mentors, Programs or Meetings (2026-10-27), and the breakdown window that is open, if any.
+  const [tab, setTab] = useState('mentors');
+  const [spec, setSpec] = useState(null);
   const [from, to] = range;
   const { data, isLoading, error } = useQuery({
     queryKey: ['mentor-report', from, to], retry: false,
@@ -171,12 +184,24 @@ export default function MentorReport() {
   const pick = (key) => { const p = PRESETS.find(x => x[0] === key); setPreset(key); setRange(p[2]()); setOpen(null); };
   const setDay = (i, v) => { if (!v) return; setPreset('custom'); setRange(r => { const next = [...r]; next[i] = v; if (next[0] > next[1]) next[i === 0 ? 1 : 0] = v; return next; }); };
 
+  // The whole list's — or, searched, the mentors shown (one mentor: theirs alone).
+  const one = needle && rows.length === 1 ? rows[0] : null;
+  const scope = one ? { mentorId: one.lms_id || one.id, who: one.name } : { who: needle ? null : (data?.everyone ? 'Every mentor' : 'Your team') };
+  const openKind = (kind, label, extra = {}) => setSpec({ kind, from, to, ...(scope.mentorId ? { mentorId: scope.mentorId } : {}), title: `${scope.who ? `${scope.who} — ` : ''}${label}`, ...extra });
+  const attendance = sum.attended + sum.missed ? Math.round((sum.attended / (sum.attended + sum.missed)) * 100) : null;
+  const students = one ? { booked: one.total?.students, attended: one.total?.studentsAttended } : data?.students;
+  // Each card opens what is behind it (2026-10-27) — [label, value, under it, kind].
   const cards = [
-    ['Classes held', `${sum.held} / ${sum.classes}`, `${sum.classesCancelled} cancelled`],
-    ['Bookings', sum.bookings, `${sum.bookingsCancelled} cancelled · ${sum.attended} attended`],
-    ['Meetings', sum.meetings - sum.meetingsCancelled, [meetingCats(sum), `${sum.meetingsCancelled} cancelled`].filter(Boolean).join(' · ')],
-    ['Reviews', sum.reviews, sum.reviews ? `★ ${Math.round((sum.ratingSum / sum.reviews) * 10) / 10} average` : 'none yet'],
-    ['Commission', usd(sum.commission_usd), 'credited, pool shares included'],
+    ['Classes held', `${sum.held} / ${sum.classes}`, 'held / scheduled', 'classes', sum.classes],
+    ['Classes cancelled', sum.classesCancelled, 'which, and how many had booked', 'cancelled_classes', sum.classesCancelled],
+    ['Bookings', sum.bookings, `${sum.bookingsCancelled} cancelled`, 'bookings', sum.bookings],
+    ['Bookings cancelled', sum.bookingsCancelled, 'by the students', 'cancelled_bookings', sum.bookingsCancelled],
+    ['Students', students?.booked ?? '—', students ? `${students.attended ?? 0} came — each once` : 'needs the LMS update', 'students', students?.booked],
+    ['Attended', sum.attended, attendance === null ? '—' : `${attendance}% of those due`, 'attended', sum.attended],
+    ['Missed', sum.missed, 'booked, didn’t come', 'missed', sum.missed],
+    ['Meetings', sum.meetings - sum.meetingsCancelled, [meetingCats(sum), `${sum.meetingsCancelled} cancelled`].filter(Boolean).join(' · '), 'meetings', sum.meetings],
+    ['Reviews', sum.reviews, sum.reviews ? `★ ${Math.round((sum.ratingSum / sum.reviews) * 10) / 10} average · by class` : 'none yet', 'classes', sum.reviews],
+    ['Commission', usd(sum.commission_usd), 'credited, pool shares included', 'commission', sum.commission_usd],
   ];
 
   return (
@@ -210,13 +235,26 @@ export default function MentorReport() {
           <p className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">{/unknown function|not found|404/i.test(String(error?.message)) ? 'This page needs the server update (the API deploy).' : error.message}</p>
         ) : (
           <>
+            {/* Mentors, Programs, Meetings (2026-10-27). */}
+            <div className="flex w-max gap-1 rounded-full border border-slate-200 bg-white p-0.5">
+              {[['mentors', 'Mentors'], ['programs', 'Programs'], ['meetings', 'Meetings']].map(([k, l]) => (
+                <button key={k} type="button" onClick={() => setTab(k)}
+                  className={cn('rounded-full px-4 py-1.5 text-sm font-medium', tab === k ? 'bg-brand-navy text-white' : 'text-slate-600 hover:bg-slate-50')}>{l}</button>
+              ))}
+            </div>
+            {tab === 'programs' && <ProgramsTab from={from} to={to} onOpen={setSpec} />}
+            {tab === 'meetings' && <MeetingsTab from={from} to={to} />}
+            {tab === 'mentors' && <>
             <div className="grid grid-cols-2 gap-3 md:grid-cols-5">
-              {cards.map(([label, value, sub]) => (
-                <Card key={label}><CardContent className="p-4">
-                  <p className="text-[11px] font-semibold uppercase tracking-wider text-slate-500">{label}</p>
-                  <p className="mt-1 text-2xl font-bold text-slate-900">{isLoading ? '…' : value}</p>
-                  <p className="mt-0.5 truncate text-xs text-slate-400">{sub}</p>
-                </CardContent></Card>
+              {cards.map(([label, value, sub, kind, has]) => (
+                <button key={label} type="button" disabled={!has || isLoading}
+                  onClick={() => (kind === 'meetings' && !one ? setTab('meetings') : openKind(kind, label.toLowerCase()))} className="text-left disabled:cursor-default">
+                  <Card className={cn('h-full transition-colors', has && 'hover:border-brand-navy/40')}><CardContent className="p-4">
+                    <p className="text-[11px] font-semibold uppercase tracking-wider text-slate-500">{label}</p>
+                    <p className="mt-1 text-2xl font-bold text-slate-900">{isLoading ? '…' : value}</p>
+                    <p className="mt-0.5 truncate text-xs text-slate-400">{sub}</p>
+                  </CardContent></Card>
+                </button>
               ))}
             </div>
 
@@ -238,6 +276,7 @@ export default function MentorReport() {
                         <th className="px-3 py-3 text-right font-semibold" title="Classes cancelled">Class cancelled</th>
                         <th className="px-3 py-3 text-right font-semibold" title="Students' bookings on their classes">Bookings</th>
                         <th className="px-3 py-3 text-right font-semibold" title="Bookings the students cancelled">Booking cancelled</th>
+                        <th className="px-3 py-3 text-right font-semibold" title="Different students who booked · who came">Students</th>
                         <th className="px-3 py-3 text-right font-semibold">Attended</th>
                         <th className="px-3 py-3 text-right font-semibold">Missed</th>
                         <th className="px-3 py-3 text-right font-semibold" title="1:1 meetings held or booked · cancelled">Meetings</th>
@@ -246,8 +285,8 @@ export default function MentorReport() {
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-100">
-                      {isLoading && <tr><td colSpan={10} className="px-4 py-10 text-center text-slate-400"><Loader2 className="mx-auto h-5 w-5 animate-spin" /></td></tr>}
-                      {!isLoading && !rows.length && <tr><td colSpan={10} className="px-4 py-10 text-center text-slate-400">No mentors to show.</td></tr>}
+                      {isLoading && <tr><td colSpan={11} className="px-4 py-10 text-center text-slate-400"><Loader2 className="mx-auto h-5 w-5 animate-spin" /></td></tr>}
+                      {!isLoading && !rows.length && <tr><td colSpan={11} className="px-4 py-10 text-center text-slate-400">No mentors to show.</td></tr>}
                       {rows.map(m => {
                         const key = m.email || m.id;
                         const isOpen = open === key;
@@ -263,18 +302,18 @@ export default function MentorReport() {
                                   </div>
                                 </div>
                               </td>
-                              <Cells r={m.total} />
+                              <Cells r={m.total} total open={(kind, label) => setSpec({ kind, from, to, mentorId: m.lms_id || m.id, title: `${m.name} — ${label}` })} />
                             </tr>
                             {isOpen && (m.days.length ? m.days.map(d => (
                               <tr key={d.day} className="bg-slate-50/60 text-[13px]">
                                 <td className="py-2 pl-12 pr-4 text-slate-600">{dayLabel(d.day)}</td>
-                                <Cells r={d} />
+                                <Cells r={d} open={(kind, label) => setSpec({ kind, from: d.day, to: d.day, mentorId: m.lms_id || m.id, title: `${m.name} — ${label}, ${dayLabel(d.day)}` })} />
                               </tr>
                             )) : (
-                              <tr className="bg-slate-50/60"><td colSpan={10} className="py-3 pl-12 text-sm text-slate-400">Nothing in these dates.</td></tr>
+                              <tr className="bg-slate-50/60"><td colSpan={11} className="py-3 pl-12 text-sm text-slate-400">Nothing in these dates.</td></tr>
                             ))}
                             {isOpen && m.total.reviews > 0 && (
-                              <tr className="bg-slate-50/60"><td colSpan={10} className="px-4 pb-4 pt-1 sm:pl-12"><MentorReviews m={m} from={from} to={to} /></td></tr>
+                              <tr className="bg-slate-50/60"><td colSpan={11} className="px-4 pb-4 pt-1 sm:pl-12"><MentorReviews m={m} from={from} to={to} /></td></tr>
                             )}
                           </Fragment>
                         );
@@ -284,8 +323,10 @@ export default function MentorReport() {
                 </div>
               </CardContent>
             </Card>
+            </>}
           </>
         )}
+        <BreakdownDialog spec={spec} onClose={() => setSpec(null)} />
       </div>
     </div>
   );

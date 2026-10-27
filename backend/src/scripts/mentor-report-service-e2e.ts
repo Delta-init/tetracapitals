@@ -68,7 +68,10 @@ const lms = Bun.serve({
           total: { classes: 3, held: 2, classesCancelled: 1, bookings: 9, bookingsCancelled: 1, attended: 7, missed: 1, meetings: 2, meetingsCancelled: 1, reviews: 2, lowRatings: 1, avgRating: 3.5, ratingCounts: { 5: 1, 2: 1 } },
           days: [{ day: "2026-10-22", classes: 1, held: 1, bookings: 4 }, { day: "2026-10-20", classes: 2, held: 1, classesCancelled: 1, bookings: 5 }] },
         { instructorId: "b".repeat(24), email: "lms-only@e2e.test", name: "Only LMS", total: { classes: 1, held: 1, bookings: 2 }, days: [{ day: "2026-10-21", classes: 1, held: 1, bookings: 2 }] },
-      ] } });
+      ], students: { booked: 5, attended: 4 } } });
+    }
+    if (url.pathname === "/api/v1/service/mentor-report/details") {
+      return Response.json({ success: true, data: { kind: url.searchParams.get("kind"), total: 1, rows: [{ id: "c1", title: "Gold", mentor: "Ann (LMS)", booked: 3 }] } });
     }
     if (url.pathname === `/api/v1/service/instructor-reviews/${ANN_LMS}`) {
       return Response.json({ success: true, data: { reviews: [{ _id: "r1", rating: 5, comment: "Great", studentId: { name: "Sara" }, liveClassId: { title: "Gold" }, createdAt: at("2026-10-21") }],
@@ -108,11 +111,33 @@ step("Case 3 — errors");
 same("dates missing: 400", (await get(`/mentor-report?from=${FROM}`)).status, 400);
 same("dates upside down: 400", (await get(`/mentor-report?from=${TO}&to=${FROM}`)).status, 400);
 same("not a date: 400", (await get(`/mentor-report?from=20-10-2026&to=${TO}`)).status, 400);
+
+// What is behind each number (2026-10-27).
+check("the report carries the team's different students, as the LMS counted them", d.students?.booked === 5 && d.students?.attended === 4, JSON.stringify(d.students));
+r = await get(`/mentor-report/details?kind=classes&from=${FROM}&to=${TO}`);
+check("details: the LMS's rows for the kind", r.status === 200 && r.body?.data?.kind === "classes" && r.body.data.rows?.[0]?.title === "Gold" && r.body.data.total === 1, JSON.stringify(r.body).slice(0, 300));
+check("…the LMS asked for that kind and the dates, everyone (no address list)", asked.some((a) => a === `/api/v1/service/mentor-report/details?kind=classes&from=${FROM}&to=${TO}`), asked.slice(-3).join(" | "));
+r = await get(`/mentor-report/details?kind=missed&from=${FROM}&to=${TO}&mentorId=${id(chief)}`);
+check("one mentor by their portal id: the LMS asked by their address", r.status === 200 && asked.some((a) => a.startsWith("/api/v1/service/mentor-report/details?kind=missed") && a.includes("emails=ann%40e2e.test")), asked.slice(-2).join(" | "));
+r = await get(`/mentor-report/details?kind=bookings&from=${FROM}&to=${TO}&mentorId=${ANN_LMS}&programId=${"c".repeat(24)}`);
+check("…by their LMS id, one Program: both handed on", asked.some((a) => a.includes("kind=bookings") && a.includes(`instructorId=${ANN_LMS}`) && a.includes(`programId=${"c".repeat(24)}`)), asked.slice(-2).join(" | "));
+r = await get(`/mentor-report/details?kind=commission&from=${FROM}&to=${TO}`);
+const usdOf = (x: any) => (x?.body?.data?.rows ?? []).map((c: any) => c.usd).sort((a: number, b: number) => a - b).join();
+check("commission: each credit in the dates — Ann's 12.5 and 40, Ben's pool share 7; not before, not the CS's", r.status === 200 && usdOf(r) === "7,12.5,40", JSON.stringify(r.body).slice(0, 300));
+check("…each with whose it is", (r.body?.data?.rows ?? []).some((c: any) => c.mentor === "Junior Ben" && c.usd === 7));
+r = await get(`/mentor-report/details?kind=commission&from=${FROM}&to=${TO}&mentorId=${id(chief)}`);
+check("commission, Ann's only: 12.5 and 40", usdOf(r) === "12.5,40", JSON.stringify(r.body).slice(0, 300));
+same("details: a kind that isn't one: 400", (await get(`/mentor-report/details?kind=everything&from=${FROM}&to=${TO}`)).status, 400);
+same("details: a bad mentor id: 400", (await get(`/mentor-report/details?kind=classes&from=${FROM}&to=${TO}&mentorId=nope`)).status, 400);
+same("details: no dates: 400", (await get(`/mentor-report/details?kind=classes`)).status, 400);
+same("details: no secret: 401", (await get(`/mentor-report/details?kind=classes&from=${FROM}&to=${TO}`, null)).status, 401);
 same("reviews without an instructor: 400", (await get(`/mentor-reviews`)).status, 400);
 lmsDown = true;
 r = await get(`/mentor-report${P}`);
 check("the LMS down: still answers, says so, commission still shows", r.status === 200 && r.body?.data?.lms?.available === false && !!r.body?.data?.lms?.message
   && (r.body?.data?.mentors ?? []).find((m: any) => m.name === "Chief Ann")?.total?.commission_usd === 52.5, JSON.stringify(r.body?.data?.lms));
+r = await get(`/mentor-report/details?kind=classes&from=${FROM}&to=${TO}`);
+check("details with the LMS down: answers, says so", r.status === 200 && r.body?.data?.lms?.available === false && !!r.body.data.lms.message && r.body.data.rows.length === 0, JSON.stringify(r.body));
 r = await get(`/mentor-reviews?instructorId=${ANN_LMS}`);
 check("reviews with the LMS down: 502 and why", r.status === 502 && typeof r.body?.error?.message === "string" && r.body.error.message.length > 0, JSON.stringify(r.body));
 

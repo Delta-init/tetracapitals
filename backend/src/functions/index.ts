@@ -55,7 +55,7 @@ import { removeStudentMt5, setPrimaryMt5 } from "./studentMt5";
 import { markNotStudent, unmarkNotStudent, listNotStudents } from "./notStudent";
 import { getStudentEmails, getStudentEmail } from "./studentEmails";
 import { getInstructorReviews, getInstructorReviewList } from "./instructorReviews";
-import { getMentorReport } from "./mentorReport";
+import { getMentorReport, getMentorReportDetails } from "./mentorReport";
 import { getVoiceRecordings, saveVoiceRecording, deleteVoiceRecording } from "./voiceRecordings";
 import { getCsTvLink } from "./csTv";
 import { getLmsCourseAccess, giveLmsCourses, setLmsModuleAccess } from "./lmsCourseAccess";
@@ -205,6 +205,7 @@ const AUTHED: Record<string, AuthedHandler> = {
   getStudentEmails,
   getInstructorReviews,
   getMentorReport,
+  getMentorReportDetails,
   getVoiceRecordings,
   saveVoiceRecording,
   deleteVoiceRecording,

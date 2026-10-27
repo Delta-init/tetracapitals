@@ -78,6 +78,7 @@ export async function mentorReport(user: AuthUser | null, from: string, to: stri
   }
 
   let lmsRows: any[] = [];
+  let lmsAnswer: any = null;
   let lms: { available: boolean; message?: string } = { available: true };
   if (!lmsConfigured()) lms = { available: false, message: "The LMS isn't linked to this server" };
   else {
@@ -85,7 +86,8 @@ export async function mentorReport(user: AuthUser | null, from: string, to: stri
       // An admin: everyone the LMS has (instructors who aren't in the portal too); anyone else: their team by address.
       const query: Record<string, string> = { from: body.from, to: body.to };
       if (!everyone) query.emails = [...byEmail.keys()].filter(Boolean).join(",");
-      lmsRows = !everyone && !query.emails ? [] : ((await callLms("/mentor-report", { query, verb: "share the mentors' report" })) as any)?.mentors ?? [];
+      lmsAnswer = !everyone && !query.emails ? null : ((await callLms("/mentor-report", { query, verb: "share the mentors' report" })) as any);
+      lmsRows = lmsAnswer?.mentors ?? [];
     } catch (err) {
       lms = { available: false, message: err instanceof LmsError && /route \S+ \S+ not found|cannot get/i.test(err.message) ? "The mentors' report needs the LMS update" : err instanceof Error ? err.message : "The LMS did not answer" };
     }
@@ -110,5 +112,93 @@ export async function mentorReport(user: AuthUser | null, from: string, to: stri
     return { ...r, total: { ...r.total, commission_usd: total }, days: [...days.values()].sort((a, b) => b.day.localeCompare(a.day)) };
   }).sort((a, b) => b.total.held - a.total.held || b.total.bookings - a.total.bookings || b.total.commission_usd - a.total.commission_usd || String(a.name).localeCompare(String(b.name)));
 
-  return { from: body.from, to: body.to, everyone, mentors, lms };
+  // Different students who booked and who came — the team's, each once (LMS, 2026-10-27; absent from an older LMS).
+  const students = lmsRows.length || everyone ? (lmsAnswer?.students ?? null) : { booked: 0, attended: 0 };
+  return { from: body.from, to: body.to, everyone, mentors, lms, students };
+}
+
+/* ── What is behind each number (the user, 2026-10-27: "each count we can break down … which ones") ──────────────── */
+
+const LMS_KINDS = ["classes", "cancelled_classes", "bookings", "cancelled_bookings", "attended", "missed", "students", "meetings", "cancelled_meetings", "programs"];
+export const DETAIL_KINDS = [...LMS_KINDS, "commission"];
+
+/**
+ * The rows behind one number of the report — for everyone it covers, one mentor (`mentorId`: their portal id or LMS
+ * id), or one Program (`programId`): classes, cancelled classes, bookings (all / cancelled / attended / missed), the
+ * students, meetings (all / cancelled), the Programs, or the commission credits. The same reach as the report: a
+ * chief their own team. Null user: the Root portal, every mentor. A reason (string) for bad input.
+ */
+export async function mentorReportDetail(user: AuthUser | null, q: Record<string, unknown>): Promise<string | { kind: string; total: number; rows: any[]; lms?: { available: boolean; message?: string } }> {
+  const kind = String(q.kind ?? "");
+  if (!DETAIL_KINDS.includes(kind)) return `kind is one of ${DETAIL_KINDS.join(", ")}`;
+  const why = mentorReportDates(q.from, q.to);
+  if (why) return why;
+  const from = String(q.from), to = String(q.to);
+  for (const k of ["mentorId", "programId"]) if (q[k] && !/^[a-f\d]{24}$/i.test(String(q[k]))) return `Invalid ${k}`;
+  const everyone = !user || isAdmin(user);
+  const portal = await mentorsFor(user);
+  // One mentor: by their portal id or their LMS id; outside this person's reach, nobody.
+  let one: { portalId: string; lmsId: string; email: string } | null = null;
+  if (q.mentorId) {
+    const id = String(q.mentorId);
+    const u = portal.find((x) => String(x._id) === id);
+    // Not a portal id: an LMS id — for a chief, the LMS still keeps it to the team's addresses.
+    one = u ? { portalId: id, lmsId: "", email: String(u.email ?? "").toLowerCase() } : { portalId: "", lmsId: id, email: "" };
+  }
+
+  if (kind === "commission") {
+    const ids = one ? (one.portalId ? [one.portalId] : []) : portal.map((u) => String(u._id));
+    const range = { $gte: dubaiStart(from), $lt: nextDay(to) };
+    const credits = ids.length
+      ? ((await col("commission_credits").find(
+          { recipient_id: { $in: ids }, $or: [{ requested_at: range }, { requested_at: { $in: [null, ""] }, created_date: range }] },
+          { projection: { recipient_id: 1, recipient_name: 1, commission_usd: 1, method: 1, is_pool: 1, status: 1, transaction_id: 1, requested_at: 1, created_date: 1, level: 1 } },
+        ).sort({ requested_at: -1, created_date: -1 }).limit(3000).toArray()) as any[])
+      : [];
+    const txIds = [...new Set(credits.map((c) => String(c.transaction_id ?? "")).filter((t) => /^[a-f\d]{24}$/i.test(t)))];
+    const txs = new Map(((await col("funding_transactions").find({ _id: { $in: txIds.map(toObjectId).filter(Boolean) as any[] } }, { projection: { student_name: 1, student_code: 1, type: 1, amount_usd: 1 } }).toArray()) as any[])
+      .map((t) => [String(t._id), t]));
+    const nameOf = new Map(portal.map((u) => [String(u._id), u.full_name ?? u.email ?? ""]));
+    return {
+      kind, total: credits.length,
+      rows: credits.map((c) => {
+        const t = txs.get(String(c.transaction_id ?? ""));
+        return {
+          id: String(c._id), mentor: nameOf.get(String(c.recipient_id)) || c.recipient_name || "", usd: round(Number(c.commission_usd) || 0),
+          method: String(c.method ?? ""), pool: c.is_pool === true, status: String(c.status ?? ""), level: c.level ?? null,
+          at: c.requested_at || c.created_date || null, student: t?.student_name ?? "", studentCode: t?.student_code ?? "",
+          request: t?.type ?? "", requestUsd: Number(t?.amount_usd) || 0,
+        };
+      }),
+    };
+  }
+
+  if (!lmsConfigured()) return { kind, total: 0, rows: [], lms: { available: false, message: "The LMS isn't linked to this server" } };
+  const query: Record<string, string> = { kind, from, to };
+  if (!everyone) {
+    query.emails = portal.map((u) => String(u.email ?? "").trim().toLowerCase()).filter(Boolean).join(",");
+    if (!query.emails) return { kind, total: 0, rows: [] };
+  }
+  if (one) {
+    if (one.lmsId) query.instructorId = one.lmsId;
+    else if (one.email) query.emails = one.email;
+    else return { kind, total: 0, rows: [] };
+  }
+  if (q.programId) query.programId = String(q.programId);
+  try {
+    const r = (await callLms("/mentor-report/details", { query, verb: "share the report's details" })) as any;
+    return { kind, total: Number(r?.total) || 0, rows: Array.isArray(r?.rows) ? r.rows : [] };
+  } catch (err) {
+    return {
+      kind, total: 0, rows: [],
+      lms: { available: false, message: err instanceof LmsError && /route \S+ \S+ not found|cannot get|not found/i.test(err.message) ? "These details need the LMS update" : err instanceof Error ? err.message : "The LMS did not answer" },
+    };
+  }
+}
+
+/** POST /api/functions/getMentorReportDetails { kind, from, to, mentorId?, programId? } → { kind, total, rows, lms? } */
+export async function getMentorReportDetails(req: Request, user: AuthUser): Promise<Response> {
+  if (!mayView(user)) return forbidden();
+  const r = await mentorReportDetail(user, ((await req.json().catch(() => null)) ?? {}) as Record<string, unknown>);
+  return typeof r === "string" ? error(r, 400) : json(r);
 }
