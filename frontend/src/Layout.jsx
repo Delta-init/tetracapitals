@@ -17,6 +17,7 @@ import { NAV_ITEMS, NAV_GROUPS, NESTED_GROUPS, GROUP_OF, ROLE_HOME, ROLE_ONLY_PA
 import { readsClosedOnly } from '@/components/utils/roles';
 import { CallFlowProvider } from '@/components/followups/CallFlow';
 import MeetingOutcomeGate from '@/components/meetings/MeetingOutcomeGate';
+import { TodaySchedulePopup } from '@/components/dashboard/TodaySchedule';
 import { forgetThisDevice } from '@/components/utils/usePushNotifications';
 
 const initials = (name = '') =>
@@ -623,6 +624,8 @@ export default function Layout({ children, currentPageName }) {
             </CallFlowProvider>
             {/* How a student meeting went — the mentor's form, open until it is filled */}
             {currentUser?.id && <MeetingOutcomeGate />}
+            {/* Mentors and Chiefs: today's LMS classes and meetings, the first time the portal is opened each day (2026-10-28) */}
+            {currentUser?.id && <TodaySchedulePopup currentUser={currentUser} />}
           </motion.div>
         </main>
       </div>

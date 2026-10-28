@@ -8,6 +8,7 @@ import { AmountCell, PaidCell, studentInfoOf, sourceOf } from "../components/fun
 import StatsCard from "../components/dashboard/StatsCard";
 import LocationTotals from "../components/dashboard/LocationTotals";
 import { CsPendingPanel, CsReportPanel, MentorPendingPanel } from "../components/dashboard/TeamPending";
+import { TodayScheduleCard } from "../components/dashboard/TodaySchedule";
 import { Users, TrendingUp, DollarSign, Target, AlertCircle, AlertTriangle, ArrowRight, Award, Wallet, Activity } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import TransactionTable from "../components/transactions/TransactionTable";
@@ -371,6 +372,9 @@ export default function Dashboard() {
 
         {/* A CS / CS Manager: their course payments and commission, as on Funding Activities (2026-10-13) */}
         {['cs', 'cs_manager'].includes(currentUser.app_role) && <CourseCommissionSummary isManager={currentUser.app_role === 'cs_manager'} />}
+
+        {/* Mentors and Chiefs: today's LMS classes and meetings (2026-10-28) */}
+        <TodayScheduleCard currentUser={currentUser} />
 
         {/* Root's CS pending and CS report, their own CSs only — a Super Admin every CS, a CS Manager their location's, a
             Chief Mentor their team's — and what waits on every mentor for Super Admins and Chiefs (2026-10-28). */}
