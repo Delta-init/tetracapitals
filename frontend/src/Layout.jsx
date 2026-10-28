@@ -271,6 +271,8 @@ export default function Layout({ children, currentPageName }) {
     // Balance payments has no badge since 2026-10-13: what was due there (a sales close's instalments) is followed up in the sales CRMs.
     StudentFollowups: [{ n: navCounts?.followups_today, cls: 'bg-amber-400 text-brand-navy', title: 'follow-ups due today' }],
     OverdueFollowups: [{ n: navCounts?.followups_overdue, cls: 'bg-rose-500 text-white', title: 'overdue follow-ups' }],
+    // Your own reminders due today, overdue ones too (2026-10-28).
+    Reminders: [{ n: navCounts?.reminders_due, cls: 'bg-amber-400 text-brand-navy', title: 'your reminders due today or overdue' }],
     PaymentLinks: [
       { n: navCounts?.payment_links_pending, cls: 'bg-amber-400 text-brand-navy', title: 'payment link requests waiting for you' },
       { n: navCounts?.payment_links_ready, cls: 'bg-emerald-400 text-brand-navy', title: 'payment links ready — not seen yet' },

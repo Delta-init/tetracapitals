@@ -13,6 +13,7 @@ import { openCreditRequests } from "./creditRequests";
 import { csManagerReach, fundingOfIds } from "../lib/userLocation";
 import { IS_STUDENT, OF_A_STUDENT } from "../students/notStudent";
 import { isCsLike } from "../lib/roles";
+import { REMINDERS, dueTodayFilter } from "./reminders";
 
 /* The filters behind each number — shared with the Root portal's Pending page (portal/pending.ts), so the two never
    drift apart. A `forId` narrows one to that person, as their own sidebar has it. */
@@ -99,7 +100,10 @@ export async function getNavCounts(_req: Request, user: AuthUser): Promise<Respo
   const fundingPending = await col("funding_transactions").countDocuments(user.app_role === "cs_manager"
     ? { status: "PENDING", bonus_credit: { $in: [null, ""] }, ...fundingOfIds(csReach?.ids ?? []) }
     : { status: "PENDING", bonus_credit: { $in: [null, ""] }, $or: [{ requested_by_id: user.id }, { initiating_mentor_id: user.id }, { created_by: user.id }] });
+  // Your own reminders not done and due by the end of today, overdue included (2026-10-28).
+  const remindersDue = await col(REMINDERS).countDocuments(dueTodayFilter(user.id));
   return json({
+    reminders_due: remindersDue,
     credit_requests_open: creditOpen, funding_pending: fundingPending,
     today, new_students: newStudents, followups_today: dueToday, followups_overdue: overdue,
     payment_links_pending: linksWaiting, payment_links_ready: linksReady, payment_links_turned_down: linksTurnedDown,

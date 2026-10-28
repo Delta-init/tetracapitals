@@ -126,6 +126,9 @@ export async function ensureIndexes(): Promise<void> {
     d.collection("enrolment_payments").createIndex({ invoice_id: 1, status: 1 }),
     d.collection("enrolment_payments").createIndex({ "finance_approval.state": 1, "finance_approval.next_attempt_at": 1 }),
     d.collection("balance_reminders").createIndex({ date: -1, cs_id: 1 }),
+    // Everyone's reminders (2026-10-28): their own by time, and the ones due a notice.
+    d.collection("reminders").createIndex({ owner_id: 1, remind_at: 1 }),
+    d.collection("reminders").createIndex({ done: 1, notified_at: 1, remind_at: 1 }),
   ]);
 
   // One student per LMS account, even if two deliveries of it arrive at once.

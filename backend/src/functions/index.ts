@@ -32,6 +32,7 @@ import { previewCourseLms } from "./lmsPreview";
 import { sendFundingBack, correctFundingRequest, setFundingTransactionId } from "./fundingCorrections";
 import { getMoneyReport, getFundingRequestReport, getBonusReport, getReportFilters } from "./reports";
 import { getLedgerBreakdown } from "./commissionLedgerBreakdown";
+import { getMyReminders, getStudentReminders, saveReminder, setReminderDone, deleteReminder, getTeamReminders, getReminderTeamScope } from "./reminders";
 import { getStudentWorkflow, getStudentWorkflowStudents } from "./studentWorkflow";
 import { setEnrolment, setStudentPriority, getLmsEnrolment, syncLmsEnrolmentNow } from "./studentEnrolment";
 import { updateStudentDetails } from "./studentDetails";
@@ -141,6 +142,14 @@ const AUTHED: Record<string, AuthedHandler> = {
   getReportFilters,
   // What is behind a quarterly commission ledger on Commission Reports (2026-10-27)
   getLedgerBreakdown,
+  // Everyone's reminders, the Reminders page (2026-10-28)
+  getMyReminders,
+  getStudentReminders,
+  saveReminder,
+  setReminderDone,
+  deleteReminder,
+  getTeamReminders,
+  getReminderTeamScope,
   // The student workflow chart, and the students behind a box (2026-10-20)
   getStudentWorkflow,
   getStudentWorkflowStudents,

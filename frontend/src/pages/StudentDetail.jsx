@@ -13,12 +13,13 @@ import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import {
   ArrowLeft, CalendarPlus, Edit, IdCard, ListChecks, Phone, MessageCircle, Wallet, GraduationCap,
   Presentation, LifeBuoy, Link2, CandlestickChart, History as HistoryIcon,
-  FileCheck, UserX, Mail
+  FileCheck, UserX, Mail, AlarmClock
 } from "lucide-react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { createPageUrl } from "../utils";
 import StudentForm from "../components/students/StudentForm";
 import { NotStudentDialog, mayMarkNotStudent } from "@/components/students/StudentRowExtras";
+import ReminderDialog from "@/components/reminders/ReminderDialog";
 import { EditDetailsButton } from "@/components/students/EditDetails";
 import MT5AccountSection from "../components/students/MT5AccountSection";
 import { Mt5Logins } from "../components/students/mt5Accounts";
@@ -85,6 +86,7 @@ export default function StudentDetail() {
   const [currentUser, setCurrentUser] = useState(null);
   const [showEditDialog, setShowEditDialog] = useState(false);
   const [notStudentOpen, setNotStudentOpen] = useState(false);
+  const [reminderOpen, setReminderOpen] = useState(false);
   const urlParams = new URLSearchParams(window.location.search);
   const studentId = urlParams.get('id');
 
@@ -350,6 +352,11 @@ export default function StudentDetail() {
           <div className="flex flex-wrap items-center gap-2 lg:max-w-[60%] lg:justify-end">
             {/* Call with 3CX, then log it against the student's follow-up */}
             <CallButton student={displayStudent} className="h-9 px-4 text-sm" />
+            {/* A reminder about this student, for yourself (2026-10-28) */}
+            <Button variant="outline" className="h-9" onClick={() => setReminderOpen(true)}>
+              <AlarmClock className="h-4 w-4 mr-2" />
+              Reminder
+            </Button>
             {/* Time with a mentor, in the LMS's diary — the Mentor Calendar, filled in for this student */}
             <Link to={`${createPageUrl('MentorCalendar')}?student=${displayStudent.id}`}>
               <Button variant="outline" className="h-9">
@@ -390,6 +397,7 @@ export default function StudentDetail() {
           </div>
         )}
         <NotStudentDialog student={student} open={notStudentOpen} onOpenChange={setNotStudentOpen} />
+        <ReminderDialog open={reminderOpen} onOpenChange={setReminderOpen} student={{ id: student.id, name: displayStudent.full_name, code: student.student_code }} />
 
         <Tabs ref={rootRef} value={tab} onValueChange={changeTab}>
           {/* One tab per part of the student — it sticks under the top bar. On a phone or tablet it scrolls sideways;

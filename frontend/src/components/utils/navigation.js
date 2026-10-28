@@ -97,6 +97,8 @@ export const NAV_ITEMS = [
   // Each mentor's day — LMS classes, bookings, cancellations, meetings, reviews — and their commission (the user,
   // 2026-10-23; functions/mentorReport.ts): admins everyone, chiefs (and their mentors, CS Managers) their team.
   // The CS TV's voice — the owner's own recordings, kept in R2 (the user, 2026-10-26; functions/voiceRecordings.ts).
+  // Everyone's own reminders (2026-10-28), told 15 minutes before and at the time.
+  { name: 'Reminders', label: 'Reminders', page: 'Reminders', icon: AlarmClock, roles: ['all'], everyone: true },
   { name: 'MentorReport', label: 'Mentor Report', page: 'MentorReport', icon: ClipboardList, roles: ['super_admin', 'admin', 'chief_mentor', 'senior_mentor', 'junior_mentor', 'subjunior_mentor', 'cs_manager'], only: ['super_admin', 'admin', 'chief_mentor', 'senior_mentor', 'junior_mentor', 'subjunior_mentor', 'cs_manager'] },
   { name: 'MentorPerformance', hidden: true, page: 'MentorPerformance', icon: Gauge, roles: ['super_admin', 'admin', 'broker_admin', 'academic_head', 'junior_mentor', 'chief_mentor', 'senior_mentor', 'finance_admin'] },
   { name: 'MasterAdmin', page: 'MasterAdmin', icon: ShieldCheck, roles: ['super_admin'] },
@@ -194,7 +196,7 @@ export const NESTED_GROUPS = {
   Reports: { icon: BarChart3, order: ['DepositReport', 'WithdrawalReport', 'FundingRequestReport', 'BonusReport', 'CommissionReports', 'Reports'] },
 };
 export const GROUP_OF = {
-  Dashboard: 'Overview', TeamDashboard: 'Overview', Teams: 'Overview', ActivityTracker: 'Overview', AIInsights: 'Overview', Leaderboard: 'Overview', InstructorReviews: 'Overview', MentorReport: 'Overview', MentorPerformance: 'Overview', MentorTraining: 'Overview',
+  Dashboard: 'Overview', TeamDashboard: 'Overview', Teams: 'Overview', ActivityTracker: 'Overview', AIInsights: 'Overview', Leaderboard: 'Overview', InstructorReviews: 'Overview', Reminders: 'Overview', MentorReport: 'Overview', MentorPerformance: 'Overview', MentorTraining: 'Overview',
   Personnel: 'People & Access', RolesManagement: 'People & Access', Hierarchy: 'People & Access', AcademicCounselors: 'People & Access', MasterAdmin: 'People & Access',
   Students: 'Students', CourseUpgrades: 'Students', NotOnboarded: 'Students', InactiveStudents: 'Students', BalancePayments: 'Students', StudentFollowups: 'Students', OverdueFollowups: 'Students', StudentCalls: 'Students', ClassCompletions: 'Students', WhatsApp: 'Students', MentorCalendar: 'Students', Programs: 'Students', SupportTickets: 'Students', LmsRequests: 'Students', Exams: 'Students', ZohoInvoices: 'Students', StudentLogs: 'Students', StudentLogHistoryPage: 'Students', MyStudentRequests: 'Students', StudentRequestApprovals: 'Students', RetentionManagement: 'Students', DrawAdminStudents: 'Students', MT5Accounts: 'Students', InactivityTransfers: 'Students', StudentWorkflow: 'Students', StudentTags: 'Students',
   FundingActivities: 'Funding', FundingRequests: 'Funding', BonusApprovals: 'Funding', NotCreditedYet: 'Funding', PaymentLinks: 'Funding', Transactions: 'Funding', TransactionTags: 'Funding',
@@ -210,7 +212,7 @@ export const GROUP_OF = {
  * student's page stays open to them (MT5 Approvals links to it), and the report details the Reports open.
  */
 export const ROLE_ONLY_PAGES = {
-  broker_admin: ['BonusApprovals', 'Tickets', 'DepositReport', 'WithdrawalReport', 'FundingRequestReport', 'BonusReport', 'Reports', 'CommissionReports', 'StudentDetail', 'ReportTransactionDetails'],
+  broker_admin: ['BonusApprovals', 'Tickets', 'DepositReport', 'WithdrawalReport', 'FundingRequestReport', 'BonusReport', 'Reports', 'CommissionReports', 'StudentDetail', 'ReportTransactionDetails', 'Reminders'],
 };
 /** Where such a role starts instead of the Dashboard. */
 export const ROLE_HOME = { broker_admin: 'BonusApprovals' };

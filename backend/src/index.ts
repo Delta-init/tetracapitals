@@ -17,6 +17,7 @@ import { startLmsCsWorker } from "./students/lmsCs";
 import { startMentorScheduleWorker } from "./students/mentorScheduleAlerts";
 import { startMeetingOutcomeWorker } from "./students/meetingOutcomes";
 import { startGuestReminderWorker } from "./students/programNotices";
+import { startRemindersWorker } from "./students/reminderWorker";
 import { callLms } from "./lib/lms";
 import { ensureSalesRole } from "./students/closedBy";
 
@@ -71,6 +72,8 @@ async function main() {
   startMentorScheduleWorker();
   // How student meetings went (the mentor's form, kept in the LMS) onto the students every 2 minutes.
   startMeetingOutcomeWorker();
+  // Everyone's own reminders: the bell, a push and the chime 15 minutes before and at the time, every 30 seconds (REMINDERS=off).
+  startRemindersWorker();
 }
 
 const shutdown = async (signal: string) => {
