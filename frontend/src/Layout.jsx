@@ -18,6 +18,7 @@ import { readsClosedOnly } from '@/components/utils/roles';
 import { CallFlowProvider } from '@/components/followups/CallFlow';
 import MeetingOutcomeGate from '@/components/meetings/MeetingOutcomeGate';
 import { TodaySchedulePopup } from '@/components/dashboard/TodaySchedule';
+import { LiveNotJoinedPopup, useLiveNotJoined } from '@/components/live/LiveNotJoined';
 import { forgetThisDevice } from '@/components/utils/usePushNotifications';
 
 const initials = (name = '') =>
@@ -258,6 +259,9 @@ export default function Layout({ children, currentPageName }) {
     staleTime: 60_000,
   });
 
+  // Booked a live class and not joined yet (2026-10-28) — the same check the window uses.
+  const liveNotJoined = useLiveNotJoined(currentUser);
+
   // The numbers a page shows in the sidebar, in order, each in the colour its page uses. Payment Links: a Super
   // Admin gets the requests waiting for them, a CS the links ready and the turn-downs they haven't seen (the
   // server only counts each for them). Collapsed there is room for one: the first that isn't 0.
@@ -279,6 +283,7 @@ export default function Layout({ children, currentPageName }) {
       { n: navCounts?.payment_links_ready, cls: 'bg-emerald-400 text-brand-navy', title: 'payment links ready — not seen yet' },
       { n: navCounts?.payment_links_turned_down, cls: 'bg-rose-500 text-white', title: 'payment link requests turned down — not seen yet' },
     ],
+    LiveNotJoined: [{ n: liveNotJoined.data?.counts?.live_students, cls: 'bg-rose-500 text-white', title: 'booked a live class and not joined yet' }],
     ClassCompletions: [{ n: navCounts?.class_completions_open, cls: 'bg-violet-500 text-white', title: 'class completions waiting for a call' }],
     FundingActivities: [
       { n: navCounts?.funding_sent_back, cls: 'bg-rose-600 text-white', title: 'funding requests sent back to correct' },
@@ -626,6 +631,7 @@ export default function Layout({ children, currentPageName }) {
             {currentUser?.id && <MeetingOutcomeGate />}
             {/* Mentors and Chiefs: today's LMS classes and meetings, the first time the portal is opened each day (2026-10-28) */}
             {currentUser?.id && <TodaySchedulePopup currentUser={currentUser} />}
+            {currentUser?.id && <LiveNotJoinedPopup currentUser={currentUser} />}
           </motion.div>
         </main>
       </div>

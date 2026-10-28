@@ -52,6 +52,7 @@ import {
 import { getSalesBonusToSend, sendSalesBonusCredit } from "./salesBonusSend";
 import { getCreditRequestOptions, raiseCreditRequest, listCreditRequests, decideCreditRequest } from "./creditRequests";
 import { getCourseCommissionSummary } from "./courseCommissionSummary";
+import { getLiveNotJoined } from "./liveNotJoined";
 import { getCsLeaderboard } from "./csLeaderboard";
 import { getMyCurrency } from "./myCurrency";
 import { removeStudentMt5, setPrimaryMt5 } from "./studentMt5";
@@ -214,6 +215,7 @@ const AUTHED: Record<string, AuthedHandler> = {
   decideCreditRequest,
   // A CS's / CS Manager's course upgradation summary on Funding Activities (courseCommissionSummary.ts)
   getCourseCommissionSummary,
+  getLiveNotJoined,
   // The CS and team leaderboards (csLeaderboard.ts)
   getCsLeaderboard,
   getMyCurrency,

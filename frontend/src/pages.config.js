@@ -103,6 +103,7 @@ import WhatsApp from './pages/WhatsApp';
 import PaymentLinks from './pages/PaymentLinks';
 import CourseUpgrades from './pages/CourseUpgrades';
 import ClassCompletions from './pages/ClassCompletions';
+import LiveNotJoined from './pages/LiveNotJoined';
 import MeetingsDone from './pages/MeetingsDone';
 import MeetingsReport from './pages/MeetingsReport';
 import SupportTickets from './pages/SupportTickets';
@@ -193,6 +194,7 @@ export const PAGES = {
     "PaymentLinks": PaymentLinks,
     "CourseUpgrades": CourseUpgrades,
     "ClassCompletions": ClassCompletions,
+    "LiveNotJoined": LiveNotJoined,
     "MeetingsDone": MeetingsDone,
     "MeetingsReport": MeetingsReport,
     "SupportTickets": SupportTickets,
