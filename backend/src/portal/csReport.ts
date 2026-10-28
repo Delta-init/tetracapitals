@@ -44,12 +44,13 @@ const latest = <T extends { at: string }>(rows: T[]) => rows.sort((a, b) => b.at
 const aedFrom = (aed: unknown, usd: number) => (Number(aed) > 0 ? Number(aed) : Math.round(usd * 367) / 100);
 const who = (p: Person) => ({ cs_id: p.id, cs: p.name, team: p.team, location: p.location });
 
-export async function csReportForPortal(q: Q): Promise<Record<string, unknown> | string> {
+export async function csReportForPortal(q: Q, scope: { reach: Set<string> | null; lockedLocation: "dubai" | "bangalore" | null } = { reach: null, lockedLocation: null }): Promise<Record<string, unknown> | string> {
   const range = rangeOf({ period: q.period ?? (q.from || q.to ? "custom" : "month"), from: q.from, to: q.to });
   if (typeof range === "string") return range;
+  // Root's: everyone. This portal's Dashboard (2026-10-28): the viewer's reach — a Chief their team, a CS Manager their location.
   const ctx: ReportCtx = {
-    ...range, index: await loadTeams(), reach: null, lockedLocation: null,
-    location: q.location === "dubai" || q.location === "bangalore" ? q.location : null,
+    ...range, index: await loadTeams(), reach: scope.reach, lockedLocation: scope.lockedLocation,
+    location: scope.lockedLocation ?? (q.location === "dubai" || q.location === "bangalore" ? q.location : null),
     team: String(q.team ?? "").slice(0, 40), cs: String(q.cs ?? "").slice(0, 40),
   };
   const P = (id: unknown, fallback = "") => personOf(ctx, String(id ?? ""), fallback);
@@ -258,13 +259,13 @@ export async function csReportForPortal(q: Q): Promise<Record<string, unknown> |
 
   // The teams and people to filter by.
   const people = [...ctx.index.userById.entries()]
-    .filter(([, u]) => u?.status !== "inactive" && /mentor|cs|assistance/.test(String(u?.app_role ?? "")))
+    .filter(([id, u]) => u?.status !== "inactive" && /mentor|cs|assistance/.test(String(u?.app_role ?? "")) && (!ctx.reach || ctx.reach.has(id)))
     .map(([id, u]) => ({ id, name: String(u.full_name || u.email || ""), team_id: ctx.index.teamOf(id)?.id ?? "" }))
     .sort((a, b) => a.name.localeCompare(b.name));
 
   return {
     ...meta(ctx),
-    filters: { teams: ctx.index.teams.map((t) => ({ id: t.id, name: t.name, location: t.location })), people },
+    filters: { teams: ctx.index.teams.filter((t) => !ctx.reach || people.some((p) => p.team_id === t.id)).map((t) => ({ id: t.id, name: t.name, location: t.location })), people },
     revenue: { ...revenue.out("deposit_aed"), rows: latest(revenueRows) },
     followups: { ...fu.out("logged"), rows: latest(fuRows) },
     calls: { ...cg.out("calls"), rows: latest(callRows) },
