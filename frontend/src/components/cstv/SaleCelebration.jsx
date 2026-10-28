@@ -26,7 +26,7 @@ import {
 /** On screen at least this long, and until the voice has finished. */
 const SHOW_MS = 8000;
 /** Never longer than this, even mid-sentence. */
-const MAX_MS = 15_000;
+const MAX_MS = 22_000;
 /** Closes arriving together beyond this many are not queued. */
 const WAITING_MAX = 8;
 const SALE_EVENT = "portal:cs-tv-payment";

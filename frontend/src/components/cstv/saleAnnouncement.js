@@ -5,6 +5,7 @@ import { useSyncExternalStore } from "react";
  * from the Sales CRM web's lib/saleAnnouncement.ts (2026-10-15), the free way:
  * a sparkle made here with WebAudio and the browser's own voice
  * (speechSynthesis), so there are no audio files and nothing is paid for.
+ * Between the two, the owner's own clip (public/sounds/sale-voice.m4a, 2026-10-28).
  *
  * Differences from the CRM's: it says which CRM the close is from and the
  * amount in the close's own currency, and never a student's name — this is a
@@ -242,7 +243,9 @@ function loadVoices() {
 
 /** Ask for the voices early: Chrome lists them a moment after the page loads. */
 export function warmUpVoices() {
-  if (typeof window === "undefined" || !("speechSynthesis" in window)) return;
+  if (typeof window === "undefined") return;
+  preloadClip();
+  if (!("speechSynthesis" in window)) return;
   loadVoices();
   window.speechSynthesis.addEventListener?.("voiceschanged", loadVoices);
 }
@@ -296,6 +299,7 @@ export function say(text) {
 }
 
 export function stopVoice() {
+  stops++;
   try { playing?.pause(); } catch { /* nothing playing */ }
   playing = null;
   try {
@@ -324,6 +328,8 @@ let ownVoiceUrl = null;
 let speakingOwn = false;
 let ownPlanUrl = null;
 let playing = null;
+/** Counts stopVoice calls: a recording stopped mid-way doesn't go on to the next one. */
+let stops = 0;
 export function setOwnVoice(urlFor, planFor = null) {
   ownVoiceUrl = typeof urlFor === "function" ? urlFor : null;
   ownPlanUrl = typeof planFor === "function" ? planFor : null;
@@ -339,6 +345,8 @@ function playOne(url) {
       a.preload = "auto";
       a.addEventListener("ended", () => finish(true), { once: true });
       a.addEventListener("error", () => finish(false), { once: true });
+      // Stopped (the pop-up went): done at once, not at the 30 s guard.
+      a.addEventListener("pause", () => finish(a.ended), { once: true });
       window.setTimeout(() => { if (!done) { a.pause(); finish(false); } }, 30_000);
       playing = a;
       a.play().catch(() => finish(false));
@@ -351,6 +359,7 @@ function playOne(url) {
 /** The owner's own recordings for the sale, one after another with a breath between. True when the first played. */
 async function playRecorded(sale) {
   if (!ownPlanUrl || typeof Audio === "undefined") return false;
+  const at = stops;
   let urls = [];
   try {
     const res = await fetch(ownPlanUrl(sale), { cache: "no-store" });
@@ -358,10 +367,13 @@ async function playRecorded(sale) {
   } catch {
     return false;
   }
+  if (stops !== at) return true;
   if (!urls.length) return false;
   for (const [i, url] of urls.entries()) {
     if (i) await sleep(220);
+    if (stops !== at) return true;
     const ok = await playOne(url);
+    if (stops !== at) return true;
     if (!ok && i === 0) return false;
   }
   return true;
@@ -369,7 +381,9 @@ async function playRecorded(sale) {
 
 /** Plays the sale's line in the own voice. Resolves true when it played, false to fall back to the browser's. */
 async function playOwnVoice(sale) {
+  const at = stops;
   if (await playRecorded(sale)) return true;
+  if (stops !== at) return true;
   return playMade(sale);
 }
 
@@ -391,6 +405,23 @@ function playMade(sale) {
       finish(false);
     }
   });
+}
+
+// ── The owner's clip (the user, 2026-10-28) ──────────────────────────────────
+
+/** Played after the sparkle, before the line, on every pop-up. */
+const SALE_CLIP = "/sounds/sale-voice.m4a";
+
+/** Fetched while the board loads, so the first payment doesn't wait for it. */
+function preloadClip() {
+  if (typeof Audio === "undefined") return;
+  try {
+    const a = new Audio();
+    a.preload = "auto";
+    a.src = SALE_CLIP;
+  } catch {
+    /* no audio here */
+  }
 }
 
 // ── One tab says it ───────────────────────────────────────────────────────────
@@ -437,10 +468,16 @@ export function announce(sale) {
     if (!allowed()) return;
     voiceTimer = window.setTimeout(async () => {
       if (!allowed()) return;
-      // The owner's own voice when this server has it; else the browser's (2026-10-26).
       speakingOwn = true;
-      const own = await playOwnVoice(sale).finally(() => { speakingOwn = false; });
-      if (own) return;
+      try {
+        // The owner's clip after the music (2026-10-28), then the line.
+        if (typeof Audio !== "undefined") await playOne(SALE_CLIP);
+        if (!allowed()) return;
+        // The owner's own voice when this server has it; else the browser's (2026-10-26).
+        if (await playOwnVoice(sale)) return;
+      } finally {
+        speakingOwn = false;
+      }
       if (allowed()) say(spokenLine(sale));
     }, playSparkle());
   })();
