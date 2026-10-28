@@ -10,12 +10,12 @@ import { cn } from '@/lib/utils';
 /* ────────────────────────────────────────────────────────────────────────────
    Today's LMS classes and mentor meetings (the user, 2026-10-28) — for the
    mentors (their own) and the Chief Mentors (every mentor's, as on the Mentor
-   Report, with "Mine only"): on the Dashboard, and in a window the first time
+   Report, with "Mine only") and the Super Admins (every mentor's, 2026-10-28): on the Dashboard, and in a window the first time
    the portal is opened each day on this device. From the Mentor Report's own
    lists for today (getMentorReportDetails), so nothing new on the server.
 ──────────────────────────────────────────────────────────────────────────── */
 
-export const TODAY_ROLES = ['chief_mentor', 'senior_mentor', 'junior_mentor', 'subjunior_mentor'];
+export const TODAY_ROLES = ['super_admin', 'chief_mentor', 'senior_mentor', 'junior_mentor', 'subjunior_mentor'];
 const fn = async (name, body) => (await base44.functions.invoke(name, body)).data;
 const todayDubai = () => new Date(Date.now() + 4 * 3_600_000).toISOString().slice(0, 10);
 const clock = (iso) => new Date(iso).toLocaleTimeString('en-GB', { hour: 'numeric', minute: '2-digit', hour12: true, timeZone: 'Asia/Dubai' });
@@ -32,10 +32,12 @@ const STATUS = { live: 'Live', ended: 'Held', scheduled: 'Scheduled', cancelled:
 
 /** Today's classes and meetings for this person: { classes, meetings, loading, error, mine, setMine, chief }. */
 export function useTodaySchedule(currentUser) {
-  const chief = currentUser?.app_role === 'chief_mentor';
+  // A Super Admin, as a Chief, sees every mentor's — with no "Mine only": they teach no classes.
+  const admin = currentUser?.app_role === 'super_admin';
+  const chief = currentUser?.app_role === 'chief_mentor' || admin;
   const [mine, setMine] = useState(false);
   const day = todayDubai();
-  const own = !chief || mine;
+  const own = !admin && (!chief || mine);
   const body = (kind) => ({ kind, from: day, to: day, ...(own && currentUser?.id ? { mentorId: currentUser.id } : {}) });
   const enabled = !!currentUser && TODAY_ROLES.includes(currentUser.app_role);
   const classes = useQuery({ queryKey: ['today-schedule', 'classes', day, own], queryFn: () => fn('getMentorReportDetails', body('classes')), enabled, refetchInterval: 5 * 60_000, retry: false });
@@ -43,7 +45,7 @@ export function useTodaySchedule(currentUser) {
   const meetings = useQuery({ queryKey: ['today-schedule', 'meetings', day, own], queryFn: () => fn('getMentorReportDetails', body('meetings')), enabled, refetchInterval: 5 * 60_000, retry: false });
   const byTime = (a, b) => new Date(a.start) - new Date(b.start);
   return {
-    chief, mine, setMine, enabled,
+    chief, admin, mine, setMine, enabled,
     classes: [...(classes.data?.rows || []), ...(cancelled.data?.rows || [])].sort(byTime),
     meetings: (meetings.data?.rows || []).filter(m => !m.cancelled).sort(byTime),
     lms: classes.data?.lms || meetings.data?.lms,
@@ -114,7 +116,7 @@ export function TodayLists({ s, compact = false }) {
   );
 }
 
-const MineSwitch = ({ s }) => s.chief && (
+const MineSwitch = ({ s }) => s.chief && !s.admin && (
   <div className="flex rounded-full border bg-white p-0.5 text-xs">
     {[[false, 'Every mentor'], [true, 'Mine only']].map(([v, l]) => (
       <button key={l} type="button" onClick={() => s.setMine(v)} className={cn('rounded-full px-3 py-1 font-medium', s.mine === v ? 'bg-brand-navy text-white' : 'text-slate-600 hover:bg-slate-50')}>{l}</button>
