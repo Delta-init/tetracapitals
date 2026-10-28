@@ -59,7 +59,7 @@ import { markNotStudent, unmarkNotStudent, listNotStudents } from "./notStudent"
 import { getStudentEmails, getStudentEmail } from "./studentEmails";
 import { getInstructorReviews, getInstructorReviewList } from "./instructorReviews";
 import { getMentorReport, getMentorReportDetails } from "./mentorReport";
-import { getPendingMeetingOutcomes, getMeetingOutcomeOptions, saveMeetingOutcome, getStudentMeetingOutcomes } from "./meetingOutcomes";
+import { getPendingMeetingOutcomes, getMeetingOutcomeOptions, saveMeetingOutcome, getStudentMeetingOutcomes, getMeetingsDone, getMeetingsReport, getStudentMeetings } from "./meetingOutcomes";
 import { getVoiceRecordings, saveVoiceRecording, deleteVoiceRecording } from "./voiceRecordings";
 import { getCsTvLink } from "./csTv";
 import { getLmsCourseAccess, giveLmsCourses, setLmsModuleAccess } from "./lmsCourseAccess";
@@ -228,6 +228,9 @@ const AUTHED: Record<string, AuthedHandler> = {
   getMeetingOutcomeOptions,
   saveMeetingOutcome,
   getStudentMeetingOutcomes,
+  getMeetingsDone,
+  getMeetingsReport,
+  getStudentMeetings,
   getVoiceRecordings,
   saveVoiceRecording,
   deleteVoiceRecording,

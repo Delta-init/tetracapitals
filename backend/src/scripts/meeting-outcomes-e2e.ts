@@ -23,8 +23,9 @@ function check(label: string, ok: boolean, detail = "") {
 }
 const j = (v: unknown) => JSON.stringify(v).slice(0, 400);
 
-// The stand-in LMS: the outcomes feed (from ?since=, inclusive), the pending list, and saving one.
+// The stand-in LMS: the outcomes feed (from ?since=, inclusive), the pending list, saving one, and the meetings list.
 let feed: any[] = [];
+let meetingsList: any[] = [];
 const seen: { path: string; query: Record<string, string>; body?: any }[] = [];
 const lms = Bun.serve({
   port: Number(process.env.E2E_FAKE_LMS_PORT),
@@ -37,6 +38,11 @@ const lms = Bun.serve({
       const since = query.since ? Date.parse(query.since) : -Infinity;
       const meetings = feed.filter((m) => Date.parse(m.outcome.filledAt) >= since).sort((a, b) => a.outcome.filledAt.localeCompare(b.outcome.filledAt));
       return Response.json({ success: true, data: { meetings, next: meetings.at(-1)?.outcome.filledAt ?? query.since ?? null } });
+    }
+    if (u.pathname.endsWith("/service/meeting-outcomes/meetings")) {
+      const emails = (query.emails ?? "").split(",").filter(Boolean);
+      const meetings = emails.length ? meetingsList.filter((m) => m.attendees.some((a: any) => emails.includes(a.email.toLowerCase()))) : meetingsList;
+      return Response.json({ success: true, data: { meetings } });
     }
     if (u.pathname.endsWith("/service/meeting-outcomes/pending")) {
       return Response.json({ success: true, data: { meetings: query.mentorEmail === "ann@e2e.test" ? [{ id: "m9", title: "Pitch" }] : [] } });
@@ -153,6 +159,57 @@ check("history: Saif's three, newest first, with the mentor and the reminder", j
 res = await call(F.getStudentMeetingOutcomes, ravi, { studentId: String(new ObjectId()) });
 check("…a student who isn't there: 404 (who may see one is the student page's own rule)", res.status === 404, j(res));
 check("summary of each stage", outcomeSummary({ stage: "meeting_with", withMentorName: "BOB" }) === "Meeting with mentor — BOB" && outcomeSummary({ stage: "not_interested", reason: "Price" }) === "Not interested — Price");
+
+console.log("\n\x1b[1mMeetings: the student's tab, Meetings done, the report\x1b[0m");
+const mtg = (id: string, emails: string[], status: string, mentor: { name: string; email: string }, outcome: any = null, startsAt = "2026-10-27T06:00:00.000Z") => ({
+  id, title: `Meeting ${id}`, category: "course_pitch", startsAt, endsAt: startsAt, durationMins: 30, inPerson: false, location: "",
+  attendees: emails.map((e, i) => ({ name: `Attendee ${i}`, email: e })), bookedByEmail: "booker@e2e.test", mentor, status, cancelledAt: null, outcome,
+});
+const ANN = { name: "ANN", email: "ann@e2e.test" }, BOB = { name: "BOB", email: "bob@e2e.test" };
+meetingsList = [
+  mtg("m1", ["s1@e2e.test"], "done", ANN, { stage: "interested", courseTitle: "Market Breakout", paymentDate: "2026-11-02", paymentMode: "Tabby", remark: "Pays after salary" }),
+  mtg("m2", ["s2@e2e.test"], "done", ANN, { stage: "follow_up", followUpKind: "revision_needed", followUpDate: "2026-10-30", remark: "Lost on entries" }),
+  mtg("w1", ["s3@e2e.test"], "waiting", BOB),
+  mtg("c1", ["s1@e2e.test"], "cancelled", BOB),
+  mtg("u1", ["s2@e2e.test"], "upcoming", ANN, null, "2026-10-29T06:00:00.000Z"),
+  mtg("x1", ["stranger@e2e.test"], "done", BOB, { stage: "not_interested", reason: "Price", remark: "Too dear" }),
+];
+const days = { from: "2026-10-01", to: "2026-10-31" };
+res = await call(F.getMeetingsDone, boss, days);
+check("Meetings done (an admin): held ones — done and waiting — one row per student, ours and a stranger's", res.status === 200
+  && j(res.body.rows.map((r: any) => r.meeting_id).sort()) === j(["m1", "m2", "w1", "x1"]), j(res.body.rows?.map((r: any) => [r.meeting_id, r.status])));
+const r1 = res.body.rows.find((r: any) => r.meeting_id === "m1");
+check("…a row: the student with their CS and team, the mentor, the stage, the summary, the follow-up it set", r1?.student?.name === "Saif" && r1.student.cs === "Megha" && r1.mentor.name === "ANN"
+  && r1.stage === "interested" && /Market Breakout/.test(r1.summary) && r1.reminder?.date === "2026-11-02", j(r1));
+check("…and the filters' lists", res.body.mentors.length === 2 && res.body.cses.some((c: any) => c.name === "Megha"), j([res.body.mentors, res.body.cses]));
+res = await call(F.getMeetingsDone, boss, { ...days, stage: "waiting" });
+check("stage: waiting for the mentor", j(res.body.rows.map((r: any) => r.meeting_id)) === j(["w1"]), j(res.body.rows));
+res = await call(F.getMeetingsDone, boss, { ...days, mentor: "ann@e2e.test" });
+check("mentor: ANN's", res.body.rows.every((r: any) => r.mentor.email === "ann@e2e.test") && res.body.rows.length === 2);
+res = await call(F.getMeetingsDone, boss, { ...days, status: "cancelled" });
+check("status: cancelled", j(res.body.rows.map((r: any) => r.meeting_id)) === j(["c1"]));
+res = await call(F.getMeetingsDone, megha, days);
+check("a CS: their own students' only (Saif, Hamda) — not Ravi's, not a stranger's", j(res.body.rows.map((r: any) => r.student?.name).sort()) === j(["Hamda", "Saif"]), j(res.body.rows.map((r: any) => [r.meeting_id, r.student?.name])));
+await db.collection("users").insertOne({ _id: new ObjectId(), email: "bob@e2e.test", full_name: "BOB", app_role: "senior_mentor", status: "active" });
+const bobUser = await db.collection("users").findOne({ email: "bob@e2e.test" });
+res = await call(F.getMeetingsDone, bobUser, days);
+check("a mentor: the meetings they held, students of theirs or not", res.body.rows.some((r: any) => r.meeting_id === "w1") && res.body.rows.some((r: any) => r.meeting_id === "x1") && res.body.rows.every((r: any) => r.mentor.email === "bob@e2e.test"), j(res.body.rows.map((r: any) => r.meeting_id)));
+res = await call(F.getMeetingsDone, boss, { from: "2026-10-31", to: "2026-10-01" });
+check("days the wrong way round: refused", res.status === 400);
+res = await call(F.getMeetingsReport, megha, days);
+check("the report: not for a CS", res.status === 403);
+res = await call(F.getMeetingsReport, boss, days);
+const T = res.body?.totals;
+check("the report: held 4, done 3, waiting 1, cancelled 1, upcoming 1", res.status === 200 && T?.held === 4 && T.done === 3 && T.waiting === 1 && T.cancelled === 1 && T.upcoming === 1, j(T));
+check("…done by stage", res.body.stages.interested === 1 && res.body.stages.follow_up === 1 && res.body.stages.not_interested === 1, j(res.body.stages));
+const annRow = res.body.mentors.find((m: any) => m.id === "ann@e2e.test");
+check("…per mentor (ANN: held 2, done 2, 1 interested)", annRow?.held === 2 && annRow.done === 2 && annRow.interested === 1, j(res.body.mentors));
+check("…per CS (Megha: 2 held) and per team", res.body.cses.find((c: any) => c.name === "Megha")?.held === 2 && Array.isArray(res.body.teams), j(res.body.cses));
+res = await call(F.getStudentMeetings, boss, { studentId: String(saif._id) });
+check("Saif's Meetings tab: his, newest first, each with where it stands, the outcome and the follow-up", res.status === 200 && j(res.body.meetings.map((m: any) => m.id)) === j(["m1", "c1"])
+  && res.body.meetings[0].reminder?.date === "2026-11-02" && /Market Breakout/.test(res.body.meetings[0].summary) && res.body.client_profile?.occupation === "Engineer", j(res.body));
+res = await call(F.getStudentMeetings, boss, { studentId: String(new ObjectId()) });
+check("…a student who isn't there: 404", res.status === 404);
 
 await closeDb();
 await client.close();

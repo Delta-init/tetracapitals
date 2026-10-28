@@ -99,6 +99,7 @@ export const NAV_ITEMS = [
   // The CS TV's voice — the owner's own recordings, kept in R2 (the user, 2026-10-26; functions/voiceRecordings.ts).
   // Everyone's own reminders (2026-10-28), told 15 minutes before and at the time.
   { name: 'Reminders', label: 'Reminders', page: 'Reminders', icon: AlarmClock, roles: ['all'], everyone: true },
+  { name: 'MeetingsReport', label: 'Meetings Report', page: 'MeetingsReport', icon: BarChart3, roles: ['super_admin', 'admin', 'chief_mentor', 'cs_manager'], only: ['super_admin', 'admin', 'chief_mentor', 'cs_manager'] },
   { name: 'MentorReport', label: 'Mentor Report', page: 'MentorReport', icon: ClipboardList, roles: ['super_admin', 'admin', 'chief_mentor', 'senior_mentor', 'junior_mentor', 'subjunior_mentor', 'cs_manager'], only: ['super_admin', 'admin', 'chief_mentor', 'senior_mentor', 'junior_mentor', 'subjunior_mentor', 'cs_manager'] },
   { name: 'MentorPerformance', hidden: true, page: 'MentorPerformance', icon: Gauge, roles: ['super_admin', 'admin', 'broker_admin', 'academic_head', 'junior_mentor', 'chief_mentor', 'senior_mentor', 'finance_admin'] },
   { name: 'MasterAdmin', page: 'MasterAdmin', icon: ShieldCheck, roles: ['super_admin'] },
@@ -122,6 +123,8 @@ export const NAV_ITEMS = [
   { name: 'StudentCalls', label: 'Calls', page: 'StudentCalls', icon: PhoneIncoming, roles: FOLLOWUP_ROLES, sameAccessAs: 'StudentFollowups' },
   // A student attended an LMS class that is over: their CS calls them (backend/src/students/classCompletions.ts).
   { name: 'ClassCompletions', label: 'Class Completions', page: 'ClassCompletions', icon: BookCheck, roles: FOLLOWUP_ROLES, sameAccessAs: 'StudentFollowups' },
+  // Student meetings booked from the Mentor Calendar, and how each went (2026-10-28) — whose as the follow-ups.
+  { name: 'MeetingsDone', label: 'Meetings done', page: 'MeetingsDone', icon: CalendarCheck, roles: FOLLOWUP_ROLES, sameAccessAs: 'StudentFollowups' },
   // Each CS's own WhatsApp; their Chief Mentor / CS Manager and Super Admins read it (backend/src/functions/whatsapp.ts).
   { name: 'WhatsApp', label: 'WhatsApp', page: 'WhatsApp', icon: MessageCircle, roles: ['super_admin', 'chief_mentor'], sameAccessAs: 'StudentFollowups' },
   // The Delta LMS's exams, with their links to copy (functions/lmsExams.ts; the user, 2026-10-10) — whoever sees Students.
@@ -196,9 +199,9 @@ export const NESTED_GROUPS = {
   Reports: { icon: BarChart3, order: ['DepositReport', 'WithdrawalReport', 'FundingRequestReport', 'BonusReport', 'CommissionReports', 'Reports'] },
 };
 export const GROUP_OF = {
-  Dashboard: 'Overview', TeamDashboard: 'Overview', Teams: 'Overview', ActivityTracker: 'Overview', AIInsights: 'Overview', Leaderboard: 'Overview', InstructorReviews: 'Overview', Reminders: 'Overview', MentorReport: 'Overview', MentorPerformance: 'Overview', MentorTraining: 'Overview',
+  Dashboard: 'Overview', TeamDashboard: 'Overview', Teams: 'Overview', ActivityTracker: 'Overview', AIInsights: 'Overview', Leaderboard: 'Overview', InstructorReviews: 'Overview', Reminders: 'Overview', MentorReport: 'Overview', MeetingsReport: 'Overview', MentorPerformance: 'Overview', MentorTraining: 'Overview',
   Personnel: 'People & Access', RolesManagement: 'People & Access', Hierarchy: 'People & Access', AcademicCounselors: 'People & Access', MasterAdmin: 'People & Access',
-  Students: 'Students', CourseUpgrades: 'Students', NotOnboarded: 'Students', InactiveStudents: 'Students', BalancePayments: 'Students', StudentFollowups: 'Students', OverdueFollowups: 'Students', StudentCalls: 'Students', ClassCompletions: 'Students', WhatsApp: 'Students', MentorCalendar: 'Students', Programs: 'Students', SupportTickets: 'Students', LmsRequests: 'Students', Exams: 'Students', ZohoInvoices: 'Students', StudentLogs: 'Students', StudentLogHistoryPage: 'Students', MyStudentRequests: 'Students', StudentRequestApprovals: 'Students', RetentionManagement: 'Students', DrawAdminStudents: 'Students', MT5Accounts: 'Students', InactivityTransfers: 'Students', StudentWorkflow: 'Students', StudentTags: 'Students',
+  Students: 'Students', CourseUpgrades: 'Students', NotOnboarded: 'Students', InactiveStudents: 'Students', BalancePayments: 'Students', StudentFollowups: 'Students', OverdueFollowups: 'Students', StudentCalls: 'Students', ClassCompletions: 'Students', MeetingsDone: 'Students', WhatsApp: 'Students', MentorCalendar: 'Students', Programs: 'Students', SupportTickets: 'Students', LmsRequests: 'Students', Exams: 'Students', ZohoInvoices: 'Students', StudentLogs: 'Students', StudentLogHistoryPage: 'Students', MyStudentRequests: 'Students', StudentRequestApprovals: 'Students', RetentionManagement: 'Students', DrawAdminStudents: 'Students', MT5Accounts: 'Students', InactivityTransfers: 'Students', StudentWorkflow: 'Students', StudentTags: 'Students',
   FundingActivities: 'Funding', FundingRequests: 'Funding', BonusApprovals: 'Funding', NotCreditedYet: 'Funding', PaymentLinks: 'Funding', Transactions: 'Funding', TransactionTags: 'Funding',
   CommissionPlans: 'Commission', BonusCommissionReports: 'Commission', DepositCommissionReports: 'Commission', CommissionTools: 'Commission', Commissions: 'Commission', QuarterClosing: 'Commission', MonthlyClosing: 'Commission', DailyPayouts: 'Commission', MyCommissionHistory: 'Commission', MyTargets: 'Commission', TargetsManagement: 'Commission',
   DepositReport: 'Reports', WithdrawalReport: 'Reports', FundingRequestReport: 'Reports', BonusReport: 'Reports', Reports: 'Reports', CommissionReports: 'Reports',
