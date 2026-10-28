@@ -1,6 +1,6 @@
 /**
  * The sales-close bonus waits for the course to be paid in full (the user, 2026-10-17: "partial payment from the sales
- * never gets the bonus in the commission portal — only after the full payment is finished can the bonus request be
+ * never gets the bonus in the CS Portal — only after the full payment is finished can the bonus request be
  * raised"; students/salesBonusPaid.ts) — end to end against the API:
  *   1. A part-paid course (AED 1,125 of 2,250 owed, $500 bonus): Send bonus for credit has nothing to send and says
  *      what is owed; Send is refused; the badge reads "after full payment"; verification pending, saying why.

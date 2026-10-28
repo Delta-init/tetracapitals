@@ -66,7 +66,7 @@ export default function Login() {
             transition={{ delay: 0.2, duration: 0.6 }}
             className="mb-5 flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.25em] text-white/50"
           >
-            <span className="h-1.5 w-8 rounded-full bg-brand-gradient" /> Commission Portal
+            <span className="h-1.5 w-8 rounded-full bg-brand-gradient" /> CS Portal
           </motion.p>
           <h1 className="text-5xl font-bold leading-[1.05] xl:text-6xl">
             <RevealText text="Performance," delay={0.15} />

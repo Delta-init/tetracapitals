@@ -149,7 +149,7 @@ function buildEmail(person: { name: string; to: string }, items: Item[], now: nu
   const button = link
     ? `<table role="presentation" cellpadding="0" cellspacing="0" style="margin:26px 0 6px"><tr><td style="border-radius:10px;background:#002950"><a href="${esc(link)}" style="display:inline-block;padding:12px 22px;font-size:14px;font-weight:600;color:#ffffff;text-decoration:none">Open Not onboarded</a></td></tr></table>`
     : "";
-  const footnote = `Sent by the Delta Commission Portal when a new student from finance is still not onboarded ${WAIT_HOURS} hours after arriving — to their CS's Chief Mentor and CS Manager, and the Super Admins. What comes due overnight goes at 09:00 (UAE).`;
+  const footnote = `Sent by the Delta CS Portal when a new student from finance is still not onboarded ${WAIT_HOURS} hours after arriving — to their CS's Chief Mentor and CS Manager, and the Super Admins. What comes due overnight goes at 09:00 (UAE).`;
 
   const html = `<!doctype html><html><body style="margin:0;padding:0;background:#f1f5f9;font-family:-apple-system,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;color:#0f172a">
 <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f1f5f9;padding:24px 12px"><tr><td align="center">
@@ -179,7 +179,7 @@ ${button}
     ...(n > shown.length ? [`…and ${n - shown.length} more in the portal.`] : []),
     ...(link ? ["", `Open Not onboarded: ${link}`] : []),
     "",
-    "— Delta Commission Portal",
+    "— Delta CS Portal",
   ].join("\n");
 
   const subject = one ? `Not onboarded after ${WAIT_HOURS} hours: ${nameOf(items[0]!)}` : `${n} new students not onboarded after ${WAIT_HOURS} hours`;

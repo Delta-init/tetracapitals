@@ -9,8 +9,8 @@ import { moneyText } from "./balanceDue";
 /*
  * Balance payments (the user, 2026-10-11): the next payment a student makes on
  * a course Delta finance sold them, recorded by their CS on the Balance
- * payments page with its receipt. Delta finance accounts approve it — a Tetra
- * Commission request of type ENROLMENT_PAYMENT in their Tetra Deposits /
+ * payments page with its receipt. Delta finance accounts approve it — a CS
+ * Portal request of type ENROLMENT_PAYMENT in their Tetra Deposits /
  * Approvals queue, through the same signed door deposits and course upgrade
  * payments use — and approving it records the payment on the invoice there.
  * The decision comes back to /funding-decisions (finance/funding.ts hands it
@@ -153,7 +153,7 @@ export async function decideEnrolmentPayment(
   if (!p) return null;
   if (p.status === "approved" || p.status === "rejected") {
     if (p.status === d.decision && p.finance_approval?.state === "decided") return ok({ fundingId: String(p._id), status: p.status, already: true });
-    return refuse(409, "ALREADY_DECIDED", `Already ${p.status} in Tetra Commission`);
+    return refuse(409, "ALREADY_DECIDED", `Already ${p.status} in CS Portal`);
   }
   const approved = d.decision === "approved";
   const set: Record<string, unknown> = {

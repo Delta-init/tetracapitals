@@ -33,7 +33,7 @@ export async function handleSso(req: Request): Promise<Response> {
     const res = await fetch(`${portal}/api/auth/verify-sso-token?token=${encodeURIComponent(token)}`, {
       signal: AbortSignal.timeout(8000),
     });
-    if (!res.ok) return error("This sign-in link has expired or was already used. Open Tetra Commission from the portal again.", 401);
+    if (!res.ok) return error("This sign-in link has expired or was already used. Open CS Portal from the portal again.", 401);
     const payload = (await res.json().catch(() => ({}))) as { data?: { email?: unknown } };
     email = String(payload.data?.email ?? "").trim().toLowerCase();
     if (!email) return error("The portal did not say who this is", 401);

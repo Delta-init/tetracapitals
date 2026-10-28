@@ -17,7 +17,7 @@ export const mailConfigured = (): boolean => !!(config.smtp.host && config.smtp.
 /** The From address: SMTP_FROM, or the mailbox itself (Zoho only sends as the mailbox or its aliases). */
 function fromAddress(): string {
   const from = config.smtp.from && config.smtp.from !== "no-reply@example.com" ? config.smtp.from : config.smtp.user;
-  return from.includes("<") ? from : `"Delta Commission Portal" <${from}>`;
+  return from.includes("<") ? from : `"Delta CS Portal" <${from}>`;
 }
 
 /** The same mailbox under another name — what a student sees ("Delta Institutions"). */

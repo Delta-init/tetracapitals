@@ -16,7 +16,7 @@ import { IS_STUDENT, OF_A_STUDENT } from "../students/notStudent";
  *   - a Bonus course payment made in parts (FundingRequestForm), and a course upgrade still being paid
  *     (courses/courseBalance.ts).
  * A course a sales CRM closed is NOT here any more (the user, 2026-10-13: "only show the sales portal … remove the
- * data of the balance payments from the commission portal"): its balance, next due date and next payment are
+ * data of the balance payments from the CS Portal"): its balance, next due date and next payment are
  * followed up in that CRM, and Delta finance approves the payment there. Finance's fee updates still arrive on the
  * student's course_fees, for their page.
  */

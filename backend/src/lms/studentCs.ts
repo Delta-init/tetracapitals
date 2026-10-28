@@ -6,7 +6,7 @@ import { csOf } from "../students/lmsCs";
 /* ────────────────────────────────────────────────────────────────────────────
    POST /api/v1/integrations/lms/student-cs — the Delta LMS asking, now, who
    looks after one student (the user, 2026-10-10): its admin's "Recheck
-   commission portal", and a student created or edited there — rather than
+   CS Portal", and a student created or edited there — rather than
    waiting up to ten minutes for the push (students/lmsCs.ts).
 
    Body { lmsUserId?, email }. Found by their LMS id, else by email. Answers

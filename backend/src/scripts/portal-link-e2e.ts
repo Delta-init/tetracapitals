@@ -76,7 +76,7 @@ check("wrong secret: refused", (await service("GET", "/roles", undefined, "not-t
 step("Roles");
 const roles = await service("GET", "/roles");
 const keys = (roles.body?.data?.roles ?? []).map((r: any) => r.key);
-check("answers in the portal's envelope", roles.status === 200 && roles.body?.success === true && roles.body?.data?.organization === "Tetra Commission", JSON.stringify(roles.body).slice(0, 160));
+check("answers in the portal's envelope", roles.status === 200 && roles.body?.success === true && roles.body?.data?.organization === "CS Portal", JSON.stringify(roles.body).slice(0, 160));
 check("built-in roles, marked as such", keys.includes("super_admin") && roles.body.data.roles.find((r: any) => r.key === "super_admin")?.isSystem === true);
 check("custom roles from Role Management", roles.body.data.roles.find((r: any) => r.key === "cs_manager")?.isSystem === false);
 check("Chief Mentor is built in now, and listed once", roles.body.data.roles.filter((r: any) => r.key === "chief_mentor").length === 1 &&

@@ -191,7 +191,7 @@ function buildEmail(r: Told, person: any): { subject: string; html: string; text
   const button = link
     ? `<table role="presentation" cellpadding="0" cellspacing="0" style="margin:22px 0 6px"><tr><td style="border-radius:10px;background:#002950"><a href="${esc(link)}" style="display:inline-block;padding:12px 22px;font-size:14px;font-weight:600;color:#ffffff;text-decoration:none">Open ${esc(firstName(r.student.name))} in the portal</a></td></tr></table>`
     : "";
-  const footnote = "Sent by the Delta Commission Portal when one of your students opens or writes on a Delta LMS support ticket, or sends a class assignment or has one reviewed. Tickets are answered on the LMS; the conversation and the assignments are on the student's page in the portal.";
+  const footnote = "Sent by the Delta CS Portal when one of your students opens or writes on a Delta LMS support ticket, or sends a class assignment or has one reviewed. Tickets are answered on the LMS; the conversation and the assignments are on the student's page in the portal.";
   const html = `<!doctype html><html><body style="margin:0;padding:0;background:#f1f5f9;font-family:-apple-system,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;color:#0f172a">
 <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f1f5f9;padding:24px 12px"><tr><td align="center">
 <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:640px;background:#ffffff;border:1px solid #e2e8f0;border-radius:14px;overflow:hidden">

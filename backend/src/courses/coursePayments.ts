@@ -12,7 +12,7 @@ const courseName = (u: any) => DEFAULT_PRICE_LIST.find((c) => c.code === u?.cour
 /*
  * Course upgrade payments (the user, 2026-10-07 — phase 3): the CS records each
  * payment of a student's upgrade with its receipt; Delta finance accounts
- * approve or reject it, on their Approvals page, as a Tetra Commission request
+ * approve or reject it, on their Approvals page, as a CS Portal request
  * of type COURSE_UPGRADE (finance-delta's tetra-deposit module); the decision
  * comes back to the same door deposits' do (finance/funding.ts
  * handleFundingDecision, which hands it here when the id is not a deposit).
@@ -150,7 +150,7 @@ export async function decideCoursePayment(
   const decided = p.status === "approved" || p.status === "rejected";
   if (decided) {
     if (p.status === d.decision) return ok({ fundingId: String(p._id), status: p.status, already: true });
-    return refuse(409, "ALREADY_DECIDED", `Already ${p.status} in Tetra Commission`);
+    return refuse(409, "ALREADY_DECIDED", `Already ${p.status} in CS Portal`);
   }
   const approved = d.decision === "approved";
   const set: Record<string, unknown> = {

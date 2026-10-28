@@ -140,7 +140,7 @@ check("one LMS account delivered twice at the same moment: one student",
   (await students.countDocuments({ lms_user_id: twice.lmsUserId })) === 1 && [a, b].filter((x) => x.body?.data?.created === true).length === 1,
   `${JSON.stringify(a.body)} ${JSON.stringify(b.body)}`);
 
-step("Asked now: who looks after one student (the LMS's Recheck commission portal)");
+step("Asked now: who looks after one student (the LMS's Recheck CS Portal)");
 const askCs = (body: unknown, secret: string | null = LMS_SECRET) =>
   post("/api/v1/integrations/lms/student-cs", body, secret ? { "x-lms-secret": secret } : {});
 r = await askCs({ lmsUserId: first.lmsUserId, email: "someone-else@e2e-lms.test" });

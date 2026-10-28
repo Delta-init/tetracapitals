@@ -29,7 +29,7 @@ import { instructorReviewList, reviewTrouble } from "../functions/instructorRevi
    reads the reason for a refusal from error.message.
 ──────────────────────────────────────────────────────────────────────────── */
 
-const ORGANIZATION = "Tetra Commission";
+const ORGANIZATION = "CS Portal";
 const MAX_EMAILS = 500;
 
 const ok = (data: unknown) => json({ success: true, data });

@@ -156,7 +156,7 @@ export function buildBalanceEmail(date: string, csName: string, to: string, item
 ${tables}
 ${button}
 </td></tr>
-<tr><td style="padding:16px 24px 22px;font-size:12px;line-height:1.5;color:#94a3b8;border-top:1px solid #f1f5f9">Sent by the Delta Commission Portal at 10:00 (UAE): 3, 2 and 1 days before an instalment is due, on the day, and once when it goes overdue.</td></tr>
+<tr><td style="padding:16px 24px 22px;font-size:12px;line-height:1.5;color:#94a3b8;border-top:1px solid #f1f5f9">Sent by the Delta CS Portal at 10:00 (UAE): 3, 2 and 1 days before an instalment is due, on the day, and once when it goes overdue.</td></tr>
 </table></td></tr></table></body></html>`;
   const text = [
     `Hi ${firstName(csName)},`, "",
@@ -166,7 +166,7 @@ ${button}
       return rows.length ? ["", `${title.toUpperCase()} (${rows.length})`, ...rows.map((i) => `- ${i.student_name || "Student"}${i.student_code ? ` (${i.student_code})` : ""} · ${i.course} · ${moneyText(i.balance_minor, i.currency)} · ${shortDate(i.next_due_on)} (${when(i)})`)] : [];
     }),
     ...(link ? ["", `Open Balance payments: ${link}`] : []),
-    "", "— Delta Commission Portal",
+    "", "— Delta CS Portal",
   ].join("\n");
   return { to, subject: `Balance payments: ${counts}`, html, text };
 }

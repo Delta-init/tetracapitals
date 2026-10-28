@@ -104,7 +104,7 @@ export default function StudentPayments({ studentName, fees = [], others = [], z
         </Section>
       )}
 
-      <Section title={`Their other funding requests (${others.length})`} sub="Deposits, withdrawals and bonuses in Tetra Commission — not this one">
+      <Section title={`Their other funding requests (${others.length})`} sub="Deposits, withdrawals and bonuses in CS Portal — not this one">
         {!others.length ? <p className="text-sm text-gray-500">None.</p> : (
           <div className="overflow-x-auto rounded-lg border">
             <table className="w-full text-sm">

@@ -70,7 +70,7 @@ export async function tagCatalog(): Promise<any[]> {
     ...(await courseNames()).map((c) => ({ name: `${CLOSED_PREFIX}${c}`, color: "#059669", kind: "closed", course: c })),
   ]
     .filter((t) => !have.has(t.name))
-    .map((t) => ({ ...t, active: true, created_date: now, updated_date: now, created_by: "", created_by_name: "Tetra Commission" }));
+    .map((t) => ({ ...t, active: true, created_date: now, updated_date: now, created_by: "", created_by_name: "CS Portal" }));
   if (missing.length) {
     // The name is unique (db.ts), so two pages opening at once cannot make the same tag twice.
     await col("student_tags").insertMany(missing, { ordered: false }).catch((err: any) => {

@@ -21,7 +21,7 @@ export default function Sso() {
     started.current = true;
     const token = new URLSearchParams(window.location.search).get('token') || '';
     if (!token) {
-      setError('This link has no sign-in token. Open Tetra Commission from the portal again.');
+      setError('This link has no sign-in token. Open CS Portal from the portal again.');
       return;
     }
     base44.auth.ssoLogin(token)

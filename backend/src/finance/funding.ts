@@ -30,7 +30,7 @@ import { productKey } from "../courses/lmsMapping";
    and waits for them straight away. Finance sends the decision
    back to POST /api/v1/integrations/finance/funding-decisions
    (x-finance-secret, as for new students), and only then does it change here:
-   approved with everything Tetra Commission's own approval does — commission
+   approved with everything CS Portal's own approval does — commission
    credited up the chain, a Level 1 student's first deposit moving them to
    Level 2, co-mentor contributions, the audit log — or rejected with the
    accountant's reason.
@@ -391,7 +391,7 @@ export function notesForFinance(tx: any): string {
     const on = collectedOn(p);
     return `${i + 1}. ${String(p?.method ?? "").trim().slice(0, 60) || "Payment"} · ${currency}${twoPlaces(Number(p?.amount) || 0)}${on ? ` · collected ${on}` : ""} · ${receipt}`;
   });
-  const more = (n: number) => `\n… and ${n} more — every receipt is on the request in Tetra Commission`;
+  const more = (n: number) => `\n… and ${n} more — every receipt is on the request in CS Portal`;
   let out = [notes, `Paid in ${list.length} payments:`].filter(Boolean).join("\n\n");
   for (const [i, line] of lines.entries()) {
     const after = lines.length - i - 1;
@@ -502,7 +502,7 @@ async function sendOne(tx: any): Promise<void> {
   // A Bangalore team's bonus: Bangalore's finance, in rupees — and never Delta HQ's, so it waits while that is not set.
   const location = tx.type === "BONUS" ? await bonusLocationOf(tx) : "dubai";
   if (location === "bangalore" && !config.financeOrgIdBangalore) {
-    const message = "FINANCE_ORG_ID_BANGALORE is not set on the Tetra Commission server — a Bangalore team's bonus goes only to Bangalore's finance";
+    const message = "FINANCE_ORG_ID_BANGALORE is not set on the CS Portal server — a Bangalore team's bonus goes only to Bangalore's finance";
     await col("funding_transactions").updateOne(stillQueued, {
       $set: {
         "finance_approval.attempts": attempts,
@@ -543,7 +543,7 @@ async function sendOne(tx: any): Promise<void> {
           "finance_approval.last_error": message,
         },
       });
-      console.warn(`[finance funding] Delta Finance will not take deposit ${tx._id}: ${message} — it is approved in Tetra Commission`);
+      console.warn(`[finance funding] Delta Finance will not take deposit ${tx._id}: ${message} — it is approved in CS Portal`);
       return;
     }
     await col("funding_transactions").updateOne(stillQueued, {
@@ -614,7 +614,7 @@ export function kickFinanceFunding(): void {
 
 export function startFinanceFundingWorker(): void {
   if (!financeFundingConfigured()) {
-    console.log("[finance funding] Delta Finance is not configured — deposits are approved in Tetra Commission");
+    console.log("[finance funding] Delta Finance is not configured — deposits are approved in CS Portal");
     return;
   }
   started = true;
@@ -794,12 +794,12 @@ const logRejection = (tx: any, byName: string, byEmail: string) =>
 async function settledAnswer(tx: any, decision: string, byName: string, byEmail: string): Promise<Response | null> {
   const fa = tx.finance_approval;
   if (!fa || (tx.type !== "DEPOSIT" && tx.type !== "BONUS")) {
-    return refuse(409, "NOT_WITH_FINANCE", "This funding request was not sent to Delta Finance — it is decided in Tetra Commission");
+    return refuse(409, "NOT_WITH_FINANCE", "This funding request was not sent to Delta Finance — it is decided in CS Portal");
   }
   // A bonus finance approved is still PENDING here — waiting for a broker admin — and decided as far as finance goes.
   if (tx.status === "PENDING" && !awaitingBroker(tx)) {
     if (fa.state === "refused") {
-      return refuse(409, "NOT_WITH_FINANCE", "Delta Finance handed this request back — it is decided in Tetra Commission");
+      return refuse(409, "NOT_WITH_FINANCE", "Delta Finance handed this request back — it is decided in CS Portal");
     }
     return null;
   }
@@ -816,7 +816,7 @@ async function settledAnswer(tx: any, decision: string, byName: string, byEmail:
     return ok(outcome(fresh ?? tx, true, effects));
   }
   const who = tx.approved_by_name ? ` by ${tx.approved_by_name}` : "";
-  return refuse(409, "ALREADY_DECIDED", `Already ${String(tx.status).toLowerCase()} in Tetra Commission${who}`);
+  return refuse(409, "ALREADY_DECIDED", `Already ${String(tx.status).toLowerCase()} in CS Portal${who}`);
 }
 
 /**
@@ -884,7 +884,7 @@ export async function handleFundingDecision(req: Request): Promise<Response> {
       decision, byName, byEmail, at, note, reason, transactionId, amountMinor,
     });
     if (balance) return balance;
-    return refuse(410, "GONE", "This funding request is no longer in Tetra Commission");
+    return refuse(410, "GONE", "This funding request is no longer in CS Portal");
   }
   const settled = await settledAnswer(tx, decision, byName, byEmail);
   if (settled) return settled;
@@ -943,7 +943,7 @@ export async function handleFundingDecision(req: Request): Promise<Response> {
   if (!res.matchedCount) {
     // Decided between the read and the write — by this same decision arriving twice, or not.
     const raced: any = await txs.findOne({ _id: oid });
-    if (!raced) return refuse(410, "GONE", "This funding request is no longer in Tetra Commission");
+    if (!raced) return refuse(410, "GONE", "This funding request is no longer in CS Portal");
     return (await settledAnswer(raced, decision, byName, byEmail)) ?? refuse(409, "CONFLICT", "The decision could not be recorded — send it again");
   }
 

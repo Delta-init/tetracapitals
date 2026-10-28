@@ -87,7 +87,7 @@ const SERVER_OWNED = ["team_id", "team_name", "first_assignee_id", "first_assign
   "onboarded", "onboarded_at", "onboarded_by_id", "onboarded_by_name", "onboarding", "sales_crm"];
 
 /**
- * Before a student is made in Tetra Commission itself (the Students page, or
+ * Before a student is made in CS Portal itself (the Students page, or
  * an import): the team they are stored against and who received them first,
  * both from the mentor they are made with. Nobody yet — they wait in Delta Open
  * Students — and both are set when somebody first takes them.
@@ -112,7 +112,7 @@ export async function stampNewStudents(items: Record<string, any>[], index?: Tea
   return teams;
 }
 
-/** After students are made in Tetra Commission itself: "added by", and who they were given to. */
+/** After students are made in CS Portal itself: "added by", and who they were given to. */
 export async function recordCreated(docs: any[], user: AuthUser, how: "created" | "imported", index: TeamIndex): Promise<void> {
   const entries: HistoryEntry[] = [];
   const who = user.full_name || user.email || "somebody";

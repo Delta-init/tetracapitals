@@ -189,7 +189,7 @@ export async function settleSalesBonusHalves(student: any, opts: { dryRun?: bool
 }
 
 const history = (studentId: string, text: string) =>
-  recordHistory([{ student_id: studentId, at: new Date().toISOString(), type: "bonus_sent", by_id: null, by_name: "Tetra Commission", text: text.slice(0, 400) } as any]);
+  recordHistory([{ student_id: studentId, at: new Date().toISOString(), type: "bonus_sent", by_id: null, by_name: "CS Portal", text: text.slice(0, 400) } as any]);
 
 /**
  * POST /api/functions/getFollowups

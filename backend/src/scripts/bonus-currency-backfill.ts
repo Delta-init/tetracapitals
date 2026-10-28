@@ -150,7 +150,7 @@ export async function applyBonusCurrency(cols: Cols, plan: Plan, now = new Date(
 export interface UndoFile { kind: "tc-bonus-currency"; at: string; fees: FeeTarget[]; credits: CreditTarget[] }
 
 export async function undoBonusCurrency(cols: Cols, undo: UndoFile): Promise<{ fees: number; credits: number }> {
-  if (undo.kind !== "tc-bonus-currency") throw new Error("Not a Tetra Commission bonus-currency undo file");
+  if (undo.kind !== "tc-bonus-currency") throw new Error("Not a CS Portal bonus-currency undo file");
   let fees = 0, credits = 0;
   for (const f of undo.fees) {
     const set: Record<string, unknown> = {

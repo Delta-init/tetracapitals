@@ -1,4 +1,4 @@
-// Delta Commission Portal — notifications on this phone or computer (Web Push), as in the Sales CRM.
+// Delta CS Portal — notifications on this phone or computer (Web Push), as in the Sales CRM.
 // The server sends them (backend/src/lib/notify.ts): a new student, the day's follow-ups, a WhatsApp message.
 
 self.addEventListener("install", () => self.skipWaiting());

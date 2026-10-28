@@ -241,7 +241,7 @@ export async function connect(userId: string): Promise<void> {
     ...(version ? { version } : {}),
     auth: state,
     logger,
-    browser: ["Tetra Commission", "Chrome", "1.0.0"],
+    browser: ["CS Portal", "Chrome", "1.0.0"],
     markOnlineOnConnect: false,   // the phone keeps its notifications
     syncFullHistory: false,
     generateHighQualityLinkPreview: false,

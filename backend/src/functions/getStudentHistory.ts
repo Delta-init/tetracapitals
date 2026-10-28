@@ -45,7 +45,7 @@ function cameFrom(s: any) {
   if (s.source === "delta_lms" && s.lms_user_id) {
     return { label: "Delta LMS", invoice: null, course: s.lms_course || null, academy: s.lms_academy || null };
   }
-  return { label: s.created_by_name ? `Added by ${s.created_by_name}` : "Added in Tetra Commission", invoice: null, course: null, academy: null };
+  return { label: s.created_by_name ? `Added by ${s.created_by_name}` : "Added in CS Portal", invoice: null, course: null, academy: null };
 }
 
 function requestEvents(r: any) {

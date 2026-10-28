@@ -4,7 +4,7 @@ import { toObjectId } from "../lib/id";
 /* ────────────────────────────────────────────────────────────────────────────
    The sales-close bonus waits for the course to be paid in full (the user,
    2026-10-17: "partial payment from the sales never gets the bonus in the
-   commission portal — only after the full payment is finished can the bonus
+   CS Portal — only after the full payment is finished can the bonus
    request be raised for this student").
 
    A course sold at a sales close still owing (finance's course fees: its

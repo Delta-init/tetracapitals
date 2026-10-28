@@ -419,7 +419,7 @@ function buildEmail(date: string, d: Digest, link: string) {
     section(date, "Overdue", "#be123c", late, true),
     section(date, tomorrow, "#0369a1", next, false),
     button(link, "Open my follow-ups"),
-  ].join("\n"), "Sent by the Delta Commission Portal at 10:00 (UAE) on days you have follow-ups due, today or tomorrow. Logging a call with a new follow-up date takes the student off this list.");
+  ].join("\n"), "Sent by the Delta CS Portal at 10:00 (UAE) on days you have follow-ups due, today or tomorrow. Logging a call with a new follow-up date takes the student off this list.");
 
   const text = [
     `Hi ${firstName(d.mentor_name)},`,
@@ -430,7 +430,7 @@ function buildEmail(date: string, d: Digest, link: string) {
     ...(next.length ? ["", `${tomorrow.toUpperCase()} (${next.length})`, ...next.slice(0, SHOW_MAX).map((i) => line(i, false))] : []),
     ...(link ? ["", `Open your follow-ups: ${link}`] : []),
     "",
-    "— Delta Commission Portal",
+    "— Delta CS Portal",
   ].join("\n");
 
   return { to: d.to, subject: `Follow-ups for ${shortDate(date)}: ${counts}`, html, text };
@@ -445,7 +445,7 @@ function buildAlertEmail(date: string, d: Digest, link: string) {
   const html = page(date, headline, d.mentor_name,
     "These follow-ups in your team passed their due date without a call being logged. You hear about each one once; the CS is reminded every day until it is logged.",
     [...[...byCs].map(([cs, rows]) => section(date, cs, "#be123c", rows, true)), button(link, "Open overdue follow-ups")].join("\n"),
-    "Sent by the Delta Commission Portal at 10:00 (UAE) when follow-ups of the CSs you lead go overdue.");
+    "Sent by the Delta CS Portal at 10:00 (UAE) when follow-ups of the CSs you lead go overdue.");
 
   const text = [
     `Hi ${firstName(d.mentor_name)},`,
@@ -454,7 +454,7 @@ function buildAlertEmail(date: string, d: Digest, link: string) {
     ...[...byCs].flatMap(([cs, rows]) => ["", `${cs.toUpperCase()} (${rows.length})`, ...rows.slice(0, SHOW_MAX).map((i) => line(i, true))]),
     ...(link ? ["", `Open overdue follow-ups: ${link}`] : []),
     "",
-    "— Delta Commission Portal",
+    "— Delta CS Portal",
   ].join("\n");
 
   return { to: d.to, subject: `Overdue follow-ups in your team: ${n}`, html, text };
