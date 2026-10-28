@@ -87,16 +87,26 @@ export function SendBackDialog({ tx, onClose }) {
   );
 }
 
-/** The CS's correction: only what was sent back — then straight back to MT5 Approvals. */
+/**
+ * The CS's correction — then straight back to MT5 Approvals. The student's email and the MT5 login are always there
+ * to change, whatever was ticked (the user, 2026-10-28: an email typed into the note was never saved); what was sent
+ * back is marked. Only a box that was changed is sent.
+ */
 function CorrectDialog({ tx, email, onClose }) {
   const refresh = useRefresh();
   const asks = tx.returned?.fields || [];
-  const [form, setForm] = useState({ email: email || tx.returned?.email || '', mt5: tx.mt5_login || '', note: '' });
+  const start = { email: email || tx.returned?.email || '', mt5: tx.mt5_login || '' };
+  const [form, setForm] = useState({ ...start, note: '' });
+  const emailChanged = form.email.trim().toLowerCase() !== start.email.trim().toLowerCase() && form.email.trim() !== '';
+  const mt5Changed = form.mt5.trim() !== String(start.mt5).trim() && form.mt5.trim() !== '';
+  // An email in the note that isn't in the email box: likely meant for it.
+  const noteEmail = (form.note.match(/[^\s,;<>()"“”]+@[^\s,;<>()"“”]+\.[a-z]{2,}/i) || [])[0];
+  const missedEmail = noteEmail && noteEmail.toLowerCase() !== form.email.trim().toLowerCase() ? noteEmail : null;
   const save = useMutation({
     mutationFn: async () => (await base44.functions.invoke('correctFundingRequest', {
       id: tx.id, note: form.note,
-      ...(asks.includes('email') ? { email: form.email } : {}),
-      ...(asks.includes('mt5') ? { mt5Login: form.mt5 } : {}),
+      ...(emailChanged ? { email: form.email } : {}),
+      ...(mt5Changed ? { mt5Login: form.mt5 } : {}),
     })).data,
     onSuccess: () => { toast.success('Corrected — back with the broker admin'); refresh(); onClose(); },
     onError: (e) => toast.error(e?.message || "Couldn't save the correction"),
@@ -111,20 +121,22 @@ function CorrectDialog({ tx, email, onClose }) {
           </DialogDescription>
         </DialogHeader>
         <div className="space-y-3 text-sm">
-          {asks.includes('email') && (
-            <label className="block">Student's email
-              <Input type="email" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} className="mt-1" />
-              <span className="text-xs text-slate-500">Saved on the student — as Edit details saves it.</span>
-            </label>
-          )}
-          {asks.includes('mt5') && (
-            <label className="block">MT5 login
-              <Input inputMode="numeric" value={form.mt5} onChange={(e) => setForm({ ...form, mt5: e.target.value })} className="mt-1 font-mono" />
-            </label>
-          )}
-          <label className="block">Note{asks.length === 1 && asks[0] === 'other' ? ' *' : ' (optional)'}
-            <Textarea rows={2} value={form.note} onChange={(e) => setForm({ ...form, note: e.target.value })} className="mt-1" placeholder="What you changed, or why it is right" />
+          <label className="block">Student's email{asks.includes('email') && <span className="ml-1 text-xs font-medium text-rose-600">sent back</span>}
+            <Input type="email" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} className={`mt-1 ${asks.includes('email') ? 'border-rose-300' : ''}`} />
+            <span className="text-xs text-slate-500">{emailChanged ? 'Will be saved on the student — as Edit details saves it.' : 'Change it here if it is wrong — not in the note.'}</span>
           </label>
+          <label className="block">MT5 login{asks.includes('mt5') && <span className="ml-1 text-xs font-medium text-rose-600">sent back</span>}
+            <Input inputMode="numeric" value={form.mt5} onChange={(e) => setForm({ ...form, mt5: e.target.value })} className={`mt-1 font-mono ${asks.includes('mt5') ? 'border-rose-300' : ''}`} />
+          </label>
+          <label className="block">Note{asks.length === 1 && asks[0] === 'other' ? ' *' : ' (optional)'}
+            <Textarea rows={2} value={form.note} onChange={(e) => setForm({ ...form, note: e.target.value })} className="mt-1" placeholder="Why it is right, or what else you changed" />
+          </label>
+          {missedEmail && (
+            <p className="rounded-md bg-amber-50 px-2.5 py-1.5 text-xs text-amber-800">
+              The note has {missedEmail} — a note isn't saved on the student.{' '}
+              <button type="button" className="font-semibold underline" onClick={() => setForm({ ...form, email: missedEmail })}>Use it as the email</button>
+            </p>
+          )}
         </div>
         <DialogFooter>
           <Button variant="ghost" onClick={onClose}>Cancel</Button>

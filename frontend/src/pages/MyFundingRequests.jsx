@@ -882,7 +882,7 @@ export default function MyFundingRequests() {
                                     ))}
                                     {transaction.resubmit_of && <div className="mt-1 text-xs text-slate-500">A corrected request, sent again</div>}
                                     {/* Sent back by a broker admin to correct the email or MT5 (2026-10-12) */}
-                                    <SentBackNotice tx={transaction} />
+                                    <SentBackNotice tx={transaction} email={students.find(s => s.id === transaction.student_id)?.email} />
                                   </TableCell>
                                 </TableRow>
                               );
@@ -1111,7 +1111,7 @@ export default function MyFundingRequests() {
                                       Correct &amp; resend
                                     </Button>
                                   ))}
-                                  <SentBackNotice tx={transaction} />
+                                  <SentBackNotice tx={transaction} email={students.find(s => s.id === transaction.student_id)?.email} />
                                   {transaction.status !== 'REJECTED' && !transaction.returned?.at && <span className="text-gray-400">-</span>}
                                 </TableCell>
                               )}
