@@ -58,7 +58,7 @@ import { removeStudentMt5, setPrimaryMt5 } from "./studentMt5";
 import { markNotStudent, unmarkNotStudent, listNotStudents } from "./notStudent";
 import { getStudentEmails, getStudentEmail } from "./studentEmails";
 import { getInstructorReviews, getInstructorReviewList } from "./instructorReviews";
-import { getMentorReport, getMentorReportDetails } from "./mentorReport";
+import { getMentorReport, getMentorReportDetails, getMentorLeaderboard } from "./mentorReport";
 import { getPendingMeetingOutcomes, getMeetingOutcomeOptions, saveMeetingOutcome, getStudentMeetingOutcomes, getMeetingsDone, getMeetingsReport, getStudentMeetings } from "./meetingOutcomes";
 import { getVoiceRecordings, saveVoiceRecording, deleteVoiceRecording } from "./voiceRecordings";
 import { getCsTvLink } from "./csTv";
@@ -224,6 +224,8 @@ const AUTHED: Record<string, AuthedHandler> = {
   getInstructorReviews,
   getMentorReport,
   getMentorReportDetails,
+  // The mentors' leaderboard, every mentor (2026-10-28)
+  getMentorLeaderboard,
   getPendingMeetingOutcomes,
   getMeetingOutcomeOptions,
   saveMeetingOutcome,

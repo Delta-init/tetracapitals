@@ -7,6 +7,7 @@ import { csManagerReach } from "../lib/userLocation";
 import { BUILTIN_MENTOR_ROLES } from "../lib/roles";
 import { callLms, lmsConfigured, LmsError } from "../lib/lms";
 import { mentorAttendance, attendanceTotal, type AttendanceDay } from "../students/mentorAttendance";
+import { hrmsPhotos } from "../lib/hrms";
 
 /* ────────────────────────────────────────────────────────────────────────────
    The mentors' report (the user, 2026-10-23) — the Team area: each mentor,
@@ -240,4 +241,36 @@ export async function getMentorReportDetails(req: Request, user: AuthUser): Prom
   if (!mayView(user)) return forbidden();
   const r = await mentorReportDetail(user, ((await req.json().catch(() => null)) ?? {}) as Record<string, unknown>);
   return typeof r === "string" ? error(r, 400) : json(r);
+}
+
+/**
+ * POST /api/functions/getMentorLeaderboard { from, to } — the mentors' leaderboard (the user, 2026-10-28): every
+ * mentor, whatever the viewer's reach on the report itself — a leaderboard ranks everyone — with their totals for the
+ * dates and their HRMS photo. Commission only for those who see every mentor's on the report (admins, Chiefs).
+ */
+export async function getMentorLeaderboard(req: Request, user: AuthUser): Promise<Response> {
+  if (!mayView(user)) return forbidden();
+  const body: any = await req.json().catch(() => ({}));
+  const why = mentorReportDates(body?.from, body?.to);
+  if (why) return error(why, 400);
+  const r = await mentorReport(null, String(body.from), String(body.to));
+  const money = seesAll(user);
+  const photos = await hrmsPhotos(r.mentors.map((m: any) => ({ email: String(m.email ?? ""), name: String(m.name ?? "") })));
+  const mentors = r.mentors
+    // The portal's mentors, and LMS instructors who did something in the dates.
+    .filter((m: any) => m.id || m.total.classes || m.total.meetings || m.total.reviews)
+    .map((m: any) => {
+      const t = m.total;
+      const came = t.attended ?? 0, missed = t.missed ?? 0;
+      return {
+        id: m.id || m.lms_id || m.email, name: m.name, role: m.role, photo: photos.get(String(m.email ?? "").toLowerCase()) ?? null, me: m.id === user.id,
+        held: t.held ?? 0, classes: t.classes ?? 0, attended: came, missed, bookings: t.bookings ?? 0,
+        attendance_pct: came + missed >= 5 ? Math.round((came / (came + missed)) * 100) : null,
+        rating: (t.reviews ?? 0) >= 3 ? t.avgRating : null, reviews: t.reviews ?? 0,
+        meetings: Math.max(0, (t.meetings ?? 0) - (t.meetingsCancelled ?? 0)),
+        late_joins: t.lateJoins ?? 0, late_clock_ins: t.lateClockIns ?? 0,
+        ...(money ? { commission_usd: t.commission_usd ?? 0 } : {}),
+      };
+    });
+  return json({ from: r.from, to: r.to, lms: r.lms, commission: money, mentors });
 }

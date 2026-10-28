@@ -1,10 +1,13 @@
 import { Fragment, useMemo, useState } from 'react';
+import { Link } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { base44 } from '@/api/base44Client';
 import { PageTitle } from '@/components/common/PageHeader';
 import { Card, CardContent } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
-import { ChevronDown, ClipboardList, Loader2, Search, Star } from 'lucide-react';
+import { Button } from '@/components/ui/button';
+import { createPageUrl } from '@/utils';
+import { ChevronDown, ClipboardList, Loader2, Search, Star, Trophy } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { BreakdownDialog, Opens, ProgramsTab, MeetingsTab } from '@/components/reports/MentorBreakdown';
 
@@ -262,6 +265,7 @@ export default function MentorReport() {
                   className={cn('rounded-full px-3 py-1.5 text-sm font-medium', preset === k ? 'bg-brand-navy text-white' : 'text-slate-600 hover:bg-slate-50')}>{l}</button>
               ))}
             </div>
+            <Link to={createPageUrl('MentorLeaderboard')}><Button variant="outline" className="h-9"><Trophy className="mr-1.5 h-4 w-4 text-amber-500" />Leaderboard</Button></Link>
             <Input type="date" value={from} max={to} onChange={e => setDay(0, e.target.value)} className="h-9 w-[9.5rem]" />
             <span className="text-slate-400">–</span>
             <Input type="date" value={to} min={from} onChange={e => setDay(1, e.target.value)} className="h-9 w-[9.5rem]" />
