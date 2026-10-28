@@ -79,12 +79,14 @@ export function TodayLists({ s, compact = false }) {
   if (s.error) return <p className="rounded-lg bg-amber-50 px-3 py-2 text-sm text-amber-800">{/unknown function|not found|404/i.test(String(s.error?.message)) ? 'This needs the server update (the API deploy).' : s.error.message}</p>;
   if (s.lms && !s.lms.available) return <p className="rounded-lg bg-amber-50 px-3 py-2 text-sm text-amber-800">{s.lms.message}</p>;
   const showWho = s.chief && !s.mine;
+  // On the Dashboard each list scrolls inside its own height rather than stretching the page (the user, 2026-10-28).
+  const box = compact ? '' : 'max-h-[520px] overflow-y-auto pr-1';
   return (
     <div className={cn('grid gap-5', !compact && 'lg:grid-cols-2')}>
       <section>
         <h3 className="mb-1 flex items-center gap-2 text-sm font-semibold text-slate-700"><MonitorPlay className="h-4 w-4 text-indigo-500" />LMS classes<span className="rounded-full bg-slate-100 px-2 text-xs text-slate-500">{s.classes.length}</span></h3>
         {!s.classes.length ? <p className="py-3 text-sm text-slate-400">No classes today.</p> : (
-          <ul className="divide-y divide-slate-100">
+          <ul className={cn('divide-y divide-slate-100', box)}>
             {s.classes.map(c => (
               <Row key={c.id} start={c.start} mins={c.durationMins} title={c.title}
                 sub={[c.program, c.course].filter(Boolean).join(' · ')}
@@ -101,7 +103,7 @@ export function TodayLists({ s, compact = false }) {
       <section>
         <h3 className="mb-1 flex items-center gap-2 text-sm font-semibold text-slate-700"><CalendarDays className="h-4 w-4 text-emerald-500" />Meetings<span className="rounded-full bg-slate-100 px-2 text-xs text-slate-500">{s.meetings.length}</span></h3>
         {!s.meetings.length ? <p className="py-3 text-sm text-slate-400">No meetings today.</p> : (
-          <ul className="divide-y divide-slate-100">
+          <ul className={cn('divide-y divide-slate-100', box)}>
             {s.meetings.map(m => (
               <Row key={m.id} start={m.start} mins={m.durationMins} title={m.title}
                 sub={(m.attendees || []).length ? `With ${m.attendees.join(', ')}` : ''}

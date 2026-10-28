@@ -9,7 +9,7 @@ import StatsCard from "../components/dashboard/StatsCard";
 import LocationTotals from "../components/dashboard/LocationTotals";
 import { CsPendingPanel, CsReportPanel, MentorPendingPanel } from "../components/dashboard/TeamPending";
 import { TodayScheduleCard } from "../components/dashboard/TodaySchedule";
-import { Users, TrendingUp, DollarSign, Target, AlertCircle, AlertTriangle, ArrowRight, Award, Wallet, Activity } from "lucide-react";
+import { Users, DollarSign, Target, AlertCircle, AlertTriangle, ArrowRight, Award, Wallet, Activity } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import TransactionTable from "../components/transactions/TransactionTable";
 import { canViewAllStudents, canApproveTransactions } from "../components/utils/DataMasking";
@@ -20,10 +20,9 @@ import {
   filterFundingTransactionsByRole, 
   canProcessFundingTransaction 
 } from "../components/utils/FundingAccessControl";
-import { calculateQuarterlyNetDepositAndCommission } from "../components/utils/CommissionUtils";
+import { localFromAed } from "@/components/utils/displayCurrency";
 import { motion } from "framer-motion";
 import { EASE, FadeIn, RevealText } from "@/components/motion";
-import { AreaChart, Area, PieChart, Pie, Cell, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from 'recharts';
 
 export default function Dashboard() {
   const [currentUser, setCurrentUser] = useState(null);
@@ -44,6 +43,21 @@ export default function Dashboard() {
     staleTime: 30_000,
   });
   const toCorrect = Number(navCounts?.funding_sent_back) || 0;
+
+  // A mentor's (a Chief's: their team's) course payments and commission this month, Dubai days — the same figures as
+  // Funding Activities' Course upgradation on "This month" (backend functions/courseCommissionSummary.ts, 2026-10-28).
+  const monthCourse = useQuery({
+    queryKey: ['course-commission-summary', 'dashboard-month'],
+    queryFn: async () => {
+      const today = new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Dubai' });
+      const tomorrow = new Date(`${today}T00:00:00+04:00`);
+      tomorrow.setUTCDate(tomorrow.getUTCDate() + 1);
+      const from = new Date(`${today.slice(0, 8)}01T00:00:00+04:00`).toISOString();
+      return (await base44.functions.invoke('getCourseCommissionSummary', { from, to: tomorrow.toISOString() })).data;
+    },
+    enabled: !!currentUser && isMentorRole(currentUser.app_role),
+    retry: false,
+  });
 
   const { data: students = [] } = useQuery({
     queryKey: ['students'],
@@ -139,70 +153,9 @@ export default function Dashboard() {
   const totalNetDeposit = approvedFundingTransactions.filter(t => t.type === 'DEPOSIT').reduce((sum, t) => sum + (t.amount_usd || 0), 0)
     - approvedFundingTransactions.filter(t => t.type === 'WITHDRAWAL').reduce((sum, t) => sum + (t.amount_usd || 0), 0);
 
-  // For mentors: transactions they initiated (co-managed ones belong to the
-  // co-mentor who raised them, not the client's primary mentor — matching how
-  // commission is attributed, so the primary's totals aren't inflated).
-  const mentorOwnTransactions = isMentorRole(currentUser.app_role)
-    ? fundingTransactions.filter(t => (t.initiating_mentor_id || t.primary_mentor_id) === currentUser.id)
-    : [];
-
-  // This month's revenue (net deposit) and commission — from the mentor's own transactions (as Funding Activities),
-  // the 1st of the month to its end.
-  const today = new Date();
-  const thisMonth = { start: new Date(today.getFullYear(), today.getMonth(), 1), end: new Date(today.getFullYear(), today.getMonth() + 1, 0, 23, 59, 59, 999) };
-  const monthCommission = isMentorRole(currentUser.app_role)
-    ? calculateQuarterlyNetDepositAndCommission(mentorOwnTransactions, currentUser, today, thisMonth)
-    : null;
-
-  // Prepare chart data - Last 6 months transaction trend
-  const now = new Date();
-  const last6Months = Array.from({ length: 6 }, (_, i) => {
-    const d = new Date();
-    d.setMonth(d.getMonth() - (5 - i));
-    return {
-      month: d.toLocaleDateString('en-US', { month: 'short' }),
-      deposits: 0,
-      withdrawals: 0
-    };
-  });
-
-  myFundingTransactions
-    .filter(t => t.status === 'APPROVED' && t.requested_at)
-    .forEach(t => {
-      const txDate = new Date(t.requested_at);
-      const monthsAgo = Math.floor((now - txDate) / (1000 * 60 * 60 * 24 * 30));
-      if (monthsAgo >= 0 && monthsAgo < 6) {
-        const idx = 5 - monthsAgo;
-        if (t.type === 'DEPOSIT') {
-          last6Months[idx].deposits += t.amount_usd || 0;
-        } else {
-          last6Months[idx].withdrawals += t.amount_usd || 0;
-        }
-      }
-    });
-
-  // Status distribution for pie chart
-  const statusData = [
-    { name: 'Pending', value: myFundingTransactions.filter(t => t.status === 'PENDING').length, color: '#f59e0b' },
-    { name: 'Approved', value: myFundingTransactions.filter(t => t.status === 'APPROVED').length, color: '#10b981' },
-    { name: 'Rejected', value: myFundingTransactions.filter(t => t.status === 'REJECTED').length, color: '#ef4444' }
-  ].filter(s => s.value > 0);
-
   const firstName = (currentUser.full_name || '').split(' ')[0] || currentUser.full_name;
   const hour = new Date().getHours();
   const greeting = hour < 12 ? 'Good morning' : hour < 18 ? 'Good afternoon' : 'Good evening';
-  const chartTooltip = {
-    contentStyle: {
-      backgroundColor: 'white',
-      border: '1px solid #e2e8f0',
-      borderRadius: '12px',
-      boxShadow: '0 16px 40px -12px rgba(0,41,80,0.18)',
-      padding: '10px 12px',
-      fontWeight: 500,
-    },
-    labelStyle: { color: '#002950', fontWeight: 700, marginBottom: '6px', fontSize: '13px' },
-    itemStyle: { padding: '2px 0', fontSize: '13px' },
-  };
 
   return (
     <div className="min-h-screen p-4 sm:p-6 lg:p-8">
@@ -302,22 +255,26 @@ export default function Dashboard() {
               />
             ) : isMentorRole(currentUser.app_role) ? (
               <>
+                {/* As Funding Activities' Course upgradation, this month: the team's course payments (a Chief's) and
+                    what was credited to them — not the deposits they raised themselves (the user, 2026-10-28). */}
                 <StatsCard
-                  title="Monthly Revenue"
-                  value={`$${monthCommission?.netDepositUsd?.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) || '0.00'}`}
+                  title="Collected this month"
+                  value={monthCourse.isLoading ? '…' : localFromAed(monthCourse.data?.collected?.course_payments_aed)}
                   icon={DollarSign}
                   color="emerald"
-                  trend="This month"
-                  trendUp={monthCommission?.netDepositUsd > 0}
+                  trend={monthCourse.data?.collected?.pending_count > 0
+                    ? `+ ${localFromAed(monthCourse.data.collected.pending_aed)} waiting approval`
+                    : `${monthCourse.data?.collected?.count ?? 0} course payments`}
+                  trendUp={Number(monthCourse.data?.collected?.course_payments_aed) > 0}
                   delay={0.17}
                 />
                 <StatsCard
-                  title="Monthly Gross Commission"
-                  value={`$${monthCommission?.grossCommissionUsd?.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) || '0.00'}`}
+                  title="Your commission this month"
+                  value={monthCourse.isLoading ? '…' : localFromAed(monthCourse.data?.commission?.aed)}
                   icon={Award}
                   color="cyan"
-                  trend={``}
-                  trendUp={monthCommission?.grossCommissionUsd > 0}
+                  trend={`${monthCourse.data?.commission?.count ?? 0} credits, pool shares included`}
+                  trendUp={Number(monthCourse.data?.commission?.aed) > 0}
                   delay={0.24}
                 />
                 <StatsCard
@@ -383,140 +340,6 @@ export default function Dashboard() {
             <CsPendingPanel />
             <CsReportPanel />
             {['super_admin', 'admin', 'chief_mentor'].includes(currentUser.app_role) && <MentorPendingPanel />}
-          </div>
-        )}
-
-        {/* Charts Section */}
-        {myFundingTransactions.length > 0 && (
-          <div className="grid grid-cols-1 gap-4 lg:grid-cols-3 lg:gap-6">
-            {/* Transaction Trend Chart */}
-            <FadeIn delay={0.3} className="lg:col-span-2">
-              <Card className="h-full">
-                <CardHeader className="flex-row items-center justify-between space-y-0 pb-2">
-                  <div>
-                    <CardTitle className="text-base font-semibold text-brand-navy">Transaction Trends</CardTitle>
-                    <p className="mt-1 text-xs text-slate-500">Deposits vs withdrawals · last 6 months</p>
-                  </div>
-                  <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-cyan-50 text-cyan-700">
-                    <TrendingUp className="h-4 w-4" />
-                  </span>
-                </CardHeader>
-                <CardContent className="pt-4">
-                  <ResponsiveContainer width="100%" height={290}>
-                    <AreaChart data={last6Months} margin={{ left: -8, right: 8 }}>
-                      <defs>
-                        <linearGradient id="colorDeposits" x1="0" y1="0" x2="0" y2="1">
-                          <stop offset="0%" stopColor="#1ED2DE" stopOpacity={0.45}/>
-                          <stop offset="100%" stopColor="#7CF0B5" stopOpacity={0.02}/>
-                        </linearGradient>
-                        <linearGradient id="colorWithdrawals" x1="0" y1="0" x2="0" y2="1">
-                          <stop offset="0%" stopColor="#f43f5e" stopOpacity={0.28}/>
-                          <stop offset="100%" stopColor="#f43f5e" stopOpacity={0.02}/>
-                        </linearGradient>
-                      </defs>
-                      <CartesianGrid strokeDasharray="4 4" stroke="#e2e8f0" vertical={false} />
-                      <XAxis
-                        dataKey="month"
-                        tick={{ fill: '#64748b', fontSize: 12, fontWeight: 600 }}
-                        tickLine={false}
-                        axisLine={false}
-                      />
-                      <YAxis
-                        tick={{ fill: '#94a3b8', fontSize: 11, fontWeight: 600 }}
-                        tickLine={false}
-                        axisLine={false}
-                        width={70}
-                        tickFormatter={(value) => `$${value.toLocaleString()}`}
-                      />
-                      <Tooltip {...chartTooltip} formatter={(value) => [`$${value.toLocaleString()}`, '']} />
-                      <Legend
-                        wrapperStyle={{ paddingTop: '16px' }}
-                        iconType="circle"
-                        formatter={(value) => <span style={{ color: '#64748b', fontWeight: 600, fontSize: '12px' }}>{value}</span>}
-                      />
-                      <Area
-                        type="monotone"
-                        dataKey="deposits"
-                        stroke="#12b8c4"
-                        strokeWidth={2.5}
-                        fillOpacity={1}
-                        fill="url(#colorDeposits)"
-                        name="Deposits"
-                        animationDuration={1500}
-                        animationBegin={0}
-                      />
-                      <Area
-                        type="monotone"
-                        dataKey="withdrawals"
-                        stroke="#f43f5e"
-                        strokeWidth={2.5}
-                        fillOpacity={1}
-                        fill="url(#colorWithdrawals)"
-                        name="Withdrawals"
-                        animationDuration={1500}
-                        animationBegin={200}
-                      />
-                    </AreaChart>
-                  </ResponsiveContainer>
-                </CardContent>
-              </Card>
-            </FadeIn>
-
-            {/* Status Distribution Chart */}
-            <FadeIn delay={0.4}>
-              <Card className="h-full">
-                <CardHeader className="flex-row items-center justify-between space-y-0 pb-2">
-                  <div>
-                    <CardTitle className="text-base font-semibold text-brand-navy">Status Distribution</CardTitle>
-                    <p className="mt-1 text-xs text-slate-500">All funding requests</p>
-                  </div>
-                  <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-blue-50 text-blue-700">
-                    <Activity className="h-4 w-4" />
-                  </span>
-                </CardHeader>
-                <CardContent className="pt-4">
-                  <ResponsiveContainer width="100%" height={230}>
-                    <PieChart>
-                      <Pie
-                        data={statusData}
-                        cx="50%"
-                        cy="50%"
-                        outerRadius={95}
-                        innerRadius={66}
-                        fill="#8884d8"
-                        dataKey="value"
-                        animationBegin={0}
-                        animationDuration={1000}
-                        paddingAngle={3}
-                        cornerRadius={6}
-                        stroke="none"
-                      >
-                        {statusData.map((entry, index) => (
-                          <Cell key={`cell-${index}`} fill={entry.color} />
-                        ))}
-                      </Pie>
-                      <Tooltip {...chartTooltip} formatter={(value) => [`${value} transactions`, '']} />
-                    </PieChart>
-                  </ResponsiveContainer>
-                  <div className="mt-4 space-y-2">
-                    {statusData.map(entry => {
-                      const total = statusData.reduce((sum, d) => sum + d.value, 0) || 1;
-                      return (
-                        <div key={entry.name} className="flex items-center justify-between text-sm">
-                          <span className="flex items-center gap-2 text-slate-600">
-                            <span className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: entry.color }} />
-                            {entry.name}
-                          </span>
-                          <span className="tabular font-semibold text-brand-navy">
-                            {entry.value} <span className="font-medium text-slate-400">· {Math.round((entry.value / total) * 100)}%</span>
-                          </span>
-                        </div>
-                      );
-                    })}
-                  </div>
-                </CardContent>
-              </Card>
-            </FadeIn>
           </div>
         )}
 
