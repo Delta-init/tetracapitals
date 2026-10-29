@@ -84,7 +84,8 @@ export const navLabel = (item) => item.label || humanize(item.name);
 const FOLLOWUP_ROLES = ['super_admin', 'admin', 'broker_admin', 'academic_head', 'academic_admin', 'admin_supervisor', 'finance_admin', 'chief_mentor', 'senior_mentor', 'junior_mentor', 'subjunior_mentor', 'assistance'];
 export const NAV_ITEMS = [
   { name: 'Dashboard', page: 'Dashboard', icon: LayoutDashboard, roles: ['super_admin', 'admin', 'broker_admin', 'academic_head', 'admin_supervisor', 'junior_mentor', 'chief_mentor', 'senior_mentor', 'finance_admin'] },
-  { name: 'TeamDashboard', page: 'TeamDashboard', icon: LayoutGrid, roles: ['super_admin', 'admin', 'broker_admin', 'academic_head', 'chief_mentor'] },
+  // Hidden for everyone (the user, 2026-10-29) — the page still opens by its address.
+  { name: 'TeamDashboard', hidden: true, page: 'TeamDashboard', icon: LayoutGrid, roles: ['super_admin', 'admin', 'broker_admin', 'academic_head', 'chief_mentor'] },
   { name: 'Teams', page: 'Teams', icon: UsersRound, roles: ['all'] },
   // Hidden for everyone (the user, 2026-10-11) — the page still opens by its address.
   { name: 'ActivityTracker', hidden: true, page: 'ActivityTracker', icon: Activity, roles: ['all'], notFor: ['cs'] },
@@ -145,8 +146,9 @@ export const NAV_ITEMS = [
   // Zoho Books invoices 2024 – Jun 2026 — a CS their own students', leaders their team's, admins all; never the Sales
   // role (backend/src/functions/zohoInvoices.ts).
   { name: 'ZohoInvoices', label: 'Invoices', page: 'ZohoInvoices', icon: FileText, roles: ['super_admin', 'admin', 'broker_admin', 'academic_head', 'academic_admin', 'junior_mentor', 'chief_mentor', 'senior_mentor', 'subjunior_mentor', 'assistance'], sameAccessAs: 'Students', notForSales: true },
-  { name: 'StudentLogs', page: 'StudentLogs', icon: ClipboardList, roles: ['super_admin', 'admin', 'broker_admin', 'academic_head', 'academic_admin', 'junior_mentor', 'chief_mentor', 'senior_mentor', 'subjunior_mentor', 'assistance'] },
-  { name: 'StudentLogHistoryPage', page: 'StudentLogHistoryPage', icon: History, roles: ['super_admin', 'academic_head', 'academic_admin', 'admin_supervisor', 'junior_mentor', 'chief_mentor', 'senior_mentor', 'subjunior_mentor', 'assistance'] },
+  // Hidden for everyone (the user, 2026-10-29) — both still open by their address.
+  { name: 'StudentLogs', hidden: true, page: 'StudentLogs', icon: ClipboardList, roles: ['super_admin', 'admin', 'broker_admin', 'academic_head', 'academic_admin', 'junior_mentor', 'chief_mentor', 'senior_mentor', 'subjunior_mentor', 'assistance'] },
+  { name: 'StudentLogHistoryPage', hidden: true, page: 'StudentLogHistoryPage', icon: History, roles: ['super_admin', 'academic_head', 'academic_admin', 'admin_supervisor', 'junior_mentor', 'chief_mentor', 'senior_mentor', 'subjunior_mentor', 'assistance'] },
   { name: 'MyStudentRequests', page: 'MyStudentRequests', icon: UserPlus, roles: ['junior_mentor', 'chief_mentor', 'senior_mentor', 'academic_head'], notFor: ['cs'] },
   { name: 'StudentRequestApprovals', page: 'StudentRequestApprovals', icon: UserCheck, roles: ['super_admin', 'academic_head', 'broker_admin'] },
   { name: 'RetentionManagement', page: 'RetentionManagement', icon: RefreshCcw, roles: ['academic_head'] },
