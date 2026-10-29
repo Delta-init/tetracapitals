@@ -225,6 +225,8 @@ export default function Layout({ children, currentPageName }) {
     if (item.name === 'InstructorReviews' && item.roles.includes(currentUser?.app_role)) return true;
     // …and the Mentor Report the same way (2026-10-23).
     if (item.name === 'MentorReport' && item.roles.includes(currentUser?.app_role)) return true;
+    // …and Not joined yet and Message Logs (2026-10-29): made after the roles' page lists, so for everyone they're made for.
+    if (['LiveNotJoined', 'MessageLogs'].includes(item.name) && item.roles.includes(currentUser?.app_role)) return true;
     if (Array.isArray(allowedPages)) return allowedPages.includes(item.sameAccessAs || item.name);
     return item.roles.includes('all') || item.roles.includes(currentUser?.app_role);
   });
