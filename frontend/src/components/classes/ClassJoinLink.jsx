@@ -13,7 +13,7 @@ import { copyText, when } from '@/components/messages/MessageLogUi';
    clicked, the LMS makes that student's one-tap join link for the class — it
    signs them in once, no password, and takes them into the class (attendance
    counts) — lasting until the class's join window closes. The message reads
-   like the LMS's "Starts in 5 minutes" WhatsApp, with the meeting link too;
+   like the LMS's "Starts in 5 minutes" WhatsApp, with our link only;
    copy it, or send it on your own WhatsApp. Whoever may Act as the student
    (backend lmsEnrolmentRequests.ts createClassJoinLink).
 ──────────────────────────────────────────────────────────────────────────── */
@@ -32,8 +32,8 @@ function messageOf(link) {
   return [
     started ? `Hi ${first}, your class ${what} has started.` : `Hi ${first}, your class ${what} starts ${whenText} (Dubai time).`,
     '',
+    // Our link only (the user, 2026-10-29): no Meet link — joining through ours is what counts the attendance.
     `Tap to join — you'll be signed in and taken straight to the class:\n${link.joinUrl}`,
-    ...(link.meetingUrl ? ['', `Meeting link: ${link.meetingUrl}`] : []),
   ].join('\n');
 }
 
