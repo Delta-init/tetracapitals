@@ -439,6 +439,45 @@ export async function viewStudentInLms(req: Request, user: AuthUser): Promise<Re
   }
 }
 
+/**
+ * POST /api/functions/createStudentLoginLink { studentId } → { url, expiresAt } (the user, 2026-10-29): the LMS's
+ * one-time login link — one tap signs the student into their account with no password, once, within 24 hours (a new
+ * one cancels the last unused one). For whoever may Act as them; the LMS records it as the person (user.loginLink).
+ */
+export async function createStudentLoginLink(req: Request, user: AuthUser): Promise<Response> {
+  const body: any = await req.json().catch(() => ({}));
+  if (!actsAsStudent(user.app_role)) return error("Login links are for the student's own CS or mentor, their leaders and Super Admins", 403);
+  const leads = user.app_role === "chief_mentor" || user.app_role === "cs_manager" || TEAM_WIDE_MENTORS.has(user.app_role);
+  const found = await lmsStudentFor(body, user, { ownOnly: !leads });
+  if (found instanceof Response) return found;
+  if (!lmsConfigured()) return error(NOT_LINKED, 503);
+  try {
+    const answer = await callLms<{ url: string; expiresAt: string }>("/students/login-link", {
+      method: "POST", body: { email: found.email, ...byOf(user) }, verb: "make the student's login link",
+    });
+    await logPortalAction(user, found, "lms_login_link", `${byOf(user).byName} made a login link for ${found.student?.full_name || found.email}`);
+    return json({ url: answer.url, expiresAt: answer.expiresAt });
+  } catch (err) {
+    if (lmsLacksRoute(err)) return error("The LMS can't make login links from here yet — it needs its update", 409);
+    return lmsRefusal(err);
+  }
+}
+
+/** The portal's activity log for an LMS action on a student (the LMS records its own as well). */
+async function logPortalAction(user: AuthUser, found: { email: string; student: any | null }, action: string, message: string) {
+  const now = new Date().toISOString();
+  try {
+    await col("logs").insertOne({
+      timestamp: now, user_id: user.id, user_email: user.email, user_name: user.full_name, user_role: user.app_role,
+      action_type: action, entity_type: "Student", entity_id: found.student ? String(found.student._id) : null,
+      details: JSON.stringify({ message, email: found.email, by: byOf(user) }),
+      old_value: null, new_value: null, ip_address: null, success: true, created_date: now, updated_date: now,
+    } as any);
+  } catch (err) {
+    console.error(`[${action}] could not write the activity log`, err);
+  }
+}
+
 /** The portal's activity log: who acted as which student in the LMS (the LMS records each change itself). */
 async function logActAsStudent(user: AuthUser, found: { email: string; student: any | null }) {
   const now = new Date().toISOString();

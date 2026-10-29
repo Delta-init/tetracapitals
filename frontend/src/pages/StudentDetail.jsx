@@ -38,6 +38,8 @@ import StudentCallsSection from "@/components/calls/StudentCallsSection";
 import StudentWhatsAppCard from "@/components/students/StudentWhatsAppCard";
 import PaymentLinksCard from "@/components/students/PaymentLinksCard";
 import StudentEmailsCard from "@/components/students/StudentEmailsCard";
+import StudentLmsWhatsApp from "@/components/students/StudentLmsWhatsApp";
+import { LoginLinkButton } from "@/components/students/LoginLink";
 import StudentClassesCard from "@/components/students/StudentClassesCard";
 import StudentLmsCoursesCard from "@/components/students/StudentLmsCoursesCard";
 import StudentLmsSupportCards from "@/components/students/StudentLmsSupportCards";
@@ -373,6 +375,10 @@ export default function StudentDetail() {
             {mayActInLms(currentUser, student, teamIds) && student.email && (
               <ViewInLmsButton studentId={student.id} name={displayStudent.full_name} className="h-9" mode="write" />
             )}
+            {/* A one-time login link to send them: signs them in with no password (2026-10-29) — whoever may act as them */}
+            {mayActInLms(currentUser, student, teamIds) && student.email && (
+              <LoginLinkButton student={displayStudent} className="h-9" />
+            )}
             {/* Not a student (2026-10-14): off every list, onto Inactive students */}
             {!salesOnly && !student.not_student && mayMarkNotStudent(currentUser, student) && (
               <Button variant="outline" className="h-9 text-gray-600 hover:bg-red-50 hover:text-red-700" onClick={() => setNotStudentOpen(true)}>
@@ -594,6 +600,7 @@ export default function StudentDetail() {
           {!salesOnly && (
             <TabsContent {...panel('whatsapp')}>
               <StudentWhatsAppCard student={displayStudent} />
+              <StudentLmsWhatsApp studentId={student.id} />
             </TabsContent>
           )}
 

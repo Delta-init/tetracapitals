@@ -104,6 +104,7 @@ import PaymentLinks from './pages/PaymentLinks';
 import CourseUpgrades from './pages/CourseUpgrades';
 import ClassCompletions from './pages/ClassCompletions';
 import LiveNotJoined from './pages/LiveNotJoined';
+import MessageLogs from './pages/MessageLogs';
 import MeetingsDone from './pages/MeetingsDone';
 import MeetingsReport from './pages/MeetingsReport';
 import SupportTickets from './pages/SupportTickets';
@@ -195,6 +196,7 @@ export const PAGES = {
     "CourseUpgrades": CourseUpgrades,
     "ClassCompletions": ClassCompletions,
     "LiveNotJoined": LiveNotJoined,
+    "MessageLogs": MessageLogs,
     "MeetingsDone": MeetingsDone,
     "MeetingsReport": MeetingsReport,
     "SupportTickets": SupportTickets,

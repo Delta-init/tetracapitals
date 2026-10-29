@@ -3,9 +3,9 @@ import { useQuery } from '@tanstack/react-query';
 import { base44 } from '@/api/base44Client';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Loader2, Mail } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { EmailDialog as SharedEmailDialog } from '@/components/messages/MessageLogUi';
 
 /* ────────────────────────────────────────────────────────────────────────────
    The student's emails (the user, 2026-10-17): what the portal sent them
@@ -79,22 +79,12 @@ export default function StudentEmailsCard({ studentId }) {
 }
 
 function EmailDialog({ studentId, email, onClose }) {
-  const { data, isLoading, error } = useQuery({
-    queryKey: ['student-email', email.source, email.id], retry: false,
-    queryFn: () => fn('getStudentEmail', { studentId, source: email.source, id: email.id }),
-  });
   return (
-    <Dialog open onOpenChange={(o) => { if (!o) onClose(); }}>
-      <DialogContent className="max-h-[92vh] w-[calc(100vw-2rem)] max-w-3xl overflow-y-auto">
-        <DialogHeader>
-          <DialogTitle className="pr-6">{email.subject || '(no subject)'}</DialogTitle>
-          <DialogDescription>{email.source === 'lms' ? 'From the LMS' : 'From the portal'} · to {email.to} · {when(email.at)}{email.error ? ` · ${email.error}` : ''}</DialogDescription>
-        </DialogHeader>
-        {isLoading ? <div className="flex items-center gap-2 py-8 text-sm text-gray-500"><Loader2 className="h-4 w-4 animate-spin" />Opening…</div>
-          : error ? <p className="text-sm text-red-600">{error.message}</p>
-          : data?.html ? <iframe title="The email" sandbox="" srcDoc={data.html} className="h-[65vh] w-full rounded-md border bg-white" />
-          : <pre className="whitespace-pre-wrap rounded-md border bg-gray-50 p-3 text-sm">{data?.text || '(empty)'}</pre>}
-      </DialogContent>
-    </Dialog>
+    <SharedEmailDialog
+      open title={email.subject || '(no subject)'} onClose={onClose}
+      description={`${email.source === 'lms' ? 'From the LMS' : 'From the portal'} · to ${email.to} · ${when(email.at)}${email.error ? ` · ${email.error}` : ''}`}
+      queryKey={['student-email', email.source, email.id]}
+      load={() => fn('getStudentEmail', { studentId, source: email.source, id: email.id })}
+    />
   );
 }

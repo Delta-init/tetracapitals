@@ -59,7 +59,7 @@ import {
   BookCheck,
   ClipboardCheck,
   Repeat,
-  Coins, BadgeAlert, UserX, Workflow , Award } from 'lucide-react';
+  Coins, BadgeAlert, UserX, Workflow , Award , MessagesSquare } from 'lucide-react';
 
 // "StudentLogHistoryPage" -> "Student Log History", "AIInsights" -> "AI Insights"
 export const humanize = (name = '') =>
@@ -129,6 +129,8 @@ export const NAV_ITEMS = [
   { name: 'ClassCompletions', label: 'Class Completions', page: 'ClassCompletions', icon: BookCheck, roles: FOLLOWUP_ROLES, sameAccessAs: 'StudentFollowups' },
   // Booked a live LMS class and haven't joined (2026-10-28): CSs, CS Managers, mentors, Super Admins.
   { name: 'LiveNotJoined', label: 'Not joined yet', page: 'LiveNotJoined', icon: UserX, roles: ['super_admin', 'admin', 'cs', 'cs_manager', 'chief_mentor', 'senior_mentor', 'junior_mentor', 'subjunior_mentor'], only: ['super_admin', 'admin', 'cs', 'cs_manager', 'chief_mentor', 'senior_mentor', 'junior_mentor', 'subjunior_mentor'] },
+  // Emails and WhatsApp messages students were sent, by the portal and the LMS (the user, 2026-10-29).
+  { name: 'MessageLogs', label: 'Message Logs', page: 'MessageLogs', icon: MessagesSquare, roles: ['super_admin', 'admin', 'cs', 'cs_manager', 'chief_mentor', 'senior_mentor', 'junior_mentor', 'subjunior_mentor'], only: ['super_admin', 'admin', 'cs', 'cs_manager', 'chief_mentor', 'senior_mentor', 'junior_mentor', 'subjunior_mentor'] },
   // Student meetings booked from the Mentor Calendar, and how each went (2026-10-28) — whose as the follow-ups.
   { name: 'MeetingsDone', label: 'Meetings done', page: 'MeetingsDone', icon: CalendarCheck, roles: FOLLOWUP_ROLES, sameAccessAs: 'StudentFollowups' },
   // Each CS's own WhatsApp; their Chief Mentor / CS Manager and Super Admins read it (backend/src/functions/whatsapp.ts).
@@ -208,7 +210,7 @@ export const NESTED_GROUPS = {
 export const GROUP_OF = {
   Dashboard: 'Overview', TeamDashboard: 'Overview', Teams: 'Overview', ActivityTracker: 'Overview', AIInsights: 'Overview', Leaderboard: 'Overview', InstructorReviews: 'Overview', Reminders: 'Overview', MentorReport: 'Overview', MentorLeaderboard: 'Overview', MeetingsReport: 'Overview', MentorPerformance: 'Overview', MentorTraining: 'Overview',
   Personnel: 'People & Access', RolesManagement: 'People & Access', Hierarchy: 'People & Access', AcademicCounselors: 'People & Access', MasterAdmin: 'People & Access',
-  Students: 'Students', CourseUpgrades: 'Students', NotOnboarded: 'Students', InactiveStudents: 'Students', BalancePayments: 'Students', StudentFollowups: 'Students', OverdueFollowups: 'Students', StudentCalls: 'Students', ClassCompletions: 'Students', LiveNotJoined: 'Students', MeetingsDone: 'Students', WhatsApp: 'Students', MentorCalendar: 'Students', Programs: 'Students', SupportTickets: 'Students', LmsRequests: 'Students', Exams: 'Students', ZohoInvoices: 'Students', StudentLogs: 'Students', StudentLogHistoryPage: 'Students', MyStudentRequests: 'Students', StudentRequestApprovals: 'Students', RetentionManagement: 'Students', DrawAdminStudents: 'Students', MT5Accounts: 'Students', InactivityTransfers: 'Students', StudentWorkflow: 'Students', StudentTags: 'Students',
+  Students: 'Students', CourseUpgrades: 'Students', NotOnboarded: 'Students', InactiveStudents: 'Students', BalancePayments: 'Students', StudentFollowups: 'Students', OverdueFollowups: 'Students', StudentCalls: 'Students', ClassCompletions: 'Students', LiveNotJoined: 'Students', MessageLogs: 'Students', MeetingsDone: 'Students', WhatsApp: 'Students', MentorCalendar: 'Students', Programs: 'Students', SupportTickets: 'Students', LmsRequests: 'Students', Exams: 'Students', ZohoInvoices: 'Students', StudentLogs: 'Students', StudentLogHistoryPage: 'Students', MyStudentRequests: 'Students', StudentRequestApprovals: 'Students', RetentionManagement: 'Students', DrawAdminStudents: 'Students', MT5Accounts: 'Students', InactivityTransfers: 'Students', StudentWorkflow: 'Students', StudentTags: 'Students',
   FundingActivities: 'Funding', FundingRequests: 'Funding', BonusApprovals: 'Funding', NotCreditedYet: 'Funding', PaymentLinks: 'Funding', Transactions: 'Funding', TransactionTags: 'Funding',
   CommissionPlans: 'Commission', BonusCommissionReports: 'Commission', DepositCommissionReports: 'Commission', CommissionTools: 'Commission', Commissions: 'Commission', QuarterClosing: 'Commission', MonthlyClosing: 'Commission', DailyPayouts: 'Commission', MyCommissionHistory: 'Commission', MyTargets: 'Commission', TargetsManagement: 'Commission',
   DepositReport: 'Reports', WithdrawalReport: 'Reports', FundingRequestReport: 'Reports', BonusReport: 'Reports', Reports: 'Reports', CommissionReports: 'Reports',

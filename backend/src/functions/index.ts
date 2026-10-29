@@ -47,7 +47,7 @@ import { getStudentClasses } from "./lmsClasses";
 import { getStudentLmsSupport, getLmsSupportTickets, getLmsSupportTicketCount, answerLmsTicket, resolveLmsTicket } from "./lmsSupport";
 import {
   getLmsEnrolmentRequests, getLmsEnrolmentRequestCount, getLmsEnrolmentRequest, getLmsEnrolmentDocument,
-  approveLmsEnrolmentRequest, rejectLmsEnrolmentRequest, viewStudentInLms, assignLmsApplicant,
+  approveLmsEnrolmentRequest, rejectLmsEnrolmentRequest, viewStudentInLms, createStudentLoginLink, assignLmsApplicant,
 } from "./lmsEnrolmentRequests";
 import { getSalesBonusToSend, sendSalesBonusCredit } from "./salesBonusSend";
 import { getCreditRequestOptions, raiseCreditRequest, listCreditRequests, decideCreditRequest } from "./creditRequests";
@@ -58,6 +58,7 @@ import { getMyCurrency } from "./myCurrency";
 import { removeStudentMt5, setPrimaryMt5 } from "./studentMt5";
 import { markNotStudent, unmarkNotStudent, listNotStudents } from "./notStudent";
 import { getStudentEmails, getStudentEmail } from "./studentEmails";
+import { getMessageLogs, getMessageLogEmail, getStudentLmsWhatsApp } from "./messageLogs";
 import { getInstructorReviews, getInstructorReviewList } from "./instructorReviews";
 import { getMentorReport, getMentorReportDetails, getMentorLeaderboard } from "./mentorReport";
 import { getPendingMeetingOutcomes, getMeetingOutcomeOptions, saveMeetingOutcome, getStudentMeetingOutcomes, getMeetingsDone, getMeetingsReport, getStudentMeetings } from "./meetingOutcomes";
@@ -223,6 +224,9 @@ const AUTHED: Record<string, AuthedHandler> = {
   setPrimaryMt5,
   markNotStudent,
   getStudentEmails,
+  getMessageLogs,
+  getMessageLogEmail,
+  getStudentLmsWhatsApp,
   getInstructorReviews,
   getMentorReport,
   getMentorReportDetails,
@@ -249,6 +253,7 @@ const AUTHED: Record<string, AuthedHandler> = {
   listCoursePaymentRequests,
   // A student's own LMS, read-only — from LMS Requests and the student page
   viewStudentInLms,
+  createStudentLoginLink,
   // Their LMS courses: put on Forex courses, modules opened or locked (lmsCourseAccess.ts)
   getLmsCourseAccess,
   giveLmsCourses,
