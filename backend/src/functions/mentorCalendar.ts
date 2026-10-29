@@ -101,7 +101,8 @@ export async function getMentorClass(req: Request, _user: AuthUser): Promise<Res
   const body: any = await req.json().catch(() => ({}));
   const classId = str(body?.classId, 100);
   if (!classId) return error("classId is required", 400);
-  return lms(() => callLms(`/classes/${encodeURIComponent(classId)}`, { verb: "describe that class" }));
+  // contacts=1: each student's booking and address — the card's "Send join link" (2026-10-29).
+  return lms(() => callLms(`/classes/${encodeURIComponent(classId)}`, { query: { contacts: "1" }, verb: "describe that class" }));
 }
 
 /**

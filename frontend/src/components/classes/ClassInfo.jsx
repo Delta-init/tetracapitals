@@ -56,6 +56,10 @@ export function ClassInfoSection({ c, tz }) {
     <div className="space-y-4">
       <div>
         <p className="mb-1.5 text-xs font-semibold uppercase tracking-wide text-slate-500">Students ({students?.length ?? 0})</p>
+        {/* Who may send join links, a class still to join, booked seats — but no booking ids: an LMS without the update. */}
+        {joinable && students?.some(s => ['booked', 'attended'].includes(s.status)) && !students.some(s => s.bookingId) && (
+          <p className="mb-1.5 text-xs text-amber-700">"Send join link" shows here once the LMS has its update.</p>
+        )}
         {!students?.length ? <p className="text-sm text-slate-400">Nobody has booked this class.</p> : (
           <ul className="divide-y divide-slate-100 rounded-lg border border-slate-200">
             {students.map((s, i) => {
