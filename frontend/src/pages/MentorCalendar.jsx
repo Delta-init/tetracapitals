@@ -13,7 +13,7 @@ import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Popover, PopoverAnchor, PopoverContent } from '@/components/ui/popover';
-import { ArrowLeft, CalendarDays, ChevronLeft, ChevronRight, CircleSlash, Clock, Loader2, Plus, Search, UserRound, Users2, X } from 'lucide-react';
+import { ArrowLeft, CalendarDays, ChevronLeft, ChevronRight, CircleSlash, Clock, Loader2, Plus, Radio, Search, UserRound, Users2, X } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { createPageUrl } from '@/utils';
 import { TablePagination, usePagination } from '@/components/common/TablePagination';
@@ -199,6 +199,13 @@ export default function MentorCalendar() {
   const [mod, setMod] = useState('');
   // Meetings of one category ('none': without one) — classes are left out while it's set (2026-10-25).
   const [meetCat, setMeetCat] = useState('');
+  /* Live now (the user, 2026-10-29): only the classes running this minute — started, not past their end, not cancelled
+     or ended — and the mentors teaching them; meetings left out. Checked again every minute. */
+  const [liveOnly, setLiveOnly] = useState(false);
+  const [tick, setTick] = useState(() => Date.now());
+  useEffect(() => { const t = setInterval(() => setTick(Date.now()), 60_000); return () => clearInterval(t); }, []);
+  const isLive = (c) => !['cancelled', 'ended'].includes(String(c.status))
+    && new Date(c.startsAt).getTime() <= tick && tick < new Date(c.startsAt).getTime() + (Number(c.durationMins) || 0) * 60_000;
   const { courses, modules } = useMemo(() => {
     const cs = new Map(), ms = new Map();
     for (const m of schedule.data?.mentors ?? []) for (const c of m.classes ?? []) {
@@ -209,10 +216,10 @@ export default function MentorCalendar() {
     return { courses: sorted(cs), modules: sorted(ms) };
   }, [schedule.data, course]);
   const needle = find.trim().toLowerCase();
-  const filtering = !!(needle || course || meetCat);
+  const filtering = !!(needle || course || meetCat || liveOnly);
   const has = (...vs) => vs.some(v => String(v ?? '').toLowerCase().includes(needle));
-  const classShown = (c) => !meetCat && (!course || c.courseId === course) && (!mod || c.moduleId === mod) && (!needle || (c.mine && has(c.title, c.course, c.module)));
-  const meetingShown = (v) => (!meetCat || (meetCat === 'none' ? !v.category : v.category === meetCat)) && (!needle || has(v.title, ...(v.attendeeNames ?? [])));
+  const classShown = (c) => !meetCat && (!liveOnly || isLive(c)) && (!course || c.courseId === course) && (!mod || c.moduleId === mod) && (!needle || (c.mine && has(c.title, c.course, c.module)));
+  const meetingShown = (v) => !liveOnly && (!meetCat || (meetCat === 'none' ? !v.category : v.category === meetCat)) && (!needle || has(v.title, ...(v.attendeeNames ?? [])));
 
   const myItems = useMemo(() => {
     if (!myMentor) return [];
@@ -222,7 +229,7 @@ export default function MentorCalendar() {
       ...myMentor.meetings.filter(meetingShown).map(v => ({ id: `m${v.id}`, startsAt: v.startsAt, mins: v.durationMins, what: v.title, sub: `${kindAndCategory(v)}${v.attendeeNames?.length ? ` · with ${v.attendeeNames.join(', ')}` : ''}${v.inPerson ? ` · in person, ${v.location}` : ''}`, kind: 'meeting' })),
       ...(myMentor.timeOff ?? []).map(t => ({ id: `o${t.id}`, startsAt: t.startsAt, mins: Math.round((new Date(t.endsAt) - new Date(t.startsAt)) / 60_000), what: 'Not available', sub: `${timeOffLabel(t, tz)}${t.reason ? ` · ${t.reason}` : ''}`, kind: 'off' })),
     ].filter(i => new Date(i.startsAt).getTime() + (i.mins || 0) * 60_000 > now).sort((a, b) => a.startsAt.localeCompare(b.startsAt));
-  }, [myMentor, needle, course, mod]);
+  }, [myMentor, needle, course, mod, liveOnly, tick]);
 
   const [query, setQuery] = useState('');
   /* Both academies' mentors (the user, 2026-10-15): Dubai's and Bangalore's, each with a badge; this filter starts on
@@ -240,9 +247,9 @@ export default function MentorCalendar() {
     return filtering
       ? people.filter(m => (m.classes ?? []).some(c => c.status !== 'cancelled' && classShown(c)) || (m.meetings ?? []).some(meetingShown))
       : people;
-  }, [schedule.data, query, onlyMe, myMentor, needle, course, mod, academy, bothAcademies]);
+  }, [schedule.data, query, onlyMe, myMentor, needle, course, mod, academy, bothAcademies, liveOnly, tick]);
   // One page for both layouts. Stepping the week keeps the page: the mentors are the same.
-  const { pageItems: pageShown, bar } = usePagination(shown, { resetKey: `${query}|${onlyMe}|${needle}|${course}|${mod}|${academy}` });
+  const { pageItems: pageShown, bar } = usePagination(shown, { resetKey: `${query}|${onlyMe}|${needle}|${course}|${mod}|${academy}|${liveOnly}` });
 
   /* ── booking: opened from the day it is for, with that mentor already chosen ── */
   const [booking, setBooking] = useState(null); // { mentor, day }
@@ -458,6 +465,7 @@ export default function MentorCalendar() {
                   : 'border-slate-200 bg-slate-100 text-slate-500',
             )}
           >
+            {isLive(c) && <span className="mr-1 inline-flex items-center gap-0.5 rounded bg-rose-600 px-1 text-[9px] font-semibold uppercase text-white">Live</span>}
             <span className="tabular">{at(c.startsAt)}</span> {c.mine ? (c.title || 'Class') : 'Booked elsewhere'}
             {c.mine && c.course && <span className="block truncate text-[10px] opacity-70">{c.course}{c.module ? ` · ${c.module}` : ''}</span>}
           </button>
@@ -593,7 +601,12 @@ export default function MentorCalendar() {
             {MEETING_CATEGORIES.map(([k, l]) => <option key={k} value={k}>{l} meetings</option>)}
             <option value="none">Meetings with no category</option>
           </select>
-          {filtering && <Button variant="ghost" size="sm" className="h-9" onClick={() => { setFind(''); setCourse(''); setMod(''); setMeetCat(''); }}>Clear</Button>}
+          <Button type="button" size="sm" variant={liveOnly ? 'default' : 'outline'} aria-pressed={liveOnly}
+            className={cn('h-9', liveOnly && 'bg-rose-600 text-white hover:bg-rose-700')}
+            onClick={() => { const on = !liveOnly; setLiveOnly(on); if (on) { setOffset(0); setDayIndex(new Date().getDay()); setTick(Date.now()); } }}>
+            <Radio className="mr-1.5 h-4 w-4" />Live now
+          </Button>
+          {filtering && <Button variant="ghost" size="sm" className="h-9" onClick={() => { setFind(''); setCourse(''); setMod(''); setMeetCat(''); setLiveOnly(false); }}>Clear</Button>}
         </div>
 
         {schedule.isPending && (
@@ -612,7 +625,7 @@ export default function MentorCalendar() {
             <Users2 className="mx-auto h-8 w-8 text-slate-300" />
             {query.trim() || filtering ? (
               <>
-                <p className="mt-3 text-sm font-medium text-slate-700">{filtering ? 'Nothing this week matches' : 'Nobody matches that'}</p>
+                <p className="mt-3 text-sm font-medium text-slate-700">{liveOnly ? 'No class is live right now' : filtering ? 'Nothing this week matches' : 'Nobody matches that'}</p>
                 <button onClick={() => { setQuery(''); setFind(''); setCourse(''); setMod(''); setMeetCat(''); }} className="mt-2 text-xs text-cyan-700 hover:underline">Clear the search</button>
               </>
             ) : (
