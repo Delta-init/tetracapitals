@@ -1,7 +1,7 @@
 import { studentLocationOf } from "../lib/location";
 import { col } from "../db";
 import { config } from "../config";
-import { ok, refuse, secretMatches, text, isEmail, answer, studentWithEmail, createStudent } from "../students/intake";
+import { ok, refuse, secretMatches, text, isEmail, answer, studentWithEmail, createStudent, madeUpEmail, madeUpNote } from "../students/intake";
 import { lmsEnrolledFields } from "../students/lmsEnrolment";
 
 /* ────────────────────────────────────────────────────────────────────────────
@@ -52,7 +52,7 @@ export async function handleLmsStudents(req: Request): Promise<Response> {
     email,
     phone: text(body.phone, 40),
     country: text(body.country, 80),
-    notes: `From Delta LMS${course ? ` — ${course}` : ""}${academy ? ` (${academy})` : ""}`,
+    notes: `From Delta LMS${course ? ` — ${course}` : ""}${academy ? ` (${academy})` : ""}${madeUpEmail(email) ? `\n\n${madeUpNote(email)}` : ""}`,
     trace: {
       source: "delta_lms",
       lms_user_id: lmsUserId,
@@ -61,7 +61,7 @@ export async function handleLmsStudents(req: Request): Promise<Response> {
       // An LMS account: enrolled from the start.
       ...lmsEnrolledFields(),
     },
-    arrived: `Arrived from the Delta LMS${course ? ` — ${course}` : ""}${academy ? ` (${academy})` : ""}`,
+    arrived: `Arrived from the Delta LMS${course ? ` — ${course}` : ""}${academy ? ` (${academy})` : ""}${madeUpEmail(email) ? `. ${madeUpNote(email)}` : ""}`,
     createdBy: "delta-lms",
     createdByName: "Delta LMS",
     unique: { field: "lms_user_id", value: lmsUserId, existing: "lms", detail: "This LMS student is already here" },

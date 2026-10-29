@@ -124,11 +124,36 @@ export function answer(student: any, created: boolean, existing: Existing, detai
   };
 }
 
+/*
+ * A made-up email (the user, 2026-10-29): noemail@gmail.com and the like, typed
+ * in a sales CRM when the client gave none. Two closes with one such address
+ * came here as one student — Najad Ahmed's invoice and his $500 bonus went to
+ * Mohammed Lebbie. Nobody is found by one: each arrives as their own student,
+ * with a line asking their CS for the real email. (The CRMs refuse them at the
+ * close since; older closes can still carry one.)
+ */
+const MADE_UP_NAME =
+  /^(no[-_.]?e?[-_.]?mails?([-_.]?id)?|no[-_.]?mail[-_.]?address|none|nil|null|na|n[-_.]a|not[-_.]?available|not[-_.]?given|unknown|dummy|test(ing)?|example|sample|fake|abc|xyz|asdf|no[-_.]?reply|nothing)[-_.]?\d*$/;
+const MADE_UP_DOMAIN = /^(noemail|nomail|no-email)\.com$/;
+
+/** Whether an email is a made-up one: its name before the @ (noemail, none, na, test…) or its domain (noemail.com). */
+export function madeUpEmail(v: unknown): boolean {
+  const key = String(v ?? "").trim().toLowerCase();
+  const at = key.lastIndexOf("@");
+  if (at <= 0) return false;
+  return MADE_UP_NAME.test(key.slice(0, at)) || MADE_UP_DOMAIN.test(key.slice(at + 1));
+}
+
+/** The line a student who came with a made-up email carries in their notes and history. */
+export const madeUpNote = (email: string) => `The email ${email} is made up — ask the client for their own and correct it in Edit details.`;
+
 /**
  * Already here by email: a mentor added them, or they came in another way.
  * Left exactly as they are — their mentor, level and notes are not ours to change.
+ * Never by a made-up email (madeUpEmail): that is nobody's.
  */
 export async function studentWithEmail(email: string) {
+  if (madeUpEmail(email)) return null;
   return col("students").findOne({ email: { $regex: `^${escapeRegex(email)}$`, $options: "i" } });
 }
 

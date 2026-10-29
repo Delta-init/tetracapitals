@@ -1,6 +1,6 @@
 import { col } from "../db";
 import { config } from "../config";
-import { ok, refuse, secretMatches, text, isEmail, answer, studentWithEmail, createStudent } from "../students/intake";
+import { ok, refuse, secretMatches, text, isEmail, answer, studentWithEmail, createStudent, madeUpEmail, madeUpNote } from "../students/intake";
 import { lmsEnrolledFields } from "../students/lmsEnrolment";
 import { languageOf } from "../students/language";
 import { salesCrmOf, salesCrmName, CRM_BONUS_CURRENCY } from "../students/salesCrm";
@@ -304,7 +304,7 @@ export async function handleFinanceStudents(req: Request): Promise<Response> {
     email,
     phone: text(body.phone, 40),
     country: text(body.country, 80),
-    notes: `From Delta LMS — ${course || "a course"}${invoiceNumber ? `, invoice ${invoiceNumber}` : ""}`,
+    notes: `From Delta LMS — ${course || "a course"}${invoiceNumber ? `, invoice ${invoiceNumber}` : ""}${madeUpEmail(email) ? `\n\n${madeUpNote(email)}` : ""}`,
     trace: {
       source: "delta_lms",
       finance_invoice_id: invoiceId,
@@ -319,7 +319,7 @@ export async function handleFinanceStudents(req: Request): Promise<Response> {
       // With an LMS account: enrolled from the start (the hourly LMS check confirms it).
       ...(text(body.lmsUserId, 64) ? lmsEnrolledFields() : {}),
     },
-    arrived: `Arrived from ${salesCrm === "draw" ? "" : "the "}${salesCrmName(salesCrm)}${location === "bangalore" && salesCrm !== "banglore" ? " for the Bangalore academy" : ""}, via finance — ${course || "a course"}${invoiceNumber ? `, invoice ${invoiceNumber}` : ""}`,
+    arrived: `Arrived from ${salesCrm === "draw" ? "" : "the "}${salesCrmName(salesCrm)}${location === "bangalore" && salesCrm !== "banglore" ? " for the Bangalore academy" : ""}, via finance — ${course || "a course"}${invoiceNumber ? `, invoice ${invoiceNumber}` : ""}${madeUpEmail(email) ? `. ${madeUpNote(email)}` : ""}`,
     createdBy: "delta-finance",
     createdByName: "Delta LMS (via finance)",
     unique: { field: "finance_invoice_id", value: invoiceId, existing: "invoice", detail: "This invoice's student is already here" },

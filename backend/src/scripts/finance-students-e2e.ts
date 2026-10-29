@@ -14,6 +14,7 @@
  *   - codes continue the Students page's own STU-NNNN sequence;
  *   - finance can ask who looks after the students it sent (CS and CS team, live);
  *   - the academy picked at the close: Bangalore with no Bangalore team waits in Open Students, Dubai's round untouched.
+ *   - a made-up email (noemail@gmail.com) matches nobody: each client is their own student, told to get the real one.
  *
  * Run through ./test-finance-students.sh (throwaway mongod, the API — no .env).
  * Refuses anything but a scratch database on 127.0.0.1.
@@ -420,6 +421,31 @@ step("Collected by counsellor, recorded, and each payment's receipt (2026-10-12)
   await send(old);
   f = await feeOf(old);
   check("an older finance: none of the new fields", f && !("collected_minor" in f) && !("declared_payments" in f), JSON.stringify(f));
+}
+
+
+step("A made-up email (noemail@gmail.com, 2026-10-29): two clients closed with it arrive as two students, never one");
+{
+  const najad = enrolment({ email: "noemail@gmail.com", name: "najad ahmed", phone: "+971561727508", feeSummary: { feeMinor: 225_000, paidMinor: 225_000, balanceMinor: 0, bonusGiven: true, bonusMinor: 50_000, bonusCurrency: "USD", currency: "AED" } });
+  const lebbie = enrolment({ email: "NoEmail@Gmail.com", name: "mohammed lebbie", phone: "+971553162783" });
+  const a = await send(lebbie), b = await send(najad);
+  const sa: any = await db.collection("students").findOne({ finance_invoice_id: lebbie.invoiceId });
+  const sb: any = await db.collection("students").findOne({ finance_invoice_id: najad.invoiceId });
+  check("Case 1 — each is a new student of their own (created, not \"already here by email\")",
+    a.status === 200 && b.status === 200 && a.body.data?.created === true && b.body.data?.created === true && sa && sb && String(sa._id) !== String(sb._id),
+    JSON.stringify([a.body, b.body]));
+  check("…Najad's invoice and its bonus are on Najad, not on Lebbie",
+    (sb?.course_fees ?? []).some((f: any) => f.invoice_id === najad.invoiceId) && !(sa?.course_fees ?? []).some((f: any) => f.invoice_id === najad.invoiceId),
+    JSON.stringify([sa?.course_fees, sb?.course_fees]));
+  const h: any = await db.collection("student_history").findOne({ student_id: String(sb?._id), type: "arrived" });
+  check("Case 2 — the CS is told: in the notes and the arrival line, ask the client for their own email",
+    /The email noemail@gmail\.com is made up — ask the client for their own/.test(sb?.notes ?? "") && /is made up/.test(h?.text ?? ""), JSON.stringify([sb?.notes, h?.text]));
+  const real = enrolment({ email: "real.client@e2e-finance.test", name: "Real Client" });
+  await send(real);
+  const second = enrolment({ email: "real.client@e2e-finance.test", name: "Real Client", invoiceId: new ObjectId().toString() });
+  const c = await send(second);
+  check("Case 2 — a real email is still matched: a second course of the same client joins them (\"email\")",
+    c.status === 200 && c.body.data?.created === false && c.body.data?.existing === "email", JSON.stringify(c.body));
 }
 
 await db.dropDatabase();
