@@ -15,6 +15,8 @@ import { lmsEnrolledFields } from "../students/lmsEnrolment";
 import { mayTransfer } from "./studentTransfer";
 import { csManagerReach } from "../lib/userLocation";
 import { TEAM_WIDE_MENTORS } from "../lib/scope";
+import { isCsLike } from "../lib/roles";
+import { status as waStatus, sendText, intlNumbers, WhatsAppError } from "../whatsapp/service";
 
 /* ────────────────────────────────────────────────────────────────────────────
    LMS enrolment requests (the user, 2026-10-06): the LMS admin's Requests page —
@@ -67,7 +69,7 @@ async function theirStudents(user: AuthUser): Promise<Record<string, any>> {
   return ids ? studentsOf(ids) : {};
 }
 
-const STUDENT_FIELDS = { full_name: 1, student_code: 1, email: 1, primary_mentor_name: 1, team_name: 1, primary_mentor_id: 1, common_cs: 1, assignment_status: 1 };
+const STUDENT_FIELDS = { full_name: 1, student_code: 1, email: 1, phone: 1, primary_mentor_name: 1, team_name: 1, primary_mentor_id: 1, common_cs: 1, assignment_status: 1 };
 /** Nobody's yet: no CS, or in Delta Open Students. */
 const unassigned = (s: any) => !String(s?.primary_mentor_id ?? "") || s?.assignment_status === "open_pool";
 /** A request's student here, as the page links them: who they are, whose they are — and whether they're the asker's own (their CS, or Common with them). */
@@ -485,11 +487,56 @@ export async function createClassJoinLink(req: Request, user: AuthUser): Promise
     // The seat must be the student asked about — never a link for somebody else's seat under their name.
     if (String(answer?.student?.email ?? "").toLowerCase() !== found.email) return forbidden("That seat is somebody else's");
     await logPortalAction(user, found, "lms_class_join_link", `${byOf(user).byName} made a join link for ${found.student?.full_name || found.email} (${answer?.class?.title || "a class"})`);
-    return json({ ...answer, studentId: found.student ? String(found.student._id) : null });
+    const sender = found.student ? await joinLinkSenderOf(found.student) : null;
+    return json({
+      ...answer, studentId: found.student ? String(found.student._id) : null,
+      sender: sender ? { name: sender.name, connected: sender.connected } : null,
+      can_send: !!sender?.connected && intlNumbers(found.student?.phone).length > 0,
+    });
   } catch (err) {
     if (lmsLacksRoute(err)) return error("The LMS can't make join links from here yet — it needs its update", 409);
     return lmsRefusal(err);
   }
+}
+
+/** The student's own CS, whose WhatsApp a join link goes from, and whether it is linked. */
+async function joinLinkSenderOf(student: any): Promise<{ id: string; name: string; connected: boolean } | null> {
+  const oid = toObjectId(String(student?.primary_mentor_id ?? ""));
+  const cs: any = oid ? await col("users").findOne({ _id: oid, status: { $ne: "inactive" } }, { projection: { full_name: 1, email: 1, app_role: 1 } }) : null;
+  if (!cs || !isCsLike(cs.app_role)) return null;
+  return { id: String(cs._id), name: cs.full_name || cs.email || "Their CS", connected: waStatus(String(cs._id)).status === "connected" };
+}
+
+/** One of our LMS join links (/j/<code>) — the only thing sent from a CS's WhatsApp by somebody else here. */
+const JOIN_LINK = /https?:\/\/\S+\/j\/[A-Za-z0-9_-]{16,}/;
+
+/**
+ * POST /api/functions/sendClassJoinLink { studentId, text } → { sent_from } (the user, 2026-10-29): the join-link
+ * message, from the student's own CS's linked WhatsApp to the student — whoever may make the link presses Send; the
+ * chat records who did. Only a message carrying one of our join links.
+ */
+export async function sendClassJoinLink(req: Request, user: AuthUser): Promise<Response> {
+  const body: any = await req.json().catch(() => ({}));
+  const text = String(body?.text ?? "").trim().slice(0, 2000);
+  if (!JOIN_LINK.test(text)) return error("Only a message with the student's join link is sent from here", 400);
+  if (!actsAsStudent(user.app_role)) return error("Join links are for the student's own CS or mentor, their leaders and Super Admins", 403);
+  const leads = user.app_role === "chief_mentor" || user.app_role === "cs_manager" || TEAM_WIDE_MENTORS.has(user.app_role);
+  const found = await lmsStudentFor({ studentId: body?.studentId }, user, { ownOnly: !leads });
+  if (found instanceof Response) return found;
+  if (!found.student) return notFound("No such student");
+  const sender = await joinLinkSenderOf(found.student);
+  if (!sender) return error("This student has no CS to send it from", 409);
+  if (!sender.connected) return error(`${sender.name}'s WhatsApp isn't linked in the portal — copy the message and send it`, 409);
+  const to = intlNumbers(found.student.phone)[0];
+  if (!to) return error("There's no phone number on the student's record", 400);
+  const person = byOf(user);
+  try {
+    await sendText({ id: sender.id, name: sender.name }, to, text, { id: user.id, name: person.byName });
+  } catch (err) {
+    return error(err instanceof WhatsAppError ? err.message : err instanceof Error ? err.message : "WhatsApp did not answer", err instanceof WhatsAppError ? err.status : 502);
+  }
+  await logPortalAction(user, found, "lms_class_join_link_sent", `${person.byName} sent ${found.student.full_name || found.email} their join link from ${sender.name}'s WhatsApp`);
+  return json({ sent_from: sender.name });
 }
 
 /** The portal's activity log for an LMS action on a student (the LMS records its own as well). */

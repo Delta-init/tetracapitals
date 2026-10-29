@@ -47,7 +47,7 @@ import { getStudentClasses } from "./lmsClasses";
 import { getStudentLmsSupport, getLmsSupportTickets, getLmsSupportTicketCount, answerLmsTicket, resolveLmsTicket } from "./lmsSupport";
 import {
   getLmsEnrolmentRequests, getLmsEnrolmentRequestCount, getLmsEnrolmentRequest, getLmsEnrolmentDocument,
-  approveLmsEnrolmentRequest, rejectLmsEnrolmentRequest, viewStudentInLms, createStudentLoginLink, createClassJoinLink, assignLmsApplicant,
+  approveLmsEnrolmentRequest, rejectLmsEnrolmentRequest, viewStudentInLms, createStudentLoginLink, createClassJoinLink, sendClassJoinLink, assignLmsApplicant,
 } from "./lmsEnrolmentRequests";
 import { getSalesBonusToSend, sendSalesBonusCredit } from "./salesBonusSend";
 import { getCreditRequestOptions, raiseCreditRequest, listCreditRequests, decideCreditRequest } from "./creditRequests";
@@ -255,6 +255,7 @@ const AUTHED: Record<string, AuthedHandler> = {
   viewStudentInLms,
   createStudentLoginLink,
   createClassJoinLink,
+  sendClassJoinLink,
   // Their LMS courses: put on Forex courses, modules opened or locked (lmsCourseAccess.ts)
   getLmsCourseAccess,
   giveLmsCourses,

@@ -338,11 +338,12 @@ async function keepSent(owner: { id: string; name: string }, to: { jid: string; 
   });
 }
 
-export async function sendText(owner: { id: string; name: string }, chat: string, text: string) {
+/** `by`: who pressed Send, when it isn't the WhatsApp's owner (a join link sent from the student's CS's, 2026-10-29). */
+export async function sendText(owner: { id: string; name: string }, chat: string, text: string, by: { id: string; name: string } = owner) {
   const sock = connected(owner.id);
   const to = await target(sock, chat);
   const sent = await sock.sendMessage(to.jid, { text });
-  return keepSent(owner, to, chat, sent?.key?.id ?? "", text, owner, null);
+  return keepSent(owner, to, chat, sent?.key?.id ?? "", text, by, null);
 }
 
 /**

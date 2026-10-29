@@ -1,5 +1,4 @@
 import { useState } from 'react';
-import { useQuery } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { base44 } from '@/api/base44Client';
 import { Button } from '@/components/ui/button';
@@ -14,7 +13,8 @@ import { copyText, when } from '@/components/messages/MessageLogUi';
    signs them in once, no password, and takes them into the class (attendance
    counts) — lasting until the class's join window closes. The message reads
    like the LMS's "Starts in 5 minutes" WhatsApp, with our link only;
-   copy it, or send it on your own WhatsApp. Whoever may Act as the student
+   copy it, or send it from the student's CS's WhatsApp (whoever presses it —
+   2026-10-29, sendClassJoinLink). Whoever may Act as the student
    (backend lmsEnrolmentRequests.ts createClassJoinLink).
 ──────────────────────────────────────────────────────────────────────────── */
 
@@ -43,11 +43,6 @@ export function ClassJoinLinkButton({ classId, student }) {
   const [link, setLink] = useState(null);
   const [text, setText] = useState('');
   const [sending, setSending] = useState(false);
-  const wa = useQuery({
-    queryKey: ['student-whatsapp', link?.studentId], enabled: !!link?.studentId, staleTime: 30_000,
-    queryFn: async () => (await base44.functions.invoke('getStudentWhatsApp', { studentId: link.studentId })).data,
-  }).data;
-  const phone = wa?.can_send ? wa.numbers?.[0] : null;
 
   const make = async () => {
     setBusy(true);
@@ -60,7 +55,10 @@ export function ClassJoinLinkButton({ classId, student }) {
   };
   const send = async () => {
     setSending(true);
-    try { await base44.functions.invoke('sendWhatsApp', { chat: phone, text }); toast.success('Sent on your WhatsApp'); }
+    try {
+      const r = (await base44.functions.invoke('sendClassJoinLink', { studentId: link.studentId, text })).data;
+      toast.success(`Sent from ${r?.sent_from || 'their CS'}'s WhatsApp`);
+    }
     catch (e) { toast.error(e?.message || 'Not sent — copy the message and send it yourself'); }
     finally { setSending(false); }
   };
@@ -79,6 +77,13 @@ export function ClassJoinLinkButton({ classId, student }) {
           {link && (
             <div className="space-y-2">
               <Textarea value={text} onChange={e => setText(e.target.value)} rows={9} className="text-sm" />
+              {!link.can_send && (
+                <p className="text-xs text-slate-500">
+                  {!link.sender ? 'They have no CS to send it from here — copy the message and send it.'
+                    : !link.sender.connected ? `${link.sender.name}'s WhatsApp isn't linked in the portal — copy the message and send it.`
+                    : "There's no phone number on their record — copy the message and send it."}
+                </p>
+              )}
               <p className="flex items-start gap-1.5 text-xs text-amber-800">
                 <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" />Send it only to the student — whoever opens the join link is signed in as them and marked joined. Don't open it yourself.
               </p>
@@ -86,9 +91,9 @@ export function ClassJoinLinkButton({ classId, student }) {
           )}
           <DialogFooter className="gap-2 sm:gap-0">
             <Button variant="outline" onClick={() => copyText(text, 'Message copied')}><Copy className="mr-2 h-4 w-4" />Copy message</Button>
-            {phone && (
+            {link?.can_send && (
               <Button onClick={send} disabled={sending || !text.trim()} className="bg-[#25D366] text-white hover:bg-[#1ebe5a]">
-                {sending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <MessageCircle className="mr-2 h-4 w-4" />}Send on my WhatsApp
+                {sending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <MessageCircle className="mr-2 h-4 w-4" />}Send from {link.sender?.name}'s WhatsApp
               </Button>
             )}
           </DialogFooter>
