@@ -44,18 +44,11 @@ async function reachOf(user: AuthUser): Promise<Set<string> | null> {
   return (await visibleMentorIds(user)) ?? null;
 }
 
-/** POST /api/functions/getLiveNotJoined → { available, day, classes, counts: { live, students, live_students } } */
-export async function getLiveNotJoined(_req: Request, user: AuthUser): Promise<Response> {
-  if (!may(user)) return forbidden("Only for CSs, CS Managers, mentors and Super Admins");
-  const empty = { day: null, classes: [], counts: { live: 0, students: 0, live_students: 0 } };
-  if (!lmsConfigured()) return json({ available: false, message: "The LMS isn't linked to this server", ...empty });
-  let lms: { day: string; classes: LmsClass[] };
-  try {
-    lms = (await callLms("/live-not-joined", { verb: "share who hasn't joined the live classes" })) as any;
-  } catch (err) {
-    const message = err instanceof LmsError && /route \S+ \S+ not found|cannot get|not found/i.test(err.message) ? "This needs the LMS update" : err instanceof Error ? err.message : "The LMS did not answer";
-    return json({ available: false, message, ...empty });
-  }
+export type LiveLoad = { day: string | null; classes: LmsClass[]; studentOf: Map<string, any>; userIdOf: Map<string, string> };
+
+/** The LMS's answer and its students and mentors here, once — for the page and the push (students/liveNotJoinedPush.ts). Throws when the LMS doesn't answer. */
+export async function loadLiveNotJoined(): Promise<LiveLoad> {
+  const lms = (await callLms("/live-not-joined", { verb: "share who hasn't joined the live classes" })) as { day: string; classes: LmsClass[] };
   const classes = Array.isArray(lms?.classes) ? lms.classes : [];
 
   // Their portal student, by email.
@@ -78,9 +71,13 @@ export async function getLiveNotJoined(_req: Request, user: AuthUser): Promise<R
     ? ((await col("users").find({ email: { $in: mentorEmails.map((e) => new RegExp(`^\\s*${esc(e)}\\s*$`, "i")) } }, { projection: { email: 1 } }).toArray()) as any[])
     : [];
   const userIdOf = new Map(mentors.map((u) => [String(u.email ?? "").trim().toLowerCase(), String(u._id)]));
+  return { day: lms?.day ?? null, classes, studentOf, userIdOf };
+}
 
+/** The classes as this person sees them: only their students (or all of a class their team teaches), classes with nobody missing left out. */
+export async function liveNotJoinedFor(user: AuthUser, { classes, studentOf, userIdOf }: LiveLoad) {
   const reach = await reachOf(user);
-  const out = classes.map((c) => {
+  return classes.map((c) => {
     const teachers = [c.mentor, ...c.coMentors].map((m) => (m ? userIdOf.get(m.email) : undefined)).filter(Boolean) as string[];
     const ours = !reach || teachers.some((id) => reach.has(id));
     const rows = c.notJoined.map((s) => {
@@ -94,10 +91,24 @@ export async function getLiveNotJoined(_req: Request, user: AuthUser): Promise<R
     }).filter((r) => r._ok).map(({ _ok, ...r }) => r);
     return { ...c, teaches: teachers.includes(user.id), team_class: ours && !!reach, notJoined: rows };
   }).filter((c) => c.notJoined.length);
+}
 
+/** POST /api/functions/getLiveNotJoined → { available, day, classes, counts: { live, students, live_students } } */
+export async function getLiveNotJoined(_req: Request, user: AuthUser): Promise<Response> {
+  if (!may(user)) return forbidden("Only for CSs, CS Managers, mentors and Super Admins");
+  const empty = { day: null, classes: [], counts: { live: 0, students: 0, live_students: 0 } };
+  if (!lmsConfigured()) return json({ available: false, message: "The LMS isn't linked to this server", ...empty });
+  let load: LiveLoad;
+  try {
+    load = await loadLiveNotJoined();
+  } catch (err) {
+    const message = err instanceof LmsError && /route \S+ \S+ not found|cannot get|not found/i.test(err.message) ? "This needs the LMS update" : err instanceof Error ? err.message : "The LMS did not answer";
+    return json({ available: false, message, ...empty });
+  }
+  const out = await liveNotJoinedFor(user, load);
   const live = out.filter((c) => c.live);
   return json({
-    available: true, day: lms.day ?? null, generatedAt: new Date().toISOString(), classes: out,
+    available: true, day: load.day, generatedAt: new Date().toISOString(), classes: out,
     counts: { live: live.length, students: out.reduce((n, c) => n + c.notJoined.length, 0), live_students: live.reduce((n, c) => n + c.notJoined.length, 0) },
   });
 }

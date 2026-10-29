@@ -18,6 +18,7 @@ import { startMentorScheduleWorker } from "./students/mentorScheduleAlerts";
 import { startMeetingOutcomeWorker } from "./students/meetingOutcomes";
 import { startGuestReminderWorker } from "./students/programNotices";
 import { startRemindersWorker } from "./students/reminderWorker";
+import { startLiveNotJoinedPushWorker } from "./students/liveNotJoinedPush";
 import { callLms } from "./lib/lms";
 import { ensureSalesRole } from "./students/closedBy";
 
@@ -74,6 +75,8 @@ async function main() {
   startMeetingOutcomeWorker();
   // Everyone's own reminders: the bell, a push and the chime 15 minutes before and at the time, every 30 seconds (REMINDERS=off).
   startRemindersWorker();
+  // Booked a live LMS class and not joined 5 minutes in: a push to whoever sees them on Not joined yet, every minute (LIVE_NOT_JOINED_PUSH=off).
+  startLiveNotJoinedPushWorker();
 }
 
 const shutdown = async (signal: string) => {

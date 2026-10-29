@@ -105,10 +105,43 @@ export function ringBell(key) {
   return true;
 }
 
+/* Not joined yet (the user, 2026-10-29): its own sound, not the bell's — three quick rising beeps, twice, so a class
+   with students missing is told apart from any other notice. The same Sound on/off switch. */
+let lastAlarm = 0;
+function alarm() {
+  try {
+    const a = context();
+    if (a.state === 'suspended') a.resume().catch(() => {});
+    const t0 = a.currentTime;
+    [0, 0.75].forEach((round) => [659.3, 880, 1174.7].forEach((freq, i) => {
+      const at = t0 + round + i * 0.16;
+      const osc = a.createOscillator(), gain = a.createGain();
+      osc.type = 'triangle';
+      osc.frequency.setValueAtTime(freq, at);
+      gain.gain.setValueAtTime(0.0001, at);
+      gain.gain.exponentialRampToValueAtTime(0.22, at + 0.01);
+      gain.gain.exponentialRampToValueAtTime(0.0001, at + 0.14);
+      osc.connect(gain).connect(a.destination);
+      osc.start(at);
+      osc.stop(at + 0.15);
+    }));
+  } catch { /* no sound (the page was never clicked yet, or no audio) */ }
+}
+
+/** The Not joined yet sound for `key` — once (here or in another tab), and once for a burst; true when it rang. */
+export function ringAlarm(key) {
+  if (!soundOn() || (key && markRung(key))) return false;
+  const now = Date.now();
+  if (now - lastAlarm < BURST_MS) return false;
+  lastAlarm = now;
+  alarm();
+  return true;
+}
+
 /** A desktop notification, once per `key` (the bell rings on its own — ringBell). A click brings the portal forward and runs onClick. */
-export function showAlert({ key, title, body = '', tag, url = '/', onClick }) {
+export function showAlert({ key, title, body = '', tag, url = '/', onClick, sticky = false }) {
   if (markSeen(key) || pushActive || !alertsOn()) return;
-  const options = { body, icon: '/icon-192.png', badge: '/icon-192.png', tag: tag || key };
+  const options = { body, icon: '/icon-192.png', badge: '/icon-192.png', tag: tag || key, ...(sticky ? { requireInteraction: true } : {}) };
   try {
     const n = new Notification(title, options);
     n.onclick = () => { window.focus(); n.close(); onClick?.(); };

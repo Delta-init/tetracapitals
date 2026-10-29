@@ -31,6 +31,8 @@ export interface Notice {
   tag?: string;
   /** Sound and vibrate again even when one with the same tag is showing. */
   renotify?: boolean;
+  /** Seconds a push may wait for a device that is off; a day unless said. */
+  ttl?: number;
 }
 
 let ready: boolean | null = null;
@@ -57,7 +59,7 @@ export async function push(userIds: string[], n: Notice): Promise<void> {
   const payload = JSON.stringify({ title: n.title, body: n.body, url: n.link || "/", tag: n.tag || n.type, renotify: !!n.renotify, data: { type: n.type } });
   await Promise.allSettled(subs.map(async (s) => {
     try {
-      await webpush.sendNotification({ endpoint: s.endpoint, keys: s.keys }, payload, { TTL: 24 * 60 * 60 });
+      await webpush.sendNotification({ endpoint: s.endpoint, keys: s.keys }, payload, { TTL: n.ttl ?? 24 * 60 * 60 });
       await col("push_subscriptions").updateOne({ _id: s._id }, { $set: { last_sent_at: new Date().toISOString() } });
     } catch (err: any) {
       const code = err?.statusCode;

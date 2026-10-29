@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { base44 } from '@/api/base44Client';
 import { createPageUrl } from '@/utils';
 import { Button } from '@/components/ui/button';
@@ -8,6 +8,7 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { CallButton } from '@/components/followups/CallFlow';
 import { Radio, UserX } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { ringAlarm, showAlert } from '@/components/utils/browserAlerts';
 
 /* ────────────────────────────────────────────────────────────────────────────
    Booked but not joined (the user, 2026-10-28): while an LMS class runs, the
@@ -16,6 +17,9 @@ import { cn } from '@/lib/utils';
    students, a CS Manager their location's, a Chief / mentor their team's
    students and their team's classes, Super Admins every class). Checked every
    minute; one request shared by the window, the sidebar count and the page.
+   The window comes with its own tone and a desktop pop-up (when this device has
+   no push); the push itself is the server's, 5 minutes in (students/
+   liveNotJoinedPush.ts), and plays the tone here too while the portal is open.
 ──────────────────────────────────────────────────────────────────────────── */
 
 export const LIVE_ROLES = ['super_admin', 'admin', 'cs', 'cs_manager', 'chief_mentor', 'senior_mentor', 'junior_mentor', 'subjunior_mentor'];
@@ -99,9 +103,36 @@ export function LiveNotJoinedPopup({ currentUser }) {
     const seen = seenOf(currentUser?.id, day)[c.id] || [];
     return c.notJoined.some(s => !seen.includes(s.bookingId));
   });
+  const freshKey = fresh.map(c => c.id + ':' + c.notJoined.map(s => s.bookingId).join('+')).join();
   useEffect(() => {
-    if (q.enabled && fresh.length) setOpen(true);
-  }, [q.enabled, fresh.map(c => c.id + c.notJoined.length).join()]);
+    if (!q.enabled || !fresh.length) return;
+    setOpen(true);
+    ringAlarm(`live-not-joined:${freshKey}`);
+    const n = fresh.reduce((k, c) => k + c.notJoined.length, 0);
+    const names = fresh.flatMap(c => c.notJoined.map(s => s.student?.name || s.name));
+    showAlert({
+      key: `live-not-joined:${freshKey}`,
+      title: `Class is on — ${n} not joined yet`,
+      body: `${names.slice(0, 3).join(', ')}${names.length > 3 ? ` +${names.length - 3}` : ''} booked and haven't joined. Call them to join.`,
+      tag: 'live-not-joined',
+      url: createPageUrl('LiveNotJoined'),
+      sticky: true,
+    });
+  }, [q.enabled, freshKey]);
+  // The push came while the portal is open: its tone, and the window with what's new.
+  const qc = useQueryClient();
+  useEffect(() => {
+    const sw = navigator.serviceWorker;
+    if (!q.enabled || !sw) return;
+    const onMsg = (e) => {
+      const d = e.data?.data;
+      if (e.data?.type !== 'PUSH' || d?.type !== 'live_not_joined') return;
+      ringAlarm(`push:${d.tag}:${d.title}`);
+      qc.invalidateQueries({ queryKey: ['live-not-joined', currentUser?.id] });
+    };
+    sw.addEventListener('message', onMsg);
+    return () => sw.removeEventListener('message', onMsg);
+  }, [q.enabled, currentUser?.id]);
   const close = () => {
     try {
       const seen = seenOf(currentUser?.id, day);
