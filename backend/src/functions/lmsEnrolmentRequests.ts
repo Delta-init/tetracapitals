@@ -463,6 +463,35 @@ export async function createStudentLoginLink(req: Request, user: AuthUser): Prom
   }
 }
 
+/**
+ * POST /api/functions/createClassJoinLink { classId, bookingId, email } → { joinUrl, expiresAt, meetingUrl, class, student,
+ * studentId } (the user, 2026-10-29: the class card's "Send join link"): a booked student's one-tap join link for that
+ * class — signs them in once and joins them — lasting until the class's join window closes. For whoever may Act as
+ * them; the LMS records who made it (liveClass.joinLink).
+ */
+export async function createClassJoinLink(req: Request, user: AuthUser): Promise<Response> {
+  const body: any = await req.json().catch(() => ({}));
+  const classId = str(body?.classId, 100), bookingId = str(body?.bookingId, 100);
+  if (!classId || !bookingId) return error("classId and bookingId are required", 400);
+  if (!actsAsStudent(user.app_role)) return error("Join links are for the student's own CS or mentor, their leaders and Super Admins", 403);
+  const leads = user.app_role === "chief_mentor" || user.app_role === "cs_manager" || TEAM_WIDE_MENTORS.has(user.app_role);
+  const found = await lmsStudentFor({ email: body?.email }, user, { ownOnly: !leads });
+  if (found instanceof Response) return found;
+  if (!lmsConfigured()) return error(NOT_LINKED, 503);
+  try {
+    const answer = await callLms<any>(`/classes/${encodeURIComponent(classId)}/join-link`, {
+      method: "POST", body: { bookingId, ...byOf(user) }, verb: "make the student's join link",
+    });
+    // The seat must be the student asked about — never a link for somebody else's seat under their name.
+    if (String(answer?.student?.email ?? "").toLowerCase() !== found.email) return forbidden("That seat is somebody else's");
+    await logPortalAction(user, found, "lms_class_join_link", `${byOf(user).byName} made a join link for ${found.student?.full_name || found.email} (${answer?.class?.title || "a class"})`);
+    return json({ ...answer, studentId: found.student ? String(found.student._id) : null });
+  } catch (err) {
+    if (lmsLacksRoute(err)) return error("The LMS can't make join links from here yet — it needs its update", 409);
+    return lmsRefusal(err);
+  }
+}
+
 /** The portal's activity log for an LMS action on a student (the LMS records its own as well). */
 async function logPortalAction(user: AuthUser, found: { email: string; student: any | null }, action: string, message: string) {
   const now = new Date().toISOString();

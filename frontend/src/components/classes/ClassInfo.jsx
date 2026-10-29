@@ -5,14 +5,18 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { CalendarCheck, CalendarX, LogIn, MessageSquareText, Play, Square, Star, UserCheck } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { useAuth } from '@/lib/AuthContext';
+import { canViewInLms } from '@/components/students/ViewInLms';
+import { ClassJoinLinkButton, classJoinable } from '@/components/classes/ClassJoinLink';
 
 /* ────────────────────────────────────────────────────────────────────────────
    A class's Info (the user, 2026-10-09): who booked it and when, who cancelled,
    when it started, when the mentor and each student joined, when it ended, and
    each student's review from the after-class form — from the LMS's class card
-   (getMentorClass → LMS /service/classes/:id). Names only. Shown in the Mentor
-   Calendar's class card and from a student's Classes list, to everyone who can
-   open those.
+   (getMentorClass → LMS /service/classes/:id). Shown in the Mentor Calendar's
+   class card and from a student's Classes list, to everyone who can open
+   those. A booked student of a class still to join gets "Send join link"
+   (2026-10-29, ClassJoinLink.jsx) for whoever may act for students in the LMS.
 ──────────────────────────────────────────────────────────────────────────── */
 
 const STATUS = {
@@ -40,7 +44,10 @@ const Stars = ({ n }) => (
 /** The Info section: the students and the timeline. `c` is the LMS class card; `tz` the zone times are shown in. */
 export function ClassInfoSection({ c, tz }) {
   const at = (iso) => (iso ? new Date(iso).toLocaleString('en-GB', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit', timeZone: tz || undefined }) : '');
+  const { user } = useAuth();
   const students = Array.isArray(c?.students) ? c.students : null;
+  // The server decides whose; the button for anyone who may act for students in the LMS at all.
+  const joinable = c?.id && classJoinable(c) && canViewInLms(user);
   const timeline = Array.isArray(c?.timeline) ? c.timeline : null;
   if (!students && !timeline) {
     return <p className="text-xs text-slate-400">The LMS doesn't share a class's bookings and reviews yet — it needs its update.</p>;
@@ -57,7 +64,10 @@ export function ClassInfoSection({ c, tz }) {
                 <li key={i} className="px-3 py-2 text-sm">
                   <div className="flex flex-wrap items-center justify-between gap-2">
                     <span className="font-medium text-slate-900">{s.name}</span>
-                    <Badge variant="outline" className={st.cls}>{st.label}</Badge>
+                    <span className="flex items-center gap-2">
+                      {joinable && s.bookingId && s.email && ['booked', 'attended'].includes(s.status) && <ClassJoinLinkButton classId={c.id} student={s} />}
+                      <Badge variant="outline" className={st.cls}>{st.label}</Badge>
+                    </span>
                   </div>
                   <p className="text-xs text-slate-500">
                     {[s.bookedAt && `Booked ${at(s.bookedAt)}`, s.cancelledAt && `cancelled ${at(s.cancelledAt)}`, s.joinedAt && `joined ${at(s.joinedAt)}`].filter(Boolean).join(' · ')}
