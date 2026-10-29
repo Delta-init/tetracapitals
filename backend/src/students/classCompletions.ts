@@ -98,11 +98,14 @@ async function whoToTell(studentId: string): Promise<{ to: "cs" | "super_admins"
 export async function sendDueClassNotices(now: Date): Promise<number> {
   const due = (await col(COMPLETIONS).find({ notified_at: { $exists: false }, withdrawn_at: { $exists: false }, ...OF_A_STUDENT, notify_at: { $lte: now.toISOString() } } as any)
     .sort({ notify_at: 1 }).limit(NOTICE_BATCH).toArray()) as any[];
+  // Called already since the class ended (one that came in late — 2026-10-29, two days of them after the LMS link
+  // was stuck): not told — it would never be on the page anyway.
+  if (due.length) await settleCalls(due);
   let told = 0;
   for (const c of due) {
     // Taken first: a second API process doesn't tell it again.
-    const claim = await col(COMPLETIONS).updateOne({ _id: c._id, notified_at: { $exists: false } } as any, { $set: { notified_at: now.toISOString() } });
-    if (claim.modifiedCount !== 1) continue;
+    const claim = await col(COMPLETIONS).updateOne({ _id: c._id, notified_at: { $exists: false } } as any, { $set: { notified_at: now.toISOString(), ...(c.called_at ? { told_to: "nobody — called already" } : {}) } });
+    if (claim.modifiedCount !== 1 || c.called_at) continue;
     const { to, people } = await whoToTell(c.student_id);
     await col(COMPLETIONS).updateOne({ _id: c._id } as any, {
       $set: { told_to: people.length ? to : "nobody", told: people.map((p: any) => ({ id: String(p._id), name: p.full_name ?? "", role: p.app_role })) },

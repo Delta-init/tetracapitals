@@ -38,8 +38,12 @@ import { keepClassCompletion, sendDueClassNotices, withdrawClassCompletion, type
 ──────────────────────────────────────────────────────────────────────────── */
 
 const EVERY_MS = 2 * 60_000;
-/** Asked again each run: a write the LMS finished late, or a clock that drifted, is still caught. */
+/** Asked again each run: a write the LMS finished late, or a clock that drifted, is still caught. Not after an answer
+    the LMS cut short (`more`): then from exactly where it stopped — else a burst of more than a page at one moment is
+    asked for again and again, and nothing after it ever comes (27–29 Oct 2026). */
 const OVERLAP_MS = 5 * 60_000;
+/** The most the LMS sends in one answer (its MAX_EVENTS). */
+const LMS_PAGE = 1000;
 const LEASE_MS = 5 * 60_000;            // one run at a time, however many API processes
 const SETTINGS_ID = "lms_activity";
 const MAIL_TRIES = 3;
@@ -73,6 +77,8 @@ export interface LmsActivityRun {
   mail_failed: number;
   class_notices?: number;  // class completions told this run
   class_matched_late?: number;  // classes whose student was found on a later run
+  more?: boolean;          // the LMS had more than one answer's worth: the next run asks from where this one stopped
+  stuck?: string;          // a full answer that didn't move the cursor (an LMS without `more`): nothing new comes in
 }
 
 type Send = (msg: { to: string; subject: string; html: string; text: string }) => Promise<SendResult>;
@@ -355,8 +361,8 @@ export async function runLmsActivity(opts: { now?: Date; send?: Send } = {}): Pr
       // Switched on now: what students did before is nobody's news.
       return finish({ ...run, ok: true }, { cursor: run.at, started_at: run.at });
     }
-    const since = new Date(new Date(settings.cursor).getTime() - OVERLAP_MS).toISOString();
-    const data = await callLms<{ events: LmsActivity[]; until: string }>("/student-activity", { query: { since, include: "classes,unattended" }, verb: "share what students did" });
+    const since = settings.cursor_exact ? String(settings.cursor) : new Date(new Date(settings.cursor).getTime() - OVERLAP_MS).toISOString();
+    const data = await callLms<{ events: LmsActivity[]; until: string; more?: boolean }>("/student-activity", { query: { since, include: "classes,unattended" }, verb: "share what students did" });
     const events = Array.isArray(data?.events) ? data.events : [];
     run.events = events.length;
     for (const ev of events) {
@@ -371,7 +377,13 @@ export async function runLmsActivity(opts: { now?: Date; send?: Send } = {}): Pr
     const mail = await sendWaitingMail(opts.send ?? sendMail);
     run.mailed = mail.sent;
     run.mail_failed = mail.failed;
-    return finish({ ...run, ok: true }, { cursor: data?.until || run.at });
+    const until = data?.until || run.at;
+    run.more = data?.more === true;
+    if (!run.more && events.length >= LMS_PAGE && until <= String(settings.cursor)) {
+      run.stuck = `A full answer (${events.length} events) ended at ${until}, where the last one did — nothing after it comes in. The LMS needs the update that sends \`more\`.`;
+      console.error(`[lms activity] stuck: ${run.stuck}`);
+    }
+    return finish({ ...run, ok: true }, { cursor: until, cursor_exact: run.more });
   } catch (err) {
     return finish({ ...run, error: err instanceof Error ? err.message : String(err) });
   }

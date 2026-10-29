@@ -128,6 +128,10 @@ try {
     line("Asked the LMS up to", day(st.cursor));
     line("Last run", st.last_run ? `${day(st.last_run.at)}${st.last_run.ok ? " ok" : ` FAILED: ${st.last_run.error}`}` : "—");
     line("Last good run", st.last_ok_run ? `${day(st.last_ok_run.at)} (${st.last_ok_run.events} events, ${st.last_ok_run.class_notices ?? 0} told)` : "—");
+    if (st.last_run?.stuck) console.log(`  ⚠ STUCK: ${st.last_run.stuck}`);
+    if (st.cursor_exact) console.log("  Catching up: the LMS had more than one answer's worth — each run takes the next.");
+    const behind = st.cursor ? (now.getTime() - Date.parse(st.cursor)) / 60_000 : 0;
+    if (behind > 30) console.log(`  ⚠ ${Math.round(behind / 60)} hours behind: what students did since ${day(st.cursor)} hasn't come in yet${st.cursor_exact ? " (catching up)" : " — stuck, if it doesn't move"}.`);
     const late = st.last_ok_run?.at ? (now.getTime() - Date.parse(st.last_ok_run.at)) / 60_000 : Infinity;
     if (late > 15) console.log(`  ⚠ No good run for ${Number.isFinite(late) ? `${Math.round(late)} minutes` : "ever"} — nobody's completions are coming in.`);
   }
