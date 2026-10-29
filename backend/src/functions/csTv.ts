@@ -204,7 +204,9 @@ export async function handleCsTvVoicePlan(req: Request): Promise<Response> {
   const first: any = p
     ? await clips.findOne({ _id: csLine(String(p.cs_id), p.cs, p.team).key, url: { $exists: true } } as any, { projection: { url: 1 } })
     : await clips.findOne({ _id: { $regex: "^cs:" }, url: { $exists: true } } as any, { projection: { url: 1 } });
-  const nocache = { "cache-control": "no-store", "access-control-allow-origin": "*" };
+  // Spelled as json()'s own header so it replaces that one (2026-10-29): spelled lowercase, the answer carried both —
+  // "https://commission-v2…, *" — which browsers refuse, so the TV never got the recordings and fell back to the made line.
+  const nocache = { "cache-control": "no-store", "Access-Control-Allow-Origin": "*" };
   if (!first?.url) return json({ urls: [] }, { headers: nocache });
   const currency = location === "bangalore" ? "INR" : "AED";
   const amount = p ? Math.round((Number(p.aed) || 0) * (currency === "INR" ? INR_PER_AED : 1)) : 2000;

@@ -281,9 +281,12 @@ function bestVoice() {
   return null;
 }
 
-/** Says it in the browser's own voice. Free: nothing leaves the device. */
+/**
+ * Says it in the browser's own voice. Free: nothing leaves the device. Resolves "played" once it starts, "none" when
+ * this browser has no voice to speak with (most TV browsers), "blocked" when it refused or never started.
+ */
 export function say(text) {
-  if (typeof window === "undefined" || !("speechSynthesis" in window)) return;
+  if (typeof window === "undefined" || !("speechSynthesis" in window)) return Promise.resolve("none");
   const utterance = new SpeechSynthesisUtterance(text);
   const voice = bestVoice();
   if (voice) {
@@ -295,13 +298,26 @@ export function say(text) {
   utterance.rate = 0.98;
   utterance.pitch = 1.05;
   utterance.volume = 1;
-  window.speechSynthesis.speak(utterance);
+  return new Promise((resolve) => {
+    let done = false;
+    const finish = (r) => { if (!done) { done = true; resolve(r); } };
+    utterance.onstart = () => finish("played");
+    utterance.onerror = () => finish(voices.length || bestVoice() ? "blocked" : "none");
+    window.setTimeout(() => finish(voices.length || bestVoice() ? "blocked" : "none"), 4000);
+    try {
+      window.speechSynthesis.speak(utterance);
+    } catch {
+      finish("blocked");
+    }
+  });
 }
 
 export function stopVoice() {
   stops++;
   try { playing?.pause(); } catch { /* nothing playing */ }
   playing = null;
+  try { source?.stop(); } catch { /* nothing playing */ }
+  source = null;
   try {
     window.speechSynthesis?.cancel();
   } catch {
@@ -310,6 +326,7 @@ export function stopVoice() {
 }
 
 export function voiceBusy() {
+  if (source) return true;
   if (playing && !playing.paused && !playing.ended) return true;
   if (speakingOwn) return true;
   try {
@@ -335,8 +352,70 @@ export function setOwnVoice(urlFor, planFor = null) {
   ownPlanUrl = typeof planFor === "function" ? planFor : null;
 }
 
+/*
+ * Played through the same audio engine as the sparkle (2026-10-29: on the office TV only the sparkle was heard). A
+ * plain <audio> started when a payment comes in needs a click of its own on most TV browsers and is refused without a
+ * word; the engine, once the screen's sound is on, plays whatever it is given. So each file is fetched and decoded here
+ * and played as a buffer — wherever the sparkle is heard, so are the clip and the line. The <audio> stays as the
+ * fallback where the file can't be fetched from here (no CORS on it) or decoded.
+ */
+let source = null;
+const decoded = new Map();
+
+/** The file, fetched and decoded (kept for next time when `keep`); null when it can't be, or not within `ms`. */
+function bufferFor(url, { keep = false, ms = 12_000 } = {}) {
+  const ac = audio();
+  if (!ac || typeof fetch === "undefined") return Promise.resolve(null);
+  if (keep && decoded.has(url)) return decoded.get(url);
+  const p = Promise.race([
+    fetch(url)
+      .then((r) => (r.ok ? r.arrayBuffer() : Promise.reject(new Error(String(r.status)))))
+      .then((bytes) => new Promise((ok, no) => ac.decodeAudioData(bytes, ok, no))),
+    sleep(ms).then(() => null),
+  ]).catch(() => null);
+  if (keep) {
+    decoded.set(url, p);
+    void p.then((b) => { if (!b) decoded.delete(url); });
+  }
+  return p;
+}
+
+/** A decoded file through the engine. Resolves when it ended or was stopped; `onStart` when it begins. */
+function playBuffer(ac, buf, onStart) {
+  return new Promise((resolve) => {
+    try {
+      const src = ac.createBufferSource();
+      src.buffer = buf;
+      src.connect(ac.destination);
+      src.onended = () => { if (source === src) source = null; resolve(true); };
+      source = src;
+      src.start();
+      onStart?.();
+    } catch {
+      resolve(false);
+    }
+  });
+}
+
+/** Through the engine, to its end. Null when the engine can't play it here (then the <audio> is tried). */
+async function playThroughEngine(url, keep = false) {
+  const ac = audio();
+  if (!ac || ac.state !== "running") return null;
+  const buf = await bufferFor(url, { keep });
+  if (!buf) return null;
+  return playBuffer(ac, buf);
+}
+
 /** One recording, played to its end. Resolves true when it played through, false when it couldn't. */
-function playOne(url) {
+async function playOne(url, keep = false) {
+  const at = stops;
+  const viaEngine = await playThroughEngine(url, keep);
+  if (viaEngine !== null || stops !== at) return Boolean(viaEngine);
+  return playOneElement(url);
+}
+
+/** The same, as a plain <audio> (a browser where the engine couldn't have it). */
+function playOneElement(url) {
   return new Promise((resolve) => {
     let done = false;
     const finish = (ok) => { if (!done) { done = true; resolve(ok); } };
@@ -387,7 +466,20 @@ async function playOwnVoice(sale) {
   return playMade(sale);
 }
 
-function playMade(sale) {
+async function playMade(sale) {
+  if (!ownVoiceUrl) return false;
+  // Through the engine first (made on demand the first time: up to 12 s); resolves once it starts, as before.
+  const ac = audio();
+  if (ac && ac.state === "running") {
+    const at = stops;
+    const buf = await bufferFor(ownVoiceUrl(sale));
+    if (stops !== at) return true;
+    if (buf) return new Promise((resolve) => { void playBuffer(ac, buf, () => resolve(true)).then((ok) => { if (!ok) resolve(false); }); });
+  }
+  return playMadeElement(sale);
+}
+
+function playMadeElement(sale) {
   if (!ownVoiceUrl || typeof Audio === "undefined") return Promise.resolve(false);
   return new Promise((resolve) => {
     let done = false;
@@ -414,14 +506,7 @@ const SALE_CLIP = "/sounds/sale-voice.m4a";
 
 /** Fetched while the board loads, so the first payment doesn't wait for it. */
 function preloadClip() {
-  if (typeof Audio === "undefined") return;
-  try {
-    const a = new Audio();
-    a.preload = "auto";
-    a.src = SALE_CLIP;
-  } catch {
-    /* no audio here */
-  }
+  void bufferFor(SALE_CLIP, { keep: true });
 }
 
 // ── One tab says it ───────────────────────────────────────────────────────────
@@ -457,6 +542,28 @@ function forgetOldClaims() {
   }
 }
 
+// ── What was heard (the Test pop-up's sound check, 2026-10-29) ───────────────
+
+const reports = new Map();
+const REPORTED = "portal:cs-tv-report";
+function report(id, part, result) {
+  const was = reports.get(id) ?? { music: "pending", clip: "pending", voice: "pending" };
+  reports.set(id, { ...was, [part]: result });
+  window.dispatchEvent(new Event(REPORTED));
+}
+
+/** What a payment's pop-up got to play on this screen ({ music, clip, voice }: pending/played/blocked/none), kept current. */
+export function useSoundReport(id) {
+  return useSyncExternalStore(
+    (cb) => {
+      window.addEventListener(REPORTED, cb);
+      return () => window.removeEventListener(REPORTED, cb);
+    },
+    () => (id ? reports.get(id) ?? null : null),
+    () => null,
+  );
+}
+
 /** The sparkle, then the voice, for a sale on screen. Nothing when muted; a test always plays. Returns a stop. */
 export function announce(sale) {
   let stopped = false;
@@ -466,20 +573,22 @@ export function announce(sale) {
     if (!allowed()) return;
     if (!sale.test && !(await claimToSay(sale.id))) return;
     if (!allowed()) return;
+    const wait = playSparkle();
+    report(sale.id, "music", wait > 0 && soundUnlocked() ? "played" : "blocked");
     voiceTimer = window.setTimeout(async () => {
       if (!allowed()) return;
       speakingOwn = true;
       try {
         // The owner's clip after the music (2026-10-28), then the line.
-        if (typeof Audio !== "undefined") await playOne(SALE_CLIP);
+        report(sale.id, "clip", (await playOne(SALE_CLIP, true)) ? "played" : "blocked");
         if (!allowed()) return;
         // The owner's own voice when this server has it; else the browser's (2026-10-26).
-        if (await playOwnVoice(sale)) return;
+        if (await playOwnVoice(sale)) { report(sale.id, "voice", "played"); return; }
       } finally {
         speakingOwn = false;
       }
-      if (allowed()) say(spokenLine(sale));
-    }, playSparkle());
+      if (allowed()) report(sale.id, "voice", await say(spokenLine(sale)));
+    }, wait);
   })();
   return () => {
     stopped = true;

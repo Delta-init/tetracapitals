@@ -6,6 +6,7 @@ import {
   saleMoney,
   setSoundPref,
   useSoundPref,
+  useSoundReport,
   voiceBusy,
   warmUpVoices,
 } from "./saleAnnouncement";
@@ -194,6 +195,7 @@ function Celebration({ sale, onClose }) {
           </button>
           {sale.test && <span className="rounded-full bg-[color:var(--head)] px-2.5 py-1">Test</span>}
         </div>
+        {sale.test && <SoundCheck id={sale.id} />}
 
         <motion.div
           aria-hidden
@@ -328,4 +330,26 @@ function twinkle(g, x, y, r, color, alpha) {
   g.quadraticCurveTo(x, y, x, y - r);
   g.fill();
   g.restore();
+}
+
+/*
+ * The Test pop-up says which of its three sounds this screen actually played (2026-10-29: on the office TV only the
+ * music was heard) — so one tap of Test on the TV shows what to fix there.
+ */
+function SoundCheck({ id }) {
+  const r = useSoundReport(id);
+  if (!r) return null;
+  const mark = (x) => (x === "played" ? "✓" : x === "pending" ? "…" : "✗");
+  const hint =
+    r.music === "blocked" ? "Sound is off on this screen — tap it once to allow sound."
+    : r.clip === "blocked" ? "The clip couldn't play here — tap the screen once, then Test again."
+    : r.voice === "none" ? "This browser has no voice to speak with — the spoken line can't be heard on it."
+    : r.voice === "blocked" ? "The browser refused to speak — tap the screen once, then Test again."
+    : "";
+  return (
+    <div className="mt-3 text-xs text-[color:var(--mute)]">
+      <p>Sound check: Music {mark(r.music)} · Clip {mark(r.clip)} · Voice {mark(r.voice)}</p>
+      {hint && <p className="mt-1">{hint}</p>}
+    </div>
+  );
 }
