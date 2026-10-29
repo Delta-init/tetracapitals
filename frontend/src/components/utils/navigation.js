@@ -90,7 +90,8 @@ export const NAV_ITEMS = [
   // Hidden for everyone (the user, 2026-10-11) — the page still opens by its address.
   { name: 'ActivityTracker', hidden: true, page: 'ActivityTracker', icon: Activity, roles: ['all'], notFor: ['cs'] },
   { name: 'AIInsights', hidden: true, page: 'AIInsights', icon: Sparkles, roles: ['super_admin', 'broker_admin', 'academic_head'] },
-  { name: 'MentorTraining', page: 'MentorTraining', icon: GraduationCap, roles: ['junior_mentor', 'chief_mentor', 'senior_mentor'], notFor: ['cs'] },
+  // Hidden for everyone (the user, 2026-10-29) — the page still opens by its address.
+  { name: 'MentorTraining', hidden: true, page: 'MentorTraining', icon: GraduationCap, roles: ['junior_mentor', 'chief_mentor', 'senior_mentor'], notFor: ['cs'] },
   // CSs and CS Managers see it too (the user, 2026-10-11) — whatever their role's page list says (Layout.jsx).
   { name: 'Leaderboard', page: 'Leaderboard', icon: Trophy, roles: ['super_admin', 'admin', 'broker_admin', 'academic_head', 'junior_mentor', 'chief_mentor', 'senior_mentor', 'finance_admin', 'cs', 'cs_manager'] },
   // The LMS's instructor reviews (the user, 2026-10-22; functions/instructorReviews.ts): admins, chiefs, CS Managers, mentors.
