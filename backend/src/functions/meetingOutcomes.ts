@@ -103,6 +103,12 @@ export interface MeetingRow {
   stage: string; summary: string; outcome: any; reminder: { date: string; created: boolean } | null;
 }
 
+const escRe = (x: string) => x.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+/** A student record holding this address — alone or among others, any letter case. */
+export const addressRe = (e: string) => new RegExp(`(^|[\\s,;<>/])${escRe(e)}($|[\\s,;<>/])`, "i");
+/** Every address on a record, in lower case. */
+export const addressesIn = (raw: unknown): string[] => (String(raw ?? "").match(/[^\s,;<>/]+@[^\s,;<>/]+\.[^\s,;<>/]+/g) ?? []).map((e) => e.toLowerCase());
+
 /**
  * The meetings in these days, one row per student on each (or one for a meeting with nobody of ours), for whoever may
  * see them: their students' (the follow-ups' reach — their own, Common ones, a leader's team; everyone for an admin),
@@ -114,11 +120,15 @@ export async function meetingRows(user: AuthUser, from: string, to: string): Pro
   const emails = [...new Set(meetings.flatMap((m) => m.attendees.map((a) => emailOf(a.email))).filter((e) => e.includes("@")))];
   const visible = await visibleMentorIds(user);
   const projection = { full_name: 1, student_code: 1, email: 1, primary_mentor_id: 1, primary_mentor_name: 1, team_id: 1, team_name: 1 };
-  const students = emails.length ? ((await col("students").find({ email: { $in: emails } }, { projection }).toArray()) as any[]) : [];
+  // Each address whatever its letter case or spaces, and one of several on a record (2026-10-29: an exact match left
+  // some students' meetings off the page).
+  const byAddress = { email: { $in: emails.map(addressRe) } };
+  const students = emails.length ? ((await col("students").find(byAddress, { projection }).toArray()) as any[]) : [];
   const mine = visible
-    ? new Set(((await col("students").find({ $and: [{ email: { $in: emails } }, studentsOf(visible)] }, { projection: { _id: 1 } }).toArray()) as any[]).map((s) => String(s._id)))
+    ? new Set(((await col("students").find({ $and: [byAddress, studentsOf(visible)] }, { projection: { _id: 1 } }).toArray()) as any[]).map((s) => String(s._id)))
     : null;
-  const byEmail = new Map(students.map((s) => [emailOf(s.email), s]));
+  const byEmail = new Map<string, any>();
+  for (const s of students) for (const e of addressesIn(s.email)) if (!byEmail.has(e)) byEmail.set(e, s);
   const reminders = await remindersOf(meetings.filter((m) => m.status === "done").map((m) => m.id));
   const me = emailOf(user.email);
   const rows: MeetingRow[] = [];
