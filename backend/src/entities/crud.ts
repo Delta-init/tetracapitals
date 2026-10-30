@@ -9,7 +9,7 @@ import { buildScopeFilter, applyScope, docMatchesScope } from "../lib/scope";
 import { stampNewStudents, recordCreated, prepareStudentUpdate, recordHistory, type HistoryEntry } from "../students/history";
 import { notifyStudentsGiven } from "../lib/notify";
 import type { TeamIndex } from "../students/teams";
-import { stampFundingForFinance, kickFinanceFunding, financeLock, withFinance, WITH_FINANCE_MESSAGE, decisionRefusal, bonusMissing, depositReceiptMissing, dropServerFields, claimResubmit, releaseResubmit } from "../finance/funding";
+import { stampFundingForFinance, kickFinanceFunding, financeLock, withFinance, WITH_FINANCE_MESSAGE, decisionRefusal, bonusMissing, depositReceiptMissing, dropServerFields, claimResubmit, releaseResubmit, bonusEdit } from "../finance/funding";
 import { seesClosedOnly, SALES_READ_ONLY } from "../students/closedBy";
 import { keepRequestMt5 } from "../students/mt5";
 
@@ -333,6 +333,10 @@ export async function updateEntity(req: Request, entityName: string, id: string)
     // A deposit, a withdrawal or a bonus: decided by a broker admin or a Super Admin (finance/funding.ts).
     const refused = decisionRefusal(existing, data, ctx.user.app_role);
     if (refused) return error(refused.message, refused.status);
+    // The MT5 bonus of a course payment, changed by the broker admin as they approve (finance/funding.ts bonusEdit).
+    const edited = bonusEdit(existing, data, ctx.user.app_role, ctx.user.id, ctx.user.full_name || ctx.user.email || "");
+    if (edited && "error" in edited) return error(edited.error, 409);
+    if (edited) history.push(edited);
     // A Bangalore team's bonus is a Bangalore broker admin's (or a Super Admin's) to decide — Dubai's likewise (2026-10-15).
     if ("status" in data && String(data.status) !== String(existing.status)) {
       const elsewhere = await (await import("../finance/bonusLocation")).bonusLocationRefusal(existing, ctx.user.id, ctx.user.app_role);

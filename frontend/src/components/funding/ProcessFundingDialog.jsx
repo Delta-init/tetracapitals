@@ -46,6 +46,12 @@ export default function ProcessFundingDialog({ transaction, open, onClose, onPro
   // the payment, in USD, which reports and the commission use.
   const coursePayment = transaction?.type === 'BONUS' ? transaction?.course_payment : null;
   const mt5Bonus = coursePayment ? Number(coursePayment.bonus_usd) || 0 : null;
+  // The broker admin may change it as they approve (the user, 2026-10-30) — never above the course's full bonus;
+  // the server keeps the CS's as requested_bonus_usd (finance/funding.ts bonusEdit).
+  const mayEditBonus = mt5Bonus !== null && transaction?.status === 'PENDING' && !transaction?.bonus_credit
+    && ['broker_admin', 'super_admin'].includes(currentUser?.app_role);
+  const bonusMost = Number(coursePayment?.bonus_full_usd) > 0 ? Number(coursePayment.bonus_full_usd) : (Number(coursePayment?.requested_bonus_usd ?? mt5Bonus) || mt5Bonus);
+  const [bonusUsd, setBonusUsd] = useState('');
   // The transaction ID finance's approval left on it — never the MT5 one: the broker admin types that.
   const financeTxnId = transaction?.status === 'PENDING' && transaction?.finance_approval?.decision === 'approved' ? (transaction?.transaction_id || '') : '';
   // Finance confirmed the payment (the user, 2026-10-15): its amount is settled — the broker admin credits the bonus
@@ -149,6 +155,7 @@ export default function ProcessFundingDialog({ transaction, open, onClose, onPro
       setWithdrawalMentorId('');
       setAlreadyCredited(false);
       setAlreadyNote('');
+      setBonusUsd(transaction.type === 'BONUS' && transaction.course_payment ? String(Number(transaction.course_payment.bonus_usd) || 0) : '');
     }
   }, [transaction]);
 
@@ -162,6 +169,11 @@ export default function ProcessFundingDialog({ transaction, open, onClose, onPro
     // A sales-close bonus credit has no product (see the box below), so only other bonuses need one.
     if (transaction.type === 'BONUS' && !transaction.bonus_credit && (!formData.tags || formData.tags.length === 0)) {
       setTransactionIdError('Please pick a product for this bonus before approving');
+      return;
+    }
+    const newBonus = mayEditBonus ? Math.round(Number(bonusUsd) * 100) / 100 : mt5Bonus;
+    if (mayEditBonus && (bonusUsd === '' || !Number.isFinite(newBonus) || newBonus < 0 || newBonus > bonusMost)) {
+      setTransactionIdError(`The MT5 bonus must be between $0 and $${bonusMost.toLocaleString('en-US')}`);
       return;
     }
 
@@ -183,6 +195,7 @@ export default function ProcessFundingDialog({ transaction, open, onClose, onPro
         ? (isCoManagedWithdrawal ? selectedWithdrawalMentor?.name : transaction.primary_mentor_name)
         : (transaction.initiating_mentor_name || undefined),
       status: 'APPROVED',
+      ...(mayEditBonus && newBonus !== mt5Bonus ? { credit_bonus_usd: newBonus } : {}),
       // Finance's ID, kept beside the MT5 one that replaces it.
       ...(financeTxnId && formData.transaction_id !== financeTxnId ? { finance_transaction_id: financeTxnId } : {}),
       ...(credited ? {
@@ -302,7 +315,29 @@ export default function ProcessFundingDialog({ transaction, open, onClose, onPro
           {mt5Bonus !== null && (
             <div className="rounded-lg border-2 border-emerald-300 bg-emerald-50 p-4">
               <p className="text-sm font-medium text-emerald-800">MT5 bonus to credit</p>
-              <p className="text-2xl font-bold text-emerald-700">${mt5Bonus.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</p>
+              {mayEditBonus ? (
+                <div className="my-1 flex flex-wrap items-center gap-2">
+                  <span className="text-2xl font-bold text-emerald-700">$</span>
+                  <Input
+                    type="number" min="0" max={bonusMost} step="0.01"
+                    value={bonusUsd}
+                    onChange={(e) => setBonusUsd(e.target.value)}
+                    className="h-10 w-40 bg-white text-xl font-bold text-emerald-700"
+                    aria-label="MT5 bonus to credit (USD)"
+                  />
+                  {bonusUsd !== '' && Number(bonusUsd) !== mt5Bonus && (
+                    <span className="text-xs text-emerald-800">was ${mt5Bonus.toLocaleString('en-US')} · up to ${bonusMost.toLocaleString('en-US')}</span>
+                  )}
+                  {(bonusUsd === '' || Number(bonusUsd) < 0 || Number(bonusUsd) > bonusMost) && (
+                    <span className="w-full text-xs font-medium text-red-600">Between $0 and ${bonusMost.toLocaleString('en-US')}</span>
+                  )}
+                </div>
+              ) : (
+                <p className="text-2xl font-bold text-emerald-700">${mt5Bonus.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</p>
+              )}
+              {Number(coursePayment.requested_bonus_usd) >= 0 && coursePayment.bonus_changed && (
+                <p className="text-xs text-emerald-800/80">The CS asked for ${Number(coursePayment.requested_bonus_usd).toLocaleString('en-US')} — changed by {coursePayment.bonus_changed.by_name || 'a broker admin'}</p>
+              )}
               <p className="text-xs text-emerald-800/80">
                 {coursePayment.product || 'Course'} · {coursePayment.kind === 'partial' ? 'partial payment' : coursePayment.kind === 'full' ? 'full payment' : 'payment'}
                 {Number(coursePayment.paid_today_aed) > 0 ? ` of AED ${Number(coursePayment.paid_today_aed).toLocaleString('en-US')}` : ''}

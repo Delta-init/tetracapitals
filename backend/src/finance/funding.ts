@@ -4,7 +4,7 @@ import { col } from "../db";
 import { config } from "../config";
 import { toObjectId } from "../lib/id";
 import { ok, refuse, secretMatches, text } from "../students/intake";
-import { recordHistory } from "../students/history";
+import { recordHistory, type HistoryEntry } from "../students/history";
 import { creditCommissionFor } from "../functions/creditCommission";
 import { recomputeCoMentorContribution } from "../functions/referrals";
 import { notify } from "../lib/notify";
@@ -258,6 +258,43 @@ export function financeLock(existing: any, data: Record<string, any>): string | 
   if (awaitingBroker(existing) && "amount_usd" in data && differs("amount_usd")) return FINANCE_CONFIRMED_MESSAGE;
   if (!withFinance(existing)) return null;
   return LOCKED.some((f) => f in data && differs(f)) ? WITH_FINANCE_MESSAGE : null;
+}
+
+/**
+ * A course payment's MT5 bonus, changed by the broker admin as they approve (the user, 2026-10-30: STU-3999's $5,000
+ * was to be $4,500). Sent as `credit_bonus_usd`, never kept as it is: it becomes course_payment.bonus_usd — what
+ * reports, the leaderboard and the CS's Bonus In count — with the CS's kept as course_payment.requested_bonus_usd.
+ * Only a broker admin or a Super Admin, only on a pending one, never above the course's full bonus. Commission and
+ * the LMS share read the AED paid, so they don't move. The refusal, or the history line to record (null: nothing).
+ */
+export function bonusEdit(existing: any, data: Record<string, any>, role: string, byId: string, byName: string): { error: string } | HistoryEntry | null {
+  if (!("credit_bonus_usd" in data)) return null;
+  const raw = data.credit_bonus_usd;
+  delete data.credit_bonus_usd;
+  const cp = existing?.course_payment;
+  const was = Number(cp?.bonus_usd) || 0;
+  const usd = Math.round(Number(raw) * 100) / 100;
+  if (raw === null || raw === "" || usd === was) return null;
+  if (!BONUS_APPROVERS.includes(role)) return { error: "Only a broker admin or a Super Admin changes the MT5 bonus" };
+  if (existing?.type !== "BONUS" || !cp?.product || existing?.bonus_credit) return { error: "Only a course payment's MT5 bonus is changed here" };
+  if (existing.status !== "PENDING") return { error: "The MT5 bonus is changed only before the bonus is approved" };
+  if (!Number.isFinite(usd) || usd < 0) return { error: "The MT5 bonus must be 0 or more" };
+  const most = Number(cp.bonus_full_usd) > 0 ? Number(cp.bonus_full_usd) : Number(cp.requested_bonus_usd ?? was) || was;
+  if (usd > most) return { error: `The MT5 bonus can't be more than the course's $${most.toLocaleString("en-US")}` };
+  const at = new Date().toISOString();
+  const set = {
+    bonus_usd: usd,
+    ...(cp.requested_bonus_usd == null ? { requested_bonus_usd: was } : {}),
+    bonus_changed: { at, by_id: byId, by_name: byName, from: was, to: usd },
+  };
+  // A caller sending the whole course_payment too: onto that, or the two would clash in one $set.
+  if (data.course_payment && typeof data.course_payment === "object") Object.assign(data.course_payment, set);
+  else for (const [k, v] of Object.entries(set)) data[`course_payment.${k}`] = v;
+  return {
+    student_id: String(existing.student_id ?? ""), at, type: "course_fees", by_id: byId, by_name: byName,
+    text: `MT5 bonus for ${cp.product} changed from $${was.toLocaleString("en-US")} to $${usd.toLocaleString("en-US")} by ${byName}`,
+    from: { bonus_usd: was }, to: { bonus_usd: usd },
+  };
 }
 
 export const FINANCE_CONFIRMED_MESSAGE =
