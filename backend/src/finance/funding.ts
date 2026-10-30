@@ -10,6 +10,7 @@ import { recomputeCoMentorContribution } from "../functions/referrals";
 import { notify } from "../lib/notify";
 import { csManagerReach } from "../lib/userLocation";
 import { bonusDeciderIds, bonusLocationOf } from "./bonusLocation";
+import { staffEmailOf } from "./staffEmail";
 import { productKey } from "../courses/lmsMapping";
 
 /* ────────────────────────────────────────────────────────────────────────────
@@ -485,7 +486,10 @@ async function depositPayload(tx: any, location: "dubai" | "bangalore" = "dubai"
     ...(tx.resubmit_of ? { resubmitOf: String(tx.resubmit_of), resubmitReason: String(tx.resubmit_reason ?? "").slice(0, 1000) } : {}),
     requestedAt: String(tx.requested_at || tx.created_date || new Date().toISOString()),
     requestedBy: String(tx.requested_by_name ?? ""),
+    // Their emails too, so finance puts the right person on the invoice it makes (2026-10-30).
+    requestedByEmail: await staffEmailOf(tx.requested_by_id),
     initiatingMentor: String(tx.initiating_mentor_name ?? ""),
+    initiatingMentorEmail: await staffEmailOf(tx.initiating_mentor_id),
     primaryMentor: String(tx.primary_mentor_name ?? ""),
     meetingMentor: String(tx.meeting_mentor_name ?? ""),
   };

@@ -6,6 +6,7 @@ import { financeFundingConfigured, postToFinance, FinancePermanentError, backoff
 import { progressOf, type UpgradeQuote } from "./upgradeCalc";
 import { DEFAULT_PRICE_LIST } from "./priceList";
 import { mt5Of } from "../students/mt5";
+import { staffEmailOf } from "../finance/staffEmail";
 
 const courseName = (u: any) => DEFAULT_PRICE_LIST.find((c) => c.code === u?.course)?.name ?? String(u?.course ?? "Course");
 
@@ -82,6 +83,8 @@ async function payload(p: any) {
     ].filter(Boolean).join(" · ").slice(0, 2000),
     requestedAt: p.recorded_at,
     requestedBy: String(p.recorded_by_name ?? ""),
+    // Their email too, so finance puts the right person on the invoice it makes (2026-10-30).
+    requestedByEmail: await staffEmailOf(p.recorded_by),
     primaryMentor: String(s?.primary_mentor_name ?? ""),
   };
 }
