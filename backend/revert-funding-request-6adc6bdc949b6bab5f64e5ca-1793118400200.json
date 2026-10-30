@@ -1,0 +1,162 @@
+{
+  "request": {
+    "_id": "6adc6bdc949b6bab5f64e5ca",
+    "updated_date": "2026-10-26T09:33:28.517Z",
+    "created_date": "2026-10-24T08:27:08.453Z",
+    "type": "BONUS",
+    "student_id": "69b69db07552c261518157a7",
+    "payment_method": "Tabby",
+    "mt5_login": "919709",
+    "screenshot_url": "https://api-commission-v2.tetracapitals.com/uploads/1792820460247-44cfb591-c537-4678-a90a-e0aeaf09dde1.jpeg",
+    "tags": [
+      "DQMP"
+    ],
+    "meeting_mentor_id": null,
+    "payments": [
+      {
+        "method": "Tabby",
+        "amount": 10000,
+        "currency": "AED",
+        "collected_on": "2026-10-23",
+        "receipt_url": "https://api-commission-v2.tetracapitals.com/uploads/1792820460247-44cfb591-c537-4678-a90a-e0aeaf09dde1.jpeg",
+        "receipt_name": "WhatsApp Image 2026-10-24 at 09.35.35.jpeg"
+      }
+    ],
+    "meeting_mentor_name": null,
+    "amount_currency": "AED",
+    "amount_original": 10000,
+    "amount_aed": 10000,
+    "amount_usd": 2724.8,
+    "fx_rate_aed_per_usd": 3.67,
+    "course_payment": {
+      "product": "DQMP",
+      "price": 12000,
+      "price_currency": "USD",
+      "bonus_full_usd": 12000,
+      "instalments": 0,
+      "plan_aed": 0,
+      "with_bonus": true,
+      "kind": "full",
+      "paid_before_aed": 0,
+      "paid_today_aed": 10000,
+      "paid_total_aed": 10000,
+      "bonus_usd": 12000,
+      "hold_aed": 0,
+      "balance_aed": 0,
+      "short_aed": 34040,
+      "over_aed": 0
+    },
+    "status": "PENDING",
+    "student_name": "FAWAS\t",
+    "student_code": "STU-2834",
+    "primary_mentor_id": "6abd7169d1bf394fd5f1f1f0",
+    "primary_mentor_name": "Alice Antony",
+    "requested_by_id": "6abd7169d1bf394fd5f1f1f0",
+    "requested_by_name": "Alice Antony",
+    "requested_at": "2026-10-24T08:27:08.456Z",
+    "initiating_mentor_id": "6abd7169d1bf394fd5f1f1f0",
+    "initiating_mentor_name": "Alice Antony",
+    "upline_commission_percentage": 0,
+    "resubmit_of": "6adc451c949b6bab5f64e401",
+    "resubmit_reason": "mentioned payment amount is wrong please correct it",
+    "created_by": "6abd7169d1bf394fd5f1f1f0",
+    "created_by_name": "Alice Antony",
+    "finance_approval": {
+      "state": "decided",
+      "queued_at": "2026-10-24T08:27:08.455Z",
+      "attempts": 1,
+      "next_attempt_at": "2026-10-24T08:27:08.455Z",
+      "amount_minor": 272480,
+      "currency": "USD",
+      "last_error": null,
+      "org": "delta_hq",
+      "request_id": "6adc6bdcd6f76381136e9698",
+      "sent_at": "2026-10-24T08:27:08.458Z",
+      "decided_at": "2026-10-24T08:43:27.768Z",
+      "decided_by_email": "admin@delta.com",
+      "decided_by_name": "super admin",
+      "decision": "approved",
+      "note": "",
+      "logged_at": "2026-10-25T10:24:52.244Z"
+    },
+    "course_invoice": {
+      "invoice_id": "6adc6fafd6f76381136e9c00",
+      "invoice_number": "IN-00219",
+      "payment_id": "6adc6fb0d6f76381136e9c08",
+      "receipt_number": "RCT-00016",
+      "amount_minor": 1000000,
+      "currency": "AED",
+      "total_minor": 1000000,
+      "paid_minor": 1000000,
+      "balance_minor": 0,
+      "created": true,
+      "at": "2026-10-25T10:24:52.236Z"
+    },
+    "mt5_account_id": "6adc451c949b6bab5f64e402",
+    "transaction_id": "42",
+    "corrections": [
+      {
+        "kind": "sent_back",
+        "at": "2026-10-25T16:10:47.489Z",
+        "by_id": "6a356a41bc3e74c1eda63c5b",
+        "by_name": "hashir",
+        "fields": [
+          "other"
+        ],
+        "note": "PLEASE CHECK THE BONUS AMOUNT",
+        "email": "fawaskv@gmail.com"
+      },
+      {
+        "kind": "corrected",
+        "at": "2026-10-26T08:56:39.024Z",
+        "by_id": "6abd7169d1bf394fd5f1f1f0",
+        "by_name": "Alice Antony",
+        "changed": [],
+        "note": "he paid 10,000 aed  so the bonus amount is 2500 usd"
+      },
+      {
+        "kind": "sent_back",
+        "at": "2026-10-26T09:10:01.995Z",
+        "by_id": "6ace112b2fba1e08806039b1",
+        "by_name": "raneesh",
+        "fields": [
+          "other"
+        ],
+        "note": "Please do check the bonus amount requested. The requested amount is 12500 USD.",
+        "email": "fawaskv@gmail.com"
+      },
+      {
+        "kind": "corrected",
+        "at": "2026-10-26T09:22:13.391Z",
+        "by_id": "6abd7169d1bf394fd5f1f1f0",
+        "by_name": "Alice Antony",
+        "changed": [],
+        "note": "The bonus amount should be 2500 usd as in the site their was no Full payment option so automatically it shown as 12000 usd , \nPlease Note : Bonus is 2500 usd"
+      },
+      {
+        "kind": "sent_back",
+        "at": "2026-10-26T09:33:28.517Z",
+        "by_id": "6ace112b2fba1e08806039b1",
+        "by_name": "raneesh",
+        "fields": [
+          "other"
+        ],
+        "note": "The requested credit amount is wrong; please do correct it. The request cannot be approved unless it is corrected.",
+        "email": "fawaskv@gmail.com"
+      }
+    ],
+    "returned": {
+      "at": "2026-10-26T09:33:28.517Z",
+      "by_id": "6ace112b2fba1e08806039b1",
+      "by_name": "raneesh",
+      "fields": [
+        "other"
+      ],
+      "note": "The requested credit amount is wrong; please do correct it. The request cannot be approved unless it is corrected.",
+      "email": "fawaskv@gmail.com"
+    }
+  },
+  "credits": [],
+  "mt5": null,
+  "lmsSync": null
+}
