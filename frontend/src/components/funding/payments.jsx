@@ -198,7 +198,8 @@ export function PaymentRows({ rows, onChange, currency, methods = DEPOSIT_METHOD
 function ReceiptPreview({ url }) {
   const [failed, setFailed] = useState(false);
   if (/\.pdf($|\?)/i.test(url)) return <iframe src={url} title="Receipt" className="h-[65vh] w-full rounded-md border" />;
-  if (failed) return <p className="text-sm text-gray-500">This receipt cannot be shown here — open it in a new tab.</p>;
+  // Usually a file that's gone from storage: removed or replaced on the invoice in finance (2026-10-30).
+  if (failed) return <p className="rounded-md bg-amber-50 px-3 py-2 text-sm text-amber-800">This receipt can't be loaded — the file is most likely no longer in storage (removed or replaced on the invoice in finance). Open it in a new tab to check, and ask finance to attach it again if it's gone.</p>;
   return <img src={url} alt="Receipt" className="max-h-[65vh] w-full rounded-md border object-contain" onError={() => setFailed(true)} />;
 }
 

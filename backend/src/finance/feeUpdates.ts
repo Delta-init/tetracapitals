@@ -124,11 +124,12 @@ async function applyTo(studentId: unknown, u: FeeUpdate): Promise<Outcome> {
           ...(u.declared?.paidMinor != null ? { "course_fees.$.collected_minor": u.declared.paidMinor } : {}),
           ...(u.declared?.method ? { "course_fees.$.collected_method": u.declared.method } : {}),
           ...(u.declared?.payments.length ? { "course_fees.$.declared_payments": u.declared.payments } : {}),
+          // Finance's receipt as it is now — a newer one replaces the old (2026-10-30: one removed in finance left a dead link).
           ...(u.declared && (u.declared.receiptUrl || u.declared.payments.find((p) => p.receipt_url))
-            ? (entry.receipt_url ? {} : {
+            ? {
               "course_fees.$.receipt_url": u.declared.receiptUrl || u.declared.payments.find((p) => p.receipt_url)!.receipt_url,
               "course_fees.$.receipt_name": u.declared.receiptName || u.declared.payments.find((p) => p.receipt_url)!.receipt_name,
-            }) : {}),
+            } : {}),
         },
       },
     );

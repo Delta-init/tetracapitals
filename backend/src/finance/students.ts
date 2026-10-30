@@ -177,10 +177,10 @@ async function recordCourseFee(student: { _id: unknown }, fee: CourseFee | null)
   if (Object.keys(set).length) {
     await col("students").updateOne({ _id: student._id as never }, { $set: set } as never, { arrayFilters: [{ "f.invoice_id": fee.invoice_id }] } as never);
   }
-  // A receipt only where there was none.
+  // Finance's receipt as it is now: where there was none, or a different one (replaced in finance — 2026-10-30).
   if (fee.receipt_url) {
     await col("students").updateOne({ _id: student._id as never }, { $set: { "course_fees.$[f].receipt_url": fee.receipt_url, "course_fees.$[f].receipt_name": fee.receipt_name } } as never,
-      { arrayFilters: [{ "f.invoice_id": fee.invoice_id, "f.receipt_url": { $in: ["", null] } }] } as never);
+      { arrayFilters: [{ "f.invoice_id": fee.invoice_id, "f.receipt_url": { $ne: fee.receipt_url } }] } as never);
   }
 }
 

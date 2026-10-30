@@ -402,8 +402,9 @@ step("Collected by counsellor, recorded, and each payment's receipt (2026-10-12)
   await send({ ...m, feeSummary: { ...paidFees, paidMinor: 1, balanceMinor: 1, declaredPayments: [{ method: "tabby", amountMinor: 225_000, paidOn: "2026-10-09", receipt: { url: "https://files.test/r2.pdf", name: "r2.pdf" } }] } });
   f = await feeOf(m);
   const s: any = await db.collection("students").findOne({ email: m.email });
-  check("sent again: the declared payments updated, the money left as it was, one fee for the invoice", f?.declared_payments?.[0]?.receipt_url === "https://files.test/r2.pdf"
-    && f?.paid_minor === 225_000 && f?.receipt_url === "https://files.test/r1.pdf" && s.course_fees.filter((x: any) => x.invoice_id === m.invoiceId).length === 1, JSON.stringify(f));
+  // The receipt follows finance's newer one (2026-10-30: a receipt replaced in finance used to leave the dead old link here).
+  check("sent again: the declared payments and the receipt updated, the money left as it was, one fee for the invoice", f?.declared_payments?.[0]?.receipt_url === "https://files.test/r2.pdf"
+    && f?.paid_minor === 225_000 && f?.receipt_url === "https://files.test/r2.pdf" && s.course_fees.filter((x: any) => x.invoice_id === m.invoiceId).length === 1, JSON.stringify(f));
   // Finance's fee update with the same picture (its backfill): recorded, collected and the receipts.
   const upd = (over: Record<string, unknown>) => call("POST", "/api/v1/integrations/finance/fee-updates", {
     invoiceId: m.invoiceId, invoiceNumber: m.invoiceNumber, email: m.email, course: "x", currency: "AED", totalMinor: 225_000, paidMinor: 225_000, balanceMinor: 0,
@@ -411,8 +412,8 @@ step("Collected by counsellor, recorded, and each payment's receipt (2026-10-12)
   }, { "x-finance-secret": SECRET });
   let r: any = await upd({ declaredPaidMinor: 225_000, declaredPaymentMethod: "tabby", declaredPayments: [{ method: "tabby", amountMinor: 225_000, paidOn: "2026-10-09", receipt: { url: "https://files.test/r3.pdf", name: "r3.pdf" } }] });
   f = await feeOf(m);
-  check("a fee update with the declared side: recorded = what accounts recorded, collected and receipts kept", r.status === 200 && f?.recorded_minor === 225_000 && f?.collected_minor === 225_000
-    && f?.declared_payments?.[0]?.receipt_url === "https://files.test/r3.pdf" && f?.payments?.[0]?.method === "Tabby", JSON.stringify(f));
+  check("a fee update with the declared side: recorded = what accounts recorded, collected and receipts kept — the receipt finance's newest", r.status === 200 && f?.recorded_minor === 225_000 && f?.collected_minor === 225_000
+    && f?.declared_payments?.[0]?.receipt_url === "https://files.test/r3.pdf" && f?.receipt_url === "https://files.test/r3.pdf" && f?.payments?.[0]?.method === "Tabby", JSON.stringify(f));
   r = await upd({ updatedAt: new Date(Date.now() + 1000).toISOString() });
   f = await feeOf(m);
   check("an older finance's fee update (no declared side): collected and receipts left as they are", r.status === 200 && f?.collected_minor === 225_000 && f?.declared_payments?.[0]?.receipt_url === "https://files.test/r3.pdf", JSON.stringify(f));
