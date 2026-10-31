@@ -101,6 +101,12 @@ export const studentInfoOf = (s) => (s ? {
       method: String(p.method ?? ''), amount: (Number(p.amount_minor) || 0) / 100, paid_on: String(p.paid_on ?? ''),
       receipt_url: String(p.receipt_url ?? ''), receipt_name: String(p.receipt_name ?? ''),
     })),
+    // Each payment finance recorded with its own receipt, as MT5 Approvals has it (2026-10-31: Funding Requests showed
+    // only the close's — a second payment's never).
+    recorded_payments: (Array.isArray(f.payments) ? f.payments : []).filter(p => /^https?:\/\//i.test(String(p?.receipt_url ?? ''))).map(p => ({
+      method: String(p.method ?? ''), amount: (Number(p.amount_minor) || 0) / 100, paid_on: String(p.paid_on ?? ''),
+      receipt_url: String(p.receipt_url), receipt_name: String(p.receipt_name ?? ''),
+    })),
   })),
   closed_by: (Array.isArray(s.closed_by) ? s.closed_by : []).map(c => ({ name: String(c.name ?? c.email ?? ''), crm: String(c.crm ?? '') })),
 } : null);
