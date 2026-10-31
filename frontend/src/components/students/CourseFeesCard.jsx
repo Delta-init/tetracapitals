@@ -31,12 +31,13 @@ function NextDue({ f }) {
   );
 }
 
-/** Every receipt of a course fee: the close's declared payments' (else the close's one), then each recorded payment's. */
+/** Every receipt of a course fee: the close's declared payments', the close's own (2026-10-31: a second file hid behind them), then each recorded payment's. */
 function receiptsOf(f) {
   const seen = new Set();
   const declared = (f.declared_payments || []).filter(p => p.receipt_url);
   return [
-    ...(declared.length ? declared : f.receipt_url ? [{ receipt_url: f.receipt_url, method: 'View' }] : []),
+    ...declared,
+    ...(f.receipt_url ? [{ receipt_url: f.receipt_url, method: declared.length ? 'Close receipt' : 'View' }] : []),
     ...(f.payments || []).filter(p => p.receipt_url).map(p => ({ ...p, method: `${p.method || 'Payment'}${p.paid_on ? ` · ${p.paid_on}` : ''}` })),
   ].filter(p => (seen.has(p.receipt_url) ? false : (seen.add(p.receipt_url), true)));
 }

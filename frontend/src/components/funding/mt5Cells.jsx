@@ -52,14 +52,14 @@ export const invoicesOf = (t) => {
   return mine.length ? mine : all;
 };
 export const financeReceiptsOf = (t) => {
-  // Each payment the salesperson declared, with its own receipt (2026-10-12); else the invoice's one receipt — and
-  // every payment finance recorded with its own (2026-10-27: a second payment's receipt never showed). Each once.
+  // Each payment the salesperson declared, with its own receipt (2026-10-12); the invoice's close receipt too — a
+  // second file at the close was hidden behind the payments' own (2026-10-31); and every payment finance recorded
+  // with its own (2026-10-27: a second payment's receipt never showed). Each once.
   const seen = new Set();
   const once = (r) => (seen.has(r.receipt_url) ? [] : (seen.add(r.receipt_url), [r]));
   const list = invoicesOf(t).flatMap(f => [
-    ...(f.payments?.some(p => p.receipt_url)
-      ? f.payments.filter(p => p.receipt_url).map(p => ({ method: `${f.invoice_number} · ${p.method || 'payment'}`, amount: p.amount, currency: f.currency, collected_on: p.paid_on, receipt_url: p.receipt_url, receipt_name: p.receipt_name }))
-      : f.receipt_url ? [{ method: `Finance receipt · ${f.invoice_number}`, receipt_url: f.receipt_url, receipt_name: f.receipt_name }] : []),
+    ...(f.payments || []).filter(p => p.receipt_url).map(p => ({ method: `${f.invoice_number} · ${p.method || 'payment'}`, amount: p.amount, currency: f.currency, collected_on: p.paid_on, receipt_url: p.receipt_url, receipt_name: p.receipt_name })),
+    ...(f.receipt_url ? [{ method: `Finance receipt · ${f.invoice_number}`, receipt_url: f.receipt_url, receipt_name: f.receipt_name }] : []),
     ...(f.recorded_payments || []).map(p => ({ method: `${f.invoice_number} · ${p.method || 'payment'} (recorded)`, amount: p.amount, currency: f.currency, collected_on: p.paid_on, receipt_url: p.receipt_url, receipt_name: p.receipt_name })),
   ].flatMap(once));
   return list.length ? { payments: list } : null;
