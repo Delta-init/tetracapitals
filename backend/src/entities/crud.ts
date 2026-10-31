@@ -197,6 +197,9 @@ export async function createEntity(req: Request, entityName: string): Promise<Re
     // The same course paid in full twice (2026-10-23).
     const paidTwice = await (await import("../finance/funding")).coursePaidInFullRefusal(data);
     if (paidTwice) return error(paidTwice, 409);
+    // The same payment raised again within a day, while the first stands (2026-10-31).
+    const repeat = await (await import("../finance/funding")).repeatPaymentRefusal(data);
+    if (repeat) return error(repeat, 409);
     // A rejected request, corrected and sent again: that one claimed, once (finance/funding.ts).
     const refused = await claimResubmit(data, ctx.user);
     if (refused) return error(refused.message, refused.status);
@@ -323,9 +326,11 @@ export async function updateEntity(req: Request, entityName: string, id: string)
   }
   // A request Delta finance is deciding is decided there, not here.
   let wasApproved = false;
+  let fundingBefore: any = null;
   if (entityName === "FundingTransaction") {
     const existing = await col(ctx.cfg.collection).findOne({ _id: oid });
     if (!existing) return notFound();
+    fundingBefore = existing;
     wasApproved = existing.status === "APPROVED";
     dropServerFields(data);
     const locked = financeLock(existing, data);
@@ -352,6 +357,8 @@ export async function updateEntity(req: Request, entityName: string, id: string)
   const doc = await col(ctx.cfg.collection).findOne({ _id: oid });
   if (!doc) return notFound();
   await recordHistory(history);
+  // Finance approved it and it is rejected or cancelled here now: finance takes the payment back off (finance/withdrawals.ts).
+  if (fundingBefore) await (await import("../finance/withdrawals")).afterFundingChange(fundingBefore, doc, ctx.user.full_name || ctx.user.email || "");
   // Approved: its commission, here on the server whichever page or tool approved it (the user, 2026-10-13 — approvals
   // that never asked for it left CSs on $0). Before answering, so the page's own call after finds it done; once only.
   if (entityName === "FundingTransaction" && (doc as any).status === "APPROVED") {
@@ -386,10 +393,13 @@ export async function deleteEntity(req: Request, entityName: string, id: string)
   if (!oid) return notFound();
   // Finance would be left deciding a request that no longer exists: it is
   // rejected there instead.
-  if (entityName === "FundingTransaction" && withFinance(await col(ctx.cfg.collection).findOne({ _id: oid }))) {
+  const fundingBefore = entityName === "FundingTransaction" ? await col(ctx.cfg.collection).findOne({ _id: oid }) : null;
+  if (entityName === "FundingTransaction" && withFinance(fundingBefore)) {
     return error(WITH_FINANCE_MESSAGE, 409);
   }
   const res = await col(ctx.cfg.collection).deleteOne({ _id: oid });
   if (!res.deletedCount) return notFound();
+  // Finance approved it: its payment comes back off there too (finance/withdrawals.ts).
+  if (fundingBefore) await (await import("../finance/withdrawals")).afterFundingChange(fundingBefore, null, ctx.user.full_name || ctx.user.email || "");
   return json({ ok: true });
 }

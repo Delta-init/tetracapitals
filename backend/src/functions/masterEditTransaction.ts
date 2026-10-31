@@ -109,6 +109,8 @@ export async function masterEditTransaction(req: Request, caller: AuthUser): Pro
 
   await col("funding_transactions").updateOne({ _id: oid }, { $set: patch });
   const after = await col("funding_transactions").findOne({ _id: oid });
+  // Finance approved it and it is rejected here now: finance takes the payment back off (finance/withdrawals.ts).
+  await (await import("../finance/withdrawals")).afterFundingChange(before, after, caller.full_name || caller.email || "");
 
   // Log a structured before/after snapshot of only the changed fields so the
   // audit row stays readable.
@@ -159,6 +161,7 @@ export async function masterDeleteTransaction(req: Request, caller: AuthUser): P
   if (withFinance(doc)) return error(WITH_FINANCE_MESSAGE, 409);
 
   await col("funding_transactions").deleteOne({ _id: oid });
+  await (await import("../finance/withdrawals")).afterFundingChange(doc, null, caller.full_name || caller.email || "");
 
   const now = new Date().toISOString();
   await col("logs").insertOne({
@@ -217,7 +220,11 @@ export async function masterBulkEditTransactions(req: Request, caller: AuthUser)
   patch.last_edited_by_name = caller.full_name;
   patch.last_edited_at = now;
 
+  const befores = await col("funding_transactions").find({ _id: { $in: oids } }).toArray();
   const res = await col("funding_transactions").updateMany({ _id: { $in: oids } }, { $set: patch });
+  // Any finance approved and now rejected: finance takes those payments back off (finance/withdrawals.ts).
+  const { afterFundingChange } = await import("../finance/withdrawals");
+  for (const b of befores) await afterFundingChange(b, { ...b, ...patch }, caller.full_name || caller.email || "");
 
   const { updated_date, last_edited_by_id, last_edited_by_name, last_edited_at, ...changed } = patch;
   await col("logs").insertOne({

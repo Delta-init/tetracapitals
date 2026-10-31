@@ -225,6 +225,37 @@ export async function coursePaidInFullRefusal(doc: any): Promise<string | null> 
   return `${doc.course_payment.product} is paid in full already${when ? ` (${when}` : " ("}${paid.status === "PENDING" ? ", waiting for approval" : ""}) — a second payment isn't taken for it`;
 }
 
+const REPEAT_WINDOW_MS = 24 * 3_600_000;
+const paidAedOf = (t: any) => Number(t?.course_payment?.paid_today_aed ?? t?.amount_aed ?? 0);
+
+/**
+ * The same payment raised twice (the user, 2026-10-31: one AED 2,000 payment was raised three times in a morning —
+ * twice 43 seconds apart — finance approved all three and counted it three times): a new course payment is refused
+ * while the student has one for the same course and the same amount, raised in the last day, still pending or
+ * approved. A rejected one may be raised again; two equal payments on one day are raised as one.
+ */
+export async function repeatPaymentRefusal(doc: any): Promise<string | null> {
+  if (doc?.type !== "BONUS" || doc?.bonus_credit || !doc?.student_id) return null;
+  if (doc?.status && doc.status !== "PENDING") return null;
+  const key = productKey(doc?.course_payment?.product);
+  const aed = paidAedOf(doc);
+  if (!key || !(aed > 0)) return null;
+  const since = new Date(Date.now() - REPEAT_WINDOW_MS).toISOString();
+  const earlier = (await col("funding_transactions").find(
+    {
+      type: "BONUS", student_id: String(doc.student_id), status: { $in: ["PENDING", "APPROVED"] }, bonus_credit: { $in: [null, ""] },
+      $or: [{ requested_at: { $gte: since } }, { created_date: { $gte: since } }],
+    },
+    { projection: { course_payment: 1, amount_aed: 1, status: 1, requested_at: 1, created_date: 1 } },
+  ).toArray()) as any[];
+  const same = earlier.find((t) => productKey(t.course_payment?.product) === key && Math.abs(paidAedOf(t) - aed) < 0.01);
+  if (!same) return null;
+  const when = String(same.requested_at ?? same.created_date ?? "");
+  const at = when ? new Date(when).toLocaleString("en-GB", { timeZone: "Asia/Dubai", day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" }) : "";
+  return `This payment is raised already — ${doc.course_payment.product}, AED ${aed.toLocaleString("en-US")}${at ? `, ${at}` : ""}, `
+    + `${same.status === "PENDING" ? "waiting for approval" : "approved"}. It isn't raised twice; two equal payments on one day are raised as one.`;
+}
+
 /**
  * A deposit asked for needs its receipt — on every payment when paid in several (the user, 2026-10-12): the funding
  * form has asked for it since 2026-10-04, and now the server does too, so no request comes without one whatever sends
@@ -639,6 +670,8 @@ async function runPass(): Promise<void> {
       await (await import("../courses/coursePayments")).sendDueCoursePayments();
       // Balance payments on finance's enrolments, the same way (finance/enrolmentPayments.ts).
       await (await import("./enrolmentPayments")).sendDueEnrolmentPayments();
+      // Payments finance approved and this side then rejected or deleted: taken back off there (finance/withdrawals.ts).
+      await (await import("./withdrawals")).sendDueWithdrawals();
     } while (again);
   } catch (err) {
     console.error("[finance funding] pass failed", err);

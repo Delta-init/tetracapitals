@@ -356,7 +356,12 @@ const coursePayment = {
   product: "DWT", kind: "partial", with_bonus: true, bonus_usd: 500, hold_aed: 0, balance_aed: 1250,
   paid_today_aed: 2000, paid_before_aed: 0, paid_total_aed: 2000, price: 3250, price_currency: "AED", instalments: 2,
 };
-const bonus = (over: Record<string, unknown> = {}) => raise({ type: "BONUS", tags: ["Course"], amount_usd: 544.96, amount_original: 2000, amount_currency: "AED", course_payment: coursePayment, ...over });
+// Each its own payment: one of the same amount within a day is refused as raised twice (2026-10-31) — so a bonus
+// asked for in other dollars is that many dirhams paid.
+const bonus = (over: Record<string, unknown> = {}) => {
+  const aed = over.amount_usd !== undefined ? Math.round(Number(over.amount_usd) * 3.67) : 2000;
+  return raise({ type: "BONUS", tags: ["Course"], amount_usd: 544.96, amount_original: aed, amount_currency: "AED", course_payment: { ...coursePayment, paid_today_aed: aed, paid_total_aed: aed }, ...over });
+};
 r = await bonus({ mt5_login: "" });
 check("a bonus without the student's MT5 login: refused", r.status === 400 && /MT5/.test(JSON.stringify(r.body)), show(r));
 r = await bonus({ screenshot_url: "" });
