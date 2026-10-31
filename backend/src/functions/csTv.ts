@@ -40,7 +40,14 @@ export async function getCsTvLink(req: Request, user: AuthUser): Promise<Respons
 
 const cache = new Map<string, { at: number; data: any }>();
 
-async function board(location: "dubai" | "bangalore") {
+/** "2026-10" → the next month, "2026-11". */
+const nextMonth = (m: string) => { const [y, mm] = m.split("-").map(Number) as [number, number]; return mm === 12 ? `${y + 1}-01` : `${y}-${String(mm + 1).padStart(2, "0")}`; };
+
+/**
+ * The board — this month's, or with `month` (YYYY-MM, the Root Manager TV's month switch, 2026-11-01) that month's as
+ * it ended: what each CS collected in it, nothing for today, no latest payments.
+ */
+async function board(location: "dubai" | "bangalore", month?: string) {
   const index = await loadTeams();
   const people = ((await col("users").find({ app_role: "cs", status: { $ne: "inactive" } }, { projection: { full_name: 1, email: 1 } }).toArray()) as any[])
     .filter((u) => (index.teamOf(String(u._id))?.location ?? "dubai") === location);
@@ -49,9 +56,12 @@ async function board(location: "dubai" | "bangalore") {
     return [String(u._id), { id: String(u._id), name: String(u.full_name ?? "").trim(), email: String(u.email ?? "").toLowerCase(), team_id: team?.id ?? "", team: team?.name ?? "No team",
       month_aed: 0, today_aed: 0, payments: 0, today_payments: 0, photo: null as string | null }];
   }));
-  const today = dubaiDay(), monthStart = dubaiStart(`${today.slice(0, 8)}01`), todayStart = dubaiStart(today);
+  const today = dubaiDay();
+  const past = !!month && month !== today.slice(0, 7);
+  const shownMonth = past ? month! : today.slice(0, 7);
+  const monthStart = dubaiStart(`${shownMonth}-01`), monthEnd = dubaiStart(`${nextMonth(shownMonth)}-01`), todayStart = dubaiStart(today);
   const txs = (await col("funding_transactions").find({
-    type: "BONUS", status: "APPROVED", bonus_credit: { $in: [null, ""] }, "course_payment.product": { $exists: true }, approved_at: { $gte: monthStart },
+    type: "BONUS", status: "APPROVED", bonus_credit: { $in: [null, ""] }, "course_payment.product": { $exists: true }, approved_at: { $gte: monthStart, $lt: monthEnd },
   }, { projection: { initiating_mentor_id: 1, requested_by_id: 1, course_payment: 1, amount_aed: 1, approved_at: 1, tags: 1 } }).sort({ approved_at: -1 }).toArray()) as any[];
   const recent: any[] = [];
   for (const t of txs) {
@@ -59,8 +69,8 @@ async function board(location: "dubai" | "bangalore") {
     if (!r) continue;
     const aed = Number(t.course_payment?.paid_today_aed) || Number(t.amount_aed) || 0;
     r.month_aed += aed; r.payments += 1;
-    if (String(t.approved_at) >= todayStart) { r.today_aed += aed; r.today_payments += 1; }
-    if (recent.length < 20) recent.push({ id: String(t._id), cs_id: r.id, cs: r.name, team: r.team, aed: round(aed), product: String(t.course_payment?.product ?? (t.tags ?? [])[0] ?? ""), at: t.approved_at });
+    if (!past && String(t.approved_at) >= todayStart) { r.today_aed += aed; r.today_payments += 1; }
+    if (!past && recent.length < 20) recent.push({ id: String(t._id), cs_id: r.id, cs: r.name, team: r.team, aed: round(aed), product: String(t.course_payment?.product ?? (t.tags ?? [])[0] ?? ""), at: t.approved_at });
   }
   const photos = await hrmsPhotos([...row.values()].map((r) => ({ email: r.email, name: r.name })));
   const cs = [...row.values()]
@@ -75,7 +85,7 @@ async function board(location: "dubai" | "bangalore") {
     teams.set(k, t);
   }
   return {
-    location, month: today.slice(0, 7), generated_at: new Date().toISOString(),
+    location, month: shownMonth, generated_at: new Date().toISOString(),
     cs, teams: [...teams.values()].map((t) => ({ ...t, month_aed: round(t.month_aed), today_aed: round(t.today_aed) })).sort((a, b) => b.month_aed - a.month_aed),
     totals: { month_aed: round(cs.reduce((s, r) => s + r.month_aed, 0)), today_aed: round(cs.reduce((s, r) => s + r.today_aed, 0)), payments: cs.reduce((s, r) => s + r.payments, 0) },
     recent,
@@ -90,13 +100,17 @@ async function board(location: "dubai" | "bangalore") {
 export async function handleCsTv(req: Request): Promise<Response> {
   const url = new URL(req.url);
   const location = url.searchParams.get("location") === "bangalore" ? "bangalore" : "dubai";
-  const had = cache.get(location);
+  // ?month=YYYY-MM: a month gone by (not one to come), kept 5 minutes — it no longer changes much.
+  const asked = url.searchParams.get("month") ?? "";
+  const month = /^\d{4}-(0[1-9]|1[0-2])$/.test(asked) && asked < dubaiDay().slice(0, 7) ? asked : undefined;
+  const key = month ? `${location}:${month}` : location;
+  const had = cache.get(key);
   // Who collected each payment is kept for the voice (its recordings are by person), not shown.
   const shown = (data: any) => ({ ...data, recent: (data.recent ?? []).map(({ cs_id: _id, ...r }: any) => r) });
-  if (had && Date.now() - had.at < CACHE_MS) return json(shown(had.data));
+  if (had && Date.now() - had.at < (month ? 5 * 60_000 : CACHE_MS)) return json(shown(had.data));
   try {
-    const data = await board(location);
-    cache.set(location, { at: Date.now(), data });
+    const data = await board(location, month);
+    cache.set(key, { at: Date.now(), data });
     return json(shown(data));
   } catch (err) {
     console.error("[cs tv]", err);
