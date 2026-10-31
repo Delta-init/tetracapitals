@@ -116,6 +116,23 @@ async function api(path, { method = "GET", body, isForm = false } = {}) {
   return payload;
 }
 
+/** A file from the backend as a Blob, signed in as api() is (a receipt the viewer reads: backend finance/receiptFile.ts).
+ *  Refused: throws with `status` and the server's JSON as `payload`. */
+export async function apiBlob(path) {
+  const headers = {};
+  const token = getToken();
+  if (token) headers["Authorization"] = `Bearer ${token}`;
+  const res = await fetch(`${API_URL}${path}`, { headers });
+  if (!res.ok) {
+    const payload = await res.json().catch(() => null);
+    const err = new Error((payload && payload.error) || `HTTP ${res.status}`);
+    err.status = res.status;
+    err.payload = payload;
+    throw err;
+  }
+  return res.blob();
+}
+
 /** Wrap a JSON response in the axios shape Base44-SDK callers expect. */
 async function apiWrap(path, opts) {
   const data = await api(path, opts);

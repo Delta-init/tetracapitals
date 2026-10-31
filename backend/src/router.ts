@@ -9,6 +9,7 @@ import { handleFinanceStudents } from "./finance/students";
 import { handleFinanceStudentLookup } from "./finance/studentLookup";
 import { handleFundingDecision } from "./finance/funding";
 import { handleFeeUpdate } from "./finance/feeUpdates";
+import { handleReceiptFile } from "./finance/receiptFile";
 import { handleLmsStudents } from "./lms/students";
 import { handleLmsStudentCs } from "./lms/studentCs";
 import {
@@ -47,6 +48,7 @@ import { handleCsTv, handleCsTvVoice, handleCsTvVoicePlan } from "./functions/cs
  *
  *   GET    /api/reminders/open/:token             (reminder email button → portal)
  *   GET    /api/calls/recording?…                 (call recording, signed link)
+ *   GET    /api/receipts/file?url=…               (a payment receipt's file, for the viewer)
  *   GET    /uploads/:filename                     (static file)
  *   GET    /health
  */
@@ -100,6 +102,8 @@ export async function route(req: Request): Promise<Response> {
   if (path === "/api/calls/recording" && req.method === "GET") return streamRecording(req, url);
   // ---- A photo or file from a WhatsApp chat, on a short-lived signed link ----
   if (path === "/api/whatsapp/media" && req.method === "GET") return streamWhatsAppMedia(url, req);
+  // ---- A payment receipt's file from R2, for the receipt viewer (HEIC photos; gone or not) ----
+  if (path === "/api/receipts/file" && req.method === "GET") return handleReceiptFile(req, url);
 
   // ---- Entities ----
   const entityMatch = path.match(/^\/api\/entities\/([A-Za-z0-9_]+)(?:\/([^/]+))?$/);

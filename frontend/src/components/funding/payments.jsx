@@ -1,5 +1,5 @@
-import { useState } from 'react';
-import { base44 } from '@/api/base44Client';
+import { useEffect, useState } from 'react';
+import { apiBlob, base44 } from '@/api/base44Client';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
@@ -194,13 +194,70 @@ export function PaymentRows({ rows, onChange, currency, methods = DEPOSIT_METHOD
   );
 }
 
-/** One receipt, shown: a photo here, a PDF in its viewer, anything else opened in a new tab. */
+const SHOWN_AS_IS = /\.(jpe?g|png|webp|gif|bmp|avif)($|\?)/i;
+const PDF = /\.pdf($|\?)/i;
+
+/** The file's first bytes: an iPhone's HEIC/HEIF photo ("ftyp" and one of its brands), or a PDF. */
+async function sniff(blob) {
+  const b = new Uint8Array(await blob.slice(0, 12).arrayBuffer());
+  const text = (from, to) => String.fromCharCode(...b.slice(from, to));
+  if (/^ftyp(heic|heix|hevc|hevx|heim|heis|mif1|msf1)$/.test(text(4, 12))) return 'heic';
+  if (text(0, 4) === '%PDF') return 'pdf';
+  return '';
+}
+
+/** A receipt read through the portal's API (the bucket lets no page read it itself): a picture the browser can draw — an
+ *  iPhone's HEIC turned into a JPEG first — a PDF, gone from storage, or something it can't show. */
+async function readReceipt(url) {
+  let blob;
+  try {
+    blob = await apiBlob(`/api/receipts/file?url=${encodeURIComponent(url)}`);
+  } catch (e) {
+    return { kind: e?.payload?.gone ? 'gone' : 'cant' };
+  }
+  const is = await sniff(blob);
+  if (is === 'heic' || /^image\/hei[cf]/i.test(blob.type)) {
+    try {
+      const { default: heic2any } = await import('heic2any');
+      const jpeg = await heic2any({ blob, toType: 'image/jpeg', quality: 0.85 });
+      return { kind: 'img', src: URL.createObjectURL(Array.isArray(jpeg) ? jpeg[0] : jpeg) };
+    } catch {
+      return { kind: 'cant' };
+    }
+  }
+  if (is === 'pdf') return { kind: 'pdf', src: URL.createObjectURL(new Blob([blob], { type: 'application/pdf' })) };
+  // Anything else is tried as a picture; one the browser can't draw ends as 'cant'.
+  return { kind: 'img', src: URL.createObjectURL(blob) };
+}
+
+/** One receipt, shown: a photo or a PDF straight from its address; an iPhone photo (HEIC), or one that won't load that
+ *  way, read through the API (2026-10-31: the viewer said "no longer in storage" for any file it couldn't draw). */
 function ReceiptPreview({ url }) {
-  const [failed, setFailed] = useState(false);
-  if (/\.pdf($|\?)/i.test(url)) return <iframe src={url} title="Receipt" className="h-[65vh] w-full rounded-md border" />;
-  // Usually a file that's gone from storage: removed or replaced on the invoice in finance (2026-10-30).
-  if (failed) return <p className="rounded-md bg-amber-50 px-3 py-2 text-sm text-amber-800">This receipt can't be loaded — the file is most likely no longer in storage (removed or replaced on the invoice in finance). Open it in a new tab to check, and ask finance to attach it again if it's gone.</p>;
-  return <img src={url} alt="Receipt" className="max-h-[65vh] w-full rounded-md border object-contain" onError={() => setFailed(true)} />;
+  const [state, setState] = useState(() => (PDF.test(url) ? { kind: 'pdf', src: url } : SHOWN_AS_IS.test(url) ? { kind: 'img', src: url } : { kind: 'loading' }));
+  useEffect(() => {
+    if (state.kind !== 'loading') return undefined;
+    let live = true;
+    readReceipt(url).then(s => {
+      if (live) setState(s);
+      else if (s.src) URL.revokeObjectURL(s.src);
+    });
+    return () => { live = false; };
+  }, [state.kind, url]);
+  useEffect(() => () => { if (state.src?.startsWith('blob:')) URL.revokeObjectURL(state.src); }, [state.src]);
+
+  if (state.kind === 'loading') {
+    return <p className="flex items-center gap-2 py-6 text-sm text-slate-500"><Loader2 className="h-4 w-4 animate-spin" /> Loading the receipt…</p>;
+  }
+  if (state.kind === 'gone') {
+    return <p className="rounded-md bg-amber-50 px-3 py-2 text-sm text-amber-800">This receipt is no longer in storage — it was removed or replaced on the invoice in finance. Ask finance to attach it again.</p>;
+  }
+  if (state.kind === 'cant') {
+    return <p className="rounded-md bg-slate-50 px-3 py-2 text-sm text-slate-700">This receipt can't be shown here. Open it in a new tab to see it.</p>;
+  }
+  if (state.kind === 'pdf') return <iframe src={state.src} title="Receipt" className="h-[65vh] w-full rounded-md border" />;
+  // Straight from its address and it won't draw: read it through the API (an iPhone photo named .jpg, or gone); read so already: can't.
+  return <img src={state.src} alt="Receipt" className="max-h-[65vh] w-full rounded-md border object-contain"
+    onError={() => setState(s => (s.src === url ? { kind: 'loading' } : { kind: 'cant' }))} />;
 }
 
 /** A request's receipts — every payment's — in one viewer, each with its method, amount and collected date; `start`: the

@@ -1,6 +1,6 @@
 import { config } from "../config";
 
-function cors(headers: Record<string, string> = {}): Record<string, string> {
+export function cors(headers: Record<string, string> = {}): Record<string, string> {
   return {
     "Access-Control-Allow-Origin": config.corsOrigin,
     "Access-Control-Allow-Credentials": "true",
