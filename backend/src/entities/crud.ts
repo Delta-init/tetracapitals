@@ -192,7 +192,7 @@ export async function createEntity(req: Request, entityName: string): Promise<Re
   // A bonus names the MT5 login and carries the receipt; a sales-close credit is the server's to make.
   if (entityName === "FundingTransaction") {
     dropServerFields(data);
-    const missing = bonusMissing(data) ?? depositReceiptMissing(data);
+    const missing = bonusMissing(data) ?? depositReceiptMissing(data) ?? await (await import("../finance/funding")).studentEmailMissing(data);
     if (missing) return error(missing, 400);
     // The same course paid in full twice (2026-10-23).
     const paidTwice = await (await import("../finance/funding")).coursePaidInFullRefusal(data);
@@ -251,7 +251,9 @@ export async function bulkCreateEntity(req: Request, entityName: string): Promis
   let toInsert = items.map((it) => withTimestamps(stripIncomingId(it), true));
   if (entityName === "FundingTransaction") {
     toInsert.forEach((it) => dropServerFields(it));
-    const missing = toInsert.map((it) => bonusMissing(it)).find(Boolean);
+    const { studentEmailMissing } = await import("../finance/funding");
+    let missing = toInsert.map((it) => bonusMissing(it)).find(Boolean);
+    for (const it of toInsert) missing ??= await studentEmailMissing(it);
     if (missing) return error(missing, 400);
   }
 

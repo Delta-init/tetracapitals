@@ -7,6 +7,7 @@ import { recordHistory } from "../students/history";
 import { DEFAULT_PRICE_LIST, type CourseCode, type CoursePrice } from "../courses/priceList";
 import { quoteUpgrade, progressOf, UpgradeError, type OwnedCourse, type PlanType, type UpgradeQuote } from "../courses/upgradeCalc";
 import { approvedAmounts, queueCoursePayment, PAYMENT_METHODS } from "../courses/coursePayments";
+import { noEmailMessage } from "../finance/funding";
 import { lmsTargetsOf, sameTitle } from "../courses/lmsMapping";
 import { modulesFor, paidShareOf } from "../courses/upgradeLms";
 import { courseBalancesOf } from "../courses/courseBalance";
@@ -117,7 +118,7 @@ const paymentView = (p: any) => ({
 async function studentFor(user: AuthUser, studentId: unknown, write: boolean) {
   const oid = toObjectId(String(studentId ?? ""));
   if (!oid) return { err: error("studentId is required", 400) };
-  const s: any = await col("students").findOne({ _id: oid }, { projection: { full_name: 1, student_code: 1, primary_mentor_id: 1, primary_mentor_name: 1, common_cs: 1 } });
+  const s: any = await col("students").findOne({ _id: oid }, { projection: { full_name: 1, student_code: 1, email: 1, primary_mentor_id: 1, primary_mentor_name: 1, common_cs: 1 } });
   if (!s) return { err: notFound() };
   if (write ? !canWorkOn(user, s) : !(await mayRead(user, s))) {
     return { err: forbidden("Only this student's CS, the people above them and admins can see or change their courses") };
@@ -373,6 +374,8 @@ export async function recordCoursePayment(req: Request, user: AuthUser): Promise
   const found = await studentFor(user, u.student_id, true);
   if (found.err) return found.err;
   if (u.status !== "open") return error("Payments are recorded only on an upgrade in progress", 409);
+  // Delta finance invoices the payment to the student's email (2026-10-31): without one it can't be approved there.
+  if (!String(found.s.email ?? "").trim()) return error(noEmailMessage(found.s.full_name), 400);
   const amount = Math.round(Number(body?.amountAed) * 100) / 100;
   if (!Number.isFinite(amount) || amount <= 0) return error("The amount must be above 0", 400);
   if (!(PAYMENT_METHODS as readonly string[]).includes(body?.method)) return error(`Method is one of ${PAYMENT_METHODS.join(", ")}`, 400);

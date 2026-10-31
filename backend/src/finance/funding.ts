@@ -257,6 +257,27 @@ export async function repeatPaymentRefusal(doc: any): Promise<string | null> {
 }
 
 /**
+ * A course payment needs the student's email (the user, 2026-10-31: one reached finance without it and could not be
+ * approved — finance invoices the student by their email, so it had nobody to invoice). Refused here, where their CS
+ * can add it on the student's profile, rather than at finance. Only a payment made today: a bonus with nothing paid
+ * makes no invoice.
+ */
+export async function studentEmailMissing(doc: any): Promise<string | null> {
+  if (doc?.type !== "BONUS" || doc?.bonus_credit || !doc?.course_payment) return null;
+  if (doc?.status && doc.status !== "PENDING") return null;
+  if (!(paidAedOf(doc) > 0)) return null;
+  const oid = toObjectId(String(doc.student_id ?? ""));
+  if (!oid) return null;
+  const s: any = await col("students").findOne({ _id: oid }, { projection: { email: 1, full_name: 1 } });
+  if (!s || String(s.email ?? "").trim()) return null;
+  return noEmailMessage(s.full_name);
+}
+
+/** The words for a student with no email, wherever a course payment is raised. */
+export const noEmailMessage = (name: unknown) =>
+  `${String(name ?? "").trim() || "This student"} has no email — add it on their profile first: Delta finance invoices the course payment to the student's email`;
+
+/**
  * A deposit asked for needs its receipt — on every payment when paid in several (the user, 2026-10-12): the funding
  * form has asked for it since 2026-10-04, and now the server does too, so no request comes without one whatever sends
  * it. A withdrawal's stays optional; a deposit recorded as already decided (an admin's record) and the bulk import are

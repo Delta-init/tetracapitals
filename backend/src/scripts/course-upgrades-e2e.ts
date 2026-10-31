@@ -138,6 +138,22 @@ check("no receipt, a bad method, 0, or more than the balance: refused",
   (await pay({ amountAed: 2750, receiptUrl: "" })).status === 400 && (await pay({ amountAed: 2750, method: "Gold" })).status === 400
   && (await pay({ amountAed: 0 })).status === 400 && (await pay({ amountAed: 16751 })).status === 400);
 check("another CS cannot record one", (await pay({ amountAed: 2750 }, tOther)).status === 403);
+// A student with no email (the user, 2026-10-31): finance invoices the payment to it, so it is refused here, not there.
+r = await pay({ amountAed: 4500, paidOn: "2026-10-07" });
+check("the student has no email: refused, saying to add it on their profile — nothing queued",
+  r.status === 400 && /Student STU-1 has no email — add it on their profile first/.test(r.body?.error ?? "") && (await db.collection("course_payments").countDocuments({ upgrade_id: up })) === 0, show(r.body));
+const entity = async (body: unknown) => {
+  const res = await fetch(`${API}/api/entities/FundingTransaction`, { method: "POST", headers: { "content-type": "application/json", authorization: `Bearer ${tCs}` }, body: JSON.stringify(body) });
+  return { status: res.status, body: await res.json().catch(() => ({})) as any };
+};
+const bonusBody = { type: "BONUS", status: "PENDING", student_id: S1, student_name: "Student STU-1", mt5_login: "5550002", screenshot_url: RECEIPT, amount_usd: 100,
+  course_payment: { product: "DGMP", kind: "full", paid_today_aed: 2000 } };
+r = await entity(bonusBody);
+check("…and so is a bonus with a course payment for them", r.status === 400 && /has no email/.test(r.body?.error ?? ""), show(r.body));
+r = await entity({ ...bonusBody, course_payment: { product: "DGMP", kind: "full", paid_today_aed: 0 }, amount_aed: 0 });
+check("…but not one with nothing paid today (no invoice to make)", !/has no email/.test(r.body?.error ?? ""), show(r.body));
+await db.collection("funding_transactions").deleteMany({ student_id: S1 });
+await db.collection("students").updateOne({ _id: s1._id }, { $set: { email: "stu1@e2e-upg.test" } });
 r = await pay({ amountAed: 4500, paidOn: "2026-10-07" });
 const p1 = r.body.id;
 check("its CS records 4,500: queued for finance", r.status === 200 && ((await db.collection("course_payments").findOne({ _id: new ObjectId(p1) })) as any)?.finance_approval?.state === "queued", show(r.body));
