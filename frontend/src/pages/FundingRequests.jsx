@@ -33,7 +33,8 @@ import { toast } from "sonner";
 import { format } from "date-fns";
 import { logAction } from "../components/utils/AuditLogger";
 import { methodsOf, methodsText } from "../components/funding/payments";
-import { AmountCell, PaidCell, InvoiceCell, SourceCell, studentInfoOf, sourceOf, bonusUsdOf, receivedOf, paidLines, sourceLabel } from "../components/funding/mt5Cells";
+import { AED_PER_USD, USD_PER_INR } from "../components/funding/FundingRequestForm";
+import { AmountCell, PaidCell, InvoiceCell, SourceCell, studentInfoOf, sourceOf, bonusUsdOf, receivedOf, paidLines, invoicesOf, sourceLabel } from "../components/funding/mt5Cells";
 import { CopyText } from "../components/funding/corrections";
 
 export default function FundingRequests() {
@@ -480,8 +481,25 @@ export default function FundingRequests() {
       return stringValue;
     };
 
+    // Collected (AED), a plain number for Excel (the user, 2026-11-01): what a direct request says was paid, else the
+    // counsellor's collection on the invoice (finance's paid when none) — at the fixed rates; empty for a deposit or
+    // withdrawal, and when nothing was collected.
+    const toAed = (n, cur) => (Number(n) || 0) * (cur === 'USD' ? AED_PER_USD : cur === 'INR' ? USD_PER_INR * AED_PER_USD : 1);
+    const collectedAedOf = (row) => {
+      if (row.type !== 'BONUS' || row.bonus_credit === 'course_upgrade') return '';
+      const cp = row.course_payment;
+      let aed = 0;
+      if (receivedOf(row)) {
+        aed = Number(cp?.paid_today_aed) > 0 ? Number(cp.paid_today_aed)
+          : Number(row.amount_aed) > 0 ? Number(row.amount_aed) : toAed(row.amount_original, row.amount_currency || 'AED');
+      } else {
+        aed = invoicesOf(row).reduce((sum, f) => sum + toAed(f.collected ?? f.paid, f.currency || 'AED'), 0);
+      }
+      return aed > 0 ? aed.toFixed(2) : '';
+    };
+
     const csvContent = [
-      ['Requested Date', 'Type', 'Status', 'Student Name', 'Student Email', 'Student Code', 'CS', 'Added By', 'Meeting Conducted By', 'MT5 Login', 'Amount to credit USD', 'Paid by the student', 'Payment Method', 'Tags', 'Finance invoice', 'From', 'Transaction ID', 'Approved By', 'Approved Date', 'Notes'].join(','),
+      ['Requested Date', 'Type', 'Status', 'Student Name', 'Student Email', 'Student Code', 'CS', 'Added By', 'Meeting Conducted By', 'MT5 Login', 'Amount to credit USD', 'Paid by the student', 'Collected (AED)', 'Payment Method', 'Tags', 'Finance invoice', 'From', 'Transaction ID', 'Approved By', 'Approved Date', 'Notes'].join(','),
       ...filteredTransactions.map(t => {
         const student = students.find(s => s.id === t.student_id);
         // Tags are stored as a string array; join with "; " so they fit in one CSV cell.
@@ -502,6 +520,7 @@ export default function FundingRequests() {
           escapeCSV(t.mt5_login || ''),
           escapeCSV(bonusUsdOf(row).toFixed(2)),
           escapeCSV(paidText),
+          escapeCSV(collectedAedOf(row)),
           escapeCSV(methodsText(t)),
           escapeCSV(tagsStr),
           escapeCSV([t.sales_close?.invoice_number, ...(row.student?.invoices || []).map(f => f.invoice_number)].filter(Boolean).filter((v, i, a) => a.indexOf(v) === i).join(' ')),
