@@ -35,6 +35,8 @@ const SALE_EVENT = "portal:cs-tv-payment";
 /** Shows (and says) a close on this screen. */
 export function celebrate(sale) {
   window.dispatchEvent(new CustomEvent(SALE_EVENT, { detail: sale }));
+  // A TV in the middle of Root's photos and videos puts them away so the payment shows (2026-11-02).
+  window.dispatchEvent(new Event('tv:celebrate'));
 }
 
 export function SaleCelebration() {

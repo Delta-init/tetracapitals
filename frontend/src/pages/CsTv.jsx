@@ -13,6 +13,9 @@ import { setOwnVoice } from '@/components/cstv/saleAnnouncement';
 
 const API = (import.meta.env.VITE_API_URL || '').replace(/\/$/, '');
 const ROT_KEY = 'cs_tv_rotate';
+// The office TVs' photos and videos (2026-11-02) come from the Root portal: its overlay plays the ones a root admin
+// chose for this TV, then the board for its minute, and again. Nothing chosen, or Root unreachable: the board as before.
+const ROOT_API = (import.meta.env.VITE_ROOT_API_URL || 'https://root-api-sales-crm.deltainstitutions.com').replace(/\/+$/, '');
 
 export default function CsTv() {
   const p = new URLSearchParams(window.location.search);
@@ -26,6 +29,14 @@ export default function CsTv() {
   });
 
   useEffect(() => { document.title = `CS TV — ${location === 'bangalore' ? 'Bangalore' : 'Dubai'}`; }, [location]);
+  // Root's photos and videos for this TV (cs-dubai / cs-bangalore), turned with the board.
+  useEffect(() => {
+    const s = document.createElement('script');
+    s.async = true;
+    s.src = `${ROOT_API}/api/v1/public/tv/overlay.js?screen=cs-${location}`;
+    document.body.appendChild(s);
+  }, [location]);
+  useEffect(() => { document.documentElement.setAttribute('data-tv-rotate', String(rotate)); }, [rotate]);
   // Each payment said in the owner's own voice when the API has it (2026-10-26); the browser's voice otherwise.
   useEffect(() => {
     const idOf = (sale) => encodeURIComponent(sale.test ? 'test' : sale.id);
