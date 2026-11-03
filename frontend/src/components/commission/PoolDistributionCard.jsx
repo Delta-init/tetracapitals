@@ -1,3 +1,4 @@
+import Usd from '@/components/common/Usd';
 import React, { useMemo, useState } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { base44 } from '@/api/base44Client';
@@ -99,8 +100,8 @@ export default function PoolDistributionCard({ kind, credits, start, end, period
                   <td className="px-4 py-3">
                     <div className="flex flex-wrap gap-1">{g.memberList.map((m, i) => <Badge key={i} variant="secondary">{m}</Badge>)}</div>
                   </td>
-                  <td className="px-4 py-3 text-right font-bold text-purple-700">{money(g.total)}</td>
-                  <td className="px-4 py-3 text-right text-slate-700">{money(g.share)}</td>
+                  <td className="px-4 py-3 text-right font-bold text-purple-700"><Usd v={g.total} /></td>
+                  <td className="px-4 py-3 text-right text-slate-700"><Usd v={g.share} /></td>
                   <td className="px-4 py-3 text-right">
                     {g.done ? (
                       <Badge className="border-green-200 bg-green-100 text-green-700">Distributed</Badge>

@@ -1,3 +1,4 @@
+import Usd from '@/components/common/Usd';
 import React, { useState, useEffect } from 'react';
 import { PageTitle } from '@/components/common/PageHeader';
 import { Paged, TablePagination } from '@/components/common/TablePagination';
@@ -78,7 +79,7 @@ export default function MyCommissionHistory() {
                 </div>
                 <div>
                   <p className="text-sm font-semibold uppercase tracking-wider text-gray-700">Total Released</p>
-                  <p className="text-3xl font-bold text-emerald-700">${totalReleased.toFixed(2)}</p>
+                  <p className="text-3xl font-bold text-emerald-700"><Usd v={totalReleased} /></p>
                 </div>
               </div>
             </CardContent>
@@ -92,7 +93,7 @@ export default function MyCommissionHistory() {
                 </div>
                 <div>
                   <p className="text-sm font-semibold uppercase tracking-wider text-gray-700">Pending Release</p>
-                  <p className="text-3xl font-bold text-blue-700">${totalPending.toFixed(2)}</p>
+                  <p className="text-3xl font-bold text-blue-700"><Usd v={totalPending} /></p>
                 </div>
               </div>
             </CardContent>
@@ -106,7 +107,7 @@ export default function MyCommissionHistory() {
                 </div>
                 <div>
                   <p className="text-sm font-semibold uppercase tracking-wider text-gray-700">Total Buffer</p>
-                  <p className="text-3xl font-bold text-amber-700">${totalBuffer.toFixed(2)}</p>
+                  <p className="text-3xl font-bold text-amber-700"><Usd v={totalBuffer} /></p>
                 </div>
               </div>
             </CardContent>
@@ -148,16 +149,16 @@ export default function MyCommissionHistory() {
                       <TableRow key={ledger.id} className="hover:bg-gray-50 transition-colors">
                         {showMentor && <TableCell className="font-medium">{ledger.mentor_name || '—'}</TableCell>}
                         <TableCell className="font-semibold text-blue-600">{ledger.quarter}</TableCell>
-                        <TableCell className="font-semibold">${ledger.net_deposit_usd?.toFixed(2)}</TableCell>
-                        <TableCell className="font-semibold">${ledger.gross_commission_usd?.toFixed(2)}</TableCell>
+                        <TableCell className="font-semibold"><Usd v={ledger.net_deposit_usd} /></TableCell>
+                        <TableCell className="font-semibold"><Usd v={ledger.gross_commission_usd} /></TableCell>
                         <TableCell className="font-semibold text-emerald-600">
-                          ${ledger.commission_release_usd?.toFixed(2)}
+                          <Usd v={ledger.commission_release_usd} />
                         </TableCell>
                         <TableCell className="font-semibold text-amber-600">
-                          ${ledger.commission_buffer_usd?.toFixed(2)}
+                          <Usd v={ledger.commission_buffer_usd} />
                         </TableCell>
-                        <TableCell>${ledger.buffer_carried_in_usd?.toFixed(2)}</TableCell>
-                        <TableCell>${ledger.buffer_carried_out_usd?.toFixed(2)}</TableCell>
+                        <TableCell><Usd v={ledger.buffer_carried_in_usd} /></TableCell>
+                        <TableCell><Usd v={ledger.buffer_carried_out_usd} /></TableCell>
                         <TableCell className="text-sm">
                           {ledger.actual_release_date ? (
                             <div>

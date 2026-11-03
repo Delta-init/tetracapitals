@@ -1,3 +1,4 @@
+import Usd from '@/components/common/Usd';
 import React, { useState, useEffect, useMemo } from 'react';
 import { PageTitle } from '@/components/common/PageHeader';
 import { TablePagination, usePagination } from '@/components/common/TablePagination';
@@ -331,13 +332,13 @@ export default function CommissionTools() {
                     {proRataResults.map(r => (
                       <TableRow key={r.mentor_id}>
                         <TableCell className="font-medium">{r.mentor_name}</TableCell>
-                        <TableCell className="text-right font-mono">${r.total_deposits.toFixed(2)}</TableCell>
-                        <TableCell className="text-right font-mono text-red-600">${r.total_withdrawals.toFixed(2)}</TableCell>
-                        <TableCell className="text-right font-semibold">${r.net.toFixed(2)}</TableCell>
+                        <TableCell className="text-right font-mono"><Usd v={r.total_deposits} /></TableCell>
+                        <TableCell className="text-right font-mono text-red-600"><Usd v={r.total_withdrawals} /></TableCell>
+                        <TableCell className="text-right font-semibold"><Usd v={r.net} /></TableCell>
                         <TableCell className="text-right font-semibold">{r.share_percent.toFixed(1)}%</TableCell>
-                        <TableCell className="text-right font-semibold text-red-700">${r.pro_rata_amount.toFixed(2)}</TableCell>
+                        <TableCell className="text-right font-semibold text-red-700"><Usd v={r.pro_rata_amount} /></TableCell>
                         <TableCell className="text-right">{r.commission_rate}%</TableCell>
-                        <TableCell className="text-right font-semibold text-purple-700">${r.commission_amount.toFixed(2)}</TableCell>
+                        <TableCell className="text-right font-semibold text-purple-700"><Usd v={r.commission_amount} /></TableCell>
                       </TableRow>
                     ))}
                   </TableBody>
@@ -446,7 +447,7 @@ export default function CommissionTools() {
                         </Badge>
                       </TableCell>
                       <TableCell className={`text-right font-semibold ${adj.amount_usd >= 0 ? 'text-green-700' : 'text-red-700'}`}>
-                        ${adj.amount_usd.toFixed(2)}
+                        <Usd v={adj.amount_usd} />
                       </TableCell>
                       <TableCell className="text-sm">{adj.reason}</TableCell>
                       <TableCell className="text-sm">{adj.created_by_name}</TableCell>

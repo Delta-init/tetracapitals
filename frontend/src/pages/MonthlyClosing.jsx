@@ -1,3 +1,4 @@
+import Usd from '@/components/common/Usd';
 import React, { useState, useMemo } from 'react';
 import { PageTitle } from '@/components/common/PageHeader';
 import { TablePagination, usePagination } from '@/components/common/TablePagination';
@@ -13,7 +14,6 @@ import PeriodApprovalCell from '@/components/commission/PeriodApprovalCell';
 import PoolDistributionCard from '@/components/commission/PoolDistributionCard';
 
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-const money = (n) => `$${(n || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 
 export default function MonthlyClosing() {
   const now = new Date();
@@ -109,9 +109,9 @@ export default function MonthlyClosing() {
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-          <div className="bg-green-50 border border-green-200 rounded-xl p-4"><p className="text-xs text-green-600 font-medium uppercase">With Bonus</p><p className="text-2xl font-bold text-green-700 mt-1">{money(totals.withB)}</p></div>
-          <div className="bg-amber-50 border border-amber-200 rounded-xl p-4"><p className="text-xs text-amber-600 font-medium uppercase">Without Bonus</p><p className="text-2xl font-bold text-amber-700 mt-1">{money(totals.withoutB)}</p></div>
-          <div className="bg-purple-50 border border-purple-200 rounded-xl p-4"><p className="text-xs text-purple-600 font-medium uppercase">Total Bonus</p><p className="text-2xl font-bold text-purple-700 mt-1">{money(totals.total)}</p></div>
+          <div className="bg-green-50 border border-green-200 rounded-xl p-4"><p className="text-xs text-green-600 font-medium uppercase">With Bonus</p><p className="text-2xl font-bold text-green-700 mt-1"><Usd v={totals.withB} /></p></div>
+          <div className="bg-amber-50 border border-amber-200 rounded-xl p-4"><p className="text-xs text-amber-600 font-medium uppercase">Without Bonus</p><p className="text-2xl font-bold text-amber-700 mt-1"><Usd v={totals.withoutB} /></p></div>
+          <div className="bg-purple-50 border border-purple-200 rounded-xl p-4"><p className="text-xs text-purple-600 font-medium uppercase">Total Bonus</p><p className="text-2xl font-bold text-purple-700 mt-1"><Usd v={totals.total} /></p></div>
           <div className={`border rounded-xl p-4 ${allReleased ? 'bg-emerald-50 border-emerald-200' : 'bg-gray-50 border-gray-200'}`}>
             <p className={`text-xs font-medium uppercase ${allReleased ? 'text-emerald-600' : 'text-gray-500'}`}>Status</p>
             <p className={`text-2xl font-bold mt-1 ${allReleased ? 'text-emerald-700' : 'text-gray-700'}`}>{releasedCount}/{periodCredits.length}</p>
@@ -161,9 +161,9 @@ export default function MonthlyClosing() {
                   {poolRows.map(p => (
                     <tr key={'pool-' + p.key} className="border-b-2 border-purple-200 bg-purple-50/60 hover:bg-purple-50">
                       <td className="px-4 py-3 font-semibold text-purple-800">{p.name}</td>
-                      <td className="px-4 py-3 text-right text-green-700">{money(p.withB)}</td>
-                      <td className="px-4 py-3 text-right text-amber-700">{money(p.withoutB)}</td>
-                      <td className="px-4 py-3 text-right font-bold text-purple-700">{money(p.total)}<span className="text-xs text-gray-400 ml-1">(Jun+Sen pool)</span></td>
+                      <td className="px-4 py-3 text-right text-green-700"><Usd v={p.withB} /></td>
+                      <td className="px-4 py-3 text-right text-amber-700"><Usd v={p.withoutB} /></td>
+                      <td className="px-4 py-3 text-right font-bold text-purple-700"><Usd v={p.total} /><span className="text-xs text-gray-400 ml-1">(Jun+Sen pool)</span></td>
                       <td className="px-4 py-3 text-center">
                         <Badge variant="outline" className="bg-purple-100 text-purple-800 border-purple-200">Pool</Badge>
                       </td>
@@ -173,9 +173,9 @@ export default function MonthlyClosing() {
                   {pageRows.map(r => (
                     <tr key={r.key} className="border-b hover:bg-gray-50">
                       <td className="px-4 py-3 font-medium text-gray-900">{r.name}</td>
-                      <td className="px-4 py-3 text-right text-green-700">{money(r.withB)}</td>
-                      <td className="px-4 py-3 text-right text-amber-700">{money(r.withoutB)}</td>
-                      <td className="px-4 py-3 text-right font-bold text-purple-700">{money(r.total)}</td>
+                      <td className="px-4 py-3 text-right text-green-700"><Usd v={r.withB} /></td>
+                      <td className="px-4 py-3 text-right text-amber-700"><Usd v={r.withoutB} /></td>
+                      <td className="px-4 py-3 text-right font-bold text-purple-700"><Usd v={r.total} /></td>
                       <td className="px-4 py-3 text-center">
                         <Badge variant="outline" className={r.released ? 'bg-emerald-100 text-emerald-800 border-emerald-200' : 'bg-amber-100 text-amber-800 border-amber-200'}>
                           {r.released ? 'Released' : 'Pending'}
@@ -200,9 +200,9 @@ export default function MonthlyClosing() {
                   <tfoot>
                     <tr className="bg-gray-100 border-t-2 border-gray-300 font-bold">
                       <td className="px-4 py-3 text-gray-700">Total ({rows.length})</td>
-                      <td className="px-4 py-3 text-right text-green-700">{money(totals.withB)}</td>
-                      <td className="px-4 py-3 text-right text-amber-700">{money(totals.withoutB)}</td>
-                      <td className="px-4 py-3 text-right text-purple-700">{money(totals.total)}</td>
+                      <td className="px-4 py-3 text-right text-green-700"><Usd v={totals.withB} /></td>
+                      <td className="px-4 py-3 text-right text-amber-700"><Usd v={totals.withoutB} /></td>
+                      <td className="px-4 py-3 text-right text-purple-700"><Usd v={totals.total} /></td>
                       <td></td>
                       {canApprove && <td></td>}
                     </tr>

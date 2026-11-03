@@ -1,3 +1,4 @@
+import Usd from '@/components/common/Usd';
 import React, { useState, useEffect } from 'react';
 import PageHeader from '@/components/common/PageHeader';
 import { Paged, TablePagination } from '@/components/common/TablePagination';
@@ -10,6 +11,7 @@ import { Badge } from "@/components/ui/badge";
 import { DollarSign, TrendingUp, Award } from "lucide-react";
 import { format } from "date-fns";
 import { isMentorRole } from "@/components/utils/roles";
+import { localFromUsd } from '@/components/utils/displayCurrency';
 
 export default function Commissions() {
   const [currentUser, setCurrentUser] = useState(null);
@@ -77,8 +79,8 @@ export default function Commissions() {
         {/* Summary Cards */}
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-3 lg:gap-6">
           <StatsCard title="Total Records" value={filteredCommissions.length} icon={Award} color="blue" delay={0.05} />
-          <StatsCard title="Total Commission" value={`$${totalCommission.toFixed(2)}`} icon={DollarSign} color="emerald" delay={0.12} />
-          <StatsCard title="Total Payable" value={`$${totalPayable.toFixed(2)}`} icon={TrendingUp} color="cyan" delay={0.19} />
+          <StatsCard title="Total Commission" value={`$${totalCommission.toFixed(2)}`} trend={localFromUsd(totalCommission, { decimals: true })} icon={DollarSign} color="emerald" delay={0.12} />
+          <StatsCard title="Total Payable" value={`$${totalPayable.toFixed(2)}`} trend={localFromUsd(totalPayable, { decimals: true })} icon={TrendingUp} color="cyan" delay={0.19} />
         </div>
 
         {/* Commission Table */}
@@ -110,15 +112,15 @@ export default function Commissions() {
                   <TableRow key={commission.id} className="hover:bg-gray-50 transition-colors">
                     <TableCell className="font-medium">{commission.mentor_name}</TableCell>
                     <TableCell className="font-mono text-sm font-semibold text-blue-600">{commission.quarter}</TableCell>
-                    <TableCell className="font-mono">${(commission.net_deposit_usd || 0).toFixed(2)}</TableCell>
+                    <TableCell className="font-mono"><Usd v={(commission.net_deposit_usd || 0)} /></TableCell>
                     <TableCell className="font-mono font-medium">
-                      ${(commission.gross_commission_usd || 0).toFixed(2)}
+                      <Usd v={(commission.gross_commission_usd || 0)} />
                     </TableCell>
-                    <TableCell className="font-mono text-sm">${(commission.buffer_carried_in_usd || 0).toFixed(2)}</TableCell>
+                    <TableCell className="font-mono text-sm"><Usd v={(commission.buffer_carried_in_usd || 0)} /></TableCell>
                     <TableCell className="font-mono font-medium text-emerald-600">
-                      ${(commission.commission_release_usd || 0).toFixed(2)}
+                      <Usd v={(commission.commission_release_usd || 0)} />
                     </TableCell>
-                    <TableCell className="font-mono text-amber-600">${(commission.commission_buffer_usd || 0).toFixed(2)}</TableCell>
+                    <TableCell className="font-mono text-amber-600"><Usd v={(commission.commission_buffer_usd || 0)} /></TableCell>
                     <TableCell>
                       <Badge variant="outline" className={getStatusColor(commission.overall_status)}>
                         {commission.overall_status?.replace(/_/g, ' ')}

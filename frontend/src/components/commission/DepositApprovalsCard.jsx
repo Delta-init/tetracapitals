@@ -1,3 +1,4 @@
+import Usd from '@/components/common/Usd';
 import React, { useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { base44 } from '@/api/base44Client';
@@ -6,7 +7,6 @@ import { Badge } from '@/components/ui/badge';
 import PeriodApprovalCell from '@/components/commission/PeriodApprovalCell';
 import { TablePagination, usePagination } from '@/components/common/TablePagination';
 
-const money = (n) => `$${(n || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 
 /**
  * Deposit commission per staff for a quarter (deposits add, withdrawals claw
@@ -64,7 +64,7 @@ export default function DepositApprovalsCard({ credits, start, end, periodKey, p
               ) : pageRows.map(r => (
                 <tr key={r.key} className="border-b hover:bg-slate-50/60">
                   <td className="px-4 py-3 font-medium text-slate-900">{r.name}</td>
-                  <td className={`px-4 py-3 text-right font-bold ${r.commission < 0 ? 'text-rose-600' : 'text-blue-700'}`}>{money(r.commission)}</td>
+                  <td className={`px-4 py-3 text-right font-bold ${r.commission < 0 ? 'text-rose-600' : 'text-blue-700'}`}><Usd v={r.commission} /></td>
                   <td className="px-4 py-3 text-center"><Badge variant="secondary">{r.count}</Badge></td>
                   <td className="px-4 py-3 text-right">
                     <PeriodApprovalCell
@@ -82,7 +82,7 @@ export default function DepositApprovalsCard({ credits, start, end, periodKey, p
               <tfoot>
                 <tr className="border-t-2 border-slate-300 bg-slate-100 font-bold">
                   <td className="px-4 py-3 text-slate-700">Total ({rows.length})</td>
-                  <td className="px-4 py-3 text-right text-blue-700">{money(total.commission)}</td>
+                  <td className="px-4 py-3 text-right text-blue-700"><Usd v={total.commission} /></td>
                   <td className="px-4 py-3 text-center">{total.count}</td>
                   <td></td>
                 </tr>

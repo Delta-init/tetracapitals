@@ -1,3 +1,4 @@
+import Usd from '@/components/common/Usd';
 import React, { useState, useEffect } from 'react';
 import { PageTitle } from '@/components/common/PageHeader';
 import { Paged, TablePagination } from '@/components/common/TablePagination';
@@ -23,7 +24,6 @@ import { logAction } from "../components/utils/AuditLogger";
 import PoolDistributionCard from "@/components/commission/PoolDistributionCard";
 import DepositApprovalsCard from "@/components/commission/DepositApprovalsCard";
 
-const money = (n) => `$${(n || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 
 // Friendly labels for a generated ledger's approval stage — so Quarterly Deposit Closing
 // reads like Bonus Closing (clear release status per staff).
@@ -348,15 +348,15 @@ export default function QuarterClosing() {
         <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
           <div className="bg-blue-50 border border-blue-200 rounded-xl p-4">
             <p className="text-xs text-blue-600 font-medium uppercase">Total Net Deposit</p>
-            <p className="text-2xl font-bold text-blue-700 mt-1">{money(totals.net)}</p>
+            <p className="text-2xl font-bold text-blue-700 mt-1"><Usd v={totals.net} /></p>
           </div>
           <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-4">
             <p className="text-xs text-emerald-600 font-medium uppercase">Total Release (75%)</p>
-            <p className="text-2xl font-bold text-emerald-700 mt-1">{money(totals.rel)}</p>
+            <p className="text-2xl font-bold text-emerald-700 mt-1"><Usd v={totals.rel} /></p>
           </div>
           <div className="bg-amber-50 border border-amber-200 rounded-xl p-4">
             <p className="text-xs text-amber-600 font-medium uppercase">Total Buffer (25%)</p>
-            <p className="text-2xl font-bold text-amber-700 mt-1">{money(totals.buf)}</p>
+            <p className="text-2xl font-bold text-amber-700 mt-1"><Usd v={totals.buf} /></p>
           </div>
           <div className="bg-gray-50 border border-gray-200 rounded-xl p-4">
             <p className="text-xs text-gray-500 font-medium uppercase">Released</p>
@@ -392,7 +392,7 @@ export default function QuarterClosing() {
                       <TableCell className="font-semibold text-purple-800">{p.name}</TableCell>
                       <TableCell className="text-gray-400">—</TableCell>
                       <TableCell className="text-gray-400">—</TableCell>
-                      <TableCell className="font-bold text-purple-700">${p.total.toFixed(2)}<span className="text-xs text-gray-400 ml-1">(Jun+Sen pool)</span></TableCell>
+                      <TableCell className="font-bold text-purple-700"><Usd v={p.total} /><span className="text-xs text-gray-400 ml-1">(Jun+Sen pool)</span></TableCell>
                       <TableCell className="text-gray-400">—</TableCell>
                       <TableCell className="text-gray-400">—</TableCell>
                       <TableCell>
@@ -405,16 +405,16 @@ export default function QuarterClosing() {
                     <TableRow key={data.mentor.id} className="hover:bg-gray-50 transition-colors">
                       <TableCell className="font-medium">{data.mentor.full_name}</TableCell>
                       <TableCell className="font-semibold">
-                        ${data.isClosed ? data.ledger.net_deposit_usd.toFixed(2) : data.netDeposit.toFixed(2)}
+                        <Usd v={data.isClosed ? data.ledger.net_deposit_usd : data.netDeposit} />
                       </TableCell>
                       <TableCell>
-                        ${data.isClosed ? data.ledger.buffer_carried_in_usd.toFixed(2) : data.bufferCarriedIn.toFixed(2)}
+                        <Usd v={data.isClosed ? data.ledger.buffer_carried_in_usd : data.bufferCarriedIn} />
                       </TableCell>
                       <TableCell className="font-semibold">
                         <div>
-                          ${data.isClosed
-                            ? (data.ledger.adjusted_gross_commission_usd ?? data.ledger.gross_commission_usd).toFixed(2)
-                            : data.adjustedGross.toFixed(2)}
+                          <Usd v={data.isClosed
+                            ? (data.ledger.adjusted_gross_commission_usd ?? data.ledger.gross_commission_usd)
+                            : data.adjustedGross} />
                           <span className="text-xs text-gray-400 ml-1">(level-based)</span>
                         </div>
                         {(data.isClosed ? (data.ledger.manual_adjustment_usd || 0) : data.manualAdjustmentTotal) !== 0 && (
@@ -427,10 +427,10 @@ export default function QuarterClosing() {
                         )}
                       </TableCell>
                       <TableCell className="text-emerald-600 font-semibold">
-                        ${data.isClosed ? data.ledger.commission_release_usd.toFixed(2) : data.adjustedRelease.toFixed(2)}
+                        <Usd v={data.isClosed ? data.ledger.commission_release_usd : data.adjustedRelease} />
                       </TableCell>
                       <TableCell className="text-amber-600 font-semibold">
-                        ${data.isClosed ? data.ledger.commission_buffer_usd.toFixed(2) : data.adjustedBuffer.toFixed(2)}
+                        <Usd v={data.isClosed ? data.ledger.commission_buffer_usd : data.adjustedBuffer} />
                       </TableCell>
                       <TableCell>
                         {!data.isClosed ? (

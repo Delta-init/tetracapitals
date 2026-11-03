@@ -1,3 +1,5 @@
+import Usd from '@/components/common/Usd';
+import { AED_PER_USD, displayCurrency, localNumberFromAed } from '@/components/utils/displayCurrency';
 import React, { useState, useMemo } from 'react';
 import { LocationFilter, useUserLocations, inLocation } from '@/components/common/LocationFilter';
 import { PageTitle } from '@/components/common/PageHeader';
@@ -141,7 +143,7 @@ export default function DepositCommissionReports() {
   const periodLabel = `Q${quarter} ${year}`;
 
   const exportCsv = () => {
-    const csv = [['Staff', 'Deposit Commission', 'Credits'].join(','), ...rows.map(r => [`"${r.name}"`, r.commission.toFixed(2), r.count].join(','))];
+    const csv = [['Staff', 'Deposit Commission', `Deposit Commission (${displayCurrency()})`, 'Credits'].join(','), ...rows.map(r => [`"${r.name}"`, r.commission.toFixed(2), localNumberFromAed(r.commission * AED_PER_USD), r.count].join(','))];
     const blob = new Blob([csv.join('\n')], { type: 'text/csv' });
     const a = document.createElement('a'); a.href = URL.createObjectURL(blob);
     a.download = `deposit_commission_${periodLabel}.csv`; a.click();
@@ -170,7 +172,7 @@ export default function DepositCommissionReports() {
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <div className="bg-blue-50 border border-blue-200 rounded-xl p-4">
             <p className="text-xs text-blue-600 font-medium uppercase">Total Deposit Commission</p>
-            <p className="text-2xl font-bold text-blue-700 mt-1">{money(total.commission)}</p>
+            <p className="text-2xl font-bold text-blue-700 mt-1"><Usd v={total.commission} /></p>
           </div>
           <div className="bg-gray-50 border border-gray-200 rounded-xl p-4">
             <p className="text-xs text-gray-500 font-medium uppercase">Staff / Credits</p>
@@ -210,8 +212,8 @@ export default function DepositCommissionReports() {
                             {g.memberList.map((m, i) => <Badge key={i} variant="secondary">{m}</Badge>)}
                           </div>
                         </td>
-                        <td className="px-4 py-3 text-right font-bold text-purple-700">{money(g.total)}</td>
-                        <td className="px-4 py-3 text-right text-gray-700">{money(g.share)}</td>
+                        <td className="px-4 py-3 text-right font-bold text-purple-700"><Usd v={g.total} /></td>
+                        <td className="px-4 py-3 text-right text-gray-700"><Usd v={g.share} /></td>
                         <td className="px-4 py-3 text-right">
                           {g.done ? (
                             <Badge className="bg-green-100 text-green-700 border-green-200">Distributed</Badge>
@@ -258,7 +260,7 @@ export default function DepositCommissionReports() {
                   ) : pageRows.map(r => (
                     <tr key={r.key} onClick={() => setSelected(r)} className="border-b hover:bg-blue-50 cursor-pointer">
                       <td className="px-4 py-3 font-medium text-gray-900">{r.name}</td>
-                      <td className="px-4 py-3 text-right font-bold text-blue-700">{money(r.commission)}</td>
+                      <td className="px-4 py-3 text-right font-bold text-blue-700"><Usd v={r.commission} /></td>
                       <td className="px-4 py-3 text-center"><Badge variant="secondary">{r.count}</Badge></td>
                       {canApprove && (
                         <td className="px-4 py-3 text-right" onClick={(e) => e.stopPropagation()}>
@@ -278,7 +280,7 @@ export default function DepositCommissionReports() {
                   <tfoot>
                     <tr className="bg-gray-100 border-t-2 border-gray-300 font-bold">
                       <td className="px-4 py-3 text-gray-700">Total ({rows.length})</td>
-                      <td className="px-4 py-3 text-right text-blue-700">{money(total.commission)}</td>
+                      <td className="px-4 py-3 text-right text-blue-700"><Usd v={total.commission} /></td>
                       <td className="px-4 py-3 text-center">{total.count}</td>
                       {canApprove && <td></td>}
                     </tr>
@@ -316,16 +318,16 @@ export default function DepositCommissionReports() {
                       <td className="px-3 py-2 text-gray-600">{c.student_email || '—'}</td>
                       <td className="px-3 py-2 text-gray-700">{c.initiator_name || '—'}</td>
                       <td className="px-3 py-2 text-center">L{c.level} <span className="text-xs text-gray-400">({c.percentage}%)</span></td>
-                      <td className="px-3 py-2 text-right font-mono">{money(c.base_amount)}</td>
+                      <td className="px-3 py-2 text-right font-mono"><Usd v={c.base_amount} /></td>
                       <td className="px-3 py-2 font-mono text-xs text-gray-500">{c.txn_id || '—'}</td>
-                      <td className={`px-3 py-2 text-right font-bold ${(c.commission_usd || 0) < 0 ? 'text-red-600' : 'text-blue-700'}`}>{money(c.commission_usd)}</td>
+                      <td className={`px-3 py-2 text-right font-bold ${(c.commission_usd || 0) < 0 ? 'text-red-600' : 'text-blue-700'}`}><Usd v={c.commission_usd} /></td>
                     </tr>
                   ))}
                 </tbody>
                 <tfoot>
                   <tr className="bg-gray-100 border-t-2 font-bold">
                     <td colSpan={6} className="px-3 py-2 text-gray-700">Total ({detailCredits.length} credits)</td>
-                    <td className="px-3 py-2 text-right text-blue-700">{money(detailCredits.reduce((s, c) => s + (c.commission_usd || 0), 0))}</td>
+                    <td className="px-3 py-2 text-right text-blue-700"><Usd v={detailCredits.reduce((s, c) => s + (c.commission_usd || 0), 0)} /></td>
                   </tr>
                 </tfoot>
               </table>

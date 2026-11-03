@@ -1,3 +1,5 @@
+import Usd from '@/components/common/Usd';
+import { AED_PER_USD, displayCurrency, localNumberFromAed } from '@/components/utils/displayCurrency';
 import React, { useState, useMemo } from 'react';
 import { LocationFilter, useUserLocations, inLocation } from '@/components/common/LocationFilter';
 import { PageTitle } from '@/components/common/PageHeader';
@@ -133,8 +135,8 @@ export default function BonusCommissionReports() {
   const periodLabel = `${MONTHS[month - 1]} ${year}`;
 
   const exportCsv = () => {
-    const headers = ['Staff', 'With Bonus', 'Without Bonus', 'Total', 'Credits'];
-    const csv = [headers.join(','), ...rows.map(r => [`"${r.name}"`, r.withB.toFixed(2), r.withoutB.toFixed(2), r.total.toFixed(2), r.count].join(','))];
+    const headers = ['Staff', 'With Bonus', 'Without Bonus', 'Total', `Total (${displayCurrency()})`, 'Credits'];
+    const csv = [headers.join(','), ...rows.map(r => [`"${r.name}"`, r.withB.toFixed(2), r.withoutB.toFixed(2), r.total.toFixed(2), localNumberFromAed(r.total * AED_PER_USD), r.count].join(','))];
     const blob = new Blob([csv.join('\n')], { type: 'text/csv' });
     const a = document.createElement('a'); a.href = URL.createObjectURL(blob);
     a.download = `bonus_commission_${year}_${String(month).padStart(2, '0')}.csv`; a.click();
@@ -164,15 +166,15 @@ export default function BonusCommissionReports() {
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
           <div className="bg-green-50 border border-green-200 rounded-xl p-4">
             <p className="text-xs text-green-600 font-medium uppercase">With Bonus</p>
-            <p className="text-2xl font-bold text-green-700 mt-1">{money(totals.withB)}</p>
+            <p className="text-2xl font-bold text-green-700 mt-1"><Usd v={totals.withB} /></p>
           </div>
           <div className="bg-amber-50 border border-amber-200 rounded-xl p-4">
             <p className="text-xs text-amber-600 font-medium uppercase">Without Bonus</p>
-            <p className="text-2xl font-bold text-amber-700 mt-1">{money(totals.withoutB)}</p>
+            <p className="text-2xl font-bold text-amber-700 mt-1"><Usd v={totals.withoutB} /></p>
           </div>
           <div className="bg-purple-50 border border-purple-200 rounded-xl p-4">
             <p className="text-xs text-purple-600 font-medium uppercase">Total Bonus Commission</p>
-            <p className="text-2xl font-bold text-purple-700 mt-1">{money(totals.total)}</p>
+            <p className="text-2xl font-bold text-purple-700 mt-1"><Usd v={totals.total} /></p>
           </div>
         </div>
 
@@ -214,8 +216,8 @@ export default function BonusCommissionReports() {
                             {g.memberList.map((m, i) => <Badge key={i} variant="secondary">{m}</Badge>)}
                           </div>
                         </td>
-                        <td className="px-4 py-3 text-right font-bold text-purple-700">{money(g.total)}</td>
-                        <td className="px-4 py-3 text-right text-gray-700">{money(g.share)}</td>
+                        <td className="px-4 py-3 text-right font-bold text-purple-700"><Usd v={g.total} /></td>
+                        <td className="px-4 py-3 text-right text-gray-700"><Usd v={g.share} /></td>
                         <td className="px-4 py-3 text-right">
                           {g.done ? (
                             <Badge className="bg-green-100 text-green-700 border-green-200">Distributed</Badge>
@@ -264,9 +266,9 @@ export default function BonusCommissionReports() {
                   ) : pageRows.map(r => (
                     <tr key={r.key} onClick={() => setSelected(r)} className="border-b hover:bg-blue-50 cursor-pointer">
                       <td className="px-4 py-3 font-medium text-gray-900">{r.name}</td>
-                      <td className="px-4 py-3 text-right text-green-700">{money(r.withB)}</td>
-                      <td className="px-4 py-3 text-right text-amber-700">{money(r.withoutB)}</td>
-                      <td className="px-4 py-3 text-right font-bold text-purple-700">{money(r.total)}</td>
+                      <td className="px-4 py-3 text-right text-green-700"><Usd v={r.withB} /></td>
+                      <td className="px-4 py-3 text-right text-amber-700"><Usd v={r.withoutB} /></td>
+                      <td className="px-4 py-3 text-right font-bold text-purple-700"><Usd v={r.total} /></td>
                       <td className="px-4 py-3 text-center"><Badge variant="secondary">{r.count}</Badge></td>
                       {canApprove && (
                         <td className="px-4 py-3 text-right" onClick={(e) => e.stopPropagation()}>
@@ -286,9 +288,9 @@ export default function BonusCommissionReports() {
                   <tfoot>
                     <tr className="bg-gray-100 border-t-2 border-gray-300 font-bold">
                       <td className="px-4 py-3 text-gray-700">Total ({rows.length})</td>
-                      <td className="px-4 py-3 text-right text-green-700">{money(totals.withB)}</td>
-                      <td className="px-4 py-3 text-right text-amber-700">{money(totals.withoutB)}</td>
-                      <td className="px-4 py-3 text-right text-purple-700">{money(totals.total)}</td>
+                      <td className="px-4 py-3 text-right text-green-700"><Usd v={totals.withB} /></td>
+                      <td className="px-4 py-3 text-right text-amber-700"><Usd v={totals.withoutB} /></td>
+                      <td className="px-4 py-3 text-right text-purple-700"><Usd v={totals.total} /></td>
                       <td className="px-4 py-3 text-center">{totals.count}</td>
                       {canApprove && <td></td>}
                     </tr>
@@ -332,16 +334,16 @@ export default function BonusCommissionReports() {
                         </Badge>
                       </td>
                       <td className="px-3 py-2 text-center">L{c.level} <span className="text-xs text-gray-400">({c.percentage}%)</span></td>
-                      <td className="px-3 py-2 text-right font-mono">{money(c.base_amount)}</td>
+                      <td className="px-3 py-2 text-right font-mono"><Usd v={c.base_amount} /></td>
                       <td className="px-3 py-2 font-mono text-xs text-gray-500">{c.txn_id || '—'}</td>
-                      <td className="px-3 py-2 text-right font-bold text-purple-700">{money(c.commission_usd)}</td>
+                      <td className="px-3 py-2 text-right font-bold text-purple-700"><Usd v={c.commission_usd} /></td>
                     </tr>
                   ))}
                 </tbody>
                 <tfoot>
                   <tr className="bg-gray-100 border-t-2 font-bold">
                     <td colSpan={7} className="px-3 py-2 text-gray-700">Total ({detailCredits.length} credits)</td>
-                    <td className="px-3 py-2 text-right text-purple-700">{money(detailCredits.reduce((s, c) => s + (c.commission_usd || 0), 0))}</td>
+                    <td className="px-3 py-2 text-right text-purple-700"><Usd v={detailCredits.reduce((s, c) => s + (c.commission_usd || 0), 0)} /></td>
                   </tr>
                 </tfoot>
               </table>

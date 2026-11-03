@@ -1,3 +1,4 @@
+import Usd from '@/components/common/Usd';
 import React, { useState } from 'react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
@@ -63,23 +64,23 @@ export default function ApprovalDialog({
               <div>
                 <p className="text-xs text-gray-600">Net Deposit</p>
                 <p className="font-semibold text-blue-600">
-                  ${ledger?.net_deposit_usd?.toFixed(2)}
+                  <Usd v={ledger?.net_deposit_usd} />
                 </p>
               </div>
               <div>
                 <p className="text-xs text-gray-600">Gross Commission</p>
-                <p className="font-semibold">${ledger?.gross_commission_usd?.toFixed(2)}</p>
+                <p className="font-semibold"><Usd v={ledger?.gross_commission_usd} /></p>
               </div>
               <div>
                 <p className="text-xs text-gray-600">Release Amount</p>
                 <p className="font-semibold text-emerald-600">
-                  ${ledger?.commission_release_usd?.toFixed(2)}
+                  <Usd v={ledger?.commission_release_usd} />
                 </p>
               </div>
               <div>
                 <p className="text-xs text-gray-600">Buffer Amount</p>
                 <p className="font-semibold text-amber-600">
-                  ${ledger?.commission_buffer_usd?.toFixed(2)}
+                  <Usd v={ledger?.commission_buffer_usd} />
                 </p>
               </div>
             </div>
