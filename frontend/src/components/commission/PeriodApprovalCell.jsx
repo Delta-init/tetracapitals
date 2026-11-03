@@ -9,7 +9,9 @@ import { toast } from 'sonner';
 const STAGE = {
   pending_broker_approval: { role: 'broker_admin', label: 'Pending Broker' },
   pending_academic_approval: { role: 'academic_head', label: 'Pending Academic' },
-  pending_finance_approval: { role: 'finance_admin', label: 'Pending Finance' },
+  // Delta finance's step since 2026-11-03: its CS commission page approves and pays it (backend
+  // finance/csCommission.ts). A Super Admin may still act here.
+  pending_finance_approval: { role: null, label: 'With finance' },
 };
 const SUPER = ['super_admin', 'admin'];
 
@@ -47,14 +49,18 @@ export default function PeriodApprovalCell({ kind, period, recipientId, recipien
   };
 
   if (status === 'released') {
-    return <Badge className="bg-green-100 text-green-800 border-green-200">Released</Badge>;
+    return (
+      <Badge className="bg-green-100 text-green-800 border-green-200" title={approval?.released_by_name ? `Released by ${approval.released_by_name}` : undefined}>
+        Released{approval?.released_by_id === 'delta-finance' ? ' by finance' : ''}
+      </Badge>
+    );
   }
   if (status === 'rejected') {
     return <Badge className="bg-red-100 text-red-700 border-red-200">Rejected</Badge>;
   }
 
   const stage = STAGE[status];
-  const canAct = periodEnded && currentUser && (currentUser.app_role === stage.role || SUPER.includes(currentUser.app_role));
+  const canAct = periodEnded && currentUser && ((stage.role && currentUser.app_role === stage.role) || SUPER.includes(currentUser.app_role));
 
   return (
     <div className="flex items-center justify-end gap-2">

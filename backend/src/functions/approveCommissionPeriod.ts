@@ -22,12 +22,12 @@ const CHAIN = {
 } as const;
 
 const SUPER = ["super_admin", "admin"];
-const METHODS: Record<string, string[]> = {
+export const METHODS: Record<string, string[]> = {
   bonus: ["bonus_with", "bonus_without"],
   deposit: ["deposit"],
 };
 
-function periodRange(kind: string, period: string): { start: Date; end: Date } | null {
+export function periodRange(kind: string, period: string): { start: Date; end: Date } | null {
   if (kind === "bonus") {
     const m = /^(\d{4})-(\d{2})$/.exec(period);
     if (!m) return null;
@@ -43,6 +43,30 @@ function periodRange(kind: string, period: string): { start: Date; end: Date } |
     return { start: new Date(y, sm, 1), end: new Date(y, sm + 3, 1) };
   }
   return null;
+}
+
+/**
+ * The staff member's commission credits for the period, released (paid) — what the Finance step does. Also used by
+ * Delta finance's approval (finance/csCommission.ts, 2026-11-03), so both release exactly the same credits. Not their
+ * Senior/Junior pool accruals (2026-11-03): those are the pool's, paid when it's distributed at closing — releasing
+ * them here took them out of the pool.
+ */
+export async function releaseCredits(kind: string, range: { start: Date; end: Date }, recipientId: string, by: { id: string; name: string }, now: string): Promise<number> {
+  const credits = await col("commission_credits")
+    .find({ recipient_id: recipientId, method: { $in: METHODS[kind] }, is_pool: { $ne: true } })
+    .toArray();
+  const ids = (credits as any[])
+    .filter((c) => {
+      const d = new Date(c.requested_at || c.created_date);
+      return !isNaN(d.getTime()) && d >= range.start && d < range.end && c.status !== "released";
+    })
+    .map((c) => c._id);
+  if (!ids.length) return 0;
+  const r = await col("commission_credits").updateMany(
+    { _id: { $in: ids } },
+    { $set: { status: "released", released_at: now, released_by_id: by.id, released_by_name: by.name } },
+  );
+  return r.modifiedCount;
 }
 
 export async function approveCommissionPeriod(req: Request, user: AuthUser): Promise<Response> {
@@ -91,8 +115,11 @@ export async function approveCommissionPeriod(req: Request, user: AuthUser): Pro
   const stage = CHAIN[record.overall_status as keyof typeof CHAIN];
   if (!stage) return error("Unexpected approval status.", 400);
 
-  const allowed = user.app_role === stage.role || SUPER.includes(user.app_role);
-  if (!allowed) return forbidden(`Waiting for ${stage.level.replace("_", " ")} approval.`);
+  // The Finance step is Delta finance's since 2026-11-03 (its CS commission page approves it there,
+  // finance/csCommission.ts); a Super Admin may still act on it here.
+  const finance = stage.level === "finance_admin";
+  const allowed = finance ? SUPER.includes(user.app_role) : user.app_role === stage.role || SUPER.includes(user.app_role);
+  if (!allowed) return forbidden(finance ? "Approved in Delta finance — its CS commission page." : `Waiting for ${stage.level.replace("_", " ")} approval.`);
 
   const set: any = {
     updated_date: now,
@@ -117,23 +144,7 @@ export async function approveCommissionPeriod(req: Request, user: AuthUser): Pro
     set.released_by_id = user.id;
     set.released_by_name = user.full_name;
 
-    const methods = METHODS[kind];
-    const credits = await col("commission_credits")
-      .find({ recipient_id: recipientId, method: { $in: methods } })
-      .toArray();
-    const ids = (credits as any[])
-      .filter((c) => {
-        const d = new Date(c.requested_at || c.created_date);
-        return !isNaN(d.getTime()) && d >= range.start && d < range.end && c.status !== "released";
-      })
-      .map((c) => c._id);
-    if (ids.length) {
-      const r = await col("commission_credits").updateMany(
-        { _id: { $in: ids } },
-        { $set: { status: "released", released_at: now, released_by_id: user.id, released_by_name: user.full_name } },
-      );
-      released = r.modifiedCount;
-    }
+    released = await releaseCredits(kind, range, recipientId, { id: user.id, name: user.full_name ?? "" }, now);
   }
 
   await coll.updateOne({ _id: record._id }, { $set: set });

@@ -9,6 +9,7 @@ import { handleFinanceStudents } from "./finance/students";
 import { handleFinanceStudentLookup } from "./finance/studentLookup";
 import { handleFundingDecision } from "./finance/funding";
 import { handleFeeUpdate } from "./finance/feeUpdates";
+import { handleFinanceCsCommission, handleFinanceCsCommissionApprove, handleFinanceCsCommissionUnapprove } from "./finance/csCommission";
 import { handleReceiptFile } from "./finance/receiptFile";
 import { handleLmsStudents } from "./lms/students";
 import { handleLmsStudentCs } from "./lms/studentCs";
@@ -85,6 +86,10 @@ export async function route(req: Request): Promise<Response> {
   if (path === "/api/v1/integrations/finance/funding-decisions" && req.method === "POST") return handleFundingDecision(req);
   // ---- Delta finance: an enrolment's money changed — paid, balance, next due date (the same secret) ----
   if (path === "/api/v1/integrations/finance/fee-updates" && req.method === "POST") return handleFeeUpdate(req);
+  // ---- Delta finance's CS commission page: each period's commission, and its Finance step (the same secret) ----
+  if (path === "/api/v1/integrations/finance/cs-commission" && req.method === "POST") return handleFinanceCsCommission(req);
+  if (path === "/api/v1/integrations/finance/cs-commission/approve" && req.method === "POST") return handleFinanceCsCommissionApprove(req);
+  if (path === "/api/v1/integrations/finance/cs-commission/unapprove" && req.method === "POST") return handleFinanceCsCommissionUnapprove(req);
   // ---- The Delta LMS sending every other new student (its own shared secret) ----
   if (path === "/api/v1/integrations/lms/students" && req.method === "POST") return handleLmsStudents(req);
   // ---- …and asking, now, who looks after one of them (the same secret) ----
