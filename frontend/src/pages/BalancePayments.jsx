@@ -15,6 +15,9 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { ArrowUpCircle, ClipboardList, Coins, CreditCard, Gift, Loader2, MessageCircle, PhoneCall, Plus, Search } from 'lucide-react';
 import { getEffectiveUser } from '@/components/utils/ImpersonationContext';
 import { WA_GREEN } from '@/components/whatsapp/waUi';
+import FundingRequestForm, { AED_PER_USD, USD_PER_INR } from '@/components/funding/FundingRequestForm';
+import { PaymentDialog } from '@/components/students/StudentCoursesCard';
+import { displayCurrency } from '@/components/utils/displayCurrency';
 
 /* ────────────────────────────────────────────────────────────────────────────
    Balance payments (backend/src/functions/balancePayments.ts; the user,
@@ -99,11 +102,102 @@ function WhatsAppDialog({ row, onClose }) {
   );
 }
 
+const courseKey = (name) => String(name ?? '').toUpperCase().replace(/[^A-Z0-9]/g, '');
+const toAed = (n, cur) => (Number(n) || 0) * (cur === 'USD' ? AED_PER_USD : cur === 'INR' ? USD_PER_INR * AED_PER_USD : 1);
+
+/**
+ * Next payment, here in a popup (the user, 2026-11-03: the button went to the Courses tab, where only an upgrade can
+ * take one). A course upgrade: its Record payment, as the Courses card has it. A CS-tracker course or a Bonus course
+ * payment: a Bonus request for the course, Partial — what the tracker has as paid counted as paid before.
+ */
+function NextPaymentDialog({ row, currentUser, onClose }) {
+  const queryClient = useQueryClient();
+  const upgrade = row.source === 'upgrade';
+  const { data: student, isLoading: loadingStudent } = useQuery({
+    queryKey: ['student', row.student_id],
+    queryFn: () => base44.entities.Student.get(row.student_id),
+    enabled: !upgrade,
+  });
+  const { data: tags = [], isLoading: loadingTags } = useQuery({
+    queryKey: ['transaction-tags-catalog'],
+    queryFn: async () => (await base44.entities.TransactionTag.list('name')).filter(t => t.active !== false),
+    staleTime: 5 * 60_000,
+    enabled: !upgrade,
+  });
+  const { data: courses, isLoading: loadingCourses } = useQuery({
+    queryKey: ['student-courses', row.student_id],
+    queryFn: async () => (await base44.functions.invoke('getStudentCourses', { studentId: row.student_id })).data,
+    enabled: upgrade,
+  });
+  const refresh = () => {
+    queryClient.invalidateQueries({ queryKey: ['balance-payments'] });
+    queryClient.invalidateQueries({ queryKey: ['student-courses', row.student_id] });
+    queryClient.invalidateQueries({ queryKey: ['funding-transactions'] });
+  };
+  const create = useMutation({
+    mutationFn: async (data) => {
+      const me = await base44.auth.me();
+      return base44.entities.FundingTransaction.create({ ...data, upline_commission_percentage: parseFloat(me.upline_commission_percentage) || 0 });
+    },
+    onSuccess: () => { toast.success('Payment sent to Delta Finance for approval'); refresh(); onClose(); },
+    onError: (e) => toast.error(e?.message || 'The request could not be sent'),
+  });
+
+  if (upgrade) {
+    if (loadingCourses) return <Dialog open onOpenChange={(o) => !o && onClose()}><DialogContent className="max-w-md"><p className="py-6 text-center text-sm text-slate-400"><Loader2 className="mr-2 inline h-4 w-4 animate-spin" />Loading…</p></DialogContent></Dialog>;
+    if (courses?.active) return <PaymentDialog upgrade={courses.active} onClose={onClose} onSaved={refresh} />;
+    return (
+      <Dialog open onOpenChange={(o) => !o && onClose()}>
+        <DialogContent className="max-w-md">
+          <DialogHeader><DialogTitle>Next payment</DialogTitle></DialogHeader>
+          <p className="text-sm text-slate-600">No upgrade in progress for {row.full_name} now — it may have been paid or cancelled.</p>
+          <DialogFooter><Button variant="ghost" onClick={onClose}>Close</Button></DialogFooter>
+        </DialogContent>
+      </Dialog>
+    );
+  }
+
+  // The course as a Bonus course: the tag of the same name (case, spaces and signs aside), else one it starts with.
+  const key = courseKey(row.course);
+  const tag = key ? tags.find(t => courseKey(t.name) === key) || tags.find(t => courseKey(t.name).startsWith(key) || key.startsWith(courseKey(t.name))) : null;
+  const paidElsewhere = row.source === 'tracker' ? toAed((Number(row.paid_minor) || 0) / 100, row.currency) : 0;
+  const ready = !loadingStudent && !loadingTags && student;
+  return (
+    <Dialog open onOpenChange={(o) => !o && onClose()}>
+      <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+        <DialogHeader>
+          <DialogTitle>Next payment · {row.full_name}</DialogTitle>
+          <DialogDescription>
+            {row.course || 'Course'} · balance {money(row.balance_minor, row.currency)}
+            {paidElsewhere > 0 ? ` · AED ${paidElsewhere.toLocaleString('en-US', { maximumFractionDigits: 2 })} paid on the CS enrolment tracker counts as paid before` : ''}
+            {!loadingTags && !tag ? ' · pick the course — none is named like it' : ''}
+          </DialogDescription>
+        </DialogHeader>
+        {!ready ? (
+          <p className="py-6 text-center text-sm text-slate-400">{loadingStudent || loadingTags ? <><Loader2 className="mr-2 inline h-4 w-4 animate-spin" />Loading…</> : 'Could not load the student'}</p>
+        ) : (
+          <FundingRequestForm
+            start={{ type: 'BONUS', student_id: student.id, tags: tag ? [tag.name] : [], course_payment: { kind: 'partial' }, amount_currency: displayCurrency() }}
+            students={[student]}
+            allStudents={[student]}
+            currentUser={currentUser}
+            paidElsewhereAed={paidElsewhere}
+            onSubmit={(data) => create.mutate(data)}
+            onCancel={onClose}
+            isSubmitting={create.isPending}
+          />
+        )}
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 export default function BalancePayments() {
   const { data: currentUser } = useQuery({ queryKey: ['me-effective'], queryFn: async () => getEffectiveUser(await base44.auth.me()) });
   const [tab, setTab] = useState('all');
   const [q, setQ] = useState('');
   const [messaging, setMessaging] = useState(null);
+  const [paying, setPaying] = useState(null);
   const { data, isLoading, error } = useQuery({
     queryKey: ['balance-payments'],
     queryFn: async () => (await base44.functions.invoke('getBalancePayments', {})).data,
@@ -121,8 +215,6 @@ export default function BalancePayments() {
 
   const TH = ({ children, right = false }) => <th className={`whitespace-nowrap px-3 py-3 text-[11px] font-semibold uppercase tracking-wider text-slate-500 ${right ? 'text-right' : 'text-left'}`}>{children}</th>;
   const studentUrl = (r, t) => `${createPageUrl('StudentDetail')}?id=${r.student_id}${t ? `&tab=${t}` : ''}`;
-  // Where the next payment is taken: an upgrade on Course Upgrades, the rest on the student's Courses card.
-  const nextPaymentUrl = (r) => (r.source === 'upgrade' ? createPageUrl('CourseUpgrades') : studentUrl(r, 'courses'));
 
   const table = (list) => (
     <div className="overflow-x-auto">
@@ -151,8 +243,8 @@ export default function BalancePayments() {
               <td className="px-3 py-2.5">
                 <div className="flex flex-wrap gap-1.5">
                   {r.can_record && (
-                    <Button size="sm" className="h-8" asChild title={r.source === 'upgrade' ? 'Record it on Course Upgrades' : 'Record it on their Courses card'}>
-                      <Link to={nextPaymentUrl(r)}><Plus className="h-3.5 w-3.5" /> Next payment</Link>
+                    <Button size="sm" className="h-8" onClick={() => setPaying(r)} title="Record the next payment — sent to Delta Finance">
+                      <Plus className="h-3.5 w-3.5" /> Next payment
                     </Button>
                   )}
                   <Button size="sm" variant="outline" className="h-8" asChild title="Ask for or send a payment link">
@@ -224,6 +316,7 @@ export default function BalancePayments() {
         </Card>
       </div>
       {messaging && <WhatsAppDialog row={messaging} onClose={() => setMessaging(null)} />}
+      {paying && <NextPaymentDialog row={paying} currentUser={currentUser} onClose={() => setPaying(null)} />}
     </div>
   );
 }

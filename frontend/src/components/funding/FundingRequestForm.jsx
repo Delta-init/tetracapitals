@@ -284,8 +284,11 @@ const paymentsFrom = (tx) => {
   }));
 };
 
-export default function FundingRequestForm({ students, allStudents = [], currentUser, onSubmit, onCancel, isSubmitting, from = null }) {
-  const [formData, setFormData] = useState(() => (from ? startFrom(from) : {
+/** `start`: a new request's first values, the same shape as `from` (a request) but not a resend — Balance payments'
+ *  Next payment (2026-11-03). `paidElsewhereAed`: what the student already paid for the course outside these requests — on the CS enrolment tracker,
+ *  from Balance payments' Next payment (2026-11-03) — counted as paid before, so today's bonus isn't paid twice. */
+export default function FundingRequestForm({ students, allStudents = [], currentUser, onSubmit, onCancel, isSubmitting, from = null, start = null, paidElsewhereAed = 0 }) {
+  const [formData, setFormData] = useState(() => (from || start ? startFrom(from || start) : {
     // A CS raises bonuses only (the user, 2026-10-13): it starts on Bonus for them.
     type: currentUser?.app_role === 'cs' ? 'BONUS' : 'DEPOSIT',
     student_id: '',
@@ -333,7 +336,7 @@ export default function FundingRequestForm({ students, allStudents = [], current
   });
   const money = convert(typed, formData.currency);
   const plan = coursePlan(product);
-  const beforeAed = product ? paidBefore(earlier, product.name) : 0;
+  const beforeAed = product ? paidBefore(earlier, product.name) + (Number(paidElsewhereAed) || 0) : 0;
   const fullBefore = product ? paidInFullBefore(earlier, product.name) : null;
   const kinds = paymentKinds(plan, beforeAed);
   const kind = kinds.length === 1 ? kinds[0] : formData.payment_kind;
