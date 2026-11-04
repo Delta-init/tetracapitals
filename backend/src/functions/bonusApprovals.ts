@@ -7,6 +7,7 @@ import { forBrokerLocation } from "../finance/bonusLocation";
 
 /**
  * POST /api/functions/getBonusApprovals
+ * { from?, to?, search? }
  * → { now, month_start, counts: { pending, approved, rejected, with_finance }, pending, approved, rejected }
  *
  * The MT5 Bonus Approvals page (the user, 2026-10-04): every MT5 bonus waiting for a broker admin or a Super Admin —
@@ -58,14 +59,61 @@ export async function getBonusApprovals(req: Request, user: AuthUser): Promise<R
   const from = day(body?.from), to = day(body?.to);
   const monthStart = from ? new Date(Date.parse(`${from}T00:00:00+04:00`)).toISOString() : uaeMonthStart();
   const decidedUntil = to ? new Date(Date.parse(`${to}T00:00:00+04:00`) + 86_400_000).toISOString() : null;
+  const decidedIn = { $gte: monthStart, ...(decidedUntil ? { $lt: decidedUntil } : {}) };
+  // A search (3+ letters, the user, 2026-11-04): decided ones of any date that match it too — the student's name, code
+  // or email, the MT5 login or the transaction ID — so an older approval is found without picking dates.
+  const search = String(body?.search ?? "").trim().slice(0, 100);
+  const rx = search.length >= 3 ? new RegExp(search.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "i") : null;
+  const searchIds = rx
+    ? ((await col("students").find({ $or: [{ full_name: rx }, { email: rx }, { student_code: rx }] }, { projection: { _id: 1 } }).limit(500).toArray()) as any[]).map((s) => String(s._id))
+    : [];
+  const searchOr = rx ? [{ student_id: { $in: searchIds } }, { student_name: rx }, { mt5_login: rx }, { transaction_id: rx }] : [];
   // A broker admin: their own location's bonuses (Bangalore's or Dubai's — finance/bonusLocation.ts, 2026-10-15).
-  const bonuses = await forBrokerLocation((await col("funding_transactions")
+  const found = (await col("funding_transactions")
     .find({
       type: { $in: MT5_TYPES },
-      $or: [{ status: "PENDING" }, { status: { $in: ["APPROVED", "REJECTED"] }, approved_at: { $gte: monthStart, ...(decidedUntil ? { $lt: decidedUntil } : {}) } }],
+      $or: [{ status: "PENDING" }, { status: { $in: ["APPROVED", "REJECTED"] }, approved_at: decidedIn }],
     })
     .limit(3000)
-    .toArray()) as any[], user);
+    .toArray()) as any[];
+  if (rx) {
+    const have = new Set(found.map((t) => String(t._id)));
+    const older = (await col("funding_transactions")
+      .find({ type: { $in: MT5_TYPES }, status: { $in: ["APPROVED", "REJECTED"] }, $or: searchOr })
+      .sort({ approved_at: -1 }).limit(500).toArray()) as any[];
+    for (const t of older) if (!have.has(String(t._id))) found.push({ ...t, found_by_search: true });
+  }
+  // Not credited yet requests a broker admin answered credited / already credited (creditRequests.ts) — Approved too
+  // (the user, 2026-11-04). One linked to a bonus request approved here tags that request; any other is a row of its
+  // own, read only: no approval box, no commission.
+  const creditRequests = (await col("credit_requests")
+    .find({
+      status: { $in: ["credited", "already_credited"] },
+      $or: [{ "decided.at": decidedIn }, ...(rx ? [{ student_id: { $in: searchIds } }, { student_name: rx }, { student_code: rx }, { mt5_login: rx }, { "decided.transaction_id": rx }] : [])],
+    })
+    .limit(1000)
+    .toArray()) as any[];
+  const notCreditedOf = (r: any) => ({
+    id: String(r._id), status: String(r.status), amount: Number(r.amount) || 0, currency: String(r.currency ?? "USD"),
+    raised_by_name: String(r.raised_by_name ?? ""), raised_at: r.raised_at ?? null, note: String(r.note ?? ""),
+    decided_at: r.decided?.at ?? null, decided_by_name: String(r.decided?.by_name ?? ""),
+    transaction_id: String(r.decided?.transaction_id ?? ""), decided_note: String(r.decided?.note ?? ""),
+  });
+  const byId = new Map(found.map((t) => [String(t._id), t]));
+  for (const r of creditRequests) {
+    const linked = r.funding_tx_id ? byId.get(String(r.funding_tx_id)) : null;
+    if (linked?.status === "APPROVED") { linked.from_not_credited = notCreditedOf(r); continue; }
+    if (r.funding_tx_id && !linked && (await col("funding_transactions").countDocuments({ _id: toObjectId(r.funding_tx_id) as any, status: "APPROVED" }))) continue;
+    found.push({
+      _id: `nc_${r._id}`, not_credited_row: true, type: "BONUS", status: "APPROVED",
+      student_id: String(r.student_id ?? ""), student_name: String(r.student_name ?? ""), primary_mentor_name: String(r.cs_name ?? ""),
+      // The bonus only (amount_usd) — no amount_original, which the page reads as what the student paid.
+      mt5_login: String(r.decided?.mt5_login || r.mt5_login || ""), amount_usd: Number(r.amount_usd) || 0,
+      transaction_id: String(r.decided?.transaction_id ?? ""), requested_at: r.raised_at, requested_by_name: String(r.raised_by_name ?? ""),
+      approved_at: r.decided?.at ?? null, approved_by_name: String(r.decided?.by_name ?? ""), from_not_credited: notCreditedOf(r),
+    });
+  }
+  const bonuses = await forBrokerLocation(found, user);
 
   const studentIds = [...new Set(bonuses.map((t) => String(t.student_id ?? "")))].map(toObjectId).filter(Boolean);
   const students = (await col("students")
@@ -103,7 +151,7 @@ export async function getBonusApprovals(req: Request, user: AuthUser): Promise<R
           this_one: String(p._id) === String(t.course_upgrade.payment_id ?? ""),
         }))
         : [],
-      source: t.type !== "BONUS" ? "request" : t.bonus_credit === "sales_close" ? "sales_close" : t.bonus_credit === "course_upgrade" ? "course_upgrade" : "request",
+      source: t.not_credited_row ? "not_credited" : t.type !== "BONUS" ? "request" : t.bonus_credit === "sales_close" ? "sales_close" : t.bonus_credit === "course_upgrade" ? "course_upgrade" : "request",
       course: String(t.sales_close?.course || t.course_upgrade?.course || (Array.isArray(t.tags) ? t.tags[0] ?? "" : "") || s?.lms_course || ""),
       student: s
         ? {
@@ -147,21 +195,23 @@ export async function getBonusApprovals(req: Request, user: AuthUser): Promise<R
     bonuses.filter((t) => t.status === status).sort((a, b) => String(b.approved_at ?? "").localeCompare(String(a.approved_at ?? "")));
   const approved = decided("APPROVED");
   const rejected = decided("REJECTED");
+  // The counts are the dates' (this month's) — older ones a search found are listed, not counted.
+  const inDates = (list: any[]) => list.filter((t) => !t.found_by_search);
 
   return json({
     now: new Date().toISOString(),
     month_start: monthStart,
     counts: {
       pending: pending.length,
-      approved: approved.length,
-      rejected: rejected.length,
+      approved: inDates(approved).length,
+      rejected: inDates(rejected).length,
       with_finance: bonuses.filter((t) => t.status === "PENDING" && withFinance(t)).length,
       returned: returned.length,
       // Each type's pending / approved / rejected, for the Type filter.
       by_type: Object.fromEntries(MT5_TYPES.map((ty) => [ty, {
         pending: pending.filter((t) => t.type === ty).length,
-        approved: approved.filter((t) => t.type === ty).length,
-        rejected: rejected.filter((t) => t.type === ty).length,
+        approved: inDates(approved).filter((t) => t.type === ty).length,
+        rejected: inDates(rejected).filter((t) => t.type === ty).length,
         returned: returned.filter((t) => t.type === ty).length,
       }])),
     },

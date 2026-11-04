@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
@@ -11,7 +11,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
-import { BadgeAlert, CheckCircle2, Download, Gift, Hourglass, Landmark, Loader2, Pencil, Search, Undo2, XCircle } from 'lucide-react';
+import { BadgeAlert, CheckCircle2, Layers, Download, Gift, Hourglass, Landmark, Loader2, Pencil, Search, Undo2, XCircle } from 'lucide-react';
 import NotCreditedYet from '@/pages/NotCreditedYet';
 import { downloadExcel } from '@/components/utils/excelExport';
 import { CopyText, SendBackDialog, FIELDS } from '@/components/funding/corrections';
@@ -43,7 +43,11 @@ const TABS = [
   { key: 'approved', label: 'Approved',  icon: CheckCircle2, on: 'border-emerald-300 bg-emerald-50 text-emerald-700' },
   { key: 'rejected', label: 'Rejected',  icon: XCircle, on: 'border-rose-300 bg-rose-50 text-rose-700' },
   { key: 'returned', label: 'Sent back to CS', icon: Undo2, on: 'border-orange-300 bg-orange-50 text-orange-700' },
+  // Every request in one list, each with its status (the user, 2026-11-04).
+  { key: 'all', label: 'All', icon: Layers, on: 'border-slate-400 bg-slate-100 text-slate-800' },
 ];
+/** Which tab a row is on — for the All tab, by its own status. */
+const tabOf = (t) => (t.returned?.at ? 'returned' : t.status === 'PENDING' ? 'pending' : t.status === 'APPROVED' ? 'approved' : 'rejected');
 // The decision column stays at the right edge when the table scrolls sideways.
 const STICKY_END = 'sticky right-0 shadow-[-8px_0_8px_-8px_rgba(15,23,42,0.15)]';
 const when = (iso) => (iso ? new Date(iso).toLocaleString('en-GB', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' }) : '');
@@ -116,16 +120,23 @@ export default function BonusApprovals() {
   // The date range is asked of the server (decided ones before this month), so it is read before the list.
   const [from, setFrom] = useUrlState('from', '');
   const [to, setTo] = useUrlState('to', '');
-  const { data, isLoading, error } = useQuery({
-    queryKey: ['bonus-approvals', from, to],
-    queryFn: async () => (await base44.functions.invoke('getBonusApprovals', { ...(from ? { from } : {}), ...(to ? { to } : {}) })).data,
+  // A search of 3+ letters is asked of the server too: approved and rejected ones of any date that match (2026-11-04).
+  const [q, setQ] = useState('');
+  const [search, setSearch] = useState('');
+  useEffect(() => {
+    const id = setTimeout(() => setSearch(q.trim().length >= 3 ? q.trim() : ''), 400);
+    return () => clearTimeout(id);
+  }, [q]);
+  const { data, isLoading, error, isFetching } = useQuery({
+    queryKey: ['bonus-approvals', from, to, search],
+    queryFn: async () => (await base44.functions.invoke('getBonusApprovals', { ...(from ? { from } : {}), ...(to ? { to } : {}), ...(search ? { search } : {}) })).data,
+    placeholderData: (previous) => previous,
     enabled: !!currentUser && allowed,
     refetchInterval: 60_000,
   });
   const [tab, setTab] = useState(() => (new URLSearchParams(window.location.search).get('tab') === 'not_credited' ? 'not_credited' : 'pending'));
   // The sidebar's counts — Not credited's open requests (creditRequests.ts).
   const { data: navCounts } = useQuery({ queryKey: ['nav-counts'], queryFn: async () => (await base44.functions.invoke('getNavCounts', {})).data, staleTime: 30_000 });
-  const [q, setQ] = useState('');
   const [type, setType] = useUrlState('type', 'all');
   // Filters and sorting, kept in the address (2026-10-12): the date range (requested — and, for Approved / Rejected,
   // decided — UAE days), the CS, where it came from, MT5 and email there or missing, the welcome, and the order.
@@ -173,13 +184,14 @@ export default function BonusApprovals() {
   const needle = q.trim().toLowerCase();
   const csOptions = useMemo(() => [...new Set(['pending', 'approved', 'rejected', 'returned'].flatMap(k => (data?.[k] || []).map(t => t.student?.cs || t.primary_mentor_name)).filter(Boolean))].sort(), [data]);
   const dayOf = (iso) => (iso ? new Date(new Date(iso).getTime() + 4 * 3_600_000).toISOString().slice(0, 10) : '');   // UAE day
+  const listOf = (key) => (key === 'all' ? ['pending', 'returned', 'approved', 'rejected'].flatMap(k => data?.[k] || []) : data?.[key] || []);
   const rows = useMemo(() => {
-    const out = (data?.[tab] || []).filter(t => {
+    const out = listOf(tab).filter(t => {
       if (type !== 'all' && t.type !== type) return false;
       if (needle && ![t.student?.full_name, t.student?.student_code, t.student?.email, t.student?.cs, t.mt5_login, t.course, t.student_name, t.transaction_id, t.user_id, t.sales_close?.invoice_number, ...(t.student?.invoices || []).map(f => f.invoice_number), ...(t.student?.closed_by || []).map(c => c.name)]
         .some(v => String(v || '').toLowerCase().includes(needle))) return false;
       // The date range: when it was requested (Approved / Rejected are already that range's decisions, from the server).
-      if (tab === 'pending' || tab === 'returned') {
+      if (tabOf(t) === 'pending' || tabOf(t) === 'returned') {
         const d = dayOf(t.resubmitted_at || t.requested_at || t.created_date);
         if ((from && d < from) || (to && d > to)) return false;
       }
@@ -190,7 +202,7 @@ export default function BonusApprovals() {
       if (welcomeF !== 'all' && (welcomeF === 'sent') !== !!t.student?.onboarded) return false;
       return true;
     });
-    const at = (t) => String(tab === 'pending' || tab === 'returned' ? (t.resubmitted_at || t.requested_at || t.created_date || '') : (t.approved_at || ''));
+    const at = (t) => String(tabOf(t) === 'pending' || tabOf(t) === 'returned' ? (t.resubmitted_at || t.requested_at || t.created_date || '') : (t.approved_at || ''));
     const by = {
       oldest: (a, b) => at(a).localeCompare(at(b)),
       newest: (a, b) => at(b).localeCompare(at(a)),
@@ -268,7 +280,7 @@ export default function BonusApprovals() {
             <button key={key} type="button" onClick={() => setTab(key)}
               className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-sm font-medium transition-colors ${tab === key ? on : 'border-slate-200 bg-white text-slate-600 hover:bg-slate-50'}`}>
               <Icon className="h-4 w-4" />{label}
-              <span className="rounded-full bg-white/70 px-1.5 text-xs font-semibold">{type === 'all' ? (data?.counts?.[key] ?? 0) : (data?.counts?.by_type?.[type]?.[key] ?? 0)}</span>
+              <span className="rounded-full bg-white/70 px-1.5 text-xs font-semibold">{(key === 'all' ? ['pending', 'approved', 'rejected', 'returned'] : [key]).reduce((n, k) => n + (type === 'all' ? (data?.counts?.[k] ?? 0) : (data?.counts?.by_type?.[type]?.[k] ?? 0)), 0)}</span>
             </button>
           ))}
           {/* Bonus not credited — raised by a CS, answered here (the user, 2026-10-13: its own page is gone) */}
@@ -293,9 +305,10 @@ export default function BonusApprovals() {
             <div className="relative w-fit">
               <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
               <Input value={q} onChange={e => setQ(e.target.value)} placeholder="Student, email, CS, MT5, invoice, seller…" className="h-9 w-72 pl-9" />
+              {search && isFetching && <Loader2 className="absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 animate-spin text-slate-400" />}
             </div>
             <div className="flex w-full flex-wrap items-center gap-2 text-xs">
-              <span className="text-slate-500">{tab === 'approved' || tab === 'rejected' ? 'Decided' : 'Requested'}</span>
+              <span className="text-slate-500">{tab === 'approved' || tab === 'rejected' ? 'Decided' : tab === 'all' ? 'Requested · decided' : 'Requested'}</span>
               <Input type="date" value={from} max={to || undefined} onChange={e => setFrom(e.target.value)} className="h-8 w-36 text-xs" aria-label="From" />
               <span className="text-slate-400">to</span>
               <Input type="date" value={to} min={from || undefined} onChange={e => setTo(e.target.value)} className="h-8 w-36 text-xs" aria-label="To" />
@@ -306,7 +319,7 @@ export default function BonusApprovals() {
               <FilterSelect value={welcomeF} onChange={setWelcomeF} options={[['all', 'Welcome: any'], ['sent', 'Welcome sent'], ['not', 'Welcome not sent']]} />
               <FilterSelect value={sort} onChange={setSort} options={[['oldest', 'Oldest first'], ['newest', 'Newest first'], ['amount_high', 'Amount: high → low'], ['amount_low', 'Amount: low → high'], ['student', 'Student A → Z'], ['cs', 'CS A → Z']]} />
               {anyFilter && <button type="button" onClick={clearFilters} className="text-brand-navy underline">Clear filters</button>}
-              <span className="ml-auto text-slate-400">{rows.length} shown{!from && !to && (tab === 'approved' || tab === 'rejected') ? ' · this month — pick dates for earlier' : ''}</span>
+              <span className="ml-auto text-slate-400">{rows.length} shown{!from && !to && !search && ['approved', 'rejected', 'all'].includes(tab) ? ' · decided this month — pick dates or search for earlier' : search && ['approved', 'rejected', 'all'].includes(tab) ? ' · search covers every date' : ''}</span>
             </div>
           </CardHeader>
           <CardContent className="p-0">
@@ -316,8 +329,8 @@ export default function BonusApprovals() {
               <p className="py-12 text-center text-sm text-rose-600">{error.message || 'Could not load the approvals'}</p>
             ) : rows.length === 0 ? (
               <p className="py-12 text-center text-sm text-slate-400">
-                {(data?.[tab] || []).length ? 'Nothing matches the search.'
-                  : tab === 'pending' ? 'Nothing is waiting for approval.' : tab === 'approved' ? 'Nothing approved this month yet.' : tab === 'returned' ? 'Nothing is with a CS for correction.' : 'Nothing rejected this month.'}
+                {listOf(tab).length ? 'Nothing matches the search.'
+                  : tab === 'all' ? 'Nothing here.' : tab === 'pending' ? 'Nothing is waiting for approval.' : tab === 'approved' ? 'Nothing approved this month yet.' : tab === 'returned' ? 'Nothing is with a CS for correction.' : 'Nothing rejected this month.'}
               </p>
             ) : (
               <Paged items={rows} resetKey={`${tab}|${needle}|${type}|${from}|${to}|${csF}|${source}|${mt5F}|${emailF}|${welcomeF}|${sort}`}>
@@ -331,7 +344,7 @@ export default function BonusApprovals() {
                           <TH>Amount to credit</TH><TH>Paid by the student</TH><TH>Product</TH><TH>Finance invoice</TH><TH>From · sold by</TH>
                           <TH>Txn ID</TH><TH>Welcome</TH>
                           <th className={`${STICKY_END} whitespace-nowrap bg-slate-50 px-3 py-3 text-left text-[11px] font-semibold uppercase tracking-wider text-slate-500`}>
-                            {tab === 'pending' ? '' : tab === 'returned' ? 'Sent back' : 'Decided'}
+                            {tab === 'pending' ? '' : tab === 'returned' ? 'Sent back' : tab === 'all' ? 'Decision' : 'Decided'}
                           </th>
                         </tr>
                       </thead>
@@ -447,12 +460,12 @@ export default function BonusApprovals() {
                                 : <span className="text-amber-700">Not yet</span>}
                             </td>
                             <td className={`${STICKY_END} whitespace-nowrap bg-white px-3 py-2.5 group-hover:bg-slate-50`}>
-                              {tab === 'pending' ? (
+                              {tabOf(t) === 'pending' ? (
                                 <div className="flex flex-col items-stretch gap-1.5">
                                   <Button size="sm" onClick={() => setDeciding(t)}>Approve / Reject</Button>
                                   <Button size="sm" variant="outline" onClick={() => setSendingBack(t)}><Undo2 className="mr-1.5 h-3.5 w-3.5" />Send back to CS</Button>
                                 </div>
-                              ) : tab === 'returned' ? (
+                              ) : tabOf(t) === 'returned' ? (
                                 <div className="max-w-[240px] whitespace-normal text-xs">
                                   <div className="text-orange-700">Sent back {when(t.returned?.at)} by {t.returned?.by_name}</div>
                                   <div className="text-slate-500">{(t.returned?.fields || []).map(f => FIELDS[f] || f).join(', ')}{t.returned?.note ? ` — “${t.returned.note}”` : ''}</div>
@@ -462,24 +475,34 @@ export default function BonusApprovals() {
                                 <div className="text-xs">
                                   <div className="text-slate-600">{when(t.approved_at)}</div>
                                   <div className="text-slate-400">{t.approved_by_name || ''}</div>
-                                  {tab === 'rejected' && t.rejection_reason && <div className="mt-0.5 max-w-[220px] whitespace-normal text-rose-700">{t.rejection_reason}</div>}
-                                  {tab === 'approved' && (
+                                  {tabOf(t) === 'rejected' && t.rejection_reason && <div className="mt-0.5 max-w-[220px] whitespace-normal text-rose-700">{t.rejection_reason}</div>}
+                                  {tabOf(t) === 'approved' && (
                                     <div className="flex items-center gap-1 font-mono text-slate-500">
                                       {t.transaction_id || <span className="font-sans text-slate-400">No transaction ID</span>}
                                       {/* Corrected after approval (2026-10-13) — every change kept */}
-                                      {allowed && (
+                                      {allowed && !t.not_credited_row && (
                                         <button type="button" title="Edit the transaction ID" onClick={() => setEditingTxn(t)} className="rounded p-0.5 text-slate-400 hover:bg-slate-100 hover:text-slate-700">
                                           <Pencil className="h-3 w-3" />
                                         </button>
                                       )}
                                     </div>
                                   )}
-                                  {tab === 'approved' && t.transaction_id_changes?.length > 0 && (
+                                  {tabOf(t) === 'approved' && t.transaction_id_changes?.length > 0 && (
                                     <div className="text-[11px] text-slate-400" title={t.transaction_id_changes.map(c => `${c.from || 'none'} → ${c.to} · ${c.by_name} · ${String(c.at).slice(0, 10)}${c.note ? ` · ${c.note}` : ''}`).join('\n')}>
                                       Changed from {t.transaction_id_changes[t.transaction_id_changes.length - 1].from || 'none'}
                                     </div>
                                   )}
-                                  {tab === 'approved' && t.already_credited?.at && (
+                                  {/* Credited from a Not credited request (the user, 2026-11-04) — read only, no commission of its own */}
+                                  {t.from_not_credited && (
+                                    <div className="mt-0.5 max-w-[240px] whitespace-normal">
+                                      <span className="rounded-full border border-rose-200 bg-rose-50 px-1.5 py-0.5 text-[10px] font-semibold text-rose-700">
+                                        From Not credited · {t.from_not_credited.status === 'already_credited' ? 'already credited' : 'credited'}
+                                      </span>
+                                      <div className="mt-0.5 text-[11px] text-slate-500">Raised by {t.from_not_credited.raised_by_name || '—'} {when(t.from_not_credited.raised_at)}</div>
+                                      {t.from_not_credited.decided_note && <div className="text-[11px] text-slate-500">{t.from_not_credited.decided_note}</div>}
+                                    </div>
+                                  )}
+                                  {tabOf(t) === 'approved' && t.already_credited?.at && (
                                     <div className="mt-0.5 max-w-[220px] whitespace-normal">
                                       <span className="rounded-full border border-emerald-200 bg-emerald-50 px-1.5 py-0.5 text-[10px] font-semibold text-emerald-700">Already credited</span>
                                       {t.already_credited.note && <div className="mt-0.5 text-slate-500">{t.already_credited.note}</div>}

@@ -40,7 +40,7 @@ export const receivedOf = (t) => {
   };
 };
 /** Where it came from (2026-10-12): the bonus promised at a sales close, a course upgrade, or raised by a CS here. */
-export const sourceLabel = (t) => (t.source === 'sales_close' ? 'Sales close' : t.source === 'course_upgrade' ? 'Course upgrade' : 'Direct from CS portal');
+export const sourceLabel = (t) => (t.source === 'not_credited' ? 'Not credited request' : t.source === 'sales_close' ? 'Sales close' : t.source === 'course_upgrade' ? 'Course upgrade' : 'Direct from CS portal');
 /**
  * What the Receipt column and the approval box open (2026-10-12): the request's own receipts — or, when it has none (a
  * sales-close bonus), finance's receipt for its invoice (the student's other invoices' if it names none).
