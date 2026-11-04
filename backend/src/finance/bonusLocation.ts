@@ -1,6 +1,6 @@
 import { col } from "../db";
 import { toObjectId } from "../lib/id";
-import { currentLocationOf, locationOf, type Location } from "../lib/location";
+import { currentLocationOf, locationOf, LOCATIONS, type Location } from "../lib/location";
 import { teamIndex } from "../lib/userLocation";
 import type { TeamIndex } from "../students/teams";
 
@@ -18,6 +18,23 @@ import type { TeamIndex } from "../students/teams";
 ──────────────────────────────────────────────────────────────────────────── */
 
 const BONUS_DECIDERS = ["broker_admin", "super_admin"];
+
+/**
+ * The locations no active broker admin is set for (the user, 2026-11-04: every broker admin was Dubai, so Bangalore's
+ * bonuses reached no broker admin). Until one is set (Personnel → edit → location), every broker admin decides them.
+ */
+export async function uncoveredLocations(): Promise<Location[]> {
+  const admins = (await col("users").find({ app_role: "broker_admin", status: { $ne: "inactive" } }, { projection: { team_location: 1 } }).toArray()) as any[];
+  const covered = new Set(admins.map((u) => locationOf(u.team_location)));
+  return LOCATIONS.filter((l) => !covered.has(l));
+}
+
+/** Every location a broker admin decides bonuses for — their own and any no broker admin is set for; null for anyone else (any). */
+export async function brokerLocationsOf(user: { app_role?: string; team_location?: unknown } | null | undefined, uncovered?: Location[]): Promise<Location[] | null> {
+  const mine = brokerLocationOf(user);
+  if (!mine) return null;
+  return [...new Set([mine, ...(uncovered ?? (await uncoveredLocations()))])];
+}
 
 /** Where each student belongs now, by id. */
 export async function studentLocations(studentIds: unknown[], index?: TeamIndex): Promise<Map<string, Location>> {
@@ -46,9 +63,9 @@ const LABEL: Record<Location, string> = { dubai: "Dubai", bangalore: "Bangalore"
 export async function bonusLocationRefusal(tx: any, userId: string, role: string): Promise<string | null> {
   if (tx?.type !== "BONUS" || role !== "broker_admin") return null;
   const me: any = await col("users").findOne({ _id: toObjectId(userId) as any }, { projection: { app_role: 1, team_location: 1 } });
-  const mine = brokerLocationOf(me ?? { app_role: role });
+  const mine = await brokerLocationsOf(me ?? { app_role: role });
   const its = await bonusLocationOf(tx);
-  if (!mine || mine === its) return null;
+  if (!mine || mine.includes(its)) return null;
   return `This is a ${LABEL[its]} team's bonus — a ${LABEL[its]} broker admin or a Super Admin decides it`;
 }
 
@@ -57,15 +74,16 @@ export async function bonusDeciderIds(location: Location): Promise<string[]> {
   const users = (await col("users")
     .find({ app_role: { $in: BONUS_DECIDERS }, status: { $ne: "inactive" } }, { projection: { _id: 1, app_role: 1, team_location: 1 } })
     .toArray()) as any[];
-  return users.filter((u) => u.app_role === "super_admin" || brokerLocationOf(u) === location).map((u) => String(u._id));
+  const anyBroker = (await uncoveredLocations()).includes(location);
+  return users.filter((u) => u.app_role === "super_admin" || anyBroker || brokerLocationOf(u) === location).map((u) => String(u._id));
 }
 
 /** Keeps the rows a broker admin decides: their location's bonuses, and every other request. A Super Admin keeps all. */
 export async function forBrokerLocation<T extends { type?: string; student_id?: unknown }>(rows: T[], user: { id: string; app_role: string }): Promise<T[]> {
   if (user.app_role !== "broker_admin") return rows;
   const me: any = await col("users").findOne({ _id: toObjectId(user.id) as any }, { projection: { app_role: 1, team_location: 1 } });
-  const mine = brokerLocationOf(me ?? user);
+  const mine = await brokerLocationsOf(me ?? user);
   if (!mine) return rows;
   const where = await studentLocations(rows.filter((r) => r.type === "BONUS").map((r) => r.student_id));
-  return rows.filter((r) => r.type !== "BONUS" || (where.get(String(r.student_id ?? "")) ?? "dubai") === mine);
+  return rows.filter((r) => r.type !== "BONUS" || mine.includes(where.get(String(r.student_id ?? "")) ?? "dubai"));
 }

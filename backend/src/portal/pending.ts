@@ -98,11 +98,13 @@ export async function pendingOverview(now = Date.now()): Promise<{ kinds: Pendin
   ]);
 
   // MT5 bonuses: a Super Admin may decide any — each carries them all; a broker admin their own location's (2026-10-15).
-  const { studentLocations, brokerLocationOf } = await import("../finance/bonusLocation");
+  // A location no broker admin is set for: every broker admin's (2026-11-04).
+  const { studentLocations, brokerLocationsOf, uncoveredLocations } = await import("../finance/bonusLocation");
   const bonusWhere = await studentLocations(bonuses.map((b: any) => b.student_id));
-  const bonusesIn = (loc: string) => bonuses.filter((b: any) => (bonusWhere.get(String(b.student_id ?? "")) ?? "dubai") === loc).length;
+  const uncovered = await uncoveredLocations();
+  const bonusesIn = (locs: string[]) => bonuses.filter((b: any) => locs.includes(bonusWhere.get(String(b.student_id ?? "")) ?? "dubai")).length;
   for (const id of holders(BONUS_APPROVERS)) {
-    const where = brokerLocationOf(userById.get(id));
+    const where = await brokerLocationsOf(userById.get(id), uncovered);
     add(tally, id, "bonus_approvals_pending", where ? bonusesIn(where) : bonuses.length);
   }
 
