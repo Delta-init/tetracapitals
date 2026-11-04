@@ -9,6 +9,7 @@ import StatsCard from "../components/dashboard/StatsCard";
 import LocationTotals from "../components/dashboard/LocationTotals";
 import { CsPendingPanel, CsReportPanel, MentorPendingPanel } from "../components/dashboard/TeamPending";
 import { TodayScheduleCard } from "../components/dashboard/TodaySchedule";
+import { WalletCard } from "@/components/wallet/WalletCard";
 import { Users, DollarSign, Target, AlertCircle, AlertTriangle, ArrowRight, Award, Wallet, Activity } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import TransactionTable from "../components/transactions/TransactionTable";
@@ -227,6 +228,9 @@ export default function Dashboard() {
             <span className="inline-flex items-center gap-1 whitespace-nowrap rounded-full bg-rose-600 px-3 py-1.5 text-sm font-semibold text-white">Correct now <ArrowRight className="h-4 w-4" /></span>
           </Link>
         )}
+
+        {/* First in the row: this month's pay from the HRMS — earned, deducted, paid (2026-11-04) */}
+        <WalletCard />
 
         {/* Stats Grid — the Super Admin's is Dubai and Bangalore side by side (the user, 2026-10-10) */}
         {currentUser.app_role === 'super_admin' ? (

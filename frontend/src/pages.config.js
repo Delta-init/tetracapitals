@@ -122,6 +122,7 @@ import MentorReport from './pages/MentorReport';
 import MentorLeaderboard from './pages/MentorLeaderboard';
 import Reminders from './pages/Reminders';
 import VoiceRecordings from './pages/VoiceRecordings';
+import MyWallet from './pages/MyWallet';
 import BalancePayments from './pages/BalancePayments';
 import BonusApprovals from './pages/BonusApprovals';
 import NotCreditedYet from './pages/NotCreditedYet';
@@ -182,6 +183,7 @@ export const PAGES = {
     "MentorLeaderboard": MentorLeaderboard,
     "Reminders": Reminders,
     "VoiceRecordings": VoiceRecordings,
+    "MyWallet": MyWallet,
     "BalancePayments": BalancePayments,
     "BonusApprovals": BonusApprovals,
     "NotCreditedYet": NotCreditedYet,

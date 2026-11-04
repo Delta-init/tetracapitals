@@ -55,6 +55,7 @@ import { getCourseCommissionSummary } from "./courseCommissionSummary";
 import { getLiveNotJoined } from "./liveNotJoined";
 import { getCsLeaderboard } from "./csLeaderboard";
 import { getMyCurrency } from "./myCurrency";
+import { getMyWallet } from "./myWallet";
 import { removeStudentMt5, setPrimaryMt5 } from "./studentMt5";
 import { markNotStudent, unmarkNotStudent, listNotStudents } from "./notStudent";
 import { getStudentEmails, getStudentEmail } from "./studentEmails";
@@ -220,6 +221,7 @@ const AUTHED: Record<string, AuthedHandler> = {
   // The CS and team leaderboards (csLeaderboard.ts)
   getCsLeaderboard,
   getMyCurrency,
+  getMyWallet,
   removeStudentMt5,
   setPrimaryMt5,
   markNotStudent,

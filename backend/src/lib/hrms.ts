@@ -36,6 +36,43 @@ export async function hrmsGet<T>(path: string, query: Record<string, string>): P
   return body.data as T;
 }
 
+/** A refusal from the HRMS in its own words and status — "No HRMS employee has this email." — fit to pass on. */
+export class HrmsAnswerError extends Error {
+  constructor(message: string, readonly status: number) {
+    super(message);
+    this.name = "HrmsAnswerError";
+  }
+}
+
+/**
+ * One signed GET whose refusals matter — the wallet (2026-11-04). hrmsGet above words every refusal its own way; this
+ * passes the HRMS's message and status on, the HRMS out of reach or failing being a 503 and its refusing this server's
+ * signature a 502 (never a 401, which the portal would read as the person's own session ending).
+ */
+export async function hrmsGetAnswered<T>(path: string, query: Record<string, string>, timeoutMs = TIMEOUT_MS): Promise<T> {
+  const signedPath = `/api/v1/integrations${path}?${new URLSearchParams(query).toString()}`;
+  const timestamp = String(Date.now());
+  const nonce = randomBytes(16).toString("hex");
+  const canonical = ["GET", signedPath, timestamp, nonce, createHash("sha256").update("").digest("hex")].join("\n");
+  const signature = createHmac("sha256", config.hrms.integrationSecret).update(canonical).digest("hex");
+  let res: Response;
+  try {
+    res = await fetch(`${config.hrms.apiUrl}${signedPath}`, {
+      headers: { "X-Delta-Client": config.hrms.clientId, "X-Delta-Timestamp": timestamp, "X-Delta-Nonce": nonce, "X-Delta-Signature": signature },
+      signal: AbortSignal.timeout(timeoutMs),
+    });
+  } catch {
+    throw new HrmsAnswerError("The HRMS could not be reached — try again in a moment", 503);
+  }
+  const answer = (await res.json().catch(() => null)) as { data?: T; message?: unknown } | null;
+  const said = answer && typeof answer.message === "string" && answer.message.trim() ? answer.message.trim() : "";
+  if (res.status === 401) throw new HrmsAnswerError("The HRMS refused this server's credentials (HRMS_CLIENT_ID / HRMS_INTEGRATION_SECRET)", 502);
+  if (res.status >= 500) throw new HrmsAnswerError(`The HRMS isn't answering right now (${res.status}) — try again in a moment`, 503);
+  if (!res.ok) throw new HrmsAnswerError(said || `The HRMS refused this (${res.status})`, res.status);
+  if (!answer || typeof answer !== "object" || !("data" in answer)) throw new HrmsAnswerError("The HRMS's answer wasn't its API — check HRMS_API_URL", 502);
+  return answer.data as T;
+}
+
 /** One signed POST with a JSON body; the answer's `data`. (The signature covers sha256 of the body.) */
 export async function hrmsPost<T>(path: string, payload: unknown): Promise<T> {
   const signedPath = `/api/v1/integrations${path}`;
