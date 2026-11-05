@@ -57,7 +57,6 @@ const T = {
   body: 'text-[clamp(0.9rem,1vw,1.45rem)]',
   title: 'text-[clamp(1.05rem,1.25vw,1.8rem)]',
 };
-const INR_PER_AED = 1 / (3.67 * 0.01);
 const fmtInt = (n) => Math.round(n || 0).toLocaleString('en-US');
 const initials = (name) => String(name || '').split(/\s+/).filter(Boolean).slice(0, 2).map(w => w[0]?.toUpperCase() ?? '').join('') || '?';
 const dubaiTime = (at) => new Date(at).toLocaleTimeString('en-GB', { timeZone: 'Asia/Dubai', hour: '2-digit', minute: '2-digit', second: '2-digit' });
@@ -106,7 +105,9 @@ export default function CsTvBoard({ fetcher, location, rotate = 0, onRotate }) {
   const seen = useRef(new Set());
   const root = useRef(null);
   const currency = location === 'bangalore' ? 'INR' : 'AED';
-  const money = (aed) => (currency === 'INR' ? Math.round((Number(aed) || 0) * INR_PER_AED) : Math.round(Number(aed) || 0));
+  // The INR rate the server sends with the board — live (backend lib/fxRate.ts, 2026-11-05); 0.010 from an older server.
+  const rateOf = (d) => (Number(d?.usd_per_inr) > 0 ? Number(d.usd_per_inr) : 0.01);
+  const money = (aed, d = data) => (currency === 'INR' ? Math.round((Number(aed) || 0) / (3.67 * rateOf(d))) : Math.round(Number(aed) || 0));
   const fmtMoney = (aed) => `${currency} ${money(aed).toLocaleString('en-US')}`;
 
   useEffect(() => {
@@ -129,7 +130,7 @@ export default function CsTvBoard({ fetcher, location, rotate = 0, onRotate }) {
         if (!first) {
           const from = (openedAt.current ?? serverNow) - OPEN_SLACK_MS;
           fresh.filter(c => Date.parse(c.at) >= from).sort((a, b) => Date.parse(a.at) - Date.parse(b.at)).forEach(c => celebrate({
-            id: c.id, closer: c.cs, courses: c.product ? [c.product] : [], amount: money(c.aed), currency, crmName: c.team, tone: teamTone(c.team), at: c.at,
+            id: c.id, closer: c.cs, courses: c.product ? [c.product] : [], amount: money(c.aed, d), currency, crmName: c.team, tone: teamTone(c.team), at: c.at,
           }));
         }
         setData(d);

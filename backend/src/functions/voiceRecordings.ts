@@ -1,3 +1,4 @@
+import { inrPerAed } from "../lib/fxRate";
 import { col } from "../db";
 import { json, error, forbidden } from "../lib/response";
 import type { AuthUser } from "../auth/middleware";
@@ -17,7 +18,6 @@ import { csLine, courseLine, amountLine, CONGRATS, ROUND_AED, VOICE_KEY, type Vo
 
 const CLIPS = "tv_voice_clips";
 const MAX_BYTES = 3 * 1024 * 1024;
-const INR_PER_AED = 1 / (3.67 * 0.01);
 const EXT: Record<string, string> = { "audio/webm": "webm", "audio/ogg": "ogg", "audio/mp4": "m4a", "audio/mpeg": "mp3", "audio/wav": "wav", "audio/x-wav": "wav", "audio/aac": "aac" };
 
 /** Every line the board may need: each CS on it, each course paid or on the Products page, round and paid amounts, the close. */
@@ -32,6 +32,7 @@ export async function allVoiceLines(): Promise<VoiceLine[]> {
   const products = (await col("transaction_tags").find({ active: { $ne: false } }, { projection: { name: 1, bonus_usd: 1 } }).toArray()) as any[];
 
   const lines = new Map<string, VoiceLine>();
+  const rupeesPerAed = await inrPerAed();   // the live rate (lib/fxRate.ts, 2026-11-05)
   const add = (l: VoiceLine) => { if (!lines.has(l.key)) lines.set(l.key, l); };
   for (const u of people) add(csLine(String(u._id), String(u.full_name ?? ""), teams.teamOf(String(u._id))?.name));
   for (const t of paid) if (t.course_payment?.product) add(courseLine(String(t.course_payment.product)));
@@ -41,7 +42,7 @@ export async function allVoiceLines(): Promise<VoiceLine[]> {
     const aed = Math.round(Number(t.course_payment?.paid_today_aed) || Number(t.amount_aed) || 0);
     if (aed <= 0) continue;
     const by = String(t.initiating_mentor_id || t.requested_by_id || "");
-    if ((teams.teamOf(by)?.location ?? "dubai") === "bangalore") add(amountLine(Math.round(aed * INR_PER_AED), "INR"));
+    if ((teams.teamOf(by)?.location ?? "dubai") === "bangalore") add(amountLine(Math.round(aed * rupeesPerAed), "INR"));
     else add(amountLine(aed, "AED"));
   }
   add(CONGRATS);

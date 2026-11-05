@@ -1,4 +1,4 @@
-import { localFromAed, displayCurrency } from '@/components/utils/displayCurrency';
+import { localFromAed, displayCurrency, USD_PER_INR } from '@/components/utils/displayCurrency';
 import LmsModulesPreview from '@/components/students/LmsModulesPreview';
 import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
@@ -312,15 +312,15 @@ export function PaymentDialog({ upgrade, onClose, onSaved }) {
   const save = useMutation({
     mutationFn: async () => (await base44.functions.invoke('recordCoursePayment', {
       upgradeId: upgrade.id, amountAed: aedAmount, method, receiptUrl: receipt?.url, receiptName: receipt?.name, paidOn,
-      note: [currency !== 'AED' ? `Paid ${currency} ${Number(amount).toLocaleString('en-US')} (${currency === 'INR' ? '1 INR = 0.010 USD, ' : ''}1 USD = ${AED_PER_USD} AED)` : '', note].filter(Boolean).join(' · '),
+      note: [currency !== 'AED' ? `Paid ${currency} ${Number(amount).toLocaleString('en-US')} (${currency === 'INR' ? `1 USD = ₹${(1 / USD_PER_INR).toFixed(2)}, ` : ''}1 USD = ${AED_PER_USD} AED)` : '', note].filter(Boolean).join(' · '),
     })).data,
     onSuccess: () => { toast.success('Payment recorded — sent to Delta Finance for approval'); onSaved(); onClose(); },
     onError: (e) => toast.error(e?.message || 'Could not record the payment'),
   });
-  // Typed in AED, USD or INR (the funding form's fixed rates); kept in AED. A USD amount a little over the room from
+  // Typed in AED, USD or INR (the funding form's rates — INR live, 2026-11-05); kept in AED. A USD amount a little over the room from
   // the rounding is taken as the room.
   const typed = Number(amount) || 0;
-  const raw = currency === 'AED' ? typed : currency === 'USD' ? typed * AED_PER_USD : typed * 0.01 * AED_PER_USD;
+  const raw = currency === 'AED' ? typed : currency === 'USD' ? typed * AED_PER_USD : typed * USD_PER_INR * AED_PER_USD;
   const aedAmount = Math.round((raw > room && raw - room < 1 ? room : raw) * 100) / 100;
   const valid = aedAmount > 0 && aedAmount <= room && receipt && !uploading;
   return (

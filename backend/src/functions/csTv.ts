@@ -1,3 +1,4 @@
+import { inrRate, inrPerAed } from "../lib/fxRate";
 import { randomBytes } from "node:crypto";
 import { col } from "../db";
 import { json, error, forbidden } from "../lib/response";
@@ -106,7 +107,9 @@ export async function handleCsTv(req: Request): Promise<Response> {
   const key = month ? `${location}:${month}` : location;
   const had = cache.get(key);
   // Who collected each payment is kept for the voice (its recordings are by person), not shown.
-  const shown = (data: any) => ({ ...data, recent: (data.recent ?? []).map(({ cs_id: _id, ...r }: any) => r) });
+  // The INR rate the screen converts with (lib/fxRate.ts, 2026-11-05).
+  const usdPerInr = (await inrRate()).usd_per_inr;
+  const shown = (data: any) => ({ ...data, usd_per_inr: usdPerInr, recent: (data.recent ?? []).map(({ cs_id: _id, ...r }: any) => r) });
   if (had && Date.now() - had.at < (month ? 5 * 60_000 : CACHE_MS)) return json(shown(had.data));
   try {
     const data = await board(location, month);
@@ -122,12 +125,11 @@ export async function handleCsTv(req: Request): Promise<Response> {
 /* ── The voice (the user, 2026-10-26: the user's own, cloned — lib/voice.ts) ─────────────────────────────────────── */
 
 const CURRENCY_WORDS: Record<string, string> = { AED: "dirhams", INR: "rupees", USD: "dollars" };
-const INR_PER_AED = 1 / (3.67 * 0.01);
 
 /** What the board says for a payment — the same words as its browser voice (components/cstv/saleAnnouncement.js). */
-export function spokenLineFor(p: { cs?: string; team?: string; product?: string; aed?: number }, location: "dubai" | "bangalore"): string {
+export function spokenLineFor(p: { cs?: string; team?: string; product?: string; aed?: number }, location: "dubai" | "bangalore", inrPerAed = 1): string {
   const currency = location === "bangalore" ? "INR" : "AED";
-  const amount = Math.round((Number(p.aed) || 0) * (currency === "INR" ? INR_PER_AED : 1));
+  const amount = Math.round((Number(p.aed) || 0) * (currency === "INR" ? inrPerAed : 1));
   let line = p.cs ? `Payment collected by ${p.cs}${p.team ? `, in ${p.team}` : ""}! ` : `Payment collected${p.team ? `, in ${p.team}` : ""}! `;
   line += p.product || "A course payment";
   if (amount > 0) line += `, for ${amount.toLocaleString("en-US")} ${CURRENCY_WORDS[currency]}`;
@@ -154,8 +156,8 @@ export async function handleCsTvVoice(req: Request): Promise<Response> {
   }
   // No ElevenLabs: the owner's own recordings, stitched (2026-10-26, Chatterbox on Colab — lib/voiceLines.ts).
   if (!voiceConfigured()) return stitchedVoice(p, location);
-  const text = p ? spokenLineFor({ cs: p.cs, team: p.team, product: p.product, aed: p.aed }, location)
-    : spokenLineFor({ cs: "Test", team: "CS TV", product: "Sample course", aed: 2000 }, location);
+  const text = p ? spokenLineFor({ cs: p.cs, team: p.team, product: p.product, aed: p.aed }, location, await inrPerAed())
+    : spokenLineFor({ cs: "Test", team: "CS TV", product: "Sample course", aed: 2000 }, location, await inrPerAed());
   try {
     const mp3 = await voiceMp3(text);
     return new Response(new Uint8Array(mp3), { headers: { "content-type": "audio/mpeg", "cache-control": "public, max-age=86400", "access-control-allow-origin": "*" } });
@@ -178,7 +180,7 @@ async function stitchedVoice(p: any, location: "dubai" | "bangalore"): Promise<R
   else first = await clips.findOne({ _id: { $regex: "^cs:" } } as any);
   if (!first?.mp3) return error("No recording for them yet", 404);
   const currency = location === "bangalore" ? "INR" : "AED";
-  const amount = p ? Math.round((Number(p.aed) || 0) * (currency === "INR" ? INR_PER_AED : 1)) : 2000;
+  const amount = p ? Math.round((Number(p.aed) || 0) * (currency === "INR" ? await inrPerAed() : 1)) : 2000;
   const keys = [
     p?.product ? courseLine(p.product).key : "",
     amount > 0 ? amountLine(amount, currency).key : "",
@@ -223,7 +225,7 @@ export async function handleCsTvVoicePlan(req: Request): Promise<Response> {
   const nocache = { "cache-control": "no-store", "Access-Control-Allow-Origin": "*" };
   if (!first?.url) return json({ urls: [] }, { headers: nocache });
   const currency = location === "bangalore" ? "INR" : "AED";
-  const amount = p ? Math.round((Number(p.aed) || 0) * (currency === "INR" ? INR_PER_AED : 1)) : 2000;
+  const amount = p ? Math.round((Number(p.aed) || 0) * (currency === "INR" ? await inrPerAed() : 1)) : 2000;
   const keys = [p?.product ? courseLine(p.product).key : "", amount > 0 ? amountLine(amount, currency).key : "", CONGRATS.key].filter(Boolean);
   const found = new Map(((await clips.find({ _id: { $in: keys }, url: { $exists: true } } as any, { projection: { url: 1 } }).toArray()) as any[]).map((c) => [String(c._id), c.url]));
   return json({ urls: [first.url, ...keys.map((k) => found.get(k)).filter(Boolean)] }, { headers: nocache });

@@ -9,7 +9,7 @@ import { Card, CardContent } from '@/components/ui/card';
 import ImpersonationBanner from './components/utils/ImpersonationBanner';
 import NotificationBell from './components/utils/NotificationBell';
 import { getEffectiveUser } from './components/utils/ImpersonationContext';
-import { displayCurrency, setDisplayCurrency } from './components/utils/displayCurrency';
+import { displayCurrency, setDisplayCurrency, setUsdPerInr, USD_PER_INR } from './components/utils/displayCurrency';
 import { locationByUser, isAllTeamsCsManager } from './components/utils/teams';
 import { filterTicketsByRole } from './components/utils/TicketAccessControl';
 import { EASE } from '@/components/motion';
@@ -86,10 +86,12 @@ export default function Layout({ children, currentPageName }) {
   // Money in the viewer's currency — INR on a Bangalore team, else AED (the user, 2026-10-14; utils/displayCurrency.js).
   // The pages are drawn again under the new key when it changes.
   const [currency, setCurrency] = useState(displayCurrency());
+  // The INR rate, live (2026-11-05): a new one draws the pages again too.
+  const [inrRate, setInrRate] = useState(USD_PER_INR);
   useEffect(() => {
     if (!currentUser?.id) return;
     base44.functions.invoke('getMyCurrency', {})
-      .then(r => setCurrency(setDisplayCurrency(r?.data?.currency)))
+      .then(r => { setInrRate(setUsdPerInr(r?.data?.usd_per_inr)); setCurrency(setDisplayCurrency(r?.data?.currency)); })
       // A server without getMyCurrency yet: their team's location from the people list, as the Teams page reads it.
       .catch(async () => {
         try {
@@ -627,7 +629,7 @@ export default function Layout({ children, currentPageName }) {
                     <Link to="/" className="inline-block text-sm font-medium text-blue-600 hover:underline">Go to the home page</Link>
                   </CardContent></Card>
                 </div>
-              ) : <div key={currency} className="contents">{children}</div>}
+              ) : <div key={`${currency}:${inrRate}`} className="contents">{children}</div>}
             </CallFlowProvider>
             {/* How a student meeting went — the mentor's form, open until it is filled */}
             {currentUser?.id && <MeetingOutcomeGate />}

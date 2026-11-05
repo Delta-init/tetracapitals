@@ -1,4 +1,4 @@
-import { displayCurrency } from '@/components/utils/displayCurrency';
+import { displayCurrency, USD_PER_INR } from '@/components/utils/displayCurrency';
 import LmsModulesPreview from '@/components/students/LmsModulesPreview';
 import React, { useState } from 'react';
 import { useQuery, useQueryClient } from "@tanstack/react-query";
@@ -38,7 +38,7 @@ const PAYMENT_METHODS = [
 /* ── Money in AED, USD or INR, and what a course payment earns (the user, 2026-10-03; Delta_Fee_Structure.pdf) ─
    An amount can be typed in AED, USD or INR — USD to start, whatever the type or payment (the user, 2026-10-04; INR
    2026-10-06). It is kept in USD for commission and the reports (amount_usd), with what was typed, its AED and the
-   rates beside it — fixed: 1 USD = 3.67 AED, 1 INR = 0.010 USD (INR reaches AED through USD).
+   rates beside it: 1 USD = 3.67 AED fixed, the INR rate live (2026-11-05, utils/displayCurrency.js; INR reaches AED through USD).
    A Bonus is a course payment, for a course with a bonus set on the Products page (DWT, MSNR, DSLP Offer, DSLP Full):
      full payment — the course's price at once, and its whole bonus in the student's MT5 at once;
      partial      — instalments of AED 2,000 (as many as the course has): every full AED 2,000 paid is $500 bonus, the
@@ -46,8 +46,8 @@ const PAYMENT_METHODS = [
                     Once instalments have started, the rest is paid that way too.
    Shared with the co-management form (ReferralRequestPopup) and the request lists. */
 export const AED_PER_USD = 3.67;
-/** 1 INR = 0.010 USD — fixed (the user, 2026-10-06). */
-export const USD_PER_INR = 0.01;
+/** 1 INR in USD — live since 2026-11-05 (it was a fixed 0.010); the request keeps the rate it was made with. */
+export { USD_PER_INR };
 export const INSTALMENT_AED = 2000;
 export const BONUS_PER_INSTALMENT_USD = 500;
 const cents = (n) => Math.round((Number(n) || 0) * 100) / 100;
@@ -73,7 +73,7 @@ export function convert(amount, currency) {
 const otherMoney = (money, currency) =>
   currency === 'AED' ? usdText(money.usd) : currency === 'INR' ? `${usdText(money.usd)} · ${aedText(money.aed)}` : aedText(money.aed);
 /** The rate a typed amount went by. */
-const rateText = (currency) => (currency === 'INR' ? `1 INR = ${USD_PER_INR.toFixed(3)} USD` : `1 USD = ${AED_PER_USD} AED`);
+const rateText = (currency) => (currency === 'INR' ? `1 USD = ₹${(1 / USD_PER_INR).toFixed(2)}` : `1 USD = ${AED_PER_USD} AED`);
 
 /** A course's terms (the Products page): its full price in AED or USD, its whole bonus, its AED 2,000 instalments. */
 export function coursePlan(product) {
@@ -504,7 +504,8 @@ export default function FundingRequestForm({ students, allStudents = [], current
       amount_aed: money.aed,
       amount_usd: money.usd,
       fx_rate_aed_per_usd: AED_PER_USD,
-      ...(formData.currency === 'INR' ? { fx_rate_usd_per_inr: USD_PER_INR } : {}),
+      // Every request keeps the INR rate it was made with — finance's rupee amount for a Bangalore one too (2026-11-05).
+      fx_rate_usd_per_inr: USD_PER_INR,
       ...(payment ? {
         course_payment: {
           product: product.name, price: plan.price, price_currency: plan.currency, bonus_full_usd: plan.bonusUsd,
