@@ -104,13 +104,7 @@ A short tutorial video covering the LMS features will also be shared with you se
    - For academic support, contact us at academics@deltainstitutions.com or call 971 52 157 0613.
 
 By completing your registration, you confirm your agreement to the terms outlined above.
-
-*Community Channels*
-To foster collaboration and communication, please join our community channels using the links below:
-
-- Join the Community: https://chat.whatsapp.com/LkFhNduBBae4Nj3c4e0dim
-- Student Online Community: https://chat.whatsapp.com/DIXG2tN38ePJGvubmHg63j{team_community}
-
+{team_community}
 Once again, welcome to Delta Trading Academy. We look forward to your active participation and commitment. Should you have any questions or require further assistance regarding the LMS or your course, please do not hesitate to contact us.
 
 Best regards,
@@ -144,14 +138,15 @@ async function teamCommunityOf(s: any): Promise<string> {
 function welcome(s: any, teamCommunity = "") {
   const name = firstName(s.full_name);
   const message = WELCOME.replace("{name}", name || "Student")
-    .replace("{team_community}", teamCommunity ? `\n- Your Team Community: ${teamCommunity}` : "");
+    // Only the team's own community (the user, 2026-11-05: the two general ones are gone); no team link, no section.
+    .replace("{team_community}", teamCommunity
+      ? `\n*Community Channels*\nTo foster collaboration and communication, please join your team community using the link below:\n\n- Your Team Community: ${teamCommunity}\n`
+      : "");
   return { subject: `Welcome to Delta Trading Academy${name ? `, ${name}` : ""}!`, body: message, text: message };
 }
 
 /* The email: the message as written, in Delta's colours under the logo (sent with the email, so it shows at once). */
 const NAVY = "#0b2a4d", TEAL = "#0e7490", INK = "#1f2937", MUTED = "#64748b";
-/** The community a new student joins (the user, 2026-10-12) — in the message, and a button in the email. */
-const COMMUNITY_LINK = "https://chat.whatsapp.com/LkFhNduBBae4Nj3c4e0dim";
 const LOGO_FILE = join(import.meta.dir, "../../assets/delta-logo-email.png");
 const LOGO: MailAttachment | null = existsSync(LOGO_FILE) ? { filename: "delta-logo.png", path: LOGO_FILE, cid: "delta-logo@deltainstitutions.com" } : null;
 
@@ -172,6 +167,7 @@ const row = (mark: string, html: string, indent: number) =>
   `<td style="font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:1.6;color:${INK}">${html}</td></tr></table>`;
 /** The message as an email: *titles* on their own line as headings, "1." and "-" lines as lists, the rest as paragraphs. */
 function asHtml(text: string, subject: string): string {
+  const communityLink = TEAM_COMMUNITIES.map(([, link]) => link).find((link) => text.includes(link));
   const blocks: string[] = [];
   for (const para of text.replace(/\r/g, "").split(/\n{2,}/)) {
     const lines = para.split("\n").filter((l) => l.trim());
@@ -200,9 +196,9 @@ function asHtml(text: string, subject: string): string {
     `<tr><td align="center" style="padding:28px 24px 22px">${logo}</td></tr>` +
     `<tr><td style="height:4px;line-height:4px;font-size:0;background-color:#22d3ee;background-image:linear-gradient(90deg,#22d3ee,#6ee7b7)">&nbsp;</td></tr>` +
     `<tr><td style="padding:26px 32px 12px;font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:1.6;color:${INK}">${blocks.join("")}</td></tr>` +
-    // "Join the community", when the message (as sent, maybe edited) still names it.
-    (text.includes(COMMUNITY_LINK)
-      ? `<tr><td align="center" style="padding:4px 32px 26px"><a href="${COMMUNITY_LINK}" style="display:inline-block;padding:12px 26px;border-radius:999px;background:#16a34a;color:#ffffff;font-family:Arial,Helvetica,sans-serif;font-size:15px;font-weight:700;text-decoration:none">Join the community on WhatsApp</a></td></tr>`
+    // "Join the community" — the team's, when the message (as sent, maybe edited) still names it (2026-11-05).
+    (communityLink
+      ? `<tr><td align="center" style="padding:4px 32px 26px"><a href="${communityLink}" style="display:inline-block;padding:12px 26px;border-radius:999px;background:#16a34a;color:#ffffff;font-family:Arial,Helvetica,sans-serif;font-size:15px;font-weight:700;text-decoration:none">Join the community on WhatsApp</a></td></tr>`
       : "") +
     `<tr><td align="center" style="padding:16px 32px 22px;border-top:1px solid #e2e8f0;font-family:Arial,Helvetica,sans-serif;font-size:12px;line-height:1.5;color:${MUTED}">` +
     `Delta International Trading Academy · Al Qusais, Dubai · <a href="https://www.deltainstitutions.com" style="color:${TEAL}">www.deltainstitutions.com</a></td></tr>` +
