@@ -995,22 +995,19 @@ export default function Students() {
                       <SelectItem value="none">No team</SelectItem>
                     </SelectContent>
                   </Select>
-
-
-                  {/* Level Filter */}
-                  <Select value={filterLevel} onValueChange={setFilterLevel}>
-                    <SelectTrigger className="w-36">
-                      <SelectValue placeholder="Level" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="all">All Levels</SelectItem>
-                      <SelectItem value="LEVEL_1">Level 1</SelectItem>
-                      <SelectItem value="LEVEL_2">Level 2</SelectItem>
-                    </SelectContent>
-                  </Select>
-
                 </>
               )}
+              {/* Level Filter — every role, every tab (a CS too: the server keeps them to their own students) */}
+              <Select value={filterLevel} onValueChange={setFilterLevel}>
+                <SelectTrigger className="w-36">
+                  <SelectValue placeholder="Level" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Levels</SelectItem>
+                  <SelectItem value="LEVEL_1">Level 1</SelectItem>
+                  <SelectItem value="LEVEL_2">Level 2</SelectItem>
+                </SelectContent>
+              </Select>
             </div>
             {/* A server from before the follow-up filter sends everyone: said, rather than looking filtered. */}
             {filterFollowup !== 'all' && list && !listFetching && list.followup_filter !== filterFollowup && (
