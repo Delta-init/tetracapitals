@@ -18,8 +18,11 @@ import { METHODS, periodRange, releaseCredits } from "../functions/approveCommis
    With finance's own secret (`x-finance-secret`):
      POST /api/v1/integrations/finance/cs-commission           { kind, period }
        → { kind, period, ended, people: [{ recipient_id, name, email, location, total_usd, credits, approval }] }
-     POST /api/v1/integrations/finance/cs-commission/approve   { kind, period, recipient_id, by }
+     POST /api/v1/integrations/finance/cs-commission/approve   { kind, period, recipient_id, by, force?, reason? }
        → { already, total_usd, credit_ids, location, email, name } — released here (already: it was)
+       force + reason (the user, 2026-11-06: "record payment for this commission" while it waits here): a Delta
+       finance manager pays it before the broker admin and academic head — released as finance's, the reason on it
+       (finance_override), and taking it back puts it where it was.
      POST /api/v1/integrations/finance/cs-commission/unapprove { kind, period, recipient_id, by }
        → back with finance, its credits unreleased — only one finance released
 ──────────────────────────────────────────────────────────────────────────── */
@@ -33,7 +36,7 @@ const guard = (req: Request): Response | null => {
   return null;
 };
 
-type Asked = { kind: string; period: string; range: { start: Date; end: Date }; recipientId: string; by: string };
+type Asked = { kind: string; period: string; range: { start: Date; end: Date }; recipientId: string; by: string; force: boolean; reason: string };
 async function asked(req: Request, needRecipient: boolean): Promise<Asked | Response> {
   const body = (await req.json().catch(() => null)) as Record<string, unknown> | null;
   if (!body || typeof body !== "object") return refuse(400, "VALIDATION_ERROR", "Body must be a JSON object");
@@ -44,7 +47,7 @@ async function asked(req: Request, needRecipient: boolean): Promise<Asked | Resp
   if (!range) return refuse(400, "VALIDATION_ERROR", kind === "bonus" ? "period is YYYY-MM" : "period is YYYY-Qn");
   const recipientId = text(body.recipient_id, 64);
   if (needRecipient && !recipientId) return refuse(400, "VALIDATION_ERROR", "recipient_id is required");
-  return { kind, period, range, recipientId, by: text(body.by, 120) || "Delta finance" };
+  return { kind, period, range, recipientId, by: text(body.by, 120) || "Delta finance", force: body.force === true, reason: text(body.reason, 300) };
 }
 
 const inRange = (c: any, range: { start: Date; end: Date }) => {
@@ -75,6 +78,9 @@ const approvalView = (a: any) => ({
   released_by: String(a?.released_by_name ?? ""),
   /** Released by Delta finance (and so its to take back), not by a Super Admin here. */
   by_finance: a?.released_by_id === FINANCE_ID,
+  /** Released by Delta finance before the broker admin and academic head had approved it (2026-11-06), and why. */
+  finance_override: a?.finance_override === true,
+  override_reason: String(a?.finance_override_reason ?? ""),
 });
 
 async function person(id: string, idx: Awaited<ReturnType<typeof teamIndex>>) {
@@ -126,34 +132,49 @@ export async function handleFinanceCsCommissionApprove(req: Request): Promise<Re
   if (a instanceof Response) return a;
   if (Date.now() < a.range.end.getTime()) return refuse(409, "PERIOD_OPEN", "This period is still open — approvals start after it ends.");
   const coll = col("commission_period_approvals");
-  const record: any = await coll.findOne({ kind: a.kind, period: a.period, recipient_id: a.recipientId });
+  let record: any = await coll.findOne({ kind: a.kind, period: a.period, recipient_id: a.recipientId });
   const mine = await creditsOf(a.kind, a.range, a.recipientId);
   const who = await person(a.recipientId, await teamIndex());
-  const answer = (already: boolean) => ok({
+  const answer = (already: boolean, override = false) => ok({
     already, total_usd: cents(mine.reduce((t, c) => t + (Number(c.commission_usd) || 0), 0)), credit_ids: mine.map((c) => String(c._id)),
     name: who.name || String(mine[0]?.recipient_name ?? ""), email: who.email, location: who.location,
+    /** Released by Delta finance before the broker admin and academic head (2026-11-06). */
+    finance_override: override,
   });
   // Released already — by a Super Admin here, or an earlier approval whose answer finance never got: finance pays it.
-  if (record?.overall_status === "released") return answer(true);
+  if (record?.overall_status === "released") return answer(true, record.finance_override === true);
   if (!mine.length) return refuse(409, "NOTHING_TO_APPROVE", "No commission for this person in the period.");
   if (record?.overall_status === "rejected") return refuse(409, "REJECTED", "This period was rejected here.");
-  if (record?.overall_status !== "pending_finance_approval") {
-    const at = record?.overall_status === "pending_academic_approval" ? "the academic head" : "the broker admin";
-    return refuse(409, "NOT_READY", `Waiting for ${at} in the CS Portal.`);
-  }
   const now = new Date().toISOString();
+  const ready = record?.overall_status === "pending_finance_approval";
+  if (!ready) {
+    const at = record?.overall_status === "pending_academic_approval" ? "the academic head" : "the broker admin";
+    if (!a.force) return refuse(409, "NOT_READY", `Waiting for ${at} in the CS Portal.`);
+    // Paid by Delta finance before them (2026-11-06): only with a reason, which goes on the release.
+    if (!a.reason) return refuse(400, "VALIDATION_ERROR", `Say why it is paid before ${at} has approved it.`);
+  }
+  if (!record) {
+    const doc: any = {
+      kind: a.kind, period: a.period, recipient_id: a.recipientId, recipient_name: who.name || String(mine[0]?.recipient_name ?? ""),
+      overall_status: "pending_broker_approval", broker_admin_approval_status: "pending", academic_head_approval_status: "pending",
+      finance_admin_approval_status: "pending", created_date: now, updated_date: now,
+    };
+    record = { ...doc, _id: (await coll.insertOne(doc)).insertedId };
+  }
   const by = `${a.by} (Delta finance)`;
+  const releasedBy = ready ? by : `${by} — before the CS Portal's approvals: ${a.reason}`.slice(0, 300);
   // Claimed in one step: two approvals arriving together, one wins.
   const won = await coll.updateOne(
-    { _id: record._id, overall_status: "pending_finance_approval" },
+    { _id: record._id, overall_status: record.overall_status },
     { $set: {
       overall_status: "released", finance_admin_approval_status: "approved", finance_admin_approved_by_id: FINANCE_ID,
-      finance_admin_approved_by_name: by, finance_admin_approved_at: now, released_at: now, released_by_id: FINANCE_ID, released_by_name: by, updated_date: now,
+      finance_admin_approved_by_name: by, finance_admin_approved_at: now, released_at: now, released_by_id: FINANCE_ID, released_by_name: releasedBy, updated_date: now,
+      ...(ready ? {} : { finance_override: true, finance_override_reason: a.reason, finance_override_from: record.overall_status }),
     } },
   );
   if (!won.modifiedCount) return answer(true);
-  await releaseCredits(a.kind, a.range, a.recipientId, { id: FINANCE_ID, name: by }, now);
-  return answer(false);
+  await releaseCredits(a.kind, a.range, a.recipientId, { id: FINANCE_ID, name: releasedBy }, now);
+  return answer(false, !ready);
 }
 
 export async function handleFinanceCsCommissionUnapprove(req: Request): Promise<Response> {
@@ -169,14 +190,19 @@ export async function handleFinanceCsCommissionUnapprove(req: Request): Promise<
   }
   const now = new Date().toISOString();
   const releasedAt = record.released_at;
+  // Released before the broker admin and academic head: back to where it waited for them.
+  const backTo = record.finance_override ? String(record.finance_override_from || "pending_broker_approval") : "pending_finance_approval";
   await coll.updateOne({ _id: record._id }, {
-    $set: { overall_status: "pending_finance_approval", finance_admin_approval_status: "pending", updated_date: now },
-    $unset: { finance_admin_approved_by_id: "", finance_admin_approved_by_name: "", finance_admin_approved_at: "", released_at: "", released_by_id: "", released_by_name: "" },
+    $set: { overall_status: backTo, finance_admin_approval_status: "pending", updated_date: now },
+    $unset: {
+      finance_admin_approved_by_id: "", finance_admin_approved_by_name: "", finance_admin_approved_at: "", released_at: "", released_by_id: "", released_by_name: "",
+      finance_override: "", finance_override_reason: "", finance_override_from: "",
+    },
   });
   // Only the credits that approval released go back to accrued.
   const back = await col("commission_credits").updateMany(
     { recipient_id: a.recipientId, method: { $in: METHODS[a.kind] }, is_pool: { $ne: true }, status: "released", released_by_id: FINANCE_ID, released_at: releasedAt },
     { $set: { status: "accrued", updated_date: now }, $unset: { released_at: "", released_by_id: "", released_by_name: "" } },
   );
-  return ok({ undone: true, overall_status: "pending_finance_approval", credits: back.modifiedCount });
+  return ok({ undone: true, overall_status: backTo, credits: back.modifiedCount });
 }

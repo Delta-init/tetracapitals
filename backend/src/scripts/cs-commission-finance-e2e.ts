@@ -139,6 +139,42 @@ check("taken back again: nothing to do", (await unapprove(String(csA._id))).body
 r = await approve(String(csA._id));
 check("approved again: released", r.status === 200 && r.body.data.already === false, show(r));
 
+step("4b. Paid by Delta finance before the broker admin and academic head (2026-11-06)");
+const csC = person("Mentor Chitra", "junior_mentor", { up_head_id: String(chief._id), up_head_name: chief.full_name });
+await db.collection("users").insertOne(csC);
+await db.collection("commission_credits").insertMany([credit(csC, "bonus_with", 80, "2026-09-08"), credit(csC, "bonus_without", 20, "2026-09-18")]);
+const force = (recipient_id: string, reason?: string) =>
+  call("POST", "/api/v1/integrations/finance/cs-commission/approve", { kind: "bonus", period: "2026-09", recipient_id, by: "Mona Manager", force: true, ...(reason !== undefined ? { reason } : {}) }, asFinance);
+r = await approve(String(csC._id));
+check("no approvals here yet: refused without force", r.status === 409 && r.body?.error?.code === "NOT_READY", show(r));
+r = await force(String(csC._id));
+check("…with force but no reason: refused, asking why", r.status === 400 && /Say why/.test(r.body?.error?.message ?? ""), show(r));
+check("…nothing written for her yet", !(await approvals.findOne({ recipient_id: String(csC._id) })));
+r = await force(String(csC._id), "Leaving this week, paid with her final settlement");
+const relC = await approvals.findOne({ recipient_id: String(csC._id) });
+check("with a reason: released as finance's — 100, her two credits, said to be early", r.status === 200 && r.body.data.already === false && r.body.data.total_usd === 100 && r.body.data.credit_ids.length === 2
+  && r.body.data.finance_override === true, show(r));
+check("…the release says so, and why; the broker admin and academic head still pending",
+  relC?.overall_status === "released" && relC.finance_override === true && relC.finance_override_from === "pending_broker_approval"
+  && /before the CS Portal's approvals: Leaving this week/.test(relC.released_by_name) && relC.broker_admin_approval_status === "pending" && relC.academic_head_approval_status === "pending",
+  JSON.stringify(relC));
+check("…her credits released, with the reason on them", (await creditsOf(csC)).every((c) => c.status === "released" && /Leaving this week/.test(String(c.released_by_name))));
+r = await list("bonus", "2026-09");
+check("…finance's list shows it overridden, with the reason", row(csC)?.approval.finance_override === true && /Leaving this week/.test(row(csC).approval.override_reason) && row(csC).approval.by_finance === true, JSON.stringify(row(csC)?.approval));
+r = await force(String(csC._id), "Again");
+check("forced again: already", r.status === 200 && r.body.data.already === true);
+r = await unapprove(String(csC._id));
+const backC = await approvals.findOne({ recipient_id: String(csC._id) });
+check("taken back: where it waited — with the broker admin — credits accrued, no trace of the override",
+  r.status === 200 && r.body.data.overall_status === "pending_broker_approval" && backC?.overall_status === "pending_broker_approval" && !backC.finance_override && !backC.released_by_id
+  && (await creditsOf(csC)).every((c) => c.status === "accrued" && !c.released_by_id), JSON.stringify(backC));
+await approvals.updateOne({ recipient_id: String(csC._id) }, { $set: { overall_status: "pending_academic_approval", broker_admin_approval_status: "approved" } });
+await force(String(csC._id), "Paid early");
+r = await unapprove(String(csC._id));
+check("forced from the academic head: back to the academic head", r.body?.data?.overall_status === "pending_academic_approval", show(r));
+await approvals.updateOne({ recipient_id: String(csC._id) }, { $set: { overall_status: "rejected" } });
+check("a rejected one: refused even with force", (await force(String(csC._id), "Pay anyway")).body?.error?.code === "REJECTED");
+
 step("5. The CS Portal's own Finance button");
 const login = async (u: any) => (await call("POST", "/api/auth/login", { email: u.email.toLowerCase(), password: "Password123!" })).body?.token as string;
 await approvals.updateOne({ recipient_id: String(csA._id) }, { $set: { overall_status: "pending_finance_approval" } });
