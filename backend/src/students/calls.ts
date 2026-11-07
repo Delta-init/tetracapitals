@@ -19,7 +19,10 @@ import { threecxConfigured, threecxFetch, threecxJson } from "../lib/threecx";
 
    Who took a call = the portal user whose `extension` is that 3CX
    extension. Extensions are filled in from 3CX's users by email; one typed
-   on Personnel (extension_source "manual") is never overwritten.
+   on Personnel (extension_source "manual") is never overwritten. An
+   extension 3CX gives someone is taken off whoever had it from 3CX before;
+   two people still on one extension → the one 3CX names on the call
+   (2026-11-07: arya.mol's calls on 404 went to ananya, who had it before).
 ──────────────────────────────────────────────────────────────────────────── */
 
 const SETTINGS_ID = "threecx_calls";
@@ -228,15 +231,48 @@ export async function studentsByPhone(): Promise<Map<string, any>> {
   return map;
 }
 
-async function usersByExtension(): Promise<Map<string, any>> {
-  const users = await col("users").find({ extension: { $nin: [null, ""] } }, { projection: { full_name: 1, extension: 1 } }).toArray();
-  return new Map(users.map((u: any) => [String(u.extension).trim(), u]));
+/** Everyone on each extension — usually one; more when an extension changed hands (see extensionUser). */
+export async function usersByExtension(): Promise<Map<string, any[]>> {
+  const users = await col("users").find({ extension: { $nin: [null, ""] } }, { projection: { full_name: 1, extension: 1, status: 1, app_role: 1 } }).toArray();
+  const map = new Map<string, any[]>();
+  for (const u of users as any[]) {
+    const ext = String(u.extension).trim();
+    map.set(ext, [...(map.get(ext) ?? []), u]);
+  }
+  return map;
+}
+
+const letters = (v: unknown) => String(v ?? "").toLowerCase().replace(/\(.*?\)/g, "").replace(/[^a-z]/g, "");
+/** Does 3CX's name on a call ("ARYA MOL (404)") name this person ("arya.mol")? */
+export const namesUser = (agentName: unknown, u: any) => {
+  const a = letters(agentName), n = letters(u?.full_name);
+  return !!a && !!n && (a === n || (n.length >= 4 && (a.startsWith(n) || n.startsWith(a))));
+};
+
+/**
+ * Who took a call on `ext`: its one person; when several share it, the one 3CX names on the call, else an active one
+ * (a CS before others), else the first.
+ */
+export function extensionUser(users: Map<string, any[]>, ext: string, agentName?: unknown): any | null {
+  const on = users.get(ext) ?? [];
+  if (on.length <= 1) return on[0] ?? null;
+  const active = on.filter((u) => u.status !== "inactive");
+  return on.find((u) => namesUser(agentName, u))
+    ?? active.find((u) => ["cs", "cs_manager"].includes(u.app_role)) ?? active[0] ?? on[0];
 }
 
 /** Calls nobody was matched to yet get their person once that person's extension is known (history is never re-assigned). */
-async function linkUnmatchedCalls(users: Map<string, any>) {
-  for (const [ext, u] of users) {
-    await col(CALLS).updateMany({ extension: ext, user_id: "" }, { $set: { user_id: String(u._id), user_name: String(u.full_name ?? "") } });
+async function linkUnmatchedCalls(users: Map<string, any[]>) {
+  for (const [ext, on] of users) {
+    if (on.length === 1) {
+      await col(CALLS).updateMany({ extension: ext, user_id: "" }, { $set: { user_id: String(on[0]._id), user_name: String(on[0].full_name ?? "") } });
+      continue;
+    }
+    const open = (await col(CALLS).find({ extension: ext, user_id: "" }, { projection: { agent_name: 1 } }).toArray()) as any[];
+    for (const c of open) {
+      const u = extensionUser(users, ext, c.agent_name);
+      if (u) await col(CALLS).updateOne({ _id: c._id }, { $set: { user_id: String(u._id), user_name: String(u.full_name ?? "") } });
+    }
   }
 }
 
@@ -263,6 +299,17 @@ export async function syncExtensions(): Promise<{ threecx_users: number; matched
     const ext = String(t.Number).trim();
     if (String(u.extension ?? "") === ext) continue;
     await col("users").updateOne({ _id: u._id }, { $set: { extension: ext, extension_source: "3cx", updated_date: iso() } });
+    updated++;
+  }
+  // An extension 3CX now gives someone else is no longer theirs — taken off whoever had it from 3CX before (one typed
+  // on Personnel stays). 3CX's owner of each number, by email:
+  const ownerOf = new Map([...byEmail].map(([email, t]) => [String(t.Number).trim(), email]));
+  for (const u of users) {
+    const ext = String(u.extension ?? "").trim();
+    const owner = ext ? ownerOf.get(ext) : undefined;
+    if (!owner || u.extension_source === "manual" || owner === String(u.email ?? "").trim().toLowerCase()) continue;
+    if (byEmail.get(String(u.email ?? "").trim().toLowerCase())) continue; // they have their own number in 3CX — set above
+    await col("users").updateOne({ _id: u._id }, { $set: { extension: "", extension_source: "3cx", extension_cleared_from: ext, updated_date: iso() } });
     updated++;
   }
   const out = { threecx_users: all.length, matched, updated };
@@ -292,7 +339,7 @@ async function syncWindow(from: number, to: number, students: Map<string, any>, 
     const c = parseCall(group, (k) => students.has(k));
     const s = c ? students.get(c.number_key) : null;
     if (!c || !s) continue; // not a call with a student
-    const u = c.extension ? users.get(c.extension) : null;
+    const u = c.extension ? extensionUser(users, c.extension, c.agent_name) : null;
     ops.push({
       updateOne: {
         filter: { key: c.key },
