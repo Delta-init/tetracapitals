@@ -28,12 +28,12 @@ import { splitPool } from "../functions/distributeDepositPool";
      POST /api/v1/integrations/finance/cs-commission/unapprove { kind, period, recipient_id, by }
        → back with finance, its credits unreleased — only one finance released
      POST /api/v1/integrations/finance/cs-commission/split-pool { kind, period, pool_group_id?, method?, recipient_id?, by }
-       → { split: [{ group_id, method, pool_total, members, share_each }] } — the period's Senior/Junior pools split as
+       → { split: [{ group_id, method, pool_total, members, share_each, shares }] } — the period's Senior/Junior pools split as
        the Distribute button splits them: one group, the groups someone is in, or all; only once the period has ended
 
    The Senior/Junior pools (the user, 2026-11-07: "why are the junior and senior mentors not visible here"): a plan
-   position flagged Pool pays a shared pool under the Chief, split equally among its members only when someone presses
-   Distribute — until then the Juniors and Seniors had no credits of their own, so finance never saw them. The list now
+   position flagged Pool pays a shared pool under the Chief, paid out to its members only when someone presses
+   Distribute — each their own accruals (2026-11-07, "B, by own share"; equal before) — until then the Juniors and Seniors had no credits of their own, so finance never saw them. The list now
    gives each member their share of each pool not split yet (pool_usd, pool) and the pools (pools); approving someone
    splits the pools they are in first, so what is released is theirs.
 ──────────────────────────────────────────────────────────────────────────── */
@@ -97,7 +97,8 @@ async function poolsOf(kind: string, range: { start: Date; end: Date }): Promise
   }
   return [...groups.values()].filter((g) => g.members.size > 0);
 }
-const shareOf = (g: Pool) => g.total_usd / g.members.size;
+/** A member's share of a pool: their own accruals in it — their position's % (the user, 2026-11-07: "B, by own share"). */
+const shareOf = (g: Pool, memberId: string) => g.accruals.filter((c) => String(c.recipient_id) === memberId).reduce((t, c) => t + (Number(c.commission_usd) || 0), 0);
 
 /** Split the pools given, as Delta finance; the first refusal stops it. */
 async function splitAll(pools: Pool[], period: string, by: string) {
@@ -105,7 +106,8 @@ async function splitAll(pools: Pool[], period: string, by: string) {
   for (const g of pools) {
     const r = await splitPool(g.group_id, g.method, period, { id: FINANCE_ID, name: `${by} (Delta finance)` });
     if ("error" in r) return r;
-    done.push({ group_id: r.group_id, method: r.method, pool_total: cents(r.pool_total), members: r.members, share_each: cents(r.share_each) });
+    done.push({ group_id: r.group_id, method: r.method, pool_total: cents(r.pool_total), members: r.members, share_each: cents(r.share_each),
+      shares: r.breakdown.map((b) => ({ id: b.member_id, name: b.member, share_usd: cents(b.share) })) });
   }
   return done;
 }
@@ -167,10 +169,10 @@ export async function handleFinanceCsCommission(req: Request): Promise<Response>
       location: who.location,
       total_usd: cents(mine.reduce((t, c) => t + (Number(c.commission_usd) || 0), 0)),
       // Their share of each pool not split yet — what Distribute would pay them now (2026-11-07).
-      pool_usd: cents(theirPools.reduce((t, g) => t + shareOf(g), 0)),
+      pool_usd: cents(theirPools.reduce((t, g) => t + shareOf(g, id), 0)),
       pool: theirPools.map((g) => ({
         group_id: g.group_id, group_name: g.group_name, method: g.method, total_usd: cents(g.total_usd),
-        members: [...g.members].map(([mid, name]) => ({ id: mid, name })), share_usd: cents(shareOf(g)),
+        members: [...g.members].map(([mid, name]) => ({ id: mid, name, share_usd: cents(shareOf(g, mid)) })), share_usd: cents(shareOf(g, id)),
         credits: g.accruals.sort((x, y) => String(x.requested_at || x.created_date).localeCompare(String(y.requested_at || y.created_date))).map(poolCredit),
       })),
       credits: mine
@@ -192,8 +194,8 @@ export async function handleFinanceCsCommission(req: Request): Promise<Response>
   const pools_out = [];
   for (const g of pools) {
     pools_out.push({
-      group_id: g.group_id, group_name: g.group_name, method: g.method, total_usd: cents(g.total_usd), share_usd: cents(shareOf(g)),
-      members: await Promise.all([...g.members].map(async ([mid, name]) => ({ id: mid, name: (await person(mid, idx)).name || name, location: await locationOfUser(mid, idx) }))),
+      group_id: g.group_id, group_name: g.group_name, method: g.method, total_usd: cents(g.total_usd), share_usd: cents(g.total_usd / g.members.size),
+      members: await Promise.all([...g.members].map(async ([mid, name]) => ({ id: mid, name: (await person(mid, idx)).name || name, location: await locationOfUser(mid, idx), share_usd: cents(shareOf(g, mid)) }))),
     });
   }
   return ok({ kind: a.kind, period: a.period, ended: Date.now() >= a.range.end.getTime(), people, pools: pools_out });

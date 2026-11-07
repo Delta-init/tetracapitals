@@ -10,7 +10,8 @@ import type { AuthUser } from "../auth/middleware";
  *   method = 'deposit' (default) | 'bonus_with' | 'bonus_without'
  *
  * Splits a commission POOL (e.g. the Junior+Senior 2% that accrued over the
- * period) EQUALLY among its members and pays each their share. Members are the
+ * period) among its members — each paid their OWN share, what their position's %
+ * put into it (the user, 2026-11-07: "B, by own share"; it was equal before). Members are the
  * people who held the pooled positions during the period. Marks the pooled
  * accruals as distributed so they can't be paid twice. Admin only.
  * (Named "deposit" for backward compat, but works for bonus pools too.)
@@ -35,12 +36,12 @@ export function poolPeriodRange(period: string): { start: Date; end: Date; kind:
   return null;
 }
 
-/** What a split gave: the pool, how many shared it, each one's share. */
-export type PoolSplit = { group_id: string; method: string; pool_total: number; members: number; share_each: number; distributed: number; breakdown: Array<{ member: string; share: number }> };
+/** What a split gave: the pool, how many shared it, each one's own share (share_each: the average, for older readers). */
+export type PoolSplit = { group_id: string; method: string; pool_total: number; members: number; share_each: number; distributed: number; breakdown: Array<{ member: string; member_id: string; share: number }> };
 
 /**
- * One pool split: a group's pooled accruals of one method in the period, shared EQUALLY among the people who held a
- * pooled position in it, each paid their share as their own credit (dated inside the period); the accruals marked
+ * One pool split: a group's pooled accruals of one method in the period, each person who held a pooled position in it
+ * paid their own accruals (their %, not an equal part — 2026-11-07) as their own credit (dated inside the period); the accruals marked
  * distributed, so nothing is split twice. Shared by the Distribute button here and Delta finance's Split (2026-11-07).
  * Nothing pooled: distributed 0. A period still running: refused (`open`).
  */
@@ -63,9 +64,14 @@ export async function splitPool(groupId: string, method: string, period: string,
 
   const total = pooled.reduce((s, c) => s + (c.commission_usd || 0), 0);
 
-  // Members = distinct people who held a pooled position in the quarter.
+  // Members = distinct people who held a pooled position in the period, each with what their own accruals come to.
   const memberMap = new Map<string, string>();
-  for (const c of pooled) if (c.recipient_id) memberMap.set(c.recipient_id, c.recipient_name || "—");
+  const ownOf = new Map<string, number>();
+  for (const c of pooled) {
+    if (!c.recipient_id) continue;
+    memberMap.set(c.recipient_id, c.recipient_name || "—");
+    ownOf.set(c.recipient_id, (ownOf.get(c.recipient_id) ?? 0) + (c.commission_usd || 0));
+  }
   const members = [...memberMap.entries()];
   if (!members.length) return { error: "No pool members found on the accruals", status: 400 };
 
@@ -85,7 +91,7 @@ export async function splitPool(groupId: string, method: string, period: string,
     return { error: "This pool is being split already — look again in a moment.", status: 409 };
   }
 
-  const share = total / members.length;
+  const share = total / members.length; // the average — what an equal split would have paid
   // Date the payout inside the quarter so it shows in that quarter's Deposit report.
   const payoutDate = new Date(range.end.getTime() - 24 * 3600 * 1000).toISOString();
   const groupName = pooled[0].pool_group_name || "";
@@ -105,7 +111,7 @@ export async function splitPool(groupId: string, method: string, period: string,
     recipient_name: name,
     percentage: null,
     base_amount: null,
-    commission_usd: share,
+    commission_usd: ownOf.get(id) ?? 0,
     student_name: `Pool payout (${period})`,
     initiator_name: groupName,
     status: "accrued",
@@ -133,7 +139,7 @@ export async function splitPool(groupId: string, method: string, period: string,
     members: members.length,
     share_each: share,
     distributed: payouts.length,
-    breakdown: members.map(([, name]) => ({ member: name, share })),
+    breakdown: members.map(([id, name]) => ({ member: name, member_id: id, share: ownOf.get(id) ?? 0 })),
   };
 }
 

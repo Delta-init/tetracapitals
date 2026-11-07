@@ -8,11 +8,15 @@ import { Badge } from '@/components/ui/badge';
 import { Split, Users } from 'lucide-react';
 
 const money = (n) => `$${(n || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+/** Who got what from a split — each their own share (2026-11-07). */
+export const poolShares = (d) => (d?.breakdown?.length
+  ? d.breakdown.map(b => `${b.member} ${money(b.share)}`).join(', ')
+  : `${d?.members ?? 0} member(s), ${money(d?.share_each)} each`);
 
 /**
  * Pool groups (plan positions flagged Pool, e.g. the Junior + Senior pool under
- * a Chief) for one period, with a Distribute action that splits each pool
- * equally among its members. Used by Bonus Closing (monthly, With / Without
+ * a Chief) for one period, with a Distribute action that pays each member their
+ * own share of it — what their position's % put in (2026-11-07; equal before). Used by Bonus Closing (monthly, With / Without
  * pooled separately) and Quarterly Deposit Closing (quarterly).
  *
  *   kind         'bonus' | 'deposit'
@@ -37,11 +41,15 @@ export default function PoolDistributionCard({ kind, credits, start, end, period
       if (!g[key]) g[key] = { key, method: isBonus ? c.method : null, id: c.pool_group_id, name: c.pool_group_name || '—', total: 0, distributed: 0, pending: 0, members: new Map() };
       g[key].total += c.commission_usd || 0;
       if (c.status === 'distributed') g[key].distributed += 1; else g[key].pending += 1;
-      if (c.recipient_id) g[key].members.set(c.recipient_id, c.recipient_name || '—');
+      if (c.recipient_id) {
+        const m = g[key].members.get(c.recipient_id) ?? { name: c.recipient_name || '—', share: 0 };
+        m.share += c.commission_usd || 0;
+        g[key].members.set(c.recipient_id, m);
+      }
     }
     return Object.values(g).map(x => {
       const memberList = [...x.members.values()];
-      return { ...x, memberList, share: memberList.length ? x.total / memberList.length : 0, done: x.pending === 0 && x.distributed > 0 };
+      return { ...x, memberList, done: x.pending === 0 && x.distributed > 0 };
     }).sort((a, b) => b.total - a.total);
   }, [credits, start, end, isBonus]);
 
@@ -52,7 +60,7 @@ export default function PoolDistributionCard({ kind, credits, start, end, period
     onSuccess: (res) => {
       const d = res?.data || res;
       setMessage(d?.distributed
-        ? { ok: true, text: `Pool distributed: ${money(d.pool_total)} → ${d.members} member(s), ${money(d.share_each)} each` }
+        ? { ok: true, text: `Pool distributed: ${money(d.pool_total)} → ${poolShares(d)}` }
         : { ok: false, text: d?.reason || 'Nothing to distribute' });
       queryClient.invalidateQueries({ queryKey: ['commission-credits'] });
     },
@@ -68,7 +76,7 @@ export default function PoolDistributionCard({ kind, credits, start, end, period
           <Users className="h-5 w-5 text-purple-600" /> {isBonus ? 'Bonus' : 'Deposit'} pool — {periodLabel}
         </CardTitle>
         <p className="mt-1 text-sm text-slate-500">
-          Pooled commission (plan positions flagged Pool) is split <strong>equally</strong> among its members at {isBonus ? 'month' : 'quarter'} close.
+          Pooled commission (plan positions flagged Pool) is paid out at {isBonus ? 'month' : 'quarter'} close — each member gets <strong>their own share</strong>, what their position&rsquo;s % put into the pool.
           {!periodEnded && <span className="text-amber-600"> {isBonus ? 'Month' : 'Quarter'} still open — distribute after it ends.</span>}
         </p>
         {message && <p className={`mt-2 text-sm font-medium ${message.ok ? 'text-emerald-600' : 'text-rose-600'}`}>{message.text}</p>}
@@ -80,9 +88,8 @@ export default function PoolDistributionCard({ kind, credits, start, end, period
               <tr className="border-b bg-slate-50/80">
                 <th className="px-4 py-3 text-left font-semibold text-slate-600">Pool (group)</th>
                 {isBonus && <th className="px-4 py-3 text-center font-semibold text-slate-600">Type</th>}
-                <th className="px-4 py-3 text-left font-semibold text-slate-600">Members</th>
+                <th className="px-4 py-3 text-left font-semibold text-slate-600">Members · own share</th>
                 <th className="px-4 py-3 text-right font-semibold text-slate-600">Pool total</th>
-                <th className="px-4 py-3 text-right font-semibold text-slate-600">Share / member</th>
                 <th className="px-4 py-3 text-right font-semibold text-slate-600">Action</th>
               </tr>
             </thead>
@@ -98,10 +105,9 @@ export default function PoolDistributionCard({ kind, credits, start, end, period
                     </td>
                   )}
                   <td className="px-4 py-3">
-                    <div className="flex flex-wrap gap-1">{g.memberList.map((m, i) => <Badge key={i} variant="secondary">{m}</Badge>)}</div>
+                    <div className="flex flex-wrap gap-1">{g.memberList.map((m, i) => <Badge key={i} variant="secondary">{m.name} · <Usd v={m.share} /></Badge>)}</div>
                   </td>
                   <td className="px-4 py-3 text-right font-bold text-purple-700"><Usd v={g.total} /></td>
-                  <td className="px-4 py-3 text-right text-slate-700"><Usd v={g.share} /></td>
                   <td className="px-4 py-3 text-right">
                     {g.done ? (
                       <Badge className="border-green-200 bg-green-100 text-green-700">Distributed</Badge>

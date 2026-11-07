@@ -198,34 +198,36 @@ await db.collection("commission_credits").insertMany([
   pooled(jay, "deposit", 6, "2026-05-02"), pooled(sam, "deposit", 4, "2026-05-02"),
 ]);
 r = await list("bonus", "2026-08");
-check("August: Jay — 20 of his own and 15 from the pools (7.50 of each, two members); his pools and their accruals listed",
-  row(jay)?.total_usd === 20 && row(jay).pool_usd === 15 && row(jay).pool.length === 2 && row(jay).pool.every((g: any) => g.share_usd === 7.5 && g.members.length === 2 && g.credits.length === 2),
+check("August: Jay — 20 of his own and 20 from the pools (his own 10 in each, by own share), two members; his pools and their accruals listed",
+  row(jay)?.total_usd === 20 && row(jay).pool_usd === 20 && row(jay).pool.length === 2 && row(jay).pool.every((g: any) => g.share_usd === 10 && g.members.length === 2 && g.credits.length === 2
+    && g.members.some((m: any) => m.name === "Senior Sam" && m.share_usd === 5)),
   JSON.stringify(row(jay)));
-check("…Sam, with nothing of his own, listed too — his 15 from the pools", row(sam)?.total_usd === 0 && row(sam).credits.length === 0 && row(sam).pool_usd === 15 && row(sam).name === "Senior Sam",
+check("…Sam, with nothing of his own, listed too — his 10 from the pools (5 in each)", row(sam)?.total_usd === 0 && row(sam).credits.length === 0 && row(sam).pool_usd === 10 && row(sam).name === "Senior Sam",
   JSON.stringify(row(sam)));
-check("…the pools themselves: two (with / without MT5), Chief Cara's, 15 each, members located",
-  r.body.data.pools.length === 2 && r.body.data.pools.every((g: any) => g.total_usd === 15 && g.share_usd === 7.5 && g.group_name === "Chief Cara SEN/JUN POOL" && g.members.every((m: any) => m.location === "dubai")),
+check("…the pools themselves: two (with / without MT5), Chief Cara's, 15 each, members located with their own shares (10 / 5)",
+  r.body.data.pools.length === 2 && r.body.data.pools.every((g: any) => g.total_usd === 15 && g.group_name === "Chief Cara SEN/JUN POOL" && g.members.every((m: any) => m.location === "dubai")
+    && g.members.map((m: any) => m.share_usd).sort().join(",") === "10,5"),
   JSON.stringify(r.body.data.pools));
 const split = (body: Record<string, unknown>) => call("POST", "/api/v1/integrations/finance/cs-commission/split-pool", { kind: "bonus", by: "Mona Manager", ...body }, asFinance);
 r = await split({ period: "2099-01" });
 check("a month still running: its pools not split", r.status === 409 && r.body?.error?.code === "PERIOD_OPEN", show(r));
 r = await call("POST", "/api/v1/integrations/finance/cs-commission/approve",
   { kind: "bonus", period: "2026-08", recipient_id: String(jay._id), by: "Mona Manager", force: true, reason: "Paid with his settlement" }, asFinance);
-check("Jay approved (early, with a reason): his pools split first — 20 + 7.50 + 7.50 = 35, three credits", r.status === 200 && r.body.data.total_usd === 35 && r.body.data.credit_ids.length === 3, show(r));
+check("Jay approved (early, with a reason): his pools split first — 20 + 10 + 10 = 40, three credits", r.status === 200 && r.body.data.total_usd === 40 && r.body.data.credit_ids.length === 3, show(r));
 const samShares = await db.collection("commission_credits").find({ recipient_id: String(sam._id), from_pool: true, pool_period: "2026-08" }).toArray();
-check("…Sam has his two shares now, his own to approve (accrued, not released)", samShares.length === 2 && samShares.every((c) => c.commission_usd === 7.5 && c.status === "accrued"),
+check("…Sam has his two shares now (his own 5 each), his own to approve (accrued, not released)", samShares.length === 2 && samShares.every((c) => c.commission_usd === 5 && c.status === "accrued"),
   JSON.stringify(samShares.map((c) => [c.commission_usd, c.status])));
 const aug = await db.collection("commission_credits").find({ is_pool: true, requested_at: { $regex: "^2026-08" } }).toArray();
 check("…the August accruals marked distributed, by Delta finance", aug.length === 4 && aug.every((c) => c.status === "distributed" && c.distributed_by_id === "delta-finance"));
 r = await list("bonus", "2026-08");
-check("…the list: no pools left; Sam 15 of his own", r.body.data.pools.length === 0 && row(sam)?.total_usd === 15 && row(sam).pool_usd === 0 && row(jay)?.pool_usd === 0, show(r));
+check("…the list: no pools left; Sam 10 of his own", r.body.data.pools.length === 0 && row(sam)?.total_usd === 10 && row(sam).pool_usd === 0 && row(jay)?.pool_usd === 0, show(r));
 await db.collection("commission_credits").insertMany([pooled(jay, "bonus_without", 4, "2026-07-11"), pooled(sam, "bonus_without", 2, "2026-07-11")]);
 r = await split({ period: "2026-07", pool_group_id: String(chief._id), method: "bonus_with" });
-check("finance's Split, July's Bonus-with-MT5 pool: 15 between two, 7.50 each", r.status === 200 && r.body.data.split.length === 1 && r.body.data.split[0].pool_total === 15
-  && r.body.data.split[0].members === 2 && r.body.data.split[0].share_each === 7.5 && r.body.data.split[0].method === "bonus_with", show(r));
+check("finance's Split, July's Bonus-with-MT5 pool: 15 between two, each their own (10 / 5)", r.status === 200 && r.body.data.split.length === 1 && r.body.data.split[0].pool_total === 15
+  && r.body.data.split[0].members === 2 && r.body.data.split[0].shares.map((x: any) => x.share_usd).sort().join(",") === "10,5" && r.body.data.split[0].method === "bonus_with", show(r));
 r = await list("bonus", "2026-07");
 check("…only that one: the Bonus-without pool still to split; the shares marked as from the pool", r.body.data.pools.length === 1 && r.body.data.pools[0].method === "bonus_without"
-  && row(sam)?.credits.length === 1 && row(sam).credits[0].from_pool === true && row(sam).pool_usd === 3, show(r));
+  && row(sam)?.credits.length === 1 && row(sam).credits[0].from_pool === true && row(sam).credits[0].amount_usd === 5 && row(sam).pool_usd === 2, show(r));
 r = await split({ period: "2026-07", pool_group_id: String(chief._id) });
 check("…the group without a method: what is left of it split", r.status === 200 && r.body.data.split.length === 1 && r.body.data.split[0].method === "bonus_without", show(r));
 r = await split({ period: "2026-07", pool_group_id: String(chief._id) });
@@ -233,7 +235,8 @@ check("…split again: nothing left to split", r.status === 200 && r.body.data.s
 const adminToken = await login(admin);
 const dist = (body: Record<string, unknown>) => call("POST", "/api/functions/distributeDepositPool", body, { authorization: `Bearer ${adminToken}` });
 r = await dist({ pool_group_id: String(chief._id), period: "2026-Q2", method: "deposit" });
-check("the CS Portal's Distribute, Q2's deposit pool: as before — 10 between two, 5 each", r.status === 200 && r.body?.pool_total === 10 && r.body.members === 2 && r.body.share_each === 5 && r.body.distributed === 2, show(r));
+check("the CS Portal's Distribute, Q2's deposit pool: 10 between two, each their own (6 / 4)", r.status === 200 && r.body?.pool_total === 10 && r.body.members === 2
+  && r.body.breakdown.map((b: any) => b.share).sort().join(",") === "4,6" && r.body.distributed === 2, show(r));
 r = await dist({ pool_group_id: String(chief._id), period: "2026-Q2", method: "deposit" });
 check("…again: nothing pooled", r.status === 200 && r.body?.distributed === 0, show(r));
 

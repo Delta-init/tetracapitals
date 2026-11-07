@@ -1,4 +1,5 @@
 import Usd from '@/components/common/Usd';
+import { poolShares } from '@/components/commission/PoolDistributionCard';
 import { AED_PER_USD, displayCurrency, localNumberFromAed } from '@/components/utils/displayCurrency';
 import React, { useState, useMemo } from 'react';
 import { LocationFilter, useUserLocations, inLocation } from '@/components/common/LocationFilter';
@@ -125,7 +126,7 @@ export default function BonusCommissionReports() {
     mutationFn: ({ groupId, method }) => base44.functions.invoke('distributeDepositPool', { pool_group_id: groupId, period: periodKey, method }),
     onSuccess: (res) => {
       const d = res?.data || res;
-      if (d?.distributed) toast.success(`Pool distributed: ${money(d.pool_total)} → ${d.members} member(s), ${money(d.share_each)} each`);
+      if (d?.distributed) toast.success(`Pool distributed: ${money(d.pool_total)} → ${poolShares(d)}`);
       else toast.info(d?.reason || 'Nothing to distribute');
       queryClient.invalidateQueries({ queryKey: ['commission-credits'] });
     },
