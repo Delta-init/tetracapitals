@@ -63,7 +63,7 @@ await db.collection("users").insertMany([admin, financeAdmin, chief, csA, blrChi
 const credit = (who: any, method: string, usd: number, day: string, extra: Record<string, unknown> = {}) => ({
   _id: new ObjectId(), recipient_id: String(who._id), recipient_name: who.full_name, method, commission_usd: usd, base_amount: usd * 10,
   level: 1, position: "Junior", percentage: 10, student_name: "Student", txn_id: `TX-${usd}`, initiator_name: who.full_name,
-  requested_at: `${day}T10:00:00.000Z`, created_date: `${day}T10:00:00.000Z`, status: "accrued", is_pool: false, ...extra,
+  requested_at: `${day}T10:00:00.000Z`, created_date: `${day}T10:00:00.000Z`, status: "accrued", is_pool: false, transaction_id: `FT-${who.full_name}-${usd}`, ...extra,
 });
 const A1 = credit(csA, "bonus_with", 100, "2026-09-05"), A2 = credit(csA, "bonus_without", 50.5, "2026-09-20");
 const B1 = credit(csB, "bonus_with", 40, "2026-09-10");
@@ -93,6 +93,7 @@ let r = await list("bonus", "2026-09");
 const row = (who: any) => r.body?.data?.people?.find((p: any) => p.recipient_id === String(who._id));
 check("September's bonus commission: Meera 150.50 from her two credits — not the pool's 999, the deposit or October's",
   r.status === 200 && row(csA)?.total_usd === 150.5 && row(csA).credits.length === 2 && row(csA).credits.every((c: any) => c.method.startsWith("bonus")), show(r));
+check("…each credit names the funding request it came from", row(csA).credits.every((c: any) => /^FT-Mentor Meera-/.test(c.funding_id)), JSON.stringify(row(csA).credits.map((c: any) => c.funding_id)));
 check("…her email in small letters, Dubai; Bindu 40, Bangalore (her team's)", row(csA).email === "mentor.meera@e2e-csc.test" && row(csA).location === "dubai"
   && row(csB)?.total_usd === 40 && row(csB).location === "bangalore", JSON.stringify([row(csA)?.location, row(csB)?.location]));
 check("…where each approval has got: Meera with the broker, Bindu not started; the month over", row(csA).approval.overall_status === "pending_broker_approval"

@@ -18,6 +18,7 @@ import { METHODS, periodRange, releaseCredits } from "../functions/approveCommis
    With finance's own secret (`x-finance-secret`):
      POST /api/v1/integrations/finance/cs-commission           { kind, period }
        → { kind, period, ended, people: [{ recipient_id, name, email, location, total_usd, credits, approval }] }
+       each credit names the funding request it came from (funding_id), for finance to find its invoice
      POST /api/v1/integrations/finance/cs-commission/approve   { kind, period, recipient_id, by, force?, reason? }
        → { already, total_usd, credit_ids, location, email, name } — released here (already: it was)
        force + reason (the user, 2026-11-06: "record payment for this commission" while it waits here): a Delta
@@ -117,6 +118,8 @@ export async function handleFinanceCsCommission(req: Request): Promise<Response>
           method: String(c.method), level: Number(c.level) || 0, position: String(c.position ?? ""), percentage: Number(c.percentage) || 0,
           base_usd: cents(Number(c.base_amount) || 0), amount_usd: cents(Number(c.commission_usd) || 0), status: String(c.status ?? ""),
           txn_id: String(c.txn_id ?? ""), initiator: String(c.initiator_name ?? ""),
+          // The funding request it came from (2026-11-07) — finance finds the bonus or deposit, and its invoice, by it.
+          funding_id: String(c.transaction_id ?? ""),
         })),
       approval: approvalView(approvalOf.get(id)),
     });
