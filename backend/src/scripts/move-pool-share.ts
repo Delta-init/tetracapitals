@@ -11,7 +11,7 @@
  *   bun src/scripts/move-pool-share.ts                         shows what it would do
  *   bun src/scripts/move-pool-share.ts --apply                 does it; saves an undo file in your home folder
  *   bun src/scripts/move-pool-share.ts --undo=<file> [--apply] puts back what --apply did
- *   --from=Tony --to=arya --pool=mujeebrahmanp --period=2026-10   (the defaults)
+ *   --from=Tony --to=arya --pool=mujeebrahmanp --period=2026-10   (the defaults); --to=none removes the share
  */
 import { homedir } from "node:os";
 import { join } from "node:path";
@@ -50,16 +50,23 @@ try {
       $or: [{ requested_at: { $regex: `^${PERIOD}` } }, { requested_at: { $exists: false }, created_date: { $regex: `^${PERIOD}` } }],
     }).toArray()) as any[];
     const mine = pooled.filter((c) => String(c.recipient_name ?? "").trim().toLowerCase() === FROM.toLowerCase());
-    const theirs = pooled.filter((c) => String(c.recipient_name ?? "").trim().toLowerCase() === TO.toLowerCase());
-    if (!theirs.length) throw new Error(`Nobody called "${TO}" in ${POOL}'s pool for ${PERIOD} — give --to=`);
-    const toId = String(theirs[0].recipient_id), toName = String(theirs[0].recipient_name);
+    // --to=none (the user, 2026-11-07: "cut all Bangalore seniors from Dubai pools"): a pool with nobody to take the
+    // share (amjad's has no Dubai senior) — `from`'s accruals are removed and the pool is that much smaller.
+    const cut = TO.toLowerCase() === "none";
+    const theirs = cut ? [] : pooled.filter((c) => String(c.recipient_name ?? "").trim().toLowerCase() === TO.toLowerCase());
+    if (!cut && !theirs.length) throw new Error(`Nobody called "${TO}" in ${POOL}'s pool for ${PERIOD} — give --to= (or --to=none to remove the share)`);
+    const toId = cut ? "" : String(theirs[0].recipient_id), toName = cut ? "nobody (removed)" : String(theirs[0].recipient_name);
     console.log(`${POOL}'s pool, ${PERIOD}: ${mine.length} accrual(s) of ${FROM} not paid out yet → ${toName}\n`);
     const log = { database: config.mongoDb, host, applied_at: now, updated: [] as any[], removed: [] as any[] };
     let moved = 0;
     for (const c of mine.sort((a, b) => String(a.requested_at).localeCompare(String(b.requested_at)))) {
       const t = theirs.find((x) => String(x.transaction_id) === String(c.transaction_id) && x.method === c.method);
       moved += Number(c.commission_usd) || 0;
-      if (t) {
+      if (cut) {
+        console.log(`  ${String(c.requested_at).slice(0, 10)} ${String(c.student_name).padEnd(28)} ${FROM}'s ${c.percentage}% (${aed(c.commission_usd)}) removed`);
+        log.removed.push({ ...c, _id: String(c._id) });
+        if (apply) await col("commission_credits").deleteOne({ _id: c._id, status: "pooled" });
+      } else if (t) {
         const after = { percentage: (Number(t.percentage) || 0) + (Number(c.percentage) || 0), commission_usd: (Number(t.commission_usd) || 0) + (Number(c.commission_usd) || 0),
           moved_from_name: c.recipient_name, moved_at: now, updated_date: now };
         console.log(`  ${String(c.requested_at).slice(0, 10)} ${String(c.student_name).padEnd(28)} ${toName} ${t.percentage}% → ${after.percentage}%  ${aed(t.commission_usd)} → ${aed(after.commission_usd)}  (${FROM}'s ${c.percentage}% removed)`);
@@ -77,7 +84,9 @@ try {
         if (apply) await col("commission_credits").updateOne({ _id: c._id }, { $set: { recipient_id: toId, recipient_name: toName, moved_from_name: c.recipient_name, moved_at: now, updated_date: now } });
       }
     }
-    console.log(`\n${FROM}: −${aed(moved)} · ${toName}: +${aed(moved)} (the pool's total doesn't change)`);
+    console.log(cut
+      ? `\n${FROM}: −${aed(moved)} · the pool is ${aed(moved)} smaller`
+      : `\n${FROM}: −${aed(moved)} · ${toName}: +${aed(moved)} (the pool's total doesn't change)`);
     if (!mine.length) console.log("Nothing to move.");
     else if (apply) {
       const file = join(homedir(), `move-pool-share-undo-${now.replace(/[:.]/g, "-")}.json`);
