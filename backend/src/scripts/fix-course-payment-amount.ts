@@ -2,12 +2,15 @@ import { readFileSync, writeFileSync } from "node:fs";
 import { ObjectId } from "mongodb";
 import { connectDb, closeDb, col } from "../db";
 import { config } from "../config";
+import { applyBaseChanges, commissionBaseChanges, courseBaseUsd, describeChange, undoBaseChanges } from "../finance/commissionBase";
 
 /**
  * A bonus's course payment typed with the wrong amount, put right (the user, 2026-10-30: Vinod, STU-4900, MSNR —
  * "6000 paid", not the AED 5,505 on the request). On the funding request: what was paid now (course_payment
  * .paid_today_aed, and paid till date), the amount typed (amount_original / amount_aed / amount_usd at 3.67), the one
- * payment's amount, and the balance left (moved by the same difference). The MT5 bonus is not changed. Finance is
+ * payment's amount, and the balance left (moved by the same difference). Its commission not paid out yet goes on the
+ * new amount, each credit at its own % (2026-11-07: Praveen's stayed on the old AED 2,000 — fix-commission-base.ts put
+ * the ones already corrected right); one paid out already is listed, not changed. The MT5 bonus is not changed. Finance is
  * put right with its own script (finance-delta apps/api/src/scripts/fix-course-payment-amount.ts), which also tells
  * the portal the invoice's new paid and balance.
  *
@@ -37,7 +40,9 @@ try {
     if (apply) {
       const { _id, ...rest } = saved.before;
       await col("funding_transactions").replaceOne({ _id: new ObjectId(String(_id)) }, rest);
-      console.log("Put back.");
+      // Its commission too, as it was (2026-11-07).
+      if (Array.isArray(saved.commission)) await undoBaseChanges(saved.commission, (id) => (ObjectId.isValid(id) ? new ObjectId(id) : id));
+      console.log(`Put back${saved.commission?.length ? `, with ${saved.commission.length} commission credit(s)` : ""}.`);
     }
     process.exit(0);
   }
@@ -79,13 +84,20 @@ try {
   if (cp.paid_total_aed != null) console.log(`  paid to date ${aed(cp.paid_total_aed)} → ${aed(set["course_payment.paid_total_aed"])}`);
   if (cp.balance_aed != null) console.log(`  balance      ${aed(cp.balance_aed)} → ${aed(set["course_payment.balance_aed"])}`);
   console.log(`  amount       $${t.amount_usd} → $${set.amount_usd} (at ${AED_PER_USD})`);
-  if (!diff) { console.log("\nAlready that amount — nothing to do."); process.exit(0); }
+  // Its commission on the new amount (2026-11-07) — what is not paid out yet.
+  const credits = await commissionBaseChanges(String(t._id), courseBaseUsd(newAed));
+  if (credits.change.length || credits.paidOut.length) console.log("  commission:");
+  for (const c of credits.change) console.log(`    ${describeChange(c)}`);
+  for (const c of credits.paidOut) console.log(`    PAID OUT ALREADY, left alone — tell finance: ${describeChange(c)}`);
+  if (!diff && !credits.change.length) { console.log("\nAlready that amount — nothing to do."); process.exit(0); }
 
   if (apply) {
     const file = `fix-course-payment-${t._id}-${Date.now()}.json`;
-    writeFileSync(file, JSON.stringify({ before: t }, null, 2));
+    writeFileSync(file, JSON.stringify({ before: t, commission: credits.change.map((c) => ({ id: String(c.id), before: c.before })) }, null, 2));
     console.log(`\nUndo file: ${file}`);
-    await col("funding_transactions").updateOne({ _id: t._id }, { $set: set });
+    if (diff) await col("funding_transactions").updateOne({ _id: t._id }, { $set: set });
+    const changed = await applyBaseChanges(credits.change, "fix-course-payment-amount");
+    if (changed) console.log(`${changed} commission credit(s) put on the new amount.`);
     await col("logs").insertOne({
       timestamp: new Date().toISOString(), user_name: "Script (fix-course-payment-amount)", user_role: "system",
       action_type: "fix_course_payment_amount", entity_type: "FundingTransaction", entity_id: String(t._id),
