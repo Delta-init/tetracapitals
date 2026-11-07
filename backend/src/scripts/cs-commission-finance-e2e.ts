@@ -9,7 +9,9 @@
  *      recorded as Delta finance's; again → "already"; one a Super Admin released here → "already", not finance's
  *      to take back; a period still open refused;
  *   4. taken back: back with finance, only those credits unreleased; approved again;
- *   5. the CS Portal's own Finance button: a finance admin refused (it's finance's now), a Super Admin still may.
+ *   5. the CS Portal's own Finance button: a finance admin refused (it's finance's now), a Super Admin still may;
+ *   6. the Senior/Junior pools (2026-11-07): each member's share of a pool not split yet listed (a member with nothing
+ *      else too), approving one splits the pools they're in first; finance's Split; the Distribute button the same.
  */
 import bcrypt from "bcryptjs";
 import { MongoClient, ObjectId } from "mongodb";
@@ -69,7 +71,6 @@ const A1 = credit(csA, "bonus_with", 100, "2026-09-05"), A2 = credit(csA, "bonus
 const B1 = credit(csB, "bonus_with", 40, "2026-09-10");
 await db.collection("commission_credits").insertMany([
   A1, A2, B1,
-  credit(csA, "bonus_with", 999, "2026-09-12", { is_pool: true, status: "pooled", pool_group_id: String(chief._id) }),
   credit(csA, "deposit", 70, "2026-09-15"),
   credit(csA, "bonus_with", 33, "2026-10-02"),
 ]);
@@ -91,8 +92,9 @@ check("a kind or period that isn't one: refused", (await list("salary", "2026-09
 step("2. A bonus month");
 let r = await list("bonus", "2026-09");
 const row = (who: any) => r.body?.data?.people?.find((p: any) => p.recipient_id === String(who._id));
-check("September's bonus commission: Meera 150.50 from her two credits — not the pool's 999, the deposit or October's",
-  r.status === 200 && row(csA)?.total_usd === 150.5 && row(csA).credits.length === 2 && row(csA).credits.every((c: any) => c.method.startsWith("bonus")), show(r));
+check("September's bonus commission: Meera 150.50 from her two credits — not the deposit or October's; no pool",
+  r.status === 200 && row(csA)?.total_usd === 150.5 && row(csA).credits.length === 2 && row(csA).credits.every((c: any) => c.method.startsWith("bonus"))
+  && row(csA).pool_usd === 0 && row(csA).pool.length === 0 && r.body.data.pools.length === 0, show(r));
 check("…each credit names the funding request it came from", row(csA).credits.every((c: any) => /^FT-Mentor Meera-/.test(c.funding_id)), JSON.stringify(row(csA).credits.map((c: any) => c.funding_id)));
 check("…her email in small letters, Dubai; Bindu 40, Bangalore (her team's)", row(csA).email === "mentor.meera@e2e-csc.test" && row(csA).location === "dubai"
   && row(csB)?.total_usd === 40 && row(csB).location === "bangalore", JSON.stringify([row(csA)?.location, row(csB)?.location]));
@@ -118,8 +120,6 @@ const credA = await creditsOf(csA);
 const sept = credA.filter((c) => String(c.requested_at).startsWith("2026-09"));
 const oct = credA.find((c) => String(c.requested_at).startsWith("2026-10"));
 check("…her September credits released; October's not", sept.every((c) => c.status === "released" && c.released_by_id === "delta-finance") && oct?.status === "accrued");
-const pool = await db.collection("commission_credits").findOne({ recipient_id: String(csA._id), is_pool: true });
-check("…her pool accrual left in the pool, for its distribution", pool?.status === "pooled", String(pool?.status));
 r = await approve(String(csA._id));
 check("approved again: already, the same figure", r.status === 200 && r.body.data.already === true && r.body.data.total_usd === 150.5, show(r));
 await approvals.insertOne(approval(csB, "released", { released_by_id: String(admin._id), released_by_name: "Super Admin", finance_admin_approval_status: "approved" }));
@@ -183,6 +183,59 @@ const fin = await call("POST", "/api/functions/approveCommissionPeriod", { kind:
 check("a finance admin: refused — it's approved in Delta finance", fin.status === 403 && /Delta finance/.test(JSON.stringify(fin.body)), show(fin));
 const sup = await call("POST", "/api/functions/approveCommissionPeriod", { kind: "bonus", period: "2026-09", recipient_id: String(csA._id), action: "approve" }, { authorization: `Bearer ${await login(admin)}` });
 check("a Super Admin: still may", sup.status === 200 && sup.body?.overall_status === "released", show(sup));
+
+step("6. The Senior/Junior pools (2026-11-07)");
+const sam = person("Senior Sam", "senior_mentor", { up_head_id: String(chief._id), up_head_name: chief.full_name });
+const jay = person("Junior Jay", "junior_mentor", { up_head_id: String(sam._id), up_head_name: sam.full_name });
+await db.collection("users").insertMany([sam, jay]);
+const pooled = (who: any, method: string, usd: number, day: string) =>
+  credit(who, method, usd, day, { is_pool: true, status: "pooled", pool_group_id: String(chief._id), pool_group_name: "Chief Cara SEN/JUN POOL", position: who === sam ? "Senior" : "Junior" });
+await db.collection("commission_credits").insertMany([
+  credit(jay, "bonus_with", 20, "2026-08-03"),
+  pooled(jay, "bonus_with", 10, "2026-08-05"), pooled(sam, "bonus_with", 5, "2026-08-05"),
+  pooled(jay, "bonus_without", 10, "2026-08-07"), pooled(sam, "bonus_without", 5, "2026-08-07"),
+  pooled(jay, "bonus_with", 10, "2026-07-09"), pooled(sam, "bonus_with", 5, "2026-07-09"),
+  pooled(jay, "deposit", 6, "2026-05-02"), pooled(sam, "deposit", 4, "2026-05-02"),
+]);
+r = await list("bonus", "2026-08");
+check("August: Jay — 20 of his own and 15 from the pools (7.50 of each, two members); his pools and their accruals listed",
+  row(jay)?.total_usd === 20 && row(jay).pool_usd === 15 && row(jay).pool.length === 2 && row(jay).pool.every((g: any) => g.share_usd === 7.5 && g.members.length === 2 && g.credits.length === 2),
+  JSON.stringify(row(jay)));
+check("…Sam, with nothing of his own, listed too — his 15 from the pools", row(sam)?.total_usd === 0 && row(sam).credits.length === 0 && row(sam).pool_usd === 15 && row(sam).name === "Senior Sam",
+  JSON.stringify(row(sam)));
+check("…the pools themselves: two (with / without MT5), Chief Cara's, 15 each, members located",
+  r.body.data.pools.length === 2 && r.body.data.pools.every((g: any) => g.total_usd === 15 && g.share_usd === 7.5 && g.group_name === "Chief Cara SEN/JUN POOL" && g.members.every((m: any) => m.location === "dubai")),
+  JSON.stringify(r.body.data.pools));
+const split = (body: Record<string, unknown>) => call("POST", "/api/v1/integrations/finance/cs-commission/split-pool", { kind: "bonus", by: "Mona Manager", ...body }, asFinance);
+r = await split({ period: "2099-01" });
+check("a month still running: its pools not split", r.status === 409 && r.body?.error?.code === "PERIOD_OPEN", show(r));
+r = await call("POST", "/api/v1/integrations/finance/cs-commission/approve",
+  { kind: "bonus", period: "2026-08", recipient_id: String(jay._id), by: "Mona Manager", force: true, reason: "Paid with his settlement" }, asFinance);
+check("Jay approved (early, with a reason): his pools split first — 20 + 7.50 + 7.50 = 35, three credits", r.status === 200 && r.body.data.total_usd === 35 && r.body.data.credit_ids.length === 3, show(r));
+const samShares = await db.collection("commission_credits").find({ recipient_id: String(sam._id), from_pool: true, pool_period: "2026-08" }).toArray();
+check("…Sam has his two shares now, his own to approve (accrued, not released)", samShares.length === 2 && samShares.every((c) => c.commission_usd === 7.5 && c.status === "accrued"),
+  JSON.stringify(samShares.map((c) => [c.commission_usd, c.status])));
+const aug = await db.collection("commission_credits").find({ is_pool: true, requested_at: { $regex: "^2026-08" } }).toArray();
+check("…the August accruals marked distributed, by Delta finance", aug.length === 4 && aug.every((c) => c.status === "distributed" && c.distributed_by_id === "delta-finance"));
+r = await list("bonus", "2026-08");
+check("…the list: no pools left; Sam 15 of his own", r.body.data.pools.length === 0 && row(sam)?.total_usd === 15 && row(sam).pool_usd === 0 && row(jay)?.pool_usd === 0, show(r));
+await db.collection("commission_credits").insertMany([pooled(jay, "bonus_without", 4, "2026-07-11"), pooled(sam, "bonus_without", 2, "2026-07-11")]);
+r = await split({ period: "2026-07", pool_group_id: String(chief._id), method: "bonus_with" });
+check("finance's Split, July's Bonus-with-MT5 pool: 15 between two, 7.50 each", r.status === 200 && r.body.data.split.length === 1 && r.body.data.split[0].pool_total === 15
+  && r.body.data.split[0].members === 2 && r.body.data.split[0].share_each === 7.5 && r.body.data.split[0].method === "bonus_with", show(r));
+r = await list("bonus", "2026-07");
+check("…only that one: the Bonus-without pool still to split; the shares marked as from the pool", r.body.data.pools.length === 1 && r.body.data.pools[0].method === "bonus_without"
+  && row(sam)?.credits.length === 1 && row(sam).credits[0].from_pool === true && row(sam).pool_usd === 3, show(r));
+r = await split({ period: "2026-07", pool_group_id: String(chief._id) });
+check("…the group without a method: what is left of it split", r.status === 200 && r.body.data.split.length === 1 && r.body.data.split[0].method === "bonus_without", show(r));
+r = await split({ period: "2026-07", pool_group_id: String(chief._id) });
+check("…split again: nothing left to split", r.status === 200 && r.body.data.split.length === 0, show(r));
+const adminToken = await login(admin);
+const dist = (body: Record<string, unknown>) => call("POST", "/api/functions/distributeDepositPool", body, { authorization: `Bearer ${adminToken}` });
+r = await dist({ pool_group_id: String(chief._id), period: "2026-Q2", method: "deposit" });
+check("the CS Portal's Distribute, Q2's deposit pool: as before — 10 between two, 5 each", r.status === 200 && r.body?.pool_total === 10 && r.body.members === 2 && r.body.share_each === 5 && r.body.distributed === 2, show(r));
+r = await dist({ pool_group_id: String(chief._id), period: "2026-Q2", method: "deposit" });
+check("…again: nothing pooled", r.status === 200 && r.body?.distributed === 0, show(r));
 
 await client.close();
 console.log(`\n${fail ? "\x1b[31m" : "\x1b[32m"}${pass}/${pass + fail} checks passed\x1b[0m`);

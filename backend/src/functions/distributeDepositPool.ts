@@ -18,7 +18,7 @@ import type { AuthUser } from "../auth/middleware";
 const ALLOWED = new Set(["super_admin", "admin", "broker_admin", "finance_admin"]);
 
 // Accepts a quarter ('YYYY-Qn') or a month ('YYYY-MM') and returns its [start,end).
-function periodRange(period: string): { start: Date; end: Date; kind: "quarter" | "month" } | null {
+export function poolPeriodRange(period: string): { start: Date; end: Date; kind: "quarter" | "month" } | null {
   const q = /^(\d{4})-Q([1-4])$/.exec(period);
   if (q) {
     const y = +q[1];
@@ -35,18 +35,20 @@ function periodRange(period: string): { start: Date; end: Date; kind: "quarter" 
   return null;
 }
 
-export async function distributeDepositPool(req: Request, user: AuthUser): Promise<Response> {
-  if (!ALLOWED.has(user.app_role)) return forbidden("Not allowed to distribute the pool");
-  const body: any = await req.json().catch(() => null);
-  const groupId = body?.pool_group_id;
-  const period = body?.period;
-  const method: string = body?.method || "deposit";
-  if (!groupId || !period) return error("pool_group_id and period are required", 400);
-  if (!["deposit", "bonus_with", "bonus_without"].includes(method)) return error("Invalid method", 400);
-  const range = periodRange(period);
-  if (!range) return error("Invalid period (expected YYYY-Qn or YYYY-MM)", 400);
+/** What a split gave: the pool, how many shared it, each one's share. */
+export type PoolSplit = { group_id: string; method: string; pool_total: number; members: number; share_each: number; distributed: number; breakdown: Array<{ member: string; share: number }> };
+
+/**
+ * One pool split: a group's pooled accruals of one method in the period, shared EQUALLY among the people who held a
+ * pooled position in it, each paid their share as their own credit (dated inside the period); the accruals marked
+ * distributed, so nothing is split twice. Shared by the Distribute button here and Delta finance's Split (2026-11-07).
+ * Nothing pooled: distributed 0. A period still running: refused (`open`).
+ */
+export async function splitPool(groupId: string, method: string, period: string, by: { id: string; name: string }): Promise<PoolSplit | { error: string; status: number }> {
+  const range = poolPeriodRange(period);
+  if (!range) return { error: "Invalid period (expected YYYY-Qn or YYYY-MM)", status: 400 };
   const closingWord = range.kind === "quarter" ? "quarter" : "month";
-  if (Date.now() < range.end.getTime()) return error(`This ${closingWord} is still open — distribute after it ends.`, 400);
+  if (Date.now() < range.end.getTime()) return { error: `This ${closingWord} is still open — distribute after it ends.`, status: 400 };
 
   // Pooled accruals for this group + method, in the period, not yet distributed.
   const all = await col("commission_credits")
@@ -56,7 +58,8 @@ export async function distributeDepositPool(req: Request, user: AuthUser): Promi
     const d = new Date(c.requested_at || c.created_date);
     return !isNaN(d.getTime()) && d >= range.start && d < range.end;
   });
-  if (!pooled.length) return json({ ok: true, distributed: 0, reason: "Nothing pooled for this group/period." });
+  const empty: PoolSplit = { group_id: groupId, method, pool_total: 0, members: 0, share_each: 0, distributed: 0, breakdown: [] };
+  if (!pooled.length) return empty;
 
   const total = pooled.reduce((s, c) => s + (c.commission_usd || 0), 0);
 
@@ -64,10 +67,25 @@ export async function distributeDepositPool(req: Request, user: AuthUser): Promi
   const memberMap = new Map<string, string>();
   for (const c of pooled) if (c.recipient_id) memberMap.set(c.recipient_id, c.recipient_name || "—");
   const members = [...memberMap.entries()];
-  if (!members.length) return error("No pool members found on the accruals", 400);
+  if (!members.length) return { error: "No pool members found on the accruals", status: 400 };
+
+  // Claimed first (2026-11-07): the accruals marked distributed in one step, so two splits at once pay once.
+  const ids = pooled.map((c) => c._id).filter(Boolean);
+  const now = new Date().toISOString();
+  const claimed = await col("commission_credits").updateMany(
+    { _id: { $in: ids }, status: "pooled" },
+    { $set: { status: "distributed", distributed_at: now, distributed_by_id: by.id, distributed_by_name: by.name } },
+  );
+  if (claimed.modifiedCount !== ids.length) {
+    // Someone else split some of them at the same moment: put back what this one took, and leave it to theirs.
+    await col("commission_credits").updateMany(
+      { _id: { $in: ids }, status: "distributed", distributed_at: now, distributed_by_id: by.id },
+      { $set: { status: "pooled" }, $unset: { distributed_at: "", distributed_by_id: "", distributed_by_name: "" } },
+    );
+    return { error: "This pool is being split already — look again in a moment.", status: 409 };
+  }
 
   const share = total / members.length;
-  const now = new Date().toISOString();
   // Date the payout inside the quarter so it shows in that quarter's Deposit report.
   const payoutDate = new Date(range.end.getTime() - 24 * 3600 * 1000).toISOString();
   const groupName = pooled[0].pool_group_name || "";
@@ -94,24 +112,48 @@ export async function distributeDepositPool(req: Request, user: AuthUser): Promi
     requested_at: payoutDate,
     created_date: now,
     updated_date: now,
-    distributed_by_id: user.id,
-    distributed_by_name: user.full_name,
+    distributed_by_id: by.id,
+    distributed_by_name: by.name,
   }));
-  await col("commission_credits").insertMany(payouts as any[]);
+  try {
+    await col("commission_credits").insertMany(payouts as any[]);
+  } catch (err) {
+    // No shares written: the accruals go back to the pool, to be split again.
+    await col("commission_credits").updateMany(
+      { _id: { $in: ids }, status: "distributed", distributed_at: now, distributed_by_id: by.id },
+      { $set: { status: "pooled" }, $unset: { distributed_at: "", distributed_by_id: "", distributed_by_name: "" } },
+    );
+    throw err;
+  }
 
-  // Mark the accruals distributed.
-  const ids = pooled.map((c) => c._id).filter(Boolean);
-  await col("commission_credits").updateMany(
-    { _id: { $in: ids } },
-    { $set: { status: "distributed", distributed_at: now, distributed_by_id: user.id, distributed_by_name: user.full_name } },
-  );
-
-  return json({
-    ok: true,
+  return {
+    group_id: groupId,
+    method,
     pool_total: total,
     members: members.length,
     share_each: share,
     distributed: payouts.length,
     breakdown: members.map(([, name]) => ({ member: name, share })),
+  };
+}
+
+export async function distributeDepositPool(req: Request, user: AuthUser): Promise<Response> {
+  if (!ALLOWED.has(user.app_role)) return forbidden("Not allowed to distribute the pool");
+  const body: any = await req.json().catch(() => null);
+  const groupId = body?.pool_group_id;
+  const period = body?.period;
+  const method: string = body?.method || "deposit";
+  if (!groupId || !period) return error("pool_group_id and period are required", 400);
+  if (!["deposit", "bonus_with", "bonus_without"].includes(method)) return error("Invalid method", 400);
+  const done = await splitPool(String(groupId), method, String(period), { id: user.id, name: user.full_name ?? "" });
+  if ("error" in done) return error(done.error, done.status);
+  if (!done.distributed) return json({ ok: true, distributed: 0, reason: "Nothing pooled for this group/period." });
+  return json({
+    ok: true,
+    pool_total: done.pool_total,
+    members: done.members,
+    share_each: done.share_each,
+    distributed: done.distributed,
+    breakdown: done.breakdown,
   });
 }
