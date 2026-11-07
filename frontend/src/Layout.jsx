@@ -207,7 +207,8 @@ export default function Layout({ children, currentPageName }) {
   // admin can't lock themselves out of re-enabling pages.
   const allowedPages = currentUser?.app_role === 'super_admin' ? null : myRole?.page_permissions;
   const filteredNavigation = navigation.filter(item => {
-    if (item.hidden) return false;
+    // A hidden page can still be a menu item for some roles (`showFor`: the Mentor Leaderboard for mentors, 2026-11-07).
+    if (item.hidden && !item.showFor?.includes(currentUser?.app_role)) return false;
     if (pageBlockedFor(currentUser?.app_role, item.name)) return false;
     // A role that sees only certain pages sees exactly those, whatever its page list says (navigation.js ROLE_ONLY_PAGES).
     if (ROLE_ONLY_PAGES[currentUser?.app_role]) return ROLE_ONLY_PAGES[currentUser.app_role].includes(item.name);

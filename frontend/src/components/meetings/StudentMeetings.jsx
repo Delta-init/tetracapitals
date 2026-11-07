@@ -65,6 +65,13 @@ export default function StudentMeetings({ student }) {
                       <Rows rows={outcomeDetails(m.outcome)} />
                       {m.outcome.concern && <p className="mt-2 text-sm text-slate-700"><span className="text-xs font-semibold text-slate-500">Concern: </span>{m.outcome.concern}</p>}
                       {m.outcome.remark && <p className="mt-1 whitespace-pre-wrap text-sm text-slate-700">{m.outcome.remark}</p>}
+                      {/* What the mentor entered about the client in this meeting (2026-11-07) — not only the latest. */}
+                      {m.outcome.profile && (
+                        <div className="mt-3 border-t border-slate-200 pt-2">
+                          <p className="mb-1 text-xs font-semibold text-slate-500">Client details the mentor entered</p>
+                          <Rows rows={profileRows(m.outcome.profile)} />
+                        </div>
+                      )}
                       <p className="mt-1 text-xs text-slate-500">
                         {m.outcome.filledByName ? `By ${m.outcome.filledByName}, ${when(m.outcome.filledAt)}` : ''}
                         {m.reminder ? ` · follow-up ${m.reminder.created ? 'opened' : 'moved'} to ${m.reminder.date} for their CS` : ''}

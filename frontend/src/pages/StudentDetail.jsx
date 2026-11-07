@@ -50,7 +50,7 @@ import { EnrolmentControl } from "@/components/students/enrolment";
 import { OnboardingControl } from "@/components/students/onboarding";
 import { isStudentOf } from "@/components/students/common";
 import { StudentTagsEditor } from "@/components/students/tags";
-import { isMentorRole as isMentorTier, readsClosedOnly } from "@/components/utils/roles";
+import { isMentorRole as isMentorTier, readsClosedOnly, TEAM_WIDE_MENTORS } from "@/components/utils/roles";
 import { closedByMe, ClosedByList } from "@/components/students/closedBy";
 import { canEditStudent, applyStudentMasking } from "../components/utils/StudentAccessControl";
 import { getEffectiveUser } from "../components/utils/ImpersonationContext";
@@ -117,7 +117,8 @@ export default function StudentDetail() {
   }, []);
 
   // A Chief Mentor or CS Manager opens their team's students — those of the CSs under them (2026-10-08).
-  const leads = ['chief_mentor', 'cs_manager'].includes(currentUser?.app_role);
+  // …and a senior / junior / sub-junior mentor their whole team's (2026-11-07; the server's TEAM_WIDE_MENTORS).
+  const leads = ['chief_mentor', 'cs_manager', ...TEAM_WIDE_MENTORS].includes(currentUser?.app_role);
   const { data: myTeam } = useQuery({
     queryKey: ['my-team-cs-ids', currentUser?.id],
     queryFn: async () => (await base44.functions.invoke('getMyTeamCsIds', {})).data,

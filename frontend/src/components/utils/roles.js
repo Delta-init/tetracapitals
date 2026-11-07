@@ -69,8 +69,11 @@ export const SCOPE_LABELS = { own: 'Own students', downline: 'Team students', al
 
 export const DEFAULT_SCOPES = {
   chief_mentor: 'downline',
-  senior_mentor: 'own',
-  junior_mentor: 'own',
+  // Their whole team, as the server has had it since 2026-10-20 (lib/scope.ts TEAM_WIDE_MENTORS) — 'own' here hid the
+  // Team Students tab from them (2026-11-07).
+  senior_mentor: 'downline',
+  junior_mentor: 'downline',
+  subjunior_mentor: 'downline',
 };
 
 /**

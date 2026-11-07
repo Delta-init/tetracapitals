@@ -107,7 +107,7 @@ export const NAV_ITEMS = [
   { name: 'MeetingsReport', label: 'Meetings Report', page: 'MeetingsReport', icon: BarChart3, roles: ['super_admin', 'admin', 'chief_mentor', 'cs_manager'], only: ['super_admin', 'admin', 'chief_mentor', 'cs_manager'] },
   { name: 'MentorReport', label: 'Mentor Report', page: 'MentorReport', icon: ClipboardList, roles: ['super_admin', 'admin', 'chief_mentor', 'senior_mentor', 'junior_mentor', 'subjunior_mentor', 'cs_manager'], only: ['super_admin', 'admin', 'chief_mentor', 'senior_mentor', 'junior_mentor', 'subjunior_mentor', 'cs_manager'] },
   // Opened from the Mentor Report (2026-10-28): every mentor ranked — the same people as the report.
-  { name: 'MentorLeaderboard', hidden: true, page: 'MentorLeaderboard', icon: Trophy, roles: ['super_admin', 'admin', 'chief_mentor', 'senior_mentor', 'junior_mentor', 'subjunior_mentor', 'cs_manager'], only: ['super_admin', 'admin', 'chief_mentor', 'senior_mentor', 'junior_mentor', 'subjunior_mentor', 'cs_manager'], sameAccessAs: 'MentorReport' },
+  { name: 'MentorLeaderboard', label: 'Leaderboard (Mentors)', hidden: true, showFor: ['senior_mentor', 'junior_mentor', 'subjunior_mentor'], page: 'MentorLeaderboard', icon: Trophy, roles: ['super_admin', 'admin', 'chief_mentor', 'senior_mentor', 'junior_mentor', 'subjunior_mentor', 'cs_manager'], only: ['super_admin', 'admin', 'chief_mentor', 'senior_mentor', 'junior_mentor', 'subjunior_mentor', 'cs_manager'], sameAccessAs: 'MentorReport' },
   { name: 'MentorPerformance', hidden: true, page: 'MentorPerformance', icon: Gauge, roles: ['super_admin', 'admin', 'broker_admin', 'academic_head', 'junior_mentor', 'chief_mentor', 'senior_mentor', 'finance_admin'] },
   { name: 'MasterAdmin', page: 'MasterAdmin', icon: ShieldCheck, roles: ['super_admin'] },
   // CS Managers: the CS accounts only, to View as (2026-10-13; Layout lets them past their role's page list).
@@ -161,7 +161,7 @@ export const NAV_ITEMS = [
   { name: 'DrawAdminStudents', page: 'DrawAdminStudents', icon: Users, roles: ['draw_admin'] },
   { name: 'InactivityTransfers', page: 'InactivityTransfers', icon: Hourglass, roles: ['super_admin', 'admin'] },
   // Where the students that came in went (2026-10-20): admins everything, a CS Manager their location, a team leader their team.
-  { name: 'StudentWorkflow', label: 'Student workflow', page: 'StudentWorkflow', icon: Workflow, roles: ['super_admin', 'admin', 'academic_head', 'chief_mentor', 'cs_manager'] },
+  { name: 'StudentWorkflow', label: 'Student workflow', page: 'StudentWorkflow', icon: Workflow, roles: ['super_admin', 'admin', 'academic_head', 'chief_mentor', 'cs_manager', 'senior_mentor', 'junior_mentor', 'subjunior_mentor'] },
   { name: 'StudentTags', label: 'Student Tags', page: 'StudentTags', icon: Tags, roles: ['super_admin', 'admin', 'broker_admin', 'academic_head', 'finance_admin'] },
   { name: 'MT5Accounts', hidden: true, page: 'MT5Accounts', icon: CandlestickChart, roles: ['super_admin', 'admin', 'broker_admin', 'academic_head', 'junior_mentor', 'chief_mentor', 'senior_mentor'] },
   { name: 'FundingActivities', page: 'MyFundingRequests', icon: Wallet, roles: ['chief_mentor', 'senior_mentor', 'junior_mentor', 'assistance'] },
@@ -226,7 +226,13 @@ export const GROUP_OF = {
  * section — whatever their role's page list says; anything else, opened by its address, says it isn't available. A
  * student's page stays open to them (MT5 Approvals links to it), and the report details the Reports open.
  */
+// Senior / junior / sub-junior mentors (the user, 2026-11-07): these pages and no others; Chief Mentors unchanged.
+const MENTOR_PAGES = ['Dashboard', 'MentorLeaderboard', 'Teams', 'MyWallet', 'Students', 'StudentDetail', 'FundingActivities', 'MentorCalendar',
+  'StudentWorkflow', 'Reports', 'DepositReport', 'WithdrawalReport', 'FundingRequestReport', 'BonusReport', 'ReportTransactionDetails', 'MentorReport'];
 export const ROLE_ONLY_PAGES = {
+  senior_mentor: MENTOR_PAGES,
+  junior_mentor: MENTOR_PAGES,
+  subjunior_mentor: MENTOR_PAGES,
   broker_admin: ['BonusApprovals', 'Tickets', 'DepositReport', 'WithdrawalReport', 'FundingRequestReport', 'BonusReport', 'Reports', 'CommissionReports', 'StudentDetail', 'ReportTransactionDetails', 'Reminders', 'MyWallet'],
 };
 /** Where such a role starts instead of the Dashboard. */
