@@ -108,15 +108,17 @@ export async function verifyMeetingPayment(req: Request, user: AuthUser): Promis
   return json({ ok: true });
 }
 
-/** POST /api/functions/getPaymentVerifyCount → { count } — the sidebar's: interested outcomes of this person's students not verified yet. */
+/** POST /api/functions/getPaymentVerifyCount → { count } — the sidebar's: this month's interested meetings of this person's students not verified yet. */
 export async function getPaymentVerifyCount(_req: Request, user: AuthUser): Promise<Response> {
   if (!["cs", "cs_manager"].includes(user.app_role)) return json({ count: 0 });
   const reach = await csManagerReach(user);
   const ids = reach ? reach.ids : [...((await visibleMentorIds(user)) ?? new Set([user.id]))];
   const mine = ((await col("students").find(studentsOf(ids), { projection: { _id: 1 } }).toArray()) as any[]).map((x) => String(x._id));
   if (!mine.length) return json({ count: 0 });
-  const since = await sinceOf();
-  const outcomes = (await col(OUTCOMES).find({ stage: "interested", student_ids: { $in: mine }, filled_at: { $gte: since } }, { projection: { student_ids: 1 } }).toArray()) as any[];
+  // The same as the tab shows at first: this month's meetings (Dubai), by meeting date (the user, 2026-11-09).
+  const month = new Date(Date.now() + 4 * 3600_000).toISOString().slice(0, 7);
+  const monthStart = new Date(`${month}-01T00:00:00+04:00`).toISOString();
+  const outcomes = (await col(OUTCOMES).find({ stage: "interested", student_ids: { $in: mine }, "meeting.starts_at": { $gte: monthStart } }, { projection: { student_ids: 1 } }).toArray()) as any[];
   const keys = outcomes.flatMap((o) => (o.student_ids ?? []).filter((x: string) => mine.includes(x)).map((x: string) => keyOf(String(o._id), x)));
   if (!keys.length) return json({ count: 0 });
   const done = await col(C).countDocuments({ _id: { $in: keys }, confirmation: { $ne: "unreachable" } } as any);
