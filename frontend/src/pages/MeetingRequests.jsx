@@ -6,7 +6,7 @@ import { Button } from '@/components/ui/button';
 import { CalendarClock, Loader2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useUrlState } from '@/components/utils/urlState';
-import { ASKS_FOR_MEETINGS, DecideMeetingDialog, MyMeetingRequests, RequestMeetingDialog, StatusBadge, categoryText, when } from '@/components/meetings/meetingRequests';
+import { ASKS_FOR_MEETINGS, modeText, DecideMeetingDialog, MyMeetingRequests, RequestMeetingDialog, StatusBadge, categoryText, when } from '@/components/meetings/meetingRequests';
 import { getEffectiveUser } from '@/components/utils/ImpersonationContext';
 
 /* ────────────────────────────────────────────────────────────────────────────
@@ -67,7 +67,7 @@ function DecideRequests() {
                 <div className="overflow-x-auto rounded-2xl border border-slate-200/70 bg-white shadow-soft">
                   <table className="w-full text-sm">
                     <thead className="bg-slate-50 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">
-                      <tr>{['Asked', 'Student', 'Mentor', 'For', 'Length · where', 'Note', tab === 'waiting' ? '' : 'Decision'].map(h => <th key={h} className="whitespace-nowrap px-4 py-2.5">{h}</th>)}</tr>
+                      <tr>{['Asked', 'Student', 'Mentor', 'For', 'Length · where', 'Reason', tab === 'waiting' ? '' : 'Decision'].map(h => <th key={h} className="whitespace-nowrap px-4 py-2.5">{h}</th>)}</tr>
                     </thead>
                     <tbody className="divide-y divide-slate-100">
                       {list.map(r => (
@@ -76,8 +76,8 @@ function DecideRequests() {
                           <td className="px-4 py-3"><div className="font-medium text-brand-navy">{r.student.name}</div><div className="text-xs text-slate-400">{[r.student.code, r.student.cs_name && `CS ${r.student.cs_name}`].filter(Boolean).join(' · ')}</div></td>
                           <td className="px-4 py-3 text-slate-700">{r.mentor.name}</td>
                           <td className="px-4 py-3"><span className="rounded bg-violet-50 px-1.5 py-0.5 text-xs text-violet-700">{categoryText(r.category, r.course)}</span></td>
-                          <td className="px-4 py-3 text-slate-600">{r.duration_mins} min · {r.in_person ? `in person — ${r.location}` : 'online'}</td>
-                          <td className="max-w-[220px] px-4 py-3 text-slate-600">{r.notes || '—'}</td>
+                          <td className="px-4 py-3 text-slate-600">{r.duration_mins} min · {modeText(r)}</td>
+                          <td className="max-w-[260px] whitespace-pre-wrap px-4 py-3 text-slate-600">{r.notes || '—'}</td>
                           <td className="whitespace-nowrap px-4 py-3">
                             {tab === 'waiting'
                               ? <Button size="sm" onClick={() => setDeciding(r)}>Pick time &amp; decide</Button>

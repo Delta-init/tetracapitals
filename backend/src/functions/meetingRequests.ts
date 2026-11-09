@@ -52,6 +52,8 @@ const out = (r: any) => ({
   id: String(r._id), status: r.status, student: { id: r.student_id, name: r.student_name, code: r.student_code ?? "", cs_name: r.cs_name ?? "" },
   mentor: { id: r.mentor_id, name: r.mentor_name, email: r.mentor_email }, category: r.category ?? "", course: r.course ?? "",
   duration_mins: r.duration_mins, in_person: !!r.in_person, location: r.location_text ?? "", notes: r.notes ?? "",
+  // "cs": the mentor left online or in person to the CS, to confirm with the student (2026-11-09).
+  mode: r.booked_mode ?? r.mode ?? (r.in_person ? "offline" : "online"),
   requested_at: r.requested_at, scheduled_start: r.scheduled_start ?? null, decided_at: r.decided_at ?? null, decided_by_name: r.decided_by_name ?? "",
   reason: r.reason ?? "", lms_meeting_id: r.lms_meeting_id ?? null, title: r.title ?? "",
 });
@@ -70,7 +72,8 @@ async function csManagersOf(location: string): Promise<string[]> {
 }
 
 /**
- * POST /api/functions/createMeetingRequest { studentId, category, course?, durationMins, inPerson?, location?, notes? }
+ * POST /api/functions/createMeetingRequest { studentId, category, course?, durationMins, mode: "online" | "offline" | "cs",
+ *   location? (offline), notes (the reason for the meeting — required) }
  * A Senior / Junior / Sub-junior Mentor asks for a meeting with a student — any team's; the mentor is themselves.
  */
 export async function createMeetingRequest(req: Request, user: AuthUser): Promise<Response> {
@@ -85,9 +88,13 @@ export async function createMeetingRequest(req: Request, user: AuthUser): Promis
   if (category === "course_upgrade" && !course) return error("Pick the course for a Course Upgradation meeting", 400);
   const duration = Math.round(Number(body?.durationMins) || 30);
   if (duration < 15 || duration > 180) return error("A meeting is 15 minutes to 3 hours", 400);
-  const inPerson = body?.inPerson === true;
+  // Online, in person, or left to the CS to confirm with the student (2026-11-09).
+  const mode = ["online", "offline", "cs"].includes(str(body?.mode, 10)) ? str(body?.mode, 10) : body?.inPerson === true ? "offline" : "online";
+  const inPerson = mode === "offline";
   const location = inPerson ? str(body?.location, 300) : "";
   if (inPerson && !location) return error("Say where, for an in-person meeting", 400);
+  const reason = str(body?.notes, 1000);
+  if (reason.length < 3) return error("Give the reason for the meeting request", 400);
   const me: any = await col("users").findOne({ _id: toObjectId(user.id) as any }, { projection: { full_name: 1, email: 1 } });
   const already = await col("meeting_requests").countDocuments({ student_id: String(s._id), mentor_id: user.id, status: "pending" });
   if (already) return error("You already have a request waiting for this student", 409);
@@ -100,7 +107,7 @@ export async function createMeetingRequest(req: Request, user: AuthUser): Promis
     cs_ids: csIds, cs_name: s.primary_mentor_name ?? "", location: where,
     mentor_id: user.id, mentor_name: me?.full_name ?? user.full_name ?? "", mentor_email: String(me?.email ?? user.email ?? ""),
     title: `Session with ${String(s.full_name ?? "").trim() || "a student"}`,
-    category, course, duration_mins: duration, in_person: inPerson, location_text: location, notes: str(body?.notes, 1000),
+    category, course, duration_mins: duration, mode, in_person: inPerson, location_text: location, notes: reason,
     status: "pending", requested_at: now, created_date: now, updated_date: now,
   };
   const ins = await col("meeting_requests").insertOne(doc);
@@ -148,7 +155,8 @@ export async function getMeetingRequestsWaiting(_req: Request, user: AuthUser): 
 }
 
 /**
- * POST /api/functions/decideMeetingRequest { id, action: "approve", scheduledStart } | { id, action: "reject", reason }
+ * POST /api/functions/decideMeetingRequest { id, action: "approve", scheduledStart, mode?: "online" | "offline", location? }
+ *   | { id, action: "reject", reason } — the CS may set online or in person (must, when the mentor left it to them).
  * Approve books it in the LMS at that time (a clash comes back as the LMS says, nothing decided).
  */
 export async function decideMeetingRequest(req: Request, user: AuthUser): Promise<Response> {
@@ -173,6 +181,12 @@ export async function decideMeetingRequest(req: Request, user: AuthUser): Promis
   const start = new Date(str(body?.scheduledStart, 40));
   if (Number.isNaN(start.getTime())) return error("Pick the date and time", 400);
   if (start.getTime() < Date.now() - 60_000) return error("That time has passed — pick a later one", 400);
+  // Online or in person: as the CS sets it now, else as the mentor asked; left to the CS, they must say.
+  const asked = str(body?.mode, 10);
+  if (!asked && (r.mode === "cs")) return error("Say whether it's online or in person — the mentor left it to you", 400);
+  const inPerson = asked ? asked === "offline" : !!r.in_person;
+  const place = inPerson ? (asked ? str(body?.location, 300) : String(r.location_text ?? "")) : "";
+  if (inPerson && !place) return error("Say where, for an in-person meeting", 400);
 
   // Claimed first, so two people approving at once book it once.
   const claim = await col("meeting_requests").updateOne({ _id: oid as any, status: "pending" }, { $set: { status: "booking", updated_date: nowIso() } });
@@ -182,16 +196,16 @@ export async function decideMeetingRequest(req: Request, user: AuthUser): Promis
       method: "POST", verb: "book that meeting",
       body: {
         mentorEmail: r.mentor_email, title: r.title, kind: "student", category: r.category, course: r.course || undefined,
-        scheduledStart: start.toISOString(), durationMins: r.duration_mins, inPerson: !!r.in_person,
-        location: r.in_person ? r.location_text : undefined,
+        scheduledStart: start.toISOString(), durationMins: r.duration_mins, inPerson,
+        location: inPerson ? place : undefined,
         attendees: [{ name: r.student_name, email: r.student_email || undefined }],
         allAcademies: true, notes: r.notes || undefined, bookedByEmail: me?.email ?? user.email, askOutcome: true,
       },
     });
     const meetingId = String(booked?.meeting?.id ?? "");
-    await col("meeting_requests").updateOne({ _id: oid as any }, { $set: { status: "approved", scheduled_start: start.toISOString(), lms_meeting_id: meetingId, ...by, decided_at: nowIso(), updated_date: nowIso() } });
+    await col("meeting_requests").updateOne({ _id: oid as any }, { $set: { status: "approved", scheduled_start: start.toISOString(), lms_meeting_id: meetingId, in_person: inPerson, location_text: place, booked_mode: inPerson ? "offline" : "online", ...by, decided_at: nowIso(), updated_date: nowIso() } });
     const when = start.toLocaleString("en-GB", { weekday: "short", day: "numeric", month: "short", hour: "numeric", minute: "2-digit", hour12: true, timeZone: "Asia/Dubai" });
-    await notify([r.mentor_id], { type: "meeting_request", title: `Meeting approved — ${r.student_name}`, body: `${when} (Dubai), ${r.duration_mins} min · set by ${by.decided_by_name}`, link: "/MentorCalendar?tab=meetings", tag: `meeting-request-${r._id}`, renotify: true });
+    await notify([r.mentor_id], { type: "meeting_request", title: `Meeting approved — ${r.student_name}`, body: `${when} (Dubai), ${r.duration_mins} min, ${inPerson ? `in person — ${place}` : "online"} · set by ${by.decided_by_name}`, link: "/MentorCalendar?tab=meetings", tag: `meeting-request-${r._id}`, renotify: true });
     return json({ ok: true, meeting: booked?.meeting ?? null });
   } catch (err) {
     await col("meeting_requests").updateOne({ _id: oid as any, status: "booking" }, { $set: { status: "pending", updated_date: nowIso() } });

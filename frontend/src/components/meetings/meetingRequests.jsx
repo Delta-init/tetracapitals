@@ -6,6 +6,7 @@ import { base44 } from '@/api/base44Client';
 import { createPageUrl } from '@/utils';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { Textarea } from '@/components/ui/textarea';
 import { Label } from '@/components/ui/label';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { CalendarClock, CalendarPlus, Loader2, Search, X } from 'lucide-react';
@@ -39,6 +40,8 @@ export const STATUS = {
 };
 const fn = async (name, body) => (await base44.functions.invoke(name, body)).data;
 const errorText = (e, fallback) => e?.response?.data?.error || e?.data?.error || e?.message || fallback;
+/** Online, in person (where), or left to the CS to confirm with the student (2026-11-09). */
+export const modeText = (r, withPlace = true) => (r.mode === 'cs' ? 'CS to confirm online or in person' : r.in_person ? (withPlace && r.location ? `in person — ${r.location}` : 'in person') : 'online');
 export const when = (iso) => (iso ? new Date(iso).toLocaleString('en-GB', { weekday: 'short', day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit', hour12: true, timeZone: 'Asia/Dubai' }) : '—');
 const selectCls = 'h-9 w-full rounded-md border border-input bg-transparent px-3 text-sm shadow-sm focus:outline-none focus:ring-1 focus:ring-ring';
 
@@ -130,12 +133,13 @@ export function AnyStudentPicker({ value, onPick }) {
 export function RequestMeetingDialog({ open, onClose, student: initial = null, onStaffMeeting = null }) {
   const qc = useQueryClient();
   const [student, setStudent] = useState(initial);
-  const [f, setF] = useState({ category: '', course: '', durationMins: '30', inPerson: false, location: '', notes: '' });
-  useEffect(() => { if (open) { setStudent(initial); setF({ category: '', course: '', durationMins: '30', inPerson: false, location: '', notes: '' }); } }, [open, initial?.id]);
+  const blank = { category: '', course: '', durationMins: '30', mode: 'online', location: '', notes: '' };
+  const [f, setF] = useState(blank);
+  useEffect(() => { if (open) { setStudent(initial); setF(blank); } }, [open, initial?.id]);
   const send = useMutation({
     mutationFn: () => fn('createMeetingRequest', {
       studentId: student?.id, category: f.category, course: f.category === 'course_upgrade' ? f.course : '',
-      durationMins: Number(f.durationMins), inPerson: f.inPerson, location: f.inPerson ? f.location.trim() : '', notes: f.notes.trim(),
+      durationMins: Number(f.durationMins), mode: f.mode, location: f.mode === 'offline' ? f.location.trim() : '', notes: f.notes.trim(),
     }),
     onSuccess: () => {
       toast.success(`Request sent — ${student?.cs_name ? `${student.cs_name} (the CS)` : 'the CS'} picks the time`);
@@ -144,7 +148,7 @@ export function RequestMeetingDialog({ open, onClose, student: initial = null, o
     },
     onError: (e) => toast.error(errorText(e, 'The request could not be sent')),
   });
-  const ready = student && f.category && (f.category !== 'course_upgrade' || f.course) && Number(f.durationMins) >= 15 && (!f.inPerson || f.location.trim().length >= 2);
+  const ready = student && f.category && (f.category !== 'course_upgrade' || f.course) && Number(f.durationMins) >= 15 && (f.mode !== 'offline' || f.location.trim().length >= 2) && f.notes.trim().length >= 3;
   return (
     <Dialog open={open} onOpenChange={(v) => !v && onClose()}>
       <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-lg">
@@ -188,20 +192,21 @@ export function RequestMeetingDialog({ open, onClose, student: initial = null, o
             )}
             <div className={cn('space-y-1.5', f.category !== 'course_upgrade' && 'sm:col-span-2')}>
               <Label htmlFor="rq-mode">Online or offline</Label>
-              <select id="rq-mode" value={f.inPerson ? 'offline' : 'online'} onChange={(e) => setF(x => ({ ...x, inPerson: e.target.value === 'offline' }))} className={selectCls}>
+              <select id="rq-mode" value={f.mode} onChange={(e) => setF(x => ({ ...x, mode: e.target.value }))} className={selectCls}>
                 <option value="online">Online — Google Meet</option>
                 <option value="offline">Offline — in person</option>
+                <option value="cs">Let the CS confirm with the student</option>
               </select>
             </div>
-            {f.inPerson && (
+            {f.mode === 'offline' && (
               <div className="space-y-1.5 sm:col-span-2">
                 <Label htmlFor="rq-where">Where *</Label>
                 <Input id="rq-where" value={f.location} onChange={(e) => setF(x => ({ ...x, location: e.target.value }))} placeholder="e.g. Dubai office, room 2" />
               </div>
             )}
             <div className="space-y-1.5 sm:col-span-2">
-              <Label htmlFor="rq-notes">Note for the CS</Label>
-              <Input id="rq-notes" value={f.notes} onChange={(e) => setF(x => ({ ...x, notes: e.target.value }))} placeholder="Optional — e.g. best in the evening" />
+              <Label htmlFor="rq-notes">Reason for the meeting request *</Label>
+              <Textarea id="rq-notes" rows={3} value={f.notes} onChange={(e) => setF(x => ({ ...x, notes: e.target.value }))} placeholder="Why you want to meet the student — the CS sees it" />
             </div>
           </div>
         </div>
@@ -264,7 +269,10 @@ export function DecideMeetingDialog({ request: r, onClose }) {
   const [time, setTime] = useState('11:00');
   const [rejecting, setRejecting] = useState(false);
   const [reason, setReason] = useState('');
-  useEffect(() => { if (r) { setDate(todayDubai()); setTime('11:00'); setRejecting(false); setReason(''); } }, [r?.id]);
+  // Online or in person — as the mentor asked, or for the CS to set when the mentor left it to them (2026-11-09).
+  const [mode, setMode] = useState('');
+  const [place, setPlace] = useState('');
+  useEffect(() => { if (r) { setDate(todayDubai()); setTime('11:00'); setRejecting(false); setReason(''); setMode(r.mode === 'cs' ? '' : r.in_person ? 'offline' : 'online'); setPlace(r.location || ''); } }, [r?.id]);
   const done = () => { qc.invalidateQueries({ queryKey: ['meeting-requests'] }); qc.invalidateQueries({ queryKey: ['meeting-requests-waiting'] }); onClose(); };
   const decide = useMutation({
     mutationFn: (body) => fn('decideMeetingRequest', { id: r.id, ...body }),
@@ -278,10 +286,10 @@ export function DecideMeetingDialog({ request: r, onClose }) {
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2 text-brand-navy"><CalendarClock className="h-5 w-5" />Meeting request — {r.student.name}</DialogTitle>
           <DialogDescription>
-            {r.mentor.name} asks for a {categoryText(r.category, r.course) || 'meeting'}, {r.duration_mins} min, {r.in_person ? `in person (${r.location})` : 'online'}.
+            {r.mentor.name} asks for a {categoryText(r.category, r.course) || 'meeting'}, {r.duration_mins} min, {modeText(r)}.
           </DialogDescription>
         </DialogHeader>
-        {r.notes && <p className="rounded-md bg-amber-50 px-3 py-2 text-sm text-amber-900">“{r.notes}”</p>}
+        {r.notes && <div className="rounded-md bg-amber-50 px-3 py-2 text-sm text-amber-900"><span className="block text-[11px] font-semibold uppercase tracking-wide text-amber-700">Reason</span><span className="whitespace-pre-wrap">{r.notes}</span></div>}
         <StudentMeetingHistory studentId={r.student.id} />
         {rejecting ? (
           <div className="space-y-1.5">
@@ -294,6 +302,18 @@ export function DecideMeetingDialog({ request: r, onClose }) {
               <div className="space-y-1.5"><Label htmlFor="rq-date">Date *</Label><Input id="rq-date" type="date" min={todayDubai()} value={date} onChange={(e) => setDate(e.target.value)} /></div>
               <div className="space-y-1.5"><Label htmlFor="rq-time">Time (Dubai) *</Label><Input id="rq-time" type="time" step={900} value={time} onChange={(e) => setTime(e.target.value)} /></div>
             </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1.5">
+                <Label htmlFor="rq-dmode">Online or in person *</Label>
+                <select id="rq-dmode" value={mode} onChange={(e) => setMode(e.target.value)} className={selectCls}>
+                  {!mode && <option value="">Confirm with the student…</option>}
+                  <option value="online">Online — Google Meet</option>
+                  <option value="offline">Offline — in person</option>
+                </select>
+              </div>
+              {mode === 'offline' && <div className="space-y-1.5"><Label htmlFor="rq-place">Where *</Label><Input id="rq-place" value={place} onChange={(e) => setPlace(e.target.value)} placeholder="e.g. Dubai office" /></div>}
+            </div>
+            {r.mode === 'cs' && <p className="text-xs text-amber-700">The mentor left this to you — confirm online or in person with the student.</p>}
             {date && <MentorDay email={r.mentor.email} date={date} />}
           </>
         )}
@@ -306,7 +326,7 @@ export function DecideMeetingDialog({ request: r, onClose }) {
           ) : (
             <>
               <Button variant="outline" className="text-rose-700" onClick={() => setRejecting(true)}>Reject…</Button>
-              <Button disabled={!date || !time || decide.isPending} onClick={() => decide.mutate({ action: 'approve', scheduledStart: dubaiIso(date, time) })}>{decide.isPending && <Loader2 className="h-4 w-4 animate-spin" />} Approve &amp; book</Button>
+              <Button disabled={!date || !time || !mode || (mode === 'offline' && place.trim().length < 2) || decide.isPending} onClick={() => decide.mutate({ action: 'approve', scheduledStart: dubaiIso(date, time), mode, location: mode === 'offline' ? place.trim() : '' })}>{decide.isPending && <Loader2 className="h-4 w-4 animate-spin" />} Approve &amp; book</Button>
             </>
           )}
         </DialogFooter>
@@ -384,7 +404,7 @@ export function MeetingRequestPopup({ currentUser }) {
               <li key={r.id} className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-slate-200 px-3 py-2">
                 <div className="text-sm">
                   <p className="font-medium text-brand-navy">{r.student.name}</p>
-                  <p className="text-xs text-slate-500">{r.mentor.name} · {categoryText(r.category, r.course)} · {r.duration_mins} min · {r.in_person ? 'in person' : 'online'}</p>
+                  <p className="text-xs text-slate-500">{r.mentor.name} · {categoryText(r.category, r.course)} · {r.duration_mins} min · {modeText(r, false)}</p>
                 </div>
                 <Button size="sm" onClick={() => { close(); setDeciding(r); }}>Decide now</Button>
               </li>
@@ -429,7 +449,7 @@ export function MyMeetingRequests({ onNew }) {
                 {list.map(r => (
                   <li key={r.id} className="flex flex-wrap items-center justify-between gap-2 px-4 py-3 text-sm">
                     <div className="min-w-0">
-                      <p className="font-medium text-brand-navy">{r.student.name} <span className="ml-1 text-xs font-normal text-slate-500">{categoryText(r.category, r.course)} · {r.duration_mins} min · {r.in_person ? 'in person' : 'online'}</span></p>
+                      <p className="font-medium text-brand-navy">{r.student.name} <span className="ml-1 text-xs font-normal text-slate-500">{categoryText(r.category, r.course)} · {r.duration_mins} min · {modeText(r, false)}</span></p>
                       <p className="text-xs text-slate-500">
                         Asked {when(r.requested_at)}
                         {r.status === 'approved' && <> · <span className="font-medium text-emerald-700">booked for {when(r.scheduled_start)}</span></>}
