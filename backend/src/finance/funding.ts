@@ -208,8 +208,12 @@ export function bonusMissing(doc: any): string | null {
  */
 export function meetingMentorMissing(doc: any): string | null {
   if (doc?.type !== "BONUS" || doc?.bonus_credit || !doc?.course_payment?.product) return null;
-  if (doc.meeting_mentor_none === true || String(doc.meeting_mentor_id ?? "").trim()) return null;
-  return "Pick who conducted the meeting — or None if no mentor met the student";
+  if (doc.meeting_mentor_none === true) return null;
+  if (!String(doc.meeting_mentor_id ?? "").trim()) return "Pick who conducted the meeting — or None if no mentor met the student";
+  // Which of their meetings the payment came from (2026-11-09) — or none of them, said.
+  const link = doc.meeting_link;
+  if (!link || (link.none !== true && !String(link.meeting_id ?? "").trim())) return "Pick which meeting this payment is from — or that it isn't from one listed";
+  return null;
 }
 
 /** A Full course payment that paid the price (not short of it by more than rounding). */

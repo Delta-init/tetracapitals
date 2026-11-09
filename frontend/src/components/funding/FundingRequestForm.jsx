@@ -15,6 +15,7 @@ import { toast } from "sonner";
 import SearchableStudentSelect from '../common/SearchableStudentSelect';
 import SearchableSelect from '../common/SearchableSelect';
 import TagsPicker from './TagsPicker';
+import PaymentMeetingPicker from './PaymentMeetingPicker';
 import { isMentorRole } from '../utils/roles';
 import { teamMembersOf } from '../utils/teams';
 import { Mt5LoginField, MT5_LOGIN, mt5LoginOf } from '../students/mt5Accounts';
@@ -269,6 +270,7 @@ const startFrom = (tx) => ({
   screenshot_url: tx.screenshot_url || '',
   tags: Array.isArray(tx.tags) ? tx.tags : [],
   meeting_mentor_id: tx.meeting_mentor_id || (tx.meeting_mentor_none ? NONE : ''),
+  meeting_link: tx.meeting_link || null,
 });
 const paymentsFrom = (tx) => {
   const list = paymentsOf(tx);
@@ -300,6 +302,7 @@ export default function FundingRequestForm({ students, allStudents = [], current
     screenshot_url: '',
     tags: [],          // only meaningful when type === 'BONUS'
     meeting_mentor_id: '', // mentor who conducted the meeting with the client
+    meeting_link: null, // which of the student's meetings with them the payment is from (2026-11-09)
   }));
   const [uploading, setUploading] = useState(false);
   const [referralStudent, setReferralStudent] = useState(null);
@@ -439,6 +442,10 @@ export default function FundingRequestForm({ students, allStudents = [], current
       return;
     }
     // Who held the meeting — required on a bonus, None when no mentor did (the user, 2026-11-09): the mentor's 2%.
+    if (formData.type === 'BONUS' && product && formData.meeting_mentor_id && formData.meeting_mentor_id !== NONE && !formData.meeting_link) {
+      toast.error('Pick which meeting this payment is from — or that it isn\'t from one listed');
+      return;
+    }
     if (formData.type === 'BONUS' && !formData.meeting_mentor_id) {
       toast.error('Pick who conducted the meeting — or None if no mentor met the student');
       return;
@@ -502,6 +509,7 @@ export default function FundingRequestForm({ students, allStudents = [], current
       meeting_mentor_name: meetingMentor?.full_name || (formData.meeting_mentor_id === NONE ? 'None' : null),
       // None picked on purpose: no mentor met the student — no mentor's commission (creditCommission, 2026-11-09).
       meeting_mentor_none: formData.meeting_mentor_id === NONE,
+      meeting_link: meetingMentor && payment ? formData.meeting_link : undefined,
       // What was typed, in AED and USD too — amount_usd is what commission and the reports use.
       amount: undefined,
       currency: undefined,
@@ -741,7 +749,7 @@ export default function FundingRequestForm({ students, allStudents = [], current
             <Label>Meeting Conducted By (Mentor){formData.type === 'BONUS' ? ' *' : ''}</Label>
             <SearchableSelect
               value={formData.meeting_mentor_id || undefined}
-              onValueChange={(v) => setFormData({ ...formData, meeting_mentor_id: v })}
+              onValueChange={(v) => setFormData({ ...formData, meeting_mentor_id: v, meeting_link: null })}
               options={mentorOptions}
               placeholder="Select the mentor who took the meeting"
               searchPlaceholder="Search mentor by name or role…"
@@ -755,6 +763,13 @@ export default function FundingRequestForm({ students, allStudents = [], current
               <p className="text-xs text-amber-600">No mentors on your team yet — ask an admin to set your Up Head in Personnel.</p>
             )}
           </div>
+
+          {/* Which of the student's meetings with that mentor the payment is from (2026-11-09) */}
+          {formData.type === 'BONUS' && product && formData.student_id && formData.meeting_mentor_id && formData.meeting_mentor_id !== NONE && (
+            <PaymentMeetingPicker studentId={formData.student_id} mentorId={formData.meeting_mentor_id}
+              mentorName={allUsers.find(u => u.id === formData.meeting_mentor_id)?.full_name}
+              value={formData.meeting_link} onChange={(link) => setFormData(f => ({ ...f, meeting_link: link }))} />
+          )}
 
           {/* The student's saved MT5 accounts to pick, the primary one filled in — or a new one, kept as theirs */}
           <Mt5LoginField

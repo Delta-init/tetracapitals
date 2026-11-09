@@ -56,6 +56,9 @@ export default function StudentMeetings({ student }) {
                     <span className="text-slate-500">· {m.durationMins} min · {CATEGORY[m.category] ?? m.title}</span>
                     <MeetingStatusBadge status={m.status} />
                     {m.outcome?.stage && <MeetingStageBadge stage={m.outcome.stage} />}
+                    {/* The payment that came from it, and the promised date (2026-11-09) */}
+                    {m.payment && <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${m.payment.status === 'approved' ? 'bg-emerald-50 text-emerald-700' : 'bg-amber-50 text-amber-700'}`}>{m.payment.status === 'approved' ? 'Paid' : 'Payment waiting approval'} · AED {Math.round(m.payment.aed).toLocaleString('en-US')}{m.payment.product ? ` · ${m.payment.product}` : ''}</span>}
+                    {!m.payment && m.promise && <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${m.promise.status === 'overdue' ? 'bg-rose-50 text-rose-700' : 'bg-amber-50 text-amber-700'}`}>Payment {m.promise.status === 'overdue' ? 'overdue' : 'due'} · {m.promise.date}</span>}
                   </div>
                   <p className="mt-1 text-sm text-slate-600">
                     With {m.mentor?.name || 'the mentor'}{m.bookedByEmail ? ` · booked by ${m.bookedByEmail}` : ''}{m.inPerson && m.location ? ` · ${m.location}` : ''}

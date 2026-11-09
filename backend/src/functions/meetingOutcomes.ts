@@ -102,6 +102,8 @@ export interface MeetingRow {
   duration_mins: number; in_person: boolean; location: string;
   /** What the CS said became of it (functions/meetingStatus.ts, 2026-11-09) — null until asked. */
   cs_status: { status: string; reason: string; rescheduled_to: string | null; by: string } | null; cancel_reason: string;
+  /** The payment that came from it, and the promised payment date's status (2026-11-09). */
+  payment: MeetingPayment | null; promise: { date: string; status: string } | null;
   mentor: { name: string; email: string }; booked_by: string; attendee: string;
   student: { id: string; name: string; code: string; cs: string; cs_id: string; team: string; team_id: string } | null;
   stage: string; summary: string; outcome: any; reminder: { date: string; created: boolean } | null;
@@ -112,6 +114,41 @@ const escRe = (x: string) => x.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 export const addressRe = (e: string) => new RegExp(`(^|[\\s,;<>/])${escRe(e)}($|[\\s,;<>/])`, "i");
 /** Every address on a record, in lower case. */
 export const addressesIn = (raw: unknown): string[] => (String(raw ?? "").match(/[^\s,;<>/]+@[^\s,;<>/]+\.[^\s,;<>/]+/g) ?? []).map((e) => e.toLowerCase());
+
+/* ── A meeting's payment (the user, 2026-11-09): the course payment the funding request says came from it
+   (meeting_link), else an approved one from the student after the meeting. Paid waits for the approval. ── */
+export interface MeetingPayment { id: string; aed: number; product: string; date: string; status: "approved" | "pending"; linked: boolean }
+export async function paymentsFor(items: { meeting_id: string; student_id: string; starts_at: string }[]): Promise<Map<string, MeetingPayment>> {
+  const out = new Map<string, MeetingPayment>();
+  const sids = [...new Set(items.map((i) => i.student_id).filter(Boolean))];
+  if (!sids.length) return out;
+  const txs = (await col("funding_transactions").find(
+    { type: "BONUS", "course_payment.product": { $exists: true }, student_id: { $in: sids }, status: { $in: ["APPROVED", "PENDING"] }, bonus_credit: { $in: [null, ""] } },
+    { projection: { student_id: 1, status: 1, approved_at: 1, requested_at: 1, amount_aed: 1, course_payment: 1, meeting_link: 1 } },
+  ).sort({ requested_at: 1 }).toArray()) as any[];
+  const pay = (t: any, linked: boolean): MeetingPayment => ({
+    id: String(t._id), aed: Number(t.course_payment?.paid_today_aed) || Number(t.amount_aed) || 0, product: String(t.course_payment?.product ?? ""),
+    date: String(t.approved_at ?? t.requested_at ?? ""), status: t.status === "APPROVED" ? "approved" : "pending", linked,
+  });
+  for (const i of items) {
+    const key = `${i.meeting_id}|${i.student_id}`;
+    const mine = txs.filter((t) => String(t.student_id) === i.student_id);
+    const linked = mine.filter((t) => t.meeting_link?.meeting_id === i.meeting_id);
+    const best = linked.find((t) => t.status === "APPROVED") ?? linked[0];
+    if (best) { out.set(key, pay(best, true)); continue; }
+    const after = mine.find((t) => t.status === "APPROVED" && !t.meeting_link?.meeting_id && String(t.approved_at ?? t.requested_at ?? "") >= i.starts_at);
+    if (after) out.set(key, pay(after, false));
+  }
+  return out;
+}
+/** A promised payment date (an "interested" outcome) against what came: paid, due (today or ahead) or overdue. */
+export function promiseOf(outcome: any, payment: MeetingPayment | undefined): { date: string; status: "paid" | "due" | "overdue" } | null {
+  const date = outcome?.stage === "interested" ? String(outcome?.paymentDate ?? "") : "";
+  if (!date) return null;
+  if (payment?.status === "approved") return { date, status: "paid" };
+  const today = new Date(Date.now() + 4 * 3600_000).toISOString().slice(0, 10);
+  return { date, status: date >= today ? "due" : "overdue" };
+}
 
 /**
  * The meetings in these days, one row per student on each (or one for a meeting with nobody of ours), for whoever may
@@ -149,7 +186,7 @@ export async function meetingRows(user: AuthUser, from: string, to: string): Pro
     };
     if (!theirs.length) {
       // Nobody of ours on it: an admin's, or its mentor's, to see.
-      if (!mine || held) rows.push({ ...base, id: m.id, attendee: m.attendees.map((a) => a.name).join(", "), student: null, reminder: null });
+      if (!mine || held) rows.push({ ...base, id: m.id, attendee: m.attendees.map((a) => a.name).join(", "), student: null, reminder: null, payment: null, promise: promiseOf(m.outcome, undefined) });
       continue;
     }
     for (const { a, s } of theirs) {
@@ -159,9 +196,16 @@ export async function meetingRows(user: AuthUser, from: string, to: string): Pro
       rows.push({
         ...base, id: `${m.id}|${sid}`, attendee: a.name,
         student: { id: sid, name: String(s.full_name ?? "").trim(), code: String(s.student_code ?? ""), cs: String(s.primary_mentor_name ?? ""), cs_id: String(s.primary_mentor_id ?? ""), team: String(s.team_name ?? ""), team_id: String(s.team_id ?? "") },
-        reminder: r ? { date: String(r.date ?? ""), created: r.created === true } : null,
+        reminder: r ? { date: String(r.date ?? ""), created: r.created === true } : null, payment: null, promise: null,
       });
     }
+  }
+  const pays = await paymentsFor(rows.filter((x) => x.student).map((x) => ({ meeting_id: x.meeting_id, student_id: x.student!.id, starts_at: x.starts_at })));
+  for (const x of rows) {
+    if (!x.student) continue;
+    const pmt = pays.get(`${x.meeting_id}|${x.student.id}`);
+    x.payment = pmt ?? null;
+    x.promise = promiseOf(x.outcome, pmt);
   }
   return rows;
 }
@@ -255,6 +299,32 @@ export async function getMeetingsReport(req: Request, user: AuthUser): Promise<R
 }
 
 /**
+ * POST /api/functions/getPaymentMeetings { studentId, mentorId } → { meetings, latest } — for the funding request form
+ * (2026-11-09): the student's meetings with that mentor that have begun, newest first, to say which one the payment
+ * came from; and the student's latest meeting with anyone (the form warns when it was another mentor's).
+ */
+export async function getPaymentMeetings(req: Request, _user: AuthUser): Promise<Response> {
+  const body: any = await req.json().catch(() => ({}));
+  const sid = toObjectId(str(body?.studentId, 40)), mid = toObjectId(str(body?.mentorId, 40));
+  if (!sid || !mid) return json({ meetings: [], latest: null });
+  const [s, mentor]: any[] = await Promise.all([col("students").findOne({ _id: sid }, { projection: { email: 1 } }), col("users").findOne({ _id: mid }, { projection: { email: 1, full_name: 1 } })]);
+  const email = emailOf(s?.email);
+  if (!email.includes("@") || !lmsConfigured()) return json({ meetings: [], latest: null });
+  try {
+    const data = await callLms<{ meetings: LmsMeeting[] }>("/meeting-outcomes/meetings", { query: { emails: email }, verb: "list the meetings" });
+    const begun = (data.meetings ?? []).filter((m) => m.status !== "cancelled" && new Date(m.startsAt).getTime() <= Date.now()).sort((a, b) => b.startsAt.localeCompare(a.startsAt));
+    const latest = begun[0];
+    return json({
+      meetings: begun.filter((m) => emailOf(m.mentor?.email) === emailOf(mentor?.email)).map((m) => ({ id: m.id, starts_at: m.startsAt, category: m.category, title: m.title, mentor: m.mentor?.name ?? "", summary: m.outcome ? outcomeSummary(m.outcome) : "", status: m.status })),
+      latest: latest ? { id: latest.id, starts_at: latest.startsAt, mentor: latest.mentor?.name ?? "", mentor_email: emailOf(latest.mentor?.email) } : null,
+    });
+  } catch (err) {
+    if (err instanceof LmsError) return error(err.message, err.status);
+    throw err;
+  }
+}
+
+/**
  * POST /api/functions/getStudentMeetings { studentId } → { meetings, client_profile } — every meeting booked from here
  * with the student (by their email), newest first, with where it stands, its outcome and the follow-up it set; for
  * whoever may see the student.
@@ -271,10 +341,12 @@ export async function getStudentMeetings(req: Request, user: AuthUser): Promise<
   try {
     const data = await callLms<{ meetings: LmsMeeting[] }>("/meeting-outcomes/meetings", { query: { emails: email }, verb: "list the meetings" });
     const reminders = await remindersOf((data.meetings ?? []).filter((m) => m.status === "done").map((m) => m.id));
+    const pays = await paymentsFor((data.meetings ?? []).map((m) => ({ meeting_id: m.id, student_id: String(s._id), starts_at: m.startsAt })));
     return json({
       meetings: (data.meetings ?? []).map((m) => {
         const r = reminders.get(m.id)?.get(String(s._id));
-        return { ...m, summary: m.outcome ? outcomeSummary(m.outcome) : "", reminder: r ? { date: String(r.date ?? ""), created: r.created === true } : null };
+        const payment = pays.get(`${m.id}|${String(s._id)}`) ?? null;
+        return { ...m, summary: m.outcome ? outcomeSummary(m.outcome) : "", reminder: r ? { date: String(r.date ?? ""), created: r.created === true } : null, payment, promise: promiseOf(m.outcome, payment ?? undefined) };
       }),
       client_profile: s.client_profile ?? null,
     });

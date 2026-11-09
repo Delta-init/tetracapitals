@@ -18,6 +18,8 @@ import { MeetingStatusBadge, MEETING_STATUS, CATEGORY, when } from './meetingsUi
 ──────────────────────────────────────────────────────────────────────────── */
 
 const CS_STATUS = { asked: 'Waiting for CS', asked_again: 'Waiting for CS', ongoing: 'Ongoing', completed: 'Completed', cancelled: 'Cancelled', cancelling: 'Cancelling…' };
+const PROMISE = { paid: ['Paid', 'bg-emerald-50 text-emerald-700'], due: ['Due', 'bg-amber-50 text-amber-700'], overdue: ['Overdue', 'bg-rose-50 text-rose-700'] };
+const payText = (r) => (r.payment ? `AED ${Math.round(r.payment.aed).toLocaleString('en-US')}${r.payment.product ? ` · ${r.payment.product}` : ''} · ${day(r.payment.date)} · ${r.payment.status === 'approved' ? 'approved' : 'waiting approval'}${r.payment.linked ? '' : ' (after it)'}` : '');
 const money = (n, cur) => `${cur || ''} ${Number(n || 0).toLocaleString('en-US', { maximumFractionDigits: 2 })}`.trim();
 const o = (r) => r.outcome || {};
 const p = (r) => r.outcome?.profile || null;
@@ -45,6 +47,14 @@ export const COLUMNS = [
   { key: 'cs_status', label: 'Meeting status (CS)', on: true, get: r => CS_STATUS[r.cs_status?.status] ?? (r.cs_status?.status || ''), filter: 'select' },
   { key: 'cancel_reason', label: 'Cancel reason', get: r => r.cs_status?.reason || r.cancel_reason || '', filter: 'text' },
   { key: 'rescheduled_to', label: 'Rescheduled to', get: r => (r.cs_status?.rescheduled_to ? when(r.cs_status.rescheduled_to) : ''), filter: 'select' },
+  // The payment that came from it (linked on the funding request, else an approved one after it) and the promised date (2026-11-09).
+  { key: 'payment', label: 'Payment received', on: true, get: r => payText(r), show: r => (r.payment
+      ? <span className={r.payment.status === 'approved' ? 'text-emerald-700' : 'text-amber-700'}>{payText(r)}</span>
+      : r.student ? <span className="text-slate-400">Not paid</span> : <span className="text-slate-300">—</span>) },
+  { key: 'payment_status', label: 'Payment status', get: r => (r.payment ? (r.payment.status === 'approved' ? 'Paid' : 'Waiting approval') : r.student ? 'Not paid' : ''), filter: 'select' },
+  { key: 'promise', label: 'Promised payment', on: true, get: r => (r.promise ? `${r.promise.date} · ${PROMISE[r.promise.status][0]}` : ''),
+    show: r => (r.promise ? <span className="whitespace-nowrap">{r.promise.date} <span className={cn('ml-1 rounded-full px-2 py-0.5 text-[11px] font-semibold', PROMISE[r.promise.status][1])}>{PROMISE[r.promise.status][0]}</span></span> : <span className="text-slate-300">—</span>) },
+  { key: 'promise_status', label: 'Promise status', get: r => (r.promise ? PROMISE[r.promise.status][0] : ''), filter: 'select' },
   { key: 'mode', label: 'Online / in person', get: r => (r.in_person ? `In person${r.location ? ` — ${r.location}` : ''}` : r.duration_mins ? 'Online' : ''), filter: 'select' },
   { key: 'length', label: 'Length', get: r => (r.duration_mins ? `${r.duration_mins} min` : ''), filter: 'select' },
   { key: 'booked_by', label: 'Booked by', get: r => r.booked_by || '', filter: 'select' },
