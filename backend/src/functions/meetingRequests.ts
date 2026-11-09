@@ -298,7 +298,9 @@ export async function decideMeetingRequest(req: Request, user: AuthUser): Promis
   // A blocked one: only a CS Manager or Super Admin, approving it anyway with a reason (an exception, kept).
   const override = body?.override === true && isManager(user);
   const overrideReason = str(body?.overrideReason, 500);
-  if (r.status === "blocked" && !(override && body?.action === "approve")) return error("Blocked by the 7-day rule — only a CS Manager can approve it anyway", 409);
+  // A blocked one: a CS Manager / Super Admin approves it anyway (with a reason) or rejects it (2026-11-09).
+  if (r.status === "blocked" && !isManager(user)) return error("Blocked by the 7-day rule — escalate it to the CS Manager", 409);
+  if (r.status === "blocked" && body?.action === "approve" && !override) return error("Blocked by the 7-day rule — approve it anyway, with the reason", 409);
   if (!["pending", "blocked"].includes(r.status)) return error(`This request is ${r.status} already`, 409);
   if (override && overrideReason.length < 3) return error("Say why it's approved anyway — it's kept", 400);
   const me: any = await col("users").findOne({ _id: toObjectId(user.id) as any }, { projection: { full_name: 1, email: 1 } });
@@ -307,7 +309,7 @@ export async function decideMeetingRequest(req: Request, user: AuthUser): Promis
   if (body?.action === "reject") {
     const reason = str(body?.reason, 500);
     if (!reason) return error("Say why — the mentor sees it", 400);
-    const done = await col("meeting_requests").updateOne({ _id: oid as any, status: "pending" }, { $set: { status: "rejected", reason, ...by, decided_at: nowIso(), updated_date: nowIso() } });
+    const done = await col("meeting_requests").updateOne({ _id: oid as any, status: { $in: ["pending", "blocked"] } }, { $set: { status: "rejected", reason, ...by, decided_at: nowIso(), updated_date: nowIso() } });
     if (!done.modifiedCount) return error("Someone decided it just now", 409);
     await notify([r.mentor_id], { type: "meeting_request", title: `Meeting request rejected — ${r.student_name}`, body: `${by.decided_by_name}: ${reason}`, link: "/MentorCalendar?tab=requests", tag: `meeting-request-${r._id}` });
     return json({ ok: true });

@@ -424,7 +424,7 @@ export function DecideMeetingDialog({ request: initial, onClose }) {
           ) : (
             <>
               {!mayOverride && !r.escalated && <Button variant="outline" className="gap-1.5 text-orange-700" onClick={() => setEscalating(true)}><ShieldAlert className="h-4 w-4" />Escalate to CS Manager</Button>}
-              {r.status === 'pending' && <Button variant="outline" className="text-rose-700" onClick={() => setRejecting(true)}>Reject…</Button>}
+              {(r.status === 'pending' || mayOverride) && <Button variant="outline" className="text-rose-700" onClick={() => setRejecting(true)}>Reject…</Button>}
               {(!blocked || mayOverride) && (
                 <Button disabled={!date || !time || !mode || (mode === 'offline' && place.trim().length < 2) || (blocked && why.trim().length < 3) || decide.isPending}
                   onClick={() => decide.mutate({ action: 'approve', scheduledStart: dubaiIso(date, time), mode, location: mode === 'offline' ? place.trim() : '', ...(blocked ? { override: true, overrideReason: why.trim() } : {}) })}>
