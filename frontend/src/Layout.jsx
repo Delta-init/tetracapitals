@@ -230,6 +230,8 @@ export default function Layout({ children, currentPageName }) {
     if (item.name === 'InstructorReviews' && item.roles.includes(currentUser?.app_role)) return true;
     // …and the Mentor Report the same way (2026-10-23).
     if (item.name === 'MentorReport' && item.roles.includes(currentUser?.app_role)) return true;
+    // …and My KPIs (2026-11-09): made after the roles' page lists, so for everyone it's made for.
+    if (item.name === 'MyKpis' && item.roles.includes(currentUser?.app_role)) return true;
     // …and Not joined yet and Message Logs (2026-10-29): made after the roles' page lists, so for everyone they're made for.
     if (['LiveNotJoined', 'MessageLogs', 'MeetingRequests'].includes(item.name) && item.roles.includes(currentUser?.app_role)) return true;
     if (Array.isArray(allowedPages)) return allowedPages.includes(item.sameAccessAs || item.name);

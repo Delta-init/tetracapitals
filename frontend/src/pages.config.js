@@ -121,6 +121,7 @@ import NotOnboarded from './pages/NotOnboarded';
 import InactiveStudents from './pages/InactiveStudents';
 import InstructorReviews from './pages/InstructorReviews';
 import MentorReport from './pages/MentorReport';
+import MyKpis from './pages/MyKpis';
 import MentorLeaderboard from './pages/MentorLeaderboard';
 import Reminders from './pages/Reminders';
 import VoiceRecordings from './pages/VoiceRecordings';
@@ -182,6 +183,7 @@ export const PAGES = {
     "InactiveStudents": InactiveStudents,
     "InstructorReviews": InstructorReviews,
     "MentorReport": MentorReport,
+    "MyKpis": MyKpis,
     "MentorLeaderboard": MentorLeaderboard,
     "Reminders": Reminders,
     "VoiceRecordings": VoiceRecordings,

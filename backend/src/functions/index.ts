@@ -62,6 +62,7 @@ import { getStudentEmails, getStudentEmail } from "./studentEmails";
 import { getMessageLogs, getMessageLogEmail, getStudentLmsWhatsApp } from "./messageLogs";
 import { getInstructorReviews, getInstructorReviewList } from "./instructorReviews";
 import { getMentorReport, getMentorReportDetails, getMentorLeaderboard } from "./mentorReport";
+import { getMyKpis, getTeamKpis, getMentorKpis, requestKpiCorrection } from "./mentorKpis";
 import { getPendingMeetingOutcomes, getMeetingOutcomeOptions, saveMeetingOutcome, getStudentMeetingOutcomes, getMeetingsDone, getMeetingsReport, getStudentMeetings, getPaymentMeetings } from "./meetingOutcomes";
 import { getVoiceRecordings, saveVoiceRecording, deleteVoiceRecording } from "./voiceRecordings";
 import { getCsTvLink } from "./csTv";
@@ -252,6 +253,11 @@ const AUTHED: Record<string, AuthedHandler> = {
   getMentorReportDetails,
   // The mentors' leaderboard, every mentor (2026-10-28)
   getMentorLeaderboard,
+  // My KPIs: mentor KPIs worked out in Root, shown view only — own, or a Chief's / CS Manager's / admin's reach (2026-11-09)
+  getMyKpis,
+  getTeamKpis,
+  getMentorKpis,
+  requestKpiCorrection,
   getPendingMeetingOutcomes,
   getMeetingOutcomeOptions,
   saveMeetingOutcome,
