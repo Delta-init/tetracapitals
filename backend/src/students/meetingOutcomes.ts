@@ -2,7 +2,7 @@ import { col } from "../db";
 import { callLms, lmsConfigured } from "../lib/lms";
 import { notify } from "../lib/notify";
 import { toObjectId } from "../lib/id";
-import { CLOSED_STAGES, followupCategoryFor, outcomeMatches, recordEvents, targetOutcomes } from "./followups";
+import { CLOSED_STAGES, categoryFields, outcomeMatches, recordEvents, START_STAGE, targetOutcomes } from "./followups";
 
 /* ────────────────────────────────────────────────────────────────────────────
    How a student meeting went (the user, 2026-10-27): once a meeting booked
@@ -89,14 +89,14 @@ async function remind(student: any, o: LmsOutcome, mentorName: string, now: stri
   const course = o.stage === "interested" ? courses.find((c) => outcomeMatches(c, o.courseTitle)) : undefined;
   const outcome = course ?? "Other";
   const doc = {
-    student_id: sid, target_outcome: outcome, stage: "New", last_contact_date: "", next_followup_date: date, next_followup_time: "",
+    student_id: sid, target_outcome: outcome, stage: START_STAGE, last_contact_date: "", next_followup_date: date, next_followup_time: "",
     followup_count: 0, client_said: "", objection_reason: "", converted_date: "", deal_value: null, notes: o.remark,
     created_by_id: null, created_by_name: by, created_date: now, updated_date: now,
-    category: followupCategoryFor({ outcome, studentCreated: student.created_date }),
+    ...categoryFields({ outcome, studentCreated: student.created_date }),
     from_meeting: true,
   };
   const res = await col("student_followups").insertOne(doc as any);
-  await recordEvents([{ followup_id: String(res.insertedId), student_id: sid, at: now, by_id: null, by_name: by, kind: "created", stage_to: "New", next_followup_date: date, notes: o.remark, text }]);
+  await recordEvents([{ followup_id: String(res.insertedId), student_id: sid, at: now, by_id: null, by_name: by, kind: "created", stage_to: START_STAGE, next_followup_date: date, notes: o.remark, text }]);
   return { followup_id: String(res.insertedId), date, created: true };
 }
 

@@ -5,9 +5,9 @@ import type { AuthUser } from "../auth/middleware";
 import { loadTeams } from "../students/teams";
 import { tagNamesOf } from "../students/tags";
 import {
-  targetOutcomes, isTargetOutcome, STAGES, LOST_REASONS, CLOSED_STAGES,
+  targetOutcomes, isTargetOutcome, STAGES, LOST_REASONS, CLOSED_STAGES, START_STAGE, WON_STAGE, WON_STAGES, LOST_STAGE, LOST_STAGES, REASON_STAGES,
   businessToday, followupStatus, visibleMentorIds, canWorkOn, studentsOf, recordEvents, autoConvert,
-  FOLLOWUP_CATEGORIES, followupCategoryFor, isFollowupCategory,
+  FOLLOWUP_CATEGORIES, CATEGORY_SUBS, categoryFields, categorySubFor, followupCategoryFor, isFollowupCategory, isCategorySub,
 } from "../students/followups";
 import { theirStudents } from "../students/closedBy";
 import { MT5_LOGIN, mt5LoginOf, mt5Of, mt5Owner, keepMt5 } from "../students/mt5";
@@ -250,8 +250,10 @@ export async function getFollowups(req: Request, user: AuthUser): Promise<Respon
         team_name: s.team_name ?? "",
         tag_names: tagNamesOf(s),
         target_outcome: f.target_outcome,
-        // course_pitch | new_data | class_completion | onboarding — "" for one from before categories (2026-10-25).
+        // One of FOLLOWUP_CATEGORIES (2026-11-08), and its sub-category for a Feedback Call / Course Pitch; "" for one
+        // from before categories.
         category: f.category ?? "",
+        category_sub: f.category_sub ?? "",
         stage: f.stage,
         last_contact_date: f.last_contact_date ?? "",
         next_followup_date: f.next_followup_date ?? "",
@@ -286,8 +288,9 @@ export async function getFollowups(req: Request, user: AuthUser): Promise<Respon
   const lastCallOf = new Map(lastCalls.map((c: any) => [String(c._id), { at: c.at, direction: c.direction, status: c.status, talk_seconds: c.talk_seconds ?? 0, by: c.by || c.agent || "" }]));
   for (const r of rows as any[]) r.last_call = lastCallOf.get(r.student_id) ?? null;
 
-  const converted = rows.filter((r) => r.stage === "Converted");
-  const lost = rows.filter((r) => r.stage === "Lost").length;
+  // Payment Completed, and Not Interested (and the old Converted / Lost on one not moved yet).
+  const converted = rows.filter((r) => WON_STAGES.has(r.stage));
+  const lost = rows.filter((r) => LOST_STAGES.has(r.stage)).length;
   const stats = {
     total: rows.length,
     converted: converted.length,
@@ -299,7 +302,7 @@ export async function getFollowups(req: Request, user: AuthUser): Promise<Respon
     revenue: converted.reduce((a, r) => a + (Number(r.deal_value) || 0), 0),
   };
 
-  const out: any = { today, followups: rows, stats, lists: { outcomes: await targetOutcomes(), stages: STAGES, lost_reasons: LOST_REASONS } };
+  const out: any = { today, followups: rows, stats, lists: { outcomes: await targetOutcomes(), stages: STAGES, lost_reasons: LOST_REASONS, categories: FOLLOWUP_CATEGORIES, category_subs: CATEGORY_SUBS } };
   if (studentId) {
     out.events = await col("student_followup_events").find({ student_id: studentId }).sort({ at: -1 }).limit(500).toArray();
     out.history = historyOf(rows, out.events);
@@ -363,7 +366,7 @@ export async function createFollowup(req: Request, user: AuthUser): Promise<Resp
   const doc = {
     student_id: String(student._id),
     target_outcome: outcome,
-    stage: "New",
+    stage: START_STAGE,
     last_contact_date: "",
     next_followup_date: next,
     next_followup_time: time,
@@ -381,11 +384,11 @@ export async function createFollowup(req: Request, user: AuthUser): Promise<Resp
   // Its category (2026-10-25): the CS's pick, else worked out — an onboarding call, opened from Class Completions, a
   // student new in the last two weeks, else a course pitch.
   if (body?.category && !isFollowupCategory(body.category)) return error(`Pick a category: ${FOLLOWUP_CATEGORIES.join(", ")}`, 400);
-  (doc as any).category = followupCategoryFor({ picked: body?.category, outcome, from: body?.from, studentCreated: student.created_date });
+  Object.assign(doc, categoryFields({ picked: body?.category, pickedSub: body?.categorySub, outcome, from: body?.from, studentCreated: student.created_date }));
   const res = await col("student_followups").insertOne(doc as any);
   await recordEvents([{
     followup_id: String(res.insertedId), student_id: doc.student_id, at: now, by_id: user.id, by_name: who(user),
-    kind: "created", stage_to: "New", next_followup_date: next,
+    kind: "created", stage_to: START_STAGE, next_followup_date: next,
     ...(doc.client_said ? { client_said: doc.client_said } : {}),
     ...(doc.notes ? { notes: doc.notes } : {}),
     text: `Follow-up opened for ${outcome}${next ? `, next follow-up ${next}${time ? ` ${time}` : ""}` : ""}`,
@@ -507,7 +510,7 @@ export async function logFollowup(req: Request, user: AuthUser): Promise<Respons
   if (time && !TIME.test(time)) return error("The follow-up time is hours and minutes, e.g. 14:30", 400);
   const reason = str(body?.objectionReason, 80);
   if (reason && !(LOST_REASONS as readonly string[]).includes(reason)) return error("Pick a reason from the list", 400);
-  if (stage === "Lost" && !reason) return error("A lost follow-up needs a lost reason", 400);
+  if (stage === LOST_STAGE && !reason) return error("Not Interested needs a reason", 400);
   const mt5 = mt5LoginOf(body?.mt5Login);
   if (mt5 && !MT5_LOGIN.test(mt5)) return error("The MT5 ID is its login number — digits only", 400);
   // A login is one student's: another student's is said before anything is written — not whose it is.
@@ -526,7 +529,7 @@ export async function logFollowup(req: Request, user: AuthUser): Promise<Respons
     stage,
     last_contact_date: today,
     followup_count: (Number(f.followup_count) || 0) + 1,
-    objection_reason: reason,
+    objection_reason: REASON_STAGES.has(stage) ? reason : "",
     next_followup_date: CLOSED_STAGES.has(stage) ? "" : next,
     next_followup_time: CLOSED_STAGES.has(stage) ? "" : time,
     updated_date: new Date().toISOString(),
@@ -534,22 +537,29 @@ export async function logFollowup(req: Request, user: AuthUser): Promise<Respons
   };
   // A category picked with the call (2026-10-25); one from before categories gets its worked-out one on its first log.
   if (body?.category && !isFollowupCategory(body.category)) return error(`Pick a category: ${FOLLOWUP_CATEGORIES.join(", ")}`, 400);
+  // Its sub-category with it (2026-11-08): the one picked, else worked out (a Course Pitch's course).
   if (isFollowupCategory(body?.category)) patch.category = body.category;
   else if (!f.category) patch.category = followupCategoryFor({ outcome: target || f.target_outcome, from: body?.from });
+  const category = String(patch.category ?? f.category ?? "");
+  if (body?.categorySub && !isCategorySub(category, body.categorySub)) return error("Pick one of the category's own", 400);
+  if (patch.category || body?.categorySub || retarget || !f.category_sub) {
+    const sub = categorySubFor(category, { picked: body?.categorySub, outcome: target || f.target_outcome, from: body?.from });
+    if (sub !== String(f.category_sub ?? "") && (sub || patch.category)) patch.category_sub = sub;
+  }
   // What was written this time — the follow-up keeps the latest, and the log keeps each one (historyOf).
   const said = str(body?.clientSaid);
   const noteText = str(body?.notes);
   if (said) patch.client_said = said;
   if (noteText) patch.notes = noteText;
   if (said || noteText) await keepWhatCameBefore(f);
-  if (stage === "Converted") {
+  if (stage === WON_STAGE) {
     const cd = str(body?.convertedDate, 10) || today;
     const dv = Number(body?.dealValue);
-    if (!DATE.test(cd)) return error("Converted date must be a date", 400);
-    if (!Number.isFinite(dv) || dv < 0) return error("A converted follow-up needs a deal value", 400);
+    if (!DATE.test(cd)) return error("The payment date must be a date", 400);
+    if (!Number.isFinite(dv) || dv < 0) return error("Payment Completed needs the amount paid", 400);
     patch.converted_date = cd;
     patch.deal_value = dv;
-  } else if (f.stage === "Converted") {
+  } else if (WON_STAGES.has(f.stage)) {
     // Reopened: it no longer counts as converted.
     patch.converted_date = "";
     patch.deal_value = null;
@@ -575,7 +585,7 @@ export async function logFollowup(req: Request, user: AuthUser): Promise<Respons
     kind: "logged", stage_from: f.stage, stage_to: stage, next_followup_date: patch.next_followup_date,
     ...(said ? { client_said: said } : {}),
     ...(noteText ? { notes: noteText } : {}),
-    text: `${retarget ? `Target: ${f.target_outcome || "—"} → ${target} · ` : ""}${moved ? `${f.stage} → ${stage}` : stage}${reason ? ` (${reason})` : ""}${stage === "Converted" ? ` — $${Number(patch.deal_value).toLocaleString("en-US")}` : ""}${patch.next_followup_date ? ` · next ${patch.next_followup_date}${patch.next_followup_time ? ` ${patch.next_followup_time}` : ""}` : ""}`
+    text: `${retarget ? `Target: ${f.target_outcome || "—"} → ${target} · ` : ""}${moved ? `${f.stage} → ${stage}` : stage}${reason ? ` (${reason})` : ""}${stage === WON_STAGE ? ` — $${Number(patch.deal_value).toLocaleString("en-US")}` : ""}${patch.next_followup_date ? ` · next ${patch.next_followup_date}${patch.next_followup_time ? ` ${patch.next_followup_time}` : ""}` : ""}`
       + `${connected === false ? " · not connected" : connected ? " · connected" : ""}${mt5Saved ? ` · MT5 ${mt5} saved` : ""}${bonusCredits ? ` · sales-close bonus sent to be credited` : ""}`,
   }]);
   return json({ ok: true, followup_status: followupStatus({ ...f, ...patch }), mt5_saved: mt5Saved, bonus_credits: bonusCredits });

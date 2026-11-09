@@ -51,12 +51,31 @@ export function outcomeMatches(outcome: string, course: unknown): boolean {
   const have = new Set(words(course));
   return want.length > 0 && want.every((w) => have.has(w));
 }
-export const STAGES = ["New", "Contacted", "Qualified", "Session with CM", "Objection Stage", "Converted", "Lost"] as const;
+/**
+ * The client stages a CS picks on a call, in this order (the user, 2026-11-08 — the CSE client stages). A follow-up
+ * starts at START_STAGE ("New") until its first call. Payment Completed asks for the amount, as Converted did; Not
+ * Interested a reason. Not Interested, Payment Completed and Active Student close it — no next follow-up.
+ */
+export const STAGES = [
+  "Interested", "Ready to Join", "Not Interested", "Active Student", "Inactive Student", "Concern – In Progress",
+  "Concern – Resolved", "Mentor Call Requested", "Re-Meeting Needed", "No Response", "Call Not Answered",
+  "Ready to Upgrade", "Payment Completed", "Balance Payment Pending",
+] as const;
+export const START_STAGE = "New";
+/** The stages before 2026-11-08 — still on old follow-ups (backfill-client-stages.ts moves the ones that map). */
+export const OLD_STAGES = ["New", "Contacted", "Qualified", "Session with CM", "Objection Stage", "Converted", "Lost"] as const;
+export const WON_STAGE = "Payment Completed";
+export const LOST_STAGE = "Not Interested";
+/** Won (with its amount) and lost — the new stage, and the old one still on a follow-up not moved yet. */
+export const WON_STAGES = new Set([WON_STAGE, "Converted"]);
+export const LOST_STAGES = new Set([LOST_STAGE, "Lost"]);
+/** A reason is asked on these: needed for Not Interested, optional for a concern in progress. */
+export const REASON_STAGES = new Set([LOST_STAGE, "Concern – In Progress"]);
 export const LOST_REASONS = [
   "Not enough capital right now", "Trust / legitimacy concern", "Comparing with free content",
   "Price too high", "Needs more time to decide", "Not interested", "Other (see notes)",
 ] as const;
-export const CLOSED_STAGES = new Set(["Converted", "Lost"]);
+export const CLOSED_STAGES = new Set([...WON_STAGES, ...LOST_STAGES, "Active Student"]);
 const TOP_UP = "Additional Deposit / Top-up";
 /** A course outcome: anything but Top-up, Onboarding call and Other. */
 const isCourseOutcome = (o: unknown) => !!o && !(FIXED_OUTCOMES as readonly string[]).includes(String(o));
@@ -207,7 +226,7 @@ export async function autoConvert(followups: any[]): Promise<number> {
     if (!match) continue;
     const fromStage = f.stage;
     const patch = {
-      stage: "Converted",
+      stage: WON_STAGE,
       converted_date: businessDate(match.at),
       deal_value: match.usd,
       converted_by_deposit_id: match.id,
@@ -220,33 +239,66 @@ export async function autoConvert(followups: any[]): Promise<number> {
     converted++;
     await recordEvents([{
       followup_id: String(f._id), student_id: String(f.student_id), at: now, by_id: null, by_name: "Automatic",
-      kind: "auto_converted", stage_from: fromStage, stage_to: "Converted",
-      text: `Converted automatically — approved ${match.what} of $${patch.deal_value.toLocaleString("en-US")} on ${patch.converted_date}`,
+      kind: "auto_converted", stage_from: fromStage, stage_to: WON_STAGE,
+      text: `Payment Completed automatically — approved ${match.what} of $${patch.deal_value.toLocaleString("en-US")} on ${patch.converted_date}`,
     }]);
   }
   return converted;
 }
 
-/* ── Categories (the user, 2026-10-25) ──────────────────────────────────── */
+/* ── Categories (the user, 2026-10-25; the CSE portal's six, 2026-11-08) ──── */
 
-/** What a follow-up is about. Picked by the CS, else worked out (followupCategoryFor). */
-export const FOLLOWUP_CATEGORIES = ["course_pitch", "new_data", "class_completion", "onboarding"] as const;
+/**
+ * What a follow-up is about — `category`, and for two of them `category_sub`: Feedback Call (class completion,
+ * program / session completion, issue resolution), Course Pitch (the course), Onboarding Call, Payment Follow-up,
+ * Calls for Assigned Leads from Campaigns, Call for Meeting from Campaign Leads. Picked by the CS, else worked out
+ * (followupCategoryFor).
+ */
+export const FOLLOWUP_CATEGORIES = ["feedback_call", "course_pitch", "onboarding_call", "payment_followup", "campaign_leads", "campaign_meeting"] as const;
 export type FollowupCategory = (typeof FOLLOWUP_CATEGORIES)[number];
 export const isFollowupCategory = (v: unknown): v is FollowupCategory => (FOLLOWUP_CATEGORIES as readonly string[]).includes(String(v));
-/** A student this new is "new data": a follow-up opened within these days of their arrival. */
+export const CATEGORY_SUBS: Record<string, readonly string[]> = {
+  feedback_call: ["class_completion", "program_completion", "issue_resolution"],
+  course_pitch: ["DWT", "MSNR", "DSLP", "DSLP PRO", "DQMP", "DGMP"],
+};
+export const isCategorySub = (category: unknown, sub: unknown) => !!sub && (CATEGORY_SUBS[String(category)] ?? []).includes(String(sub));
+/** The categories before 2026-11-08, as the new ones (backfill-client-stages.ts moves them). */
+export const OLD_CATEGORIES: Record<string, { category: FollowupCategory; sub?: string }> = {
+  new_data: { category: "campaign_leads" },
+  class_completion: { category: "feedback_call", sub: "class_completion" },
+  onboarding: { category: "onboarding_call" },
+};
+/** A student this new is a lead from a campaign: a follow-up opened within these days of their arrival. */
 export const NEW_DATA_DAYS = 14;
 
 /**
- * A follow-up's category when the CS didn't pick one: an onboarding call is Onboarding; one opened from the Class
- * Completions page (from: "class_completion") is Class Completion; a student who arrived in the last NEW_DATA_DAYS is
- * New Data; else Course Pitch.
+ * A follow-up's category when the CS didn't pick one: an onboarding call is Onboarding Call; one opened from the Class
+ * Completions page (from: "class_completion") is a Feedback Call; a student who arrived in the last NEW_DATA_DAYS is
+ * Calls for Assigned Leads from Campaigns; else Course Pitch.
  */
 export function followupCategoryFor(opts: { picked?: unknown; outcome?: string; from?: unknown; studentCreated?: unknown; now?: Date }): FollowupCategory {
   if (isFollowupCategory(opts.picked)) return opts.picked;
-  if (opts.outcome === "Onboarding call") return "onboarding";
-  if (opts.from === "class_completion") return "class_completion";
+  if (opts.outcome === "Onboarding call") return "onboarding_call";
+  if (opts.from === "class_completion") return "feedback_call";
   const created = Date.parse(String(opts.studentCreated ?? ""));
-  if (!Number.isNaN(created) && (opts.now ?? new Date()).getTime() - created <= NEW_DATA_DAYS * 86_400_000) return "new_data";
+  if (!Number.isNaN(created) && (opts.now ?? new Date()).getTime() - created <= NEW_DATA_DAYS * 86_400_000) return "campaign_leads";
   return "course_pitch";
+}
+
+/**
+ * Its sub-category: the one picked if it is one of the category's; else a Feedback Call from Class Completions is a
+ * class completion, and a Course Pitch the follow-up's course when it is one of the six; else "".
+ */
+export function categorySubFor(category: string, opts: { picked?: unknown; outcome?: string; from?: unknown }): string {
+  if (isCategorySub(category, opts.picked)) return String(opts.picked);
+  if (category === "feedback_call" && opts.from === "class_completion") return "class_completion";
+  if (category === "course_pitch" && isCategorySub(category, opts.outcome)) return String(opts.outcome);
+  return "";
+}
+
+/** Both, for a new follow-up. */
+export function categoryFields(opts: { picked?: unknown; pickedSub?: unknown; outcome?: string; from?: unknown; studentCreated?: unknown }) {
+  const category = followupCategoryFor(opts);
+  return { category, category_sub: categorySubFor(category, { picked: opts.pickedSub, outcome: opts.outcome, from: opts.from }) };
 }
 

@@ -69,7 +69,7 @@ export default function StudentFollowupsSection({ student }) {
                 <thead>
                   <tr className="border-b bg-slate-50/80">
                     <th className="sticky left-0 z-10 bg-slate-50 px-3 py-3 text-left text-[11px] font-semibold uppercase tracking-wider text-slate-500 shadow-[1px_0_0_#e2e8f0]">Call · Log</th>
-                    {['Target Outcome', 'Stage', 'Last Contact', 'Next Follow-up', 'Status', 'Reminder', 'Count', 'What Client Said', 'Reason', 'Converted', 'Deal Value'].map((h, i) => (
+                    {['Target Outcome', 'Client Stage', 'Last Contact', 'Next Follow-up', 'Status', 'Reminder', 'Count', 'What Client Said', 'Reason', 'Paid On', 'Amount Paid'].map((h, i) => (
                       <th key={i} className="whitespace-nowrap px-3 py-3 text-left text-[11px] font-semibold uppercase tracking-wider text-slate-500">{h}</th>
                     ))}
                   </tr>
@@ -83,7 +83,7 @@ export default function StudentFollowupsSection({ student }) {
                           {f.can_edit && <Button size="sm" variant="outline" className="h-8" onClick={() => callFlow?.openLog({ ...f, phone: student?.phone })}>Log</Button>}
                         </div>
                       </td>
-                      <td className="whitespace-nowrap px-3 py-2.5 font-medium text-slate-800">{f.target_outcome}{f.category && <div className="mt-0.5"><CategoryBadge category={f.category} className="text-[10px]" /></div>}</td>
+                      <td className="whitespace-nowrap px-3 py-2.5 font-medium text-slate-800">{f.target_outcome}{f.category && <div className="mt-0.5"><CategoryBadge followup={f} className="text-[10px]" /></div>}</td>
                       <td className="px-3 py-2.5"><StageBadge stage={f.stage} /></td>
                       <td className="whitespace-nowrap px-3 py-2.5 text-slate-600">{fmtDate(f.last_contact_date)}</td>
                       <td className="whitespace-nowrap px-3 py-2.5 text-slate-600">{fmtDue(f)}</td>

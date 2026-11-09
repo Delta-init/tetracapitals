@@ -675,9 +675,9 @@ export async function sendTestReminder(to: string, by: string) {
   const date = uaeToday();
   const sample: Digest = {
     mentor_id: "test", mentor_name: by, to, items: [
-      { followup_id: "", student_id: "", student_name: "Sample Student", student_code: "DLT-0001", phone: "+971500000000", target_outcome: "DSLP", stage: "Contacted", next_followup_date: date, status: "DUE TODAY", client_said: "Asked to call back after the market opens" },
-      { followup_id: "", student_id: "", student_name: "Another Student", student_code: "DLT-0002", phone: "+919800000000", target_outcome: "Additional Deposit / Top-up", stage: "Qualified", next_followup_date: addDays(date, -3), status: "OVERDUE", client_said: "" },
-      { followup_id: "", student_id: "", student_name: "Third Student", student_code: "DLT-0003", phone: "+971550000000", target_outcome: "DQMP", stage: "Session with CM", next_followup_date: addDays(date, 1), status: "TOMORROW", client_said: "Wants the session after work" },
+      { followup_id: "", student_id: "", student_name: "Sample Student", student_code: "DLT-0001", phone: "+971500000000", target_outcome: "DSLP", stage: "Interested", next_followup_date: date, status: "DUE TODAY", client_said: "Asked to call back after the market opens" },
+      { followup_id: "", student_id: "", student_name: "Another Student", student_code: "DLT-0002", phone: "+919800000000", target_outcome: "Additional Deposit / Top-up", stage: "Ready to Join", next_followup_date: addDays(date, -3), status: "OVERDUE", client_said: "" },
+      { followup_id: "", student_id: "", student_name: "Third Student", student_code: "DLT-0003", phone: "+971550000000", target_outcome: "DQMP", stage: "Mentor Call Requested", next_followup_date: addDays(date, 1), status: "TOMORROW", client_said: "Wants the session after work" },
     ],
   };
   const email = buildEmail(date, sample, config.appBaseUrl ? `${config.appBaseUrl}/StudentFollowups` : "");

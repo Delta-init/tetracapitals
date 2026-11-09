@@ -114,7 +114,7 @@ export default function OverdueFollowups() {
                 )}
               </td>
               <td className="whitespace-nowrap px-3 py-2.5 text-slate-600">{String(f.phone || '').replace(/^[\s'`"]+/, '') || '—'}</td>
-              <td className="whitespace-nowrap px-3 py-2.5 text-slate-700">{f.target_outcome}{f.category && <div className="mt-0.5"><CategoryBadge category={f.category} className="text-[10px]" /></div>}</td>
+              <td className="whitespace-nowrap px-3 py-2.5 text-slate-700">{f.target_outcome}{f.category && <div className="mt-0.5"><CategoryBadge followup={f} className="text-[10px]" /></div>}</td>
               <td className="px-3 py-2.5"><StageBadge stage={f.stage} /></td>
               <td className="whitespace-nowrap px-3 py-2.5">
                 <div className="text-slate-600">{fmtDue(f)}</div>

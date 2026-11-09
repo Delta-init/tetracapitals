@@ -7,6 +7,7 @@ import { OnboardedSwitch } from '@/components/students/onboarding';
 import { BonusPendingBadge, bonusPendingText } from '@/components/students/bonusPending';
 import { BirthdayTag, birthdayText } from '@/components/students/Birthday';
 import { StudentCategoryTags, STUDENT_CATEGORIES } from '@/components/students/StudentCategories';
+import { STAGES as FOLLOWUP_STAGES } from '@/components/followups/followupUi';
 import { MeetingStageBadge, STAGE_LABEL } from '@/components/meetings/meetingStage';
 import { isStudentOf } from '@/components/students/common';
 import { StudentTagChips, tagNamesOf, useStudentTagCatalog } from '@/components/students/tags';
@@ -145,6 +146,8 @@ export default function Students() {
   const [filterCategory, setFilterCategory] = useUrlState('category');
   // Stage — where they stand after their latest meeting, the mentor's outcome (2026-10-27).
   const [filterMeetingStage, setFilterMeetingStage] = useUrlState('stage');
+  // Client stage — their latest follow-up's (the CSE client stages, 2026-11-08).
+  const [filterClientStage, setFilterClientStage] = useUrlState('client_stage');
   const [filterLanguage, setFilterLanguage] = useUrlState('language');
   const [filterOnboarding, setFilterOnboarding] = useUrlState('onboarding');
   const [filterClasses, setFilterClasses] = useUrlState('classes');
@@ -218,12 +221,12 @@ export default function Students() {
     return null;
   }, [filterDateRange, customDateFrom, customDateTo]);
   const listFilters = useMemo(() => ({
-    search: debouncedSearch, onlyNew, tag: filterTag, enrolment: filterEnrolment, priority: filterPriority, category: filterCategory, meetingStage: filterMeetingStage, language: filterLanguage, onboarding: filterOnboarding, classes: filterClasses, followup: filterFollowup,
+    search: debouncedSearch, onlyNew, tag: filterTag, enrolment: filterEnrolment, priority: filterPriority, category: filterCategory, meetingStage: filterMeetingStage, clientStage: filterClientStage, language: filterLanguage, onboarding: filterOnboarding, classes: filterClasses, followup: filterFollowup,
     course: filterCourse, balance: filterBalance, bonus: filterBonus,
     birthday: filterBirthday, bday_from: bdayFrom, bday_to: bdayTo,
     from: dateRange ? new Date(dateRange.from).toISOString() : '', to: dateRange ? new Date(dateRange.to).toISOString() : '',
     status: filterStatus, team: filterTeam, level: filterLevel, mentor: filterMentor, location: filterLocation,
-  }), [debouncedSearch, onlyNew, filterTag, filterEnrolment, filterPriority, filterCategory, filterMeetingStage, filterLanguage, filterOnboarding, filterClasses, filterFollowup, filterCourse, filterBalance, filterBonus, filterBirthday, bdayFrom, bdayTo, dateRange, filterStatus, filterTeam, filterLevel, filterMentor, filterLocation]);
+  }), [debouncedSearch, onlyNew, filterTag, filterEnrolment, filterPriority, filterCategory, filterMeetingStage, filterClientStage, filterLanguage, filterOnboarding, filterClasses, filterFollowup, filterCourse, filterBalance, filterBonus, filterBirthday, bdayFrom, bdayTo, dateRange, filterStatus, filterTeam, filterLevel, filterMentor, filterLocation]);
   const filtersKey = JSON.stringify(listFilters);
   // A new tab, search or filter starts at page 1 with nothing ticked — not the first time the list is known (the user
   // loading, or the address's own page coming back), which would throw away the page the address asked for.
@@ -789,6 +792,20 @@ export default function Students() {
                   <SelectItem value="all">Any stage</SelectItem>
                   {Object.entries(STAGE_LABEL).map(([k, l]) => <SelectItem key={k} value={k}>{l}</SelectItem>)}
                   <SelectItem value="none">No meeting outcome</SelectItem>
+                </SelectContent>
+              </Select>
+
+              {/* Client stage — their latest follow-up's (2026-11-08) */}
+              <Select value={filterClientStage} onValueChange={(v) => v && setFilterClientStage(v)}>
+                <SelectTrigger className="w-full md:w-52">
+                  <SelectValue placeholder="Client stage" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">Any client stage</SelectItem>
+                  {FOLLOWUP_STAGES.map(s => <SelectItem key={s} value={s}>{s}</SelectItem>)}
+                  <SelectItem value="New">New (not called yet)</SelectItem>
+                  <SelectItem value="Contacted">Contacted (old stage)</SelectItem>
+                  <SelectItem value="none">No follow-up</SelectItem>
                 </SelectContent>
               </Select>
 

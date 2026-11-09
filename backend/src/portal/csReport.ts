@@ -1,4 +1,5 @@
 import { col } from "../db";
+import { LOST_STAGES, WON_STAGES } from "../students/followups";
 import { toObjectId } from "../lib/id";
 import { callLms, lmsConfigured } from "../lib/lms";
 import { loadTeams } from "../students/teams";
@@ -125,7 +126,8 @@ export async function csReportForPortal(q: Q, scope: { reach: Set<string> | null
     contacted.set(p.id, seen);
     const moved = e.stage_to && e.stage_to !== e.stage_from ? String(e.stage_to) : "";
     fu.add(p, at, { logged: e.kind === "logged" ? 1 : 0, opened: e.kind === "created" ? 1 : 0, contacted: fresh,
-      converted: moved === "Converted" ? 1 : 0, lost: moved === "Lost" ? 1 : 0 });
+      // Payment Completed / Not Interested (2026-11-08), and the old Converted / Lost.
+      converted: WON_STAGES.has(moved) ? 1 : 0, lost: LOST_STAGES.has(moved) ? 1 : 0 });
     fuRows.push({ at: iso(at), kind: e.kind, stage_from: String(e.stage_from ?? ""), stage_to: String(e.stage_to ?? ""), text: String(e.text ?? "").slice(0, 300),
       client_said: String(e.client_said ?? "").slice(0, 300), ...stu(e.student_id), ...who(p) });
   }

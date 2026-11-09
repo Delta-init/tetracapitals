@@ -9,7 +9,7 @@ import { buildScopeFilter, getConfiguredScope, getDownlineIds } from "../lib/sco
 import { isMentorRole } from "../lib/roles";
 import { userCanListEntity, userCanReadDoc } from "../entities/crud";
 import { courseLabel } from "../students/tags";
-import { businessToday } from "../students/followups";
+import { businessToday, CLOSED_STAGES, OLD_STAGES, STAGES as CLIENT_STAGES } from "../students/followups";
 import { loadTeams } from "../students/teams";
 import { LOCATIONS, currentLocationOf } from "../lib/location";
 import { bonusPendingOf, idsWithBonusPending } from "../students/bonusPending";
@@ -170,9 +170,25 @@ async function followupFilter(which: string): Promise<Record<string, any>> {
   if (which === "called_today") return { _id: { $in: asIds([...called]) } };
   if (which === "not_called_today") return { _id: { $nin: asIds([...called]) } };
   // Due today or before ("" is no date — not due), still open.
-  const due = (await col("student_followups").distinct("student_id", { next_followup_date: { $gt: "", $lte: today }, stage: { $nin: ["Converted", "Lost"] } }))
+  const due = (await col("student_followups").distinct("student_id", { next_followup_date: { $gt: "", $lte: today }, stage: { $nin: [...CLOSED_STAGES] } }))
     .map(String).filter((id) => !called.has(id));
   return { _id: { $in: asIds(due) } };
+}
+
+/**
+ * Client stage (the user, 2026-11-08): the stage of the student's latest follow-up — one of the CSE client stages, an
+ * old one, or "none" (no follow-up).
+ */
+const CLIENT_STAGE_FILTERS = new Set<string>([...CLIENT_STAGES, ...OLD_STAGES, "none"]);
+async function clientStageFilter(stage: string): Promise<Record<string, any>> {
+  const latest = (await col("student_followups").aggregate([
+    { $match: { student_id: { $nin: [null, ""] } } },
+    { $sort: { created_date: -1 } },
+    { $group: { _id: "$student_id", stage: { $first: "$stage" } } },
+    ...(stage === "none" ? [] : [{ $match: { stage } }]),
+  ]).toArray()) as any[];
+  const ids = latest.map((r) => toObjectId(String(r._id))).filter(Boolean);
+  return { _id: { [stage === "none" ? "$nin" : "$in"]: ids } };
 }
 
 /** Every filter on the page, as Mongo — the search and the selects. */
@@ -203,6 +219,7 @@ async function filters(user: AuthUser, tab: Tab, f: any): Promise<Record<string,
   // LMS classes in their own courses (the hourly LMS check keeps the counts on the student).
   if (["attended", "booked", "upcoming"].includes(f?.classes)) out.push({ [`lms_classes.${f.classes}`]: { $gt: 0 } });
   if (FOLLOWUP_FILTERS.has(f?.followup)) out.push(await followupFilter(f.followup));
+  if (CLIENT_STAGE_FILTERS.has(f?.clientStage)) out.push(await clientStageFilter(f.clientStage));
   const course = str(f?.course);
   if (course && course !== "all") {
     const c = await courseFilter(course);
@@ -252,7 +269,7 @@ async function filters(user: AuthUser, tab: Tab, f: any): Promise<Record<string,
 /**
  * POST /api/functions/listStudents
  * Body: { tab, page?, pageSize? (25 | 50 | 100), all? (every match, up to 10,000 — export, select all),
- *         filters?: { search, onlyNew, tag, enrolment, priority, category, meetingStage, language, onboarding, classes, followup, course, balance, bonus, from, to, status, team, level, mentor, location } }
+ *         filters?: { search, onlyNew, tag, enrolment, priority, category, meetingStage, clientStage, language, onboarding, classes, followup, course, balance, bonus, from, to, status, team, level, mentor, location } }
  *         (location: "dubai" | "bangalore" — by their team, or with none the location they arrived for;
  *          bonus: "pending" — a bonus not decided yet)
  * → { tab, tabs, rows, total, page, page_size, truncated?, counts: { new_for_me, co_managed?, admin_co_managed? },

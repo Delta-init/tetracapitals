@@ -1,4 +1,5 @@
 import { col } from "../db";
+import { CLOSED_STAGES, OLD_STAGES, START_STAGE, STAGES as CLIENT_STAGES } from "./followups";
 import { personOf, counts, meta, type ReportCtx, type Person } from "../functions/reports";
 import { WAIT_HOURS } from "./onboardingAlerts";
 import { bonusPendingOf, BONUS_STAGE_KEYS, type BonusStage } from "./bonusPending";
@@ -39,7 +40,8 @@ export const isWorkflowBox = (v: unknown): v is WorkflowBox => typeof v === "str
 
 /** Admin bulk moves — reshuffles and imports — not a CS losing a student. */
 const BULK_MOVES = new Set(["unassign-all", "student-split", "team-restructure", "cs-sheet", "cs-tracker", "rotation_change", "data-sheet", "import"]);
-const STAGES = ["New", "Contacted", "Qualified", "Session with CM", "Objection Stage", "Converted", "Lost"];
+// The client stages in their order (2026-11-08), New first, then the old ones still on follow-ups not moved.
+const STAGES: string[] = [START_STAGE, ...CLIENT_STAGES, ...OLD_STAGES.filter((s) => s !== START_STAGE)];
 const iso = (t: number) => new Date(t).toISOString();
 
 type Counts = Record<WorkflowBox, number>;
@@ -97,7 +99,7 @@ async function build(ctx: ReportCtx, now: number): Promise<Row[]> {
   // A student's follow-up stage now: the open one, else the latest.
   const stageOf = new Map<string, { stage: string; open: boolean; at: string }>();
   for (const f of followups as any[]) {
-    const id = String(f.student_id), stage = String(f.stage ?? "New"), open = stage !== "Converted" && stage !== "Lost", at = String(f.created_date ?? "");
+    const id = String(f.student_id), stage = String(f.stage ?? START_STAGE), open = !CLOSED_STAGES.has(stage), at = String(f.created_date ?? "");
     const was = stageOf.get(id);
     if (!was || (open && !was.open) || (open === was.open && at > was.at)) stageOf.set(id, { stage, open, at });
   }

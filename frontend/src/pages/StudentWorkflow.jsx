@@ -25,6 +25,13 @@ import { createPageUrl } from '@/utils';
 
 const PERIODS = [['month', 'This month'], ['quarter', 'This quarter'], ['year', 'This year'], ['all', 'All time'], ['custom', 'From … to']];
 const STAGE_COLOR = {
+  // The CSE client stages (2026-11-08)…
+  Interested: 'bg-blue-500', 'Ready to Join': 'bg-cyan-500', 'Not Interested': 'bg-rose-500', 'Active Student': 'bg-emerald-500',
+  'Inactive Student': 'bg-slate-500', 'Concern – In Progress': 'bg-amber-500', 'Concern – Resolved': 'bg-lime-500',
+  'Mentor Call Requested': 'bg-violet-400', 'Re-Meeting Needed': 'bg-fuchsia-500', 'No Response': 'bg-orange-400',
+  'Call Not Answered': 'bg-orange-600', 'Ready to Upgrade': 'bg-indigo-500', 'Payment Completed': 'bg-emerald-700',
+  'Balance Payment Pending': 'bg-yellow-500',
+  // …and the old ones still on follow-ups not moved.
   'No follow-up': 'bg-slate-400', New: 'bg-violet-500', Contacted: 'bg-teal-500', Qualified: 'bg-sky-500',
   'Session with CM': 'bg-amber-500', 'Objection Stage': 'bg-orange-500', Converted: 'bg-emerald-600', Lost: 'bg-rose-500',
 };

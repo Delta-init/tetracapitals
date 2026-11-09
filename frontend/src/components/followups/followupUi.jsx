@@ -38,7 +38,22 @@ export function useOutcomes(current = '') {
     return current && !list.includes(current) ? [current, ...list] : list;
   }, [products, current]);
 }
-export const STAGES = ['New', 'Contacted', 'Qualified', 'Session with CM', 'Objection Stage', 'Converted', 'Lost'];
+/* The CSE client stages, in their order (the user, 2026-11-08 — backend students/followups.ts STAGES). A follow-up
+   is "New" until its first call; the old stages stay on follow-ups not moved yet. Not Interested, Payment Completed
+   and Active Student close it. */
+export const STAGES = [
+  'Interested', 'Ready to Join', 'Not Interested', 'Active Student', 'Inactive Student', 'Concern – In Progress',
+  'Concern – Resolved', 'Mentor Call Requested', 'Re-Meeting Needed', 'No Response', 'Call Not Answered',
+  'Ready to Upgrade', 'Payment Completed', 'Balance Payment Pending',
+];
+export const OLD_STAGES = ['New', 'Contacted', 'Qualified', 'Session with CM', 'Objection Stage', 'Converted', 'Lost'];
+export const WON_STAGE = 'Payment Completed';
+export const LOST_STAGE = 'Not Interested';
+export const WON_STAGES = new Set([WON_STAGE, 'Converted']);
+export const LOST_STAGES = new Set([LOST_STAGE, 'Lost']);
+export const CLOSED_STAGES = new Set([...WON_STAGES, ...LOST_STAGES, 'Active Student']);
+/** A reason is asked: needed for Not Interested, optional for a concern in progress. */
+export const REASON_STAGES = new Set([LOST_STAGE, 'Concern – In Progress']);
 export const LOST_REASONS = [
   'Not enough capital right now', 'Trust / legitimacy concern', 'Comparing with free content',
   'Price too high', 'Needs more time to decide', 'Not interested', 'Other (see notes)',
@@ -53,6 +68,20 @@ export const STATUS_CLS = {
   '-': 'border-slate-200 bg-white text-slate-400',
 };
 export const STAGE_CLS = {
+  Interested: 'bg-blue-50 text-blue-700',
+  'Ready to Join': 'bg-cyan-50 text-cyan-700',
+  'Not Interested': 'bg-rose-50 text-rose-700',
+  'Active Student': 'bg-emerald-50 text-emerald-700',
+  'Inactive Student': 'bg-slate-100 text-slate-600',
+  'Concern – In Progress': 'bg-amber-50 text-amber-700',
+  'Concern – Resolved': 'bg-lime-50 text-lime-700',
+  'Mentor Call Requested': 'bg-violet-50 text-violet-700',
+  'Re-Meeting Needed': 'bg-fuchsia-50 text-fuchsia-700',
+  'No Response': 'bg-orange-50 text-orange-700',
+  'Call Not Answered': 'bg-orange-50 text-orange-800',
+  'Ready to Upgrade': 'bg-indigo-50 text-indigo-700',
+  'Payment Completed': 'bg-emerald-100 text-emerald-800',
+  'Balance Payment Pending': 'bg-yellow-50 text-yellow-800',
   New: 'bg-slate-100 text-slate-700',
   Contacted: 'bg-blue-50 text-blue-700',
   Qualified: 'bg-cyan-50 text-cyan-700',
@@ -62,30 +91,66 @@ export const STAGE_CLS = {
   Lost: 'bg-rose-50 text-rose-700',
 };
 
-/* What a follow-up is about (the user, 2026-10-25) — picked, else worked out by the server (students/followups.ts
-   followupCategoryFor): an onboarding call, opened from Class Completions, a student new in the last two weeks, else
-   a course pitch. */
+/* What a follow-up is about — the CSE portal's categories (the user, 2026-11-08), two with sub-categories. Picked,
+   else worked out by the server (students/followups.ts followupCategoryFor): an onboarding call, opened from Class
+   Completions (a Feedback Call), a student new in the last two weeks (a campaign lead), else a course pitch. */
 export const FOLLOWUP_CATEGORIES = [
-  ['course_pitch', 'Course Pitch'], ['new_data', 'New Data'], ['class_completion', 'Class Completion'], ['onboarding', 'Onboarding'],
+  ['feedback_call', 'Feedback Call'], ['course_pitch', 'Course Pitch'], ['onboarding_call', 'Onboarding Call'],
+  ['payment_followup', 'Payment Follow-up'], ['campaign_leads', 'Calls for Assigned Leads from Campaigns'],
+  ['campaign_meeting', 'Call for Meeting from Campaign Leads'],
 ];
-export const CATEGORY_LABEL = Object.fromEntries(FOLLOWUP_CATEGORIES);
-const CATEGORY_CLS = {
-  course_pitch: 'bg-indigo-50 text-indigo-700', new_data: 'bg-sky-50 text-sky-700',
-  class_completion: 'bg-violet-50 text-violet-700', onboarding: 'bg-teal-50 text-teal-700',
+export const CATEGORY_SUBS = {
+  feedback_call: [['class_completion', 'Class Completion Feedback'], ['program_completion', 'Program / Session Completion Feedback'], ['issue_resolution', 'Issue Resolution (Problem Solving)']],
+  course_pitch: ['DWT', 'MSNR', 'DSLP', 'DSLP PRO', 'DQMP', 'DGMP'].map(c => [c, c]),
 };
-export const CategoryBadge = ({ category, className = '' }) => (category && CATEGORY_LABEL[category]
-  ? <Badge variant="outline" className={`border-transparent ${CATEGORY_CLS[category] || ''} ${className}`}>{CATEGORY_LABEL[category]}</Badge>
-  : null);
-/** The category picker: one of the four, or "" — the server works it out. */
-function CategorySelect({ value, onChange }) {
+/** The categories before 2026-11-08, read as the new ones (scripts/backfill-client-stages.ts moves them). */
+const OLD_CATEGORIES = { new_data: ['campaign_leads', ''], class_completion: ['feedback_call', 'class_completion'], onboarding: ['onboarding_call', ''] };
+/** [category, sub] as it is now — an old one as its new one. */
+export const categoryOf = (f) => {
+  const old = OLD_CATEGORIES[f?.category];
+  return old ? [old[0], f?.category_sub || old[1]] : [f?.category || '', f?.category_sub || ''];
+};
+export const CATEGORY_LABEL = Object.fromEntries(FOLLOWUP_CATEGORIES);
+export const subLabel = (category, sub) => (CATEGORY_SUBS[category] || []).find(([k]) => k === sub)?.[1] || sub || '';
+/** "Course Pitch · MSNR". */
+export const categoryText = (f) => {
+  const [c, s] = categoryOf(f);
+  return c ? [CATEGORY_LABEL[c] || c, subLabel(c, s)].filter(Boolean).join(' · ') : '';
+};
+const CATEGORY_CLS = {
+  feedback_call: 'bg-violet-50 text-violet-700', course_pitch: 'bg-indigo-50 text-indigo-700', onboarding_call: 'bg-teal-50 text-teal-700',
+  payment_followup: 'bg-amber-50 text-amber-800', campaign_leads: 'bg-sky-50 text-sky-700', campaign_meeting: 'bg-pink-50 text-pink-700',
+};
+/** The follow-up's category and sub-category — pass `followup`, or `category` (+ `sub`). */
+export const CategoryBadge = ({ followup, category, sub, className = '' }) => {
+  const f = followup || { category, category_sub: sub };
+  const text = categoryText(f);
+  return text
+    ? <Badge variant="outline" className={`border-transparent ${CATEGORY_CLS[categoryOf(f)[0]] || ''} ${className}`}>{text}</Badge>
+    : null;
+};
+/** The category picker: one of the six, or "" — the server works it out — and, for two of them, the sub-category. */
+function CategorySelect({ value, onChange, sub = '', onSub }) {
+  const subs = CATEGORY_SUBS[value] || [];
   return (
-    <Select value={value || '__auto__'} onValueChange={(v) => onChange(v === '__auto__' ? '' : v)}>
-      <SelectTrigger><SelectValue /></SelectTrigger>
-      <SelectContent>
-        <SelectItem value="__auto__">Work it out for me</SelectItem>
-        {FOLLOWUP_CATEGORIES.map(([k, l]) => <SelectItem key={k} value={k}>{l}</SelectItem>)}
-      </SelectContent>
-    </Select>
+    <div className="space-y-2">
+      <Select value={value || '__auto__'} onValueChange={(v) => { onChange(v === '__auto__' ? '' : v); onSub?.(''); }}>
+        <SelectTrigger><SelectValue /></SelectTrigger>
+        <SelectContent>
+          <SelectItem value="__auto__">Work it out for me</SelectItem>
+          {FOLLOWUP_CATEGORIES.map(([k, l]) => <SelectItem key={k} value={k}>{l}</SelectItem>)}
+        </SelectContent>
+      </Select>
+      {subs.length > 0 && onSub && (
+        <Select value={sub || '__auto__'} onValueChange={(v) => onSub(v === '__auto__' ? '' : v)}>
+          <SelectTrigger><SelectValue /></SelectTrigger>
+          <SelectContent>
+            <SelectItem value="__auto__">{value === 'course_pitch' ? 'The follow-up\'s course' : 'Which feedback…'}</SelectItem>
+            {subs.map(([k, l]) => <SelectItem key={k} value={k}>{l}</SelectItem>)}
+          </SelectContent>
+        </Select>
+      )}
+    </div>
   );
 }
 
@@ -302,7 +367,8 @@ export function LogFollowupDialog({ followup, onClose, onSaved }) {
     if (!followup) return;
     setError(null); setBusy(false);
     setForm({
-      stage: followup.stage === 'New' ? 'Contacted' : followup.stage,
+      // One of the client stages — a follow-up still New, or on an old stage, picks one now.
+      stage: STAGES.includes(followup.stage) ? followup.stage : '',
       clientSaid: '',
       nextFollowupDate: '',
       nextFollowupTime: '',
@@ -315,7 +381,8 @@ export function LogFollowupDialog({ followup, onClose, onSaved }) {
       targetOutcome: followup.suggested_outcome || followup.target_outcome || '',
       connected: '',
       // Its category, or the one its call suggests (from Class Completions, an onboarding call — CallFlow).
-      category: followup.category || followup.default_category || '',
+      category: categoryOf(followup)[0] || followup.default_category || '',
+      categorySub: categoryOf(followup)[1] || followup.default_category_sub || '',
     });
   }, [followup]);
 
@@ -332,11 +399,12 @@ export function LogFollowupDialog({ followup, onClose, onSaved }) {
   }, [followup, mt5Fetched, past]);
 
   const set = (k) => (v) => setForm(f => ({ ...f, [k]: v?.target ? v.target.value : v }));
-  const closed = form.stage === 'Converted' || form.stage === 'Lost';
+  const closed = CLOSED_STAGES.has(form.stage);
 
   const save = async () => {
-    if (form.stage === 'Lost' && !form.objectionReason) { setError('Pick a lost reason.'); return; }
-    if (form.stage === 'Converted' && (form.dealValue === '' || Number(form.dealValue) < 0)) { setError('Enter the deal value.'); return; }
+    if (!form.stage) { setError('Pick the client stage.'); return; }
+    if (form.stage === LOST_STAGE && !form.objectionReason) { setError('Pick why they are not interested.'); return; }
+    if (form.stage === WON_STAGE && (form.dealValue === '' || Number(form.dealValue) < 0)) { setError('Enter the amount paid.'); return; }
     if (askConnected && !form.connected) { setError('Did the call connect? Pick Connected or Not connected.'); return; }
     const mt5 = String(form.mt5 || '').replace(/\s+/g, '');
     if (needsMt5 && !MT5_LOGIN.test(mt5)) {
@@ -355,15 +423,16 @@ export function LogFollowupDialog({ followup, onClose, onSaved }) {
         clientSaid: form.clientSaid,
         nextFollowupDate: closed ? '' : form.nextFollowupDate,
         nextFollowupTime: closed || !form.nextFollowupDate ? '' : form.nextFollowupTime,
-        // The reason applies to Objection / Lost only; earlier reasons stay in the log.
-        objectionReason: form.stage === 'Lost' || form.stage === 'Objection Stage' ? form.objectionReason : '',
+        // The reason applies to Not Interested / a concern in progress only; earlier reasons stay in the log.
+        objectionReason: REASON_STAGES.has(form.stage) ? form.objectionReason : '',
         convertedDate: form.convertedDate,
-        dealValue: form.stage === 'Converted' ? Number(form.dealValue) : undefined,
+        dealValue: form.stage === WON_STAGE ? Number(form.dealValue) : undefined,
         notes: form.notes,
         ...(sendMt5 ? { mt5Login: mt5 } : {}),
         ...(askConnected ? { connected: form.connected === 'yes' } : {}),
         ...(form.targetOutcome && form.targetOutcome !== followup.target_outcome ? { targetOutcome: form.targetOutcome } : {}),
         ...(form.category && form.category !== followup.category ? { category: form.category } : {}),
+        ...(form.categorySub && form.categorySub !== followup.category_sub ? { categorySub: form.categorySub } : {}),
         ...(followup.call_from ? { from: followup.call_from } : {}),
       })).data;
       toast.success(['Follow-up logged', res?.mt5_saved && 'MT5 saved', res?.bonus_credits && 'the sales-close bonus went to the admins to credit'].filter(Boolean).join(' · '));
@@ -450,15 +519,15 @@ export function LogFollowupDialog({ followup, onClose, onSaved }) {
             </Select>
           </div>
           <div className="space-y-1.5">
-            <Label>Stage</Label>
-            <Select value={form.stage} onValueChange={(v) => v && set('stage')(v)}>
-              <SelectTrigger><SelectValue /></SelectTrigger>
+            <Label>Client stage *</Label>
+            <Select value={form.stage || undefined} onValueChange={(v) => v && set('stage')(v)}>
+              <SelectTrigger><SelectValue placeholder="Pick the stage" /></SelectTrigger>
               <SelectContent>{STAGES.map(s => <SelectItem key={s} value={s}>{s}</SelectItem>)}</SelectContent>
             </Select>
           </div>
           <div className="space-y-1.5">
             <Label>Category</Label>
-            <CategorySelect value={form.category} onChange={set('category')} />
+            <CategorySelect value={form.category} onChange={set('category')} sub={form.categorySub} onSub={set('categorySub')} />
           </div>
           {!closed && (
             <div className="space-y-1.5 sm:col-span-2">
@@ -470,23 +539,23 @@ export function LogFollowupDialog({ followup, onClose, onSaved }) {
             <Label>What client said (follow-up reason)</Label>
             <Textarea rows={2} value={form.clientSaid} onChange={set('clientSaid')} placeholder="e.g. Needs to arrange the $5,000, call back after market close" />
           </div>
-          {(form.stage === 'Lost' || form.stage === 'Objection Stage') && (
+          {REASON_STAGES.has(form.stage) && (
             <div className="space-y-1.5 sm:col-span-2">
-              <Label>Objection / lost reason{form.stage === 'Lost' ? ' *' : ''}</Label>
+              <Label>{form.stage === LOST_STAGE ? 'Why not interested *' : 'The concern'}</Label>
               <Select value={form.objectionReason || undefined} onValueChange={(v) => v && set('objectionReason')(v)}>
                 <SelectTrigger><SelectValue placeholder="Pick a reason" /></SelectTrigger>
                 <SelectContent>{LOST_REASONS.map(r => <SelectItem key={r} value={r}>{r}</SelectItem>)}</SelectContent>
               </Select>
             </div>
           )}
-          {form.stage === 'Converted' && (
+          {form.stage === WON_STAGE && (
             <>
               <div className="space-y-1.5">
-                <Label>Converted date *</Label>
-                <DateField value={form.convertedDate} onChange={set('convertedDate')} max={today} placeholder="When it closed" />
+                <Label>Paid on *</Label>
+                <DateField value={form.convertedDate} onChange={set('convertedDate')} max={today} placeholder="When it was paid" />
               </div>
               <div className="space-y-1.5">
-                <Label>Deal value (USD) *</Label>
+                <Label>Amount paid (USD) *</Label>
                 <Input type="number" min="0" step="0.01" value={form.dealValue} onChange={set('dealValue')} />
               </div>
             </>
@@ -510,18 +579,19 @@ export function LogFollowupDialog({ followup, onClose, onSaved }) {
   );
 }
 
-/** Open, not Converted or Lost — a student has one at a time (backend createFollowup). */
-export const isOpenFollowup = (f) => !!f && f.followup_status !== 'Closed' && f.stage !== 'Converted' && f.stage !== 'Lost';
+/** Open — not Payment Completed, Not Interested or Active Student (or the old Converted / Lost); one per student (backend createFollowup). */
+export const isOpenFollowup = (f) => !!f && f.followup_status !== 'Closed' && !CLOSED_STAGES.has(f.stage);
 
 /**
  * Open a follow-up: pick a student (fixed when opened from a student's page) and a target outcome. One per student
  * (the user, 2026-10-04): a student who already has one open is marked in the list, and picked shows that follow-up
  * with "Log the call" (onLog) instead of opening a second — the server refuses a second too.
  */
-export function NewFollowupDialog({ open, onClose, onCancel, onSaved, onLog, student = null, students = [], followups = [], title = null, description = null, defaultOutcome = '', defaultCategory = '', from = '' }) {
+export function NewFollowupDialog({ open, onClose, onCancel, onSaved, onLog, student = null, students = [], followups = [], title = null, description = null, defaultOutcome = '', defaultCategory = '', defaultCategorySub = '', from = '' }) {
   const [studentId, setStudentId] = useState('');
   const [outcome, setOutcome] = useState('');
   const [category, setCategory] = useState('');
+  const [categorySub, setCategorySub] = useState('');
   const outcomes = useOutcomes(defaultOutcome);
   const [next, setNext] = useState('');
   const [nextTime, setNextTime] = useState('');
@@ -533,7 +603,7 @@ export function NewFollowupDialog({ open, onClose, onCancel, onSaved, onLog, stu
 
   useEffect(() => {
     if (!open) return;
-    setStudentId(student?.id || ''); setOutcome(defaultOutcome || ''); setCategory(defaultCategory || ''); setNext(today); setNextTime(''); setClientSaid(''); setNotes(''); setError(null); setBusy(false);
+    setStudentId(student?.id || ''); setOutcome(defaultOutcome || ''); setCategory(defaultCategory || ''); setCategorySub(defaultCategorySub || ''); setNext(today); setNextTime(''); setClientSaid(''); setNotes(''); setError(null); setBusy(false);
   }, [open, student?.id]);
 
   // The picked student's follow-ups: one already open means log on it, not open another.
@@ -556,9 +626,9 @@ export function NewFollowupDialog({ open, onClose, onCancel, onSaved, onLog, stu
     if (!outcome) { setError('Pick a target outcome.'); return; }
     setBusy(true); setError(null);
     try {
-      const res = await base44.functions.invoke('createFollowup', { studentId, targetOutcome: outcome, nextFollowupDate: next, nextFollowupTime: next ? nextTime : '', clientSaid, notes, ...(category ? { category } : {}), ...(from ? { from } : {}) });
+      const res = await base44.functions.invoke('createFollowup', { studentId, targetOutcome: outcome, nextFollowupDate: next, nextFollowupTime: next ? nextTime : '', clientSaid, notes, ...(category ? { category } : {}), ...(category && categorySub ? { categorySub } : {}), ...(from ? { from } : {}) });
       toast.success('Follow-up opened');
-      onSaved?.(res?.data?.id, { studentId, targetOutcome: outcome, nextFollowupDate: next, clientSaid, notes, category });
+      onSaved?.(res?.data?.id, { studentId, targetOutcome: outcome, nextFollowupDate: next, clientSaid, notes, category, categorySub });
       onClose();
     } catch (e) {
       setError(e?.message || 'Could not open the follow-up');
@@ -595,7 +665,7 @@ export function NewFollowupDialog({ open, onClose, onCancel, onSaved, onLog, stu
           <div className="grid gap-4 sm:grid-cols-2">
             <div className="space-y-1.5">
               <Label>Category</Label>
-              <CategorySelect value={category} onChange={setCategory} />
+              <CategorySelect value={category} onChange={setCategory} sub={categorySub} onSub={setCategorySub} />
             </div>
             <div className="space-y-1.5">
               <Label>Target outcome</Label>
