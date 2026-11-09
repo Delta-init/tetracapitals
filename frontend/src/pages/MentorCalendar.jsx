@@ -13,7 +13,7 @@ import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Popover, PopoverAnchor, PopoverContent } from '@/components/ui/popover';
-import { ArrowLeft, CalendarDays, ChevronLeft, ChevronRight, CircleSlash, Clock, Loader2, Plus, Radio, Search, UserRound, Users2, X } from 'lucide-react';
+import { ArrowLeft, CalendarDays, ChevronDown, ChevronLeft, ChevronRight, CircleSlash, Clock, Loader2, Plus, Radio, Search, UserRound, Users2, X } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { createPageUrl } from '@/utils';
 import { TablePagination, usePagination } from '@/components/common/TablePagination';
@@ -194,6 +194,9 @@ export default function MentorCalendar() {
   const myEmail = String(me?.email || '').trim().toLowerCase();
   const myMentor = useMemo(() => (schedule.data?.mentors ?? []).find(m => String(m.email || '').trim().toLowerCase() === myEmail) || null, [schedule.data, myEmail]);
   const [onlyMe, setOnlyMe] = useState(false);
+  // "Your schedule" folded away — remembered on this device (the user, 2026-11-09).
+  const [scheduleShut, setScheduleShut] = useState(() => { try { return localStorage.getItem('mentor-calendar-schedule-shut') === '1'; } catch { return false; } });
+  const toggleSchedule = () => setScheduleShut(v => { try { localStorage.setItem('mentor-calendar-schedule-shut', v ? '0' : '1'); } catch { /* this visit only */ } return !v; });
   /* Senior / Junior / Sub-junior Mentors ask for student meetings — the CS picks the time (2026-11-09); their tabs:
      the calendar, their own meetings, the requests they sent. */
   const asks = ASKS_FOR_MEETINGS.includes(me?.app_role);
@@ -575,13 +578,17 @@ export default function MentorCalendar() {
           <Card className="border-blue-200">
             <CardContent className="space-y-3 p-4">
               <div className="flex flex-wrap items-center justify-between gap-2">
-                <p className="text-sm font-semibold text-slate-900">Your schedule{offset === 0 ? ' this week' : ''} · {myItems.length ? `${myItems.length} coming up` : 'nothing booked'}</p>
+                <button type="button" onClick={toggleSchedule} aria-expanded={!scheduleShut} className="flex items-center gap-1.5 text-left text-sm font-semibold text-slate-900 hover:text-brand-navy">
+                  <ChevronDown className={cn('h-4 w-4 text-slate-500 transition-transform', scheduleShut && '-rotate-90')} />
+                  Your schedule{offset === 0 ? ' this week' : ''} · {myItems.length ? `${myItems.length} coming up` : 'nothing booked'}
+                  <span className="ml-1 text-xs font-normal text-slate-500">{scheduleShut ? 'Show' : 'Collapse'}</span>
+                </button>
                 <div className="flex flex-wrap gap-2">
                   <Button size="sm" variant="outline" className="h-8 gap-1.5 border-amber-300 text-amber-800 hover:bg-amber-50" onClick={() => openTimeOff(myMentor)}><CircleSlash className="h-3.5 w-3.5" /> I'm not available…</Button>
                   <Button size="sm" variant={onlyMe ? 'default' : 'outline'} className="h-8" onClick={() => setOnlyMe(v => !v)}>{onlyMe ? 'Showing only you — show everyone' : 'Only me'}</Button>
                 </div>
               </div>
-              {myItems.length > 0 && (
+              {!scheduleShut && myItems.length > 0 && (
                 <ul className="divide-y divide-slate-100 rounded-lg border border-slate-200">
                   {myItems.map(i => (
                     <li key={i.id} className="flex flex-wrap items-baseline gap-x-3 gap-y-0.5 px-3 py-2 text-sm">
@@ -593,7 +600,7 @@ export default function MentorCalendar() {
                   ))}
                 </ul>
               )}
-              <p className="text-xs text-slate-400">You're told in the bell when a session is booked with you, moved or cancelled, and 30 minutes before each class or session.</p>
+              {!scheduleShut && <p className="text-xs text-slate-400">You're told in the bell when a session is booked with you, moved or cancelled, and 30 minutes before each class or session.</p>}
             </CardContent>
           </Card>
         )}
