@@ -46,9 +46,9 @@ const FIRST = {
  * fn: the server function; body: anything else it needs (e.g. { kind }); cards(d): [{ label, value, sub? }];
  * columns: [{ key, label, fmt?, type?: 'money' (a USD figure, shown in AED) | 'number', get?(row) }] — the same for every view.
  * A card or column with `open` (a bucket the server counts — "count", "pending", "needs_call" …) opens the
- * requests behind its number (2026-10-27).
+ * requests behind its number (2026-10-27). details: 'commission' — the breakdown lists commission credits (2026-11-09).
  */
-export default function ReportShell({ title, description, fn, body = {}, cards, columns, sortNote }) {
+export default function ReportShell({ title, description, fn, body = {}, cards, columns, sortNote, details }) {
   const [period, setPeriod] = useUrlState('period', 'month');
   const [from, setFrom] = useUrlState('from', '');
   const [to, setTo] = useUrlState('to', '');
@@ -238,7 +238,7 @@ export default function ReportShell({ title, description, fn, body = {}, cards, 
               </>
             )}
       </div>
-      <ReportDetails open={opened} onClose={() => setOpened(null)} fn={fn} ask={ask} />
+      <ReportDetails open={opened} onClose={() => setOpened(null)} fn={fn} ask={ask} variant={details} />
     </div>
   );
 }

@@ -114,6 +114,7 @@ import DepositReport from './pages/DepositReport';
 import WithdrawalReport from './pages/WithdrawalReport';
 import FundingRequestReport from './pages/FundingRequestReport';
 import BonusReport from './pages/BonusReport';
+import CommissionReport from './pages/CommissionReport';
 import ZohoInvoices from './pages/ZohoInvoices';
 import NotOnboarded from './pages/NotOnboarded';
 import InactiveStudents from './pages/InactiveStudents';
@@ -208,6 +209,7 @@ export const PAGES = {
     "WithdrawalReport": WithdrawalReport,
     "FundingRequestReport": FundingRequestReport,
     "BonusReport": BonusReport,
+    "CommissionReport": CommissionReport,
     "ZohoInvoices": ZohoInvoices,
 }
 

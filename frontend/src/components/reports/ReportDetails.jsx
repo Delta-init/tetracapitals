@@ -39,7 +39,8 @@ const typeOf = (r) => [TYPE[r.type] || r.type, BONUS[r.bonus], PART[r.part]].fil
  * open: { title, bucket, view: 'total' | 'person' | 'team' | 'month', key } or null; fn and ask: the report's own
  * function and filters.
  */
-export default function ReportDetails({ open, onClose, fn, ask }) {
+export default function ReportDetails({ open, onClose, fn, ask, variant }) {
+  const isCommission = variant === 'commission';
   const [q, setQ] = useState('');
   const details = open ? { bucket: open.bucket, view: open.view, key: open.key } : null;
   const res = useQuery({
@@ -51,13 +52,24 @@ export default function ReportDetails({ open, onClose, fn, ask }) {
   const all = res.data?.details;
   const needle = q.trim().toLowerCase();
   const rows = useMemo(() => (all || []).filter(r => !needle
-    || [r.student_name, r.student_code, r.raised_by, r.team, typeOf(r), STAGE[r.stage]?.[0]].some(v => String(v || '').toLowerCase().includes(needle))), [all, needle]);
+    || [r.student_name, r.student_code, r.raised_by, r.team, typeOf(r), STAGE[r.stage]?.[0], r.position, r.pool, r.course, r.ref, r.initiator].some(v => String(v || '').toLowerCase().includes(needle))), [all, needle]);
   const sum = (k) => rows.reduce((t, r) => t + (Number(r[k]) || 0), 0);
   // An older API answers with the report itself, not the list.
   const stale = res.data && !Array.isArray(all);
 
   const exportIt = async () => {
     try {
+      if (isCommission) {
+        await downloadExcel({
+          fileName: `${open.title}.xlsx`, sheet: 'Breakdown',
+          columns: [{ header: 'Raised' }, { header: 'Paid to' }, { header: 'Team' }, { header: 'Student' }, { header: 'Code' }, { header: 'Type' }, { header: 'Course' },
+            { header: 'Payment ref' }, { header: 'Position' }, { header: 'Pool' }, { header: '%', type: 'number' },
+            { header: `Base (${displayCurrency()})`, type: 'number' }, { header: `Commission (${displayCurrency()})`, type: 'number' }, { header: 'Raised by' }],
+          rows: rows.map(r => [when(r.at), r.raised_by, r.team, r.student_name || '', r.student_code || '', TYPE[r.type] || r.type, r.course, r.ref, r.position,
+            r.pool || 'Own', r.pct, localNumberFromAed((Number(r.base_usd) || 0) * AED_PER_USD), localNumberFromAed((Number(r.usd) || 0) * AED_PER_USD), r.initiator]),
+        });
+        return;
+      }
       await downloadExcel({
         fileName: `${open.title}.xlsx`, sheet: 'Breakdown',
         columns: [{ header: 'Raised' }, { header: 'Student' }, { header: 'Code' }, { header: 'Type' }, { header: 'Where it stands' },
@@ -77,13 +89,13 @@ export default function ReportDetails({ open, onClose, fn, ask }) {
         <DialogHeader>
           <DialogTitle>{open?.title}</DialogTitle>
           <DialogDescription>
-            {all ? `${rows.length.toLocaleString('en-US')}${needle ? ` of ${all.length.toLocaleString('en-US')}` : ''} · ${localFromUsd(sum('usd'), { decimals: true })} MT5 bonus / amount · ${localFromAed(sum('aed'), { decimals: true })} paid` : 'What makes this number'}
+            {all ? `${rows.length.toLocaleString('en-US')}${needle ? ` of ${all.length.toLocaleString('en-US')}` : ''} · ${isCommission ? `${localFromUsd(sum('usd'), { decimals: true })} commission` : `${localFromUsd(sum('usd'), { decimals: true })} MT5 bonus / amount · ${localFromAed(sum('aed'), { decimals: true })} paid`}` : 'What makes this number'}
           </DialogDescription>
         </DialogHeader>
         <div className="flex flex-wrap items-center gap-2">
           <div className="relative">
             <Search className="pointer-events-none absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
-            <Input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Student, person, type…" className="h-9 w-64 pl-8" />
+            <Input value={q} onChange={(e) => setQ(e.target.value)} placeholder={isCommission ? 'Student, person, course, pool…' : 'Student, person, type…'} className="h-9 w-64 pl-8" />
           </div>
           <Button variant="outline" size="sm" className="ml-auto" onClick={exportIt} disabled={!rows.length}><Download className="mr-1.5 h-4 w-4" />Export</Button>
         </div>
@@ -95,6 +107,44 @@ export default function ReportDetails({ open, onClose, fn, ask }) {
           </p>
         ) : !rows.length ? (
           <p className="py-10 text-center text-sm text-slate-400">Nothing here.</p>
+        ) : isCommission ? (
+          <div className="max-h-[65vh] overflow-auto rounded-md border">
+            <table className="w-full text-sm">
+              <thead className="sticky top-0 z-10 bg-slate-50 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">
+                <tr>
+                  {['Raised', 'Paid to', 'Student', 'Course', 'Position', '%', 'Base', 'Commission', 'Raised by'].map(h => (
+                    <th key={h} className={`whitespace-nowrap px-3 py-2.5 ${['%', 'Base', 'Commission'].includes(h) ? 'text-right' : ''}`}>{h}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100">
+                {rows.map(r => (
+                  <tr key={r.id} className="align-top hover:bg-slate-50/60">
+                    <td className="whitespace-nowrap px-3 py-2 text-slate-600">{when(r.at)}</td>
+                    <td className="px-3 py-2 text-slate-700">{r.raised_by}<div className="text-xs text-slate-400">{r.team}</div></td>
+                    <td className="px-3 py-2">
+                      {r.student_id
+                        ? <Link to={`${createPageUrl('StudentDetail')}?id=${r.student_id}`} className="font-medium text-brand-navy hover:underline">{r.student_name || 'A student'}</Link>
+                        : <span className="text-slate-400">—</span>}
+                      {r.student_code && <div className="text-xs text-slate-400">{r.student_code}</div>}
+                    </td>
+                    <td className="whitespace-nowrap px-3 py-2 text-slate-700">
+                      {[TYPE[r.type] || r.type, r.course].filter(Boolean).join(' · ')}
+                      {r.ref && <div className="text-xs text-slate-400">{r.ref}</div>}
+                    </td>
+                    <td className="whitespace-nowrap px-3 py-2">
+                      <span className={`rounded px-1.5 py-0.5 text-[11px] font-medium ${r.pool ? 'bg-violet-50 text-violet-700' : 'bg-emerald-50 text-emerald-700'}`}>{r.position || '—'}{r.pool ? ' · pool' : ''}</span>
+                      {r.pool && <div className="text-xs text-slate-400">{r.pool}</div>}
+                    </td>
+                    <td className="whitespace-nowrap px-3 py-2 text-right tabular-nums text-slate-600">{r.pct}%</td>
+                    <td className="whitespace-nowrap px-3 py-2 text-right tabular-nums text-slate-600">{localFromUsd(r.base_usd, { decimals: true })}</td>
+                    <td className="whitespace-nowrap px-3 py-2 text-right font-semibold tabular-nums text-brand-navy">{localFromUsd(r.usd, { decimals: true })}</td>
+                    <td className="px-3 py-2 text-slate-700">{r.initiator || '—'}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         ) : (
           <div className="max-h-[65vh] overflow-auto rounded-md border">
             <table className="w-full text-sm">

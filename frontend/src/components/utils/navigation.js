@@ -201,6 +201,8 @@ export const NAV_ITEMS = [
   { name: 'WithdrawalReport', label: 'Withdrawal report', page: 'WithdrawalReport', icon: Wallet, roles: ['all'], everyone: true, notForSales: true },
   { name: 'FundingRequestReport', label: 'Funding request report', page: 'FundingRequestReport', icon: HandCoins, roles: ['all'], everyone: true, notForSales: true },
   { name: 'BonusReport', label: 'Bonus report', page: 'BonusReport', icon: Gift, roles: ['all'], everyone: true, notForSales: true },
+  // Everyone's commission and its breakdown (the user, 2026-11-09) — whose, as every report: all, location, team or own.
+  { name: 'CommissionReport', label: 'Commission report', page: 'CommissionReport', icon: Coins, roles: ['all'], everyone: true, notForSales: true },
   { name: 'AuditLogs', page: 'AuditLogs', icon: ScrollText, roles: ['super_admin', 'admin_supervisor', 'academic_head'] }
 ];
 
@@ -208,7 +210,7 @@ export const NAV_ITEMS = [
 export const NAV_GROUPS = ['Overview', 'People & Access', 'Students', 'Funding', 'Commission', 'Reports', 'More'];
 /** Groups drawn as one entry with its pages under it, opened and closed (the user, 2026-10-11). */
 export const NESTED_GROUPS = {
-  Reports: { icon: BarChart3, order: ['DepositReport', 'WithdrawalReport', 'FundingRequestReport', 'BonusReport', 'CommissionReports', 'Reports'] },
+  Reports: { icon: BarChart3, order: ['DepositReport', 'WithdrawalReport', 'FundingRequestReport', 'BonusReport', 'CommissionReport', 'CommissionReports', 'Reports'] },
 };
 export const GROUP_OF = {
   Dashboard: 'Overview', MyWallet: 'Overview', TeamDashboard: 'Overview', Teams: 'Overview', ActivityTracker: 'Overview', AIInsights: 'Overview', Leaderboard: 'Overview', InstructorReviews: 'Overview', Reminders: 'Overview', MentorReport: 'Overview', MentorLeaderboard: 'Overview', MeetingsReport: 'Overview', MentorPerformance: 'Overview', MentorTraining: 'Overview',
@@ -216,7 +218,7 @@ export const GROUP_OF = {
   Students: 'Students', CourseUpgrades: 'Students', NotOnboarded: 'Students', InactiveStudents: 'Students', BalancePayments: 'Students', StudentFollowups: 'Students', OverdueFollowups: 'Students', StudentCalls: 'Students', ClassCompletions: 'Students', LiveNotJoined: 'Students', MessageLogs: 'Students', MeetingsDone: 'Students', WhatsApp: 'Students', MentorCalendar: 'Students', Programs: 'Students', SupportTickets: 'Students', LmsRequests: 'Students', Exams: 'Students', ZohoInvoices: 'Students', StudentLogs: 'Students', StudentLogHistoryPage: 'Students', MyStudentRequests: 'Students', StudentRequestApprovals: 'Students', RetentionManagement: 'Students', DrawAdminStudents: 'Students', MT5Accounts: 'Students', InactivityTransfers: 'Students', StudentWorkflow: 'Students', StudentTags: 'Students',
   FundingActivities: 'Funding', FundingRequests: 'Funding', BonusApprovals: 'Funding', NotCreditedYet: 'Funding', PaymentLinks: 'Funding', Transactions: 'Funding', TransactionTags: 'Funding',
   CommissionPlans: 'Commission', BonusCommissionReports: 'Commission', DepositCommissionReports: 'Commission', CommissionTools: 'Commission', Commissions: 'Commission', QuarterClosing: 'Commission', MonthlyClosing: 'Commission', DailyPayouts: 'Commission', MyCommissionHistory: 'Commission', MyTargets: 'Commission', TargetsManagement: 'Commission',
-  DepositReport: 'Reports', WithdrawalReport: 'Reports', FundingRequestReport: 'Reports', BonusReport: 'Reports', Reports: 'Reports', CommissionReports: 'Reports',
+  DepositReport: 'Reports', WithdrawalReport: 'Reports', FundingRequestReport: 'Reports', BonusReport: 'Reports', CommissionReport: 'Reports', Reports: 'Reports', CommissionReports: 'Reports',
   Tickets: 'More', AuditLogs: 'More', GamificationSettings: 'More',
 };
 
@@ -228,7 +230,7 @@ export const GROUP_OF = {
  */
 // Senior / junior / sub-junior mentors (the user, 2026-11-07): these pages and no others; Chief Mentors unchanged.
 const MENTOR_PAGES = ['Dashboard', 'MentorLeaderboard', 'Teams', 'MyWallet', 'Students', 'StudentDetail', 'FundingActivities', 'MentorCalendar',
-  'StudentWorkflow', 'Reports', 'DepositReport', 'WithdrawalReport', 'FundingRequestReport', 'BonusReport', 'ReportTransactionDetails', 'MentorReport'];
+  'StudentWorkflow', 'Reports', 'DepositReport', 'WithdrawalReport', 'FundingRequestReport', 'BonusReport', 'CommissionReport', 'ReportTransactionDetails', 'MentorReport'];
 export const ROLE_ONLY_PAGES = {
   senior_mentor: MENTOR_PAGES,
   junior_mentor: MENTOR_PAGES,

@@ -30,7 +30,7 @@ import { getDashboardTotals } from "./dashboardTotals";
 import { getLmsExams, getStudentLmsExams } from "./lmsExams";
 import { previewCourseLms } from "./lmsPreview";
 import { sendFundingBack, correctFundingRequest, setFundingTransactionId } from "./fundingCorrections";
-import { getMoneyReport, getFundingRequestReport, getBonusReport, getReportFilters } from "./reports";
+import { getMoneyReport, getFundingRequestReport, getBonusReport, getCommissionReport, getReportFilters } from "./reports";
 import { getLedgerBreakdown } from "./commissionLedgerBreakdown";
 import { getDashboardCsPending, getDashboardCsReport, getDashboardMentorPending } from "./dashboardPending";
 import { getMyReminders, getStudentReminders, saveReminder, setReminderDone, deleteReminder, getTeamReminders, getReminderTeamScope } from "./reminders";
@@ -143,6 +143,7 @@ const AUTHED: Record<string, AuthedHandler> = {
   getMoneyReport,
   getFundingRequestReport,
   getBonusReport,
+  getCommissionReport,
   getReportFilters,
   // What is behind a quarterly commission ledger on Commission Reports (2026-10-27)
   getLedgerBreakdown,

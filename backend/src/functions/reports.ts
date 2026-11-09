@@ -348,6 +348,52 @@ export async function getBonusReport(req: Request, user: AuthUser): Promise<Resp
   return json({ ...meta(ctx), ...g.out("usd") });
 }
 
+/**
+ * POST /api/functions/getCommissionReport { period, … } (the user, 2026-11-09: "everyone's commission and the breakdown")
+ * Every commission credit (commission_credits) in the period — by the person it is paid to, their team and the month
+ * the payment was raised: own (their position's level) vs pool share (Senior / Junior pools), bonus vs deposit, how
+ * many credits and students. Every number opens the credits behind it.
+ */
+const LEADERS = new Set(["chief_mentor", "cs_manager", "super_admin", "admin"]);
+export async function getCommissionReport(req: Request, user: AuthUser): Promise<Response> {
+  const body: any = await req.json().catch(() => ({}));
+  const ctx = await reportCtx(body, user);
+  if (ctx instanceof Response) return ctx;
+  const pick = pickOf(body);
+  const credits = (await col("commission_credits").find({}, { projection: {
+    recipient_id: 1, recipient_name: 1, commission_usd: 1, is_pool: 1, pool_group_name: 1, transaction_type: 1, transaction_id: 1, position: 1, level: 1,
+    percentage: 1, base_amount: 1, tag: 1, txn_id: 1, student_id: 1, student_name: 1, initiator_name: 1, plan_name: 1, requested_at: 1, created_date: 1, status: 1,
+  } }).toArray()) as any[];
+  const teamView = !!ctx.reach && !ctx.lockedLocation;
+  const blank = () => ({ count: 0, usd: 0, own: 0, own_usd: 0, pool: 0, pool_usd: 0, bonus: 0, bonus_usd: 0, deposit: 0, deposit_usd: 0, students: 0 });
+  const g = grouper(blank, pick);
+  const studentsOf = new Map<string, Set<string>>();
+  for (const c of credits) {
+    const at = when(c.requested_at, c.created_date);
+    if (!inRange(ctx, at)) continue;
+    const p = personOf(ctx, String(c.recipient_id ?? ""), c.recipient_name);
+    if (!counts(ctx, p)) continue;
+    // A team's view (a Chief's or a mentor's): not their leaders' commission — a Chief's, a CS Manager's — only their own.
+    if (teamView && p.id !== user.id && LEADERS.has(String(ctx.index.userById.get(p.id)?.app_role ?? ""))) continue;
+    const usd = Number(c.commission_usd) || 0;
+    const seen = studentsOf.get(p.id) ?? new Set<string>();
+    const fresh = c.student_id && !seen.has(String(c.student_id)) ? 1 : 0;
+    if (c.student_id) seen.add(String(c.student_id));
+    studentsOf.set(p.id, seen);
+    const kind = c.is_pool ? "pool" : "own";
+    const type = c.transaction_type === "DEPOSIT" ? "deposit" : "bonus";
+    g.add(p, at, { count: 1, usd, [kind]: 1, [`${kind}_usd`]: usd, [type]: 1, [`${type}_usd`]: usd, students: fresh } as any, () => ({
+      id: String(c._id), student_id: c.student_id ? String(c.student_id) : "", student_name: c.student_name ?? "",
+      at: Number.isFinite(at) ? new Date(at).toISOString() : null, usd: cents(usd), base_usd: cents(Number(c.base_amount) || 0),
+      pct: Number(c.percentage) || 0, position: c.position ?? "", level: c.level ?? null, pool: c.is_pool ? (c.pool_group_name || "Pool") : "",
+      course: c.tag ?? "", ref: c.txn_id ?? "", type: c.transaction_type === "DEPOSIT" ? "DEPOSIT" : "BONUS", initiator: c.initiator_name ?? "",
+      plan: c.plan_name ?? "", status: c.status ?? "",
+    }));
+  }
+  if (pick) return json({ details: await g.details() });
+  return json({ ...meta(ctx), ...g.out("usd") });
+}
+
 /** POST /api/functions/getReportFilters — the teams and people this person can filter by. */
 export async function getReportFilters(req: Request, user: AuthUser): Promise<Response> {
   const ctx = await reportCtx(await req.json().catch(() => ({})), user);
