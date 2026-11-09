@@ -268,7 +268,7 @@ const startFrom = (tx) => ({
   mt5_login: tx.mt5_login || '',
   screenshot_url: tx.screenshot_url || '',
   tags: Array.isArray(tx.tags) ? tx.tags : [],
-  meeting_mentor_id: tx.meeting_mentor_id || '',
+  meeting_mentor_id: tx.meeting_mentor_id || (tx.meeting_mentor_none ? NONE : ''),
 });
 const paymentsFrom = (tx) => {
   const list = paymentsOf(tx);
@@ -438,6 +438,11 @@ export default function FundingRequestForm({ students, allStudents = [], current
       toast.error('Pick full or partial payment');
       return;
     }
+    // Who held the meeting — required on a bonus, None when no mentor did (the user, 2026-11-09): the mentor's 2%.
+    if (formData.type === 'BONUS' && !formData.meeting_mentor_id) {
+      toast.error('Pick who conducted the meeting — or None if no mentor met the student');
+      return;
+    }
 
     // Money in: every payment with its method, amount and receipt — then the total.
     const missing = takesPayments ? paymentsMissing(payments) : '';
@@ -494,7 +499,9 @@ export default function FundingRequestForm({ students, allStudents = [], current
       } : {}),
       mt5_login: mt5,
       meeting_mentor_id: meetingMentor?.id || null,
-      meeting_mentor_name: meetingMentor?.full_name || null,
+      meeting_mentor_name: meetingMentor?.full_name || (formData.meeting_mentor_id === NONE ? 'None' : null),
+      // None picked on purpose: no mentor met the student — no mentor's commission (creditCommission, 2026-11-09).
+      meeting_mentor_none: formData.meeting_mentor_id === NONE,
       // What was typed, in AED and USD too — amount_usd is what commission and the reports use.
       amount: undefined,
       currency: undefined,
@@ -731,16 +738,19 @@ export default function FundingRequestForm({ students, allStudents = [], current
           )}
 
           <div className="space-y-2">
-            <Label>Meeting Conducted By (Mentor)</Label>
+            <Label>Meeting Conducted By (Mentor){formData.type === 'BONUS' ? ' *' : ''}</Label>
             <SearchableSelect
               value={formData.meeting_mentor_id || undefined}
               onValueChange={(v) => setFormData({ ...formData, meeting_mentor_id: v })}
               options={mentorOptions}
               placeholder="Select the mentor who took the meeting"
               searchPlaceholder="Search mentor by name or role…"
-              noneLabel="— None —"
+              noneLabel="None — no mentor held a meeting"
               noneValue={NONE}
             />
+            {formData.type === 'BONUS' && (
+              <p className="text-xs text-slate-500">Required. The mentor picked here gets the mentor's commission on this payment; None — no mentor is paid.</p>
+            )}
             {isMentorRole(currentUser?.app_role) && mentorOptions.length === 0 && (
               <p className="text-xs text-amber-600">No mentors on your team yet — ask an admin to set your Up Head in Personnel.</p>
             )}

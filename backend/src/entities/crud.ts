@@ -9,7 +9,7 @@ import { buildScopeFilter, applyScope, docMatchesScope } from "../lib/scope";
 import { stampNewStudents, recordCreated, prepareStudentUpdate, recordHistory, type HistoryEntry } from "../students/history";
 import { notifyStudentsGiven } from "../lib/notify";
 import type { TeamIndex } from "../students/teams";
-import { stampFundingForFinance, kickFinanceFunding, financeLock, withFinance, WITH_FINANCE_MESSAGE, decisionRefusal, bonusMissing, depositReceiptMissing, dropServerFields, claimResubmit, releaseResubmit, bonusEdit } from "../finance/funding";
+import { stampFundingForFinance, kickFinanceFunding, financeLock, withFinance, WITH_FINANCE_MESSAGE, decisionRefusal, bonusMissing, depositReceiptMissing, meetingMentorMissing, dropServerFields, claimResubmit, releaseResubmit, bonusEdit } from "../finance/funding";
 import { seesClosedOnly, SALES_READ_ONLY } from "../students/closedBy";
 import { keepRequestMt5 } from "../students/mt5";
 
@@ -192,7 +192,7 @@ export async function createEntity(req: Request, entityName: string): Promise<Re
   // A bonus names the MT5 login and carries the receipt; a sales-close credit is the server's to make.
   if (entityName === "FundingTransaction") {
     dropServerFields(data);
-    const missing = bonusMissing(data) ?? depositReceiptMissing(data) ?? await (await import("../finance/funding")).studentEmailMissing(data);
+    const missing = bonusMissing(data) ?? meetingMentorMissing(data) ?? depositReceiptMissing(data) ?? await (await import("../finance/funding")).studentEmailMissing(data);
     if (missing) return error(missing, 400);
     // The same course paid in full twice (2026-10-23).
     const paidTwice = await (await import("../finance/funding")).coursePaidInFullRefusal(data);

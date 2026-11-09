@@ -16,7 +16,9 @@ import { creditCommissionFor, roleOfPosition } from "../functions/creditCommissi
  * For each bonus whose commission is dated in the month (requested_at, Dubai days):
  *   - its Junior / Senior / Sub-junior credits are removed — only while not paid out (pooled or accrued; a pool already
  *     split, or a credit released or paid, leaves that bonus as it is);
- *   - a Meeting mentor credit is added when a mentor met the student first (the same rule as creditCommission).
+ *   - a Meeting mentor credit is added for the mentor the request names as having held the meeting (None: nobody); a
+ *     request naming nobody, from before that was required, goes by the Mentor Calendar's meetings — the same rule as
+ *     creditCommission.
  * CS, CS Manager and Chief credits are not touched. Deposits are not touched. Running it again changes nothing.
  *
  *   cd backend
@@ -84,7 +86,7 @@ try {
         tally(meeting.recipient_name, meeting.commission_usd);
         // Dated as the bonus, so it counts in the same month as its other credits.
         added.push({ ...meeting, created_date: mine[0].created_date ?? meeting.created_date, backfilled_at: new Date().toISOString() });
-      } else console.log(`   (no mentor met the student — no mentor paid)`);
+      } else console.log(`   (no Junior/Senior mentor held the meeting — no mentor paid)`);
       removed.push(...old);
     }
 

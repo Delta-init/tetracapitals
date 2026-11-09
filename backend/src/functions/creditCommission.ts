@@ -163,7 +163,11 @@ export async function creditCommissionFor(txId: string, opts: { preview?: boolea
       const pct = set !== null && set !== undefined && set !== "" && Number.isFinite(Number(set))
         ? Number(set) : mentorLevels.reduce((sum: number, i: number) => sum + (Number(levels[i]?.percentage) || 0), 0);
       for (const i of mentorLevels) chain[i] = [];
-      const found = tx.student_id ? await meetingMentorFor(String(tx.student_id), String(tx.requested_at || tx.approved_at || new Date().toISOString())) : null;
+      // Who held it, as the request says (required since 2026-11-09): the mentor picked, or None — nobody. A request
+      // from before that names nobody: the Mentor Calendar's meetings.
+      const found = tx.meeting_mentor_none === true ? null
+        : tx.meeting_mentor_id ? await meetingMentorPicked(String(tx.meeting_mentor_id))
+        : tx.student_id ? await meetingMentorFor(String(tx.student_id), String(tx.requested_at || tx.approved_at || new Date().toISOString())) : null;
       if (found && pct > 0) meeting = { ...found, pct };
     }
   }
@@ -272,7 +276,8 @@ export async function creditCommissionFor(txId: string, opts: { preview?: boolea
       student_id: tx.student_id, student_name: tx.student_name, student_email: studentEmail, txn_id: txnId,
       initiator_id: startId, initiator_name: tx.initiating_mentor_name || tx.primary_mentor_name, requested_at: tx.requested_at,
       created_date: now, updated_date: now, is_pool: false, recipient_id: m._id.toString(), recipient_name: m.full_name, status: "accrued",
-      meeting_outcome_id: String(meeting.outcome._id), meeting_at: meeting.outcome.meeting?.starts_at ?? null,
+      meeting_source: meeting.outcome ? "meetings" : "request",
+      meeting_outcome_id: meeting.outcome ? String(meeting.outcome._id) : null, meeting_at: meeting.outcome?.meeting?.starts_at ?? null,
     });
   }
 
@@ -288,6 +293,13 @@ export async function creditCommissionFor(txId: string, opts: { preview?: boolea
 }
 
 const MEETING_MENTOR_ROLES = new Set(["junior_mentor", "senior_mentor", "subjunior_mentor"]);
+
+/** The mentor the request names as having held the meeting — when they are a Junior, Senior or Sub-junior Mentor. */
+export async function meetingMentorPicked(userId: string): Promise<{ mentor: any; outcome: null } | null> {
+  const oid = toObjectId(userId);
+  const u: any = oid ? await col("users").findOne({ _id: oid }, { projection: { full_name: 1, app_role: 1 } }) : null;
+  return u && MEETING_MENTOR_ROLES.has(String(u.app_role)) ? { mentor: u, outcome: null } : null;
+}
 
 /**
  * The mentor who first held a meeting with this student before `before` — a meeting whose outcome the mentor filled in

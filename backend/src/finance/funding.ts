@@ -202,6 +202,16 @@ export function bonusMissing(doc: any): string | null {
   return null;
 }
 
+/**
+ * A course payment names who held the meeting with the student (the user, 2026-11-09): a mentor, or None on purpose
+ * (meeting_mentor_none) — the mentor's commission follows it (functions/creditCommission.ts).
+ */
+export function meetingMentorMissing(doc: any): string | null {
+  if (doc?.type !== "BONUS" || doc?.bonus_credit || !doc?.course_payment?.product) return null;
+  if (doc.meeting_mentor_none === true || String(doc.meeting_mentor_id ?? "").trim()) return null;
+  return "Pick who conducted the meeting — or None if no mentor met the student";
+}
+
 /** A Full course payment that paid the price (not short of it by more than rounding). */
 const paidInFull = (cp: any) => cp?.kind === "full" && !(Number(cp?.short_aed) > 1);
 
