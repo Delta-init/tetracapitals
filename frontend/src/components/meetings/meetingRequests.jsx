@@ -267,6 +267,7 @@ function MentorDay({ email, date }) {
 /** Where a request stands in the inbox (backend viewsOf) — its tab and badge. */
 export const VIEWS = [
   ['needs_review', 'Needs review', 'bg-amber-50 text-amber-700'],
+  ['escalated', 'Escalated', 'bg-orange-50 text-orange-700'],
   ['scheduled', 'Meeting scheduled', 'bg-sky-50 text-sky-700'],
   ['held', 'Held', 'bg-slate-100 text-slate-700'],
   ['follow_up', 'Follow-up', 'bg-violet-50 text-violet-700'],
@@ -316,12 +317,20 @@ export function DecideMeetingDialog({ request: initial, onClose }) {
   const [mode, setMode] = useState('');
   const [place, setPlace] = useState('');
   const [why, setWhy] = useState('');
-  useEffect(() => { if (initial) { setDate(todayDubai()); setTime('11:00'); setRejecting(false); setReason(''); setWhy(''); setMode(initial.mode === 'cs' ? '' : initial.in_person ? 'offline' : 'online'); setPlace(initial.location || ''); } }, [id]);
+  // Handing it to the CS Managers (2026-11-09).
+  const [escalating, setEscalating] = useState(false);
+  const [note, setNote] = useState('');
+  useEffect(() => { if (initial) { setDate(todayDubai()); setTime('11:00'); setRejecting(false); setReason(''); setWhy(''); setEscalating(false); setNote(''); setMode(initial.mode === 'cs' ? '' : initial.in_person ? 'offline' : 'online'); setPlace(initial.location || ''); } }, [id]);
   const done = () => { qc.invalidateQueries({ queryKey: ['meeting-requests'] }); qc.invalidateQueries({ queryKey: ['meeting-requests-waiting'] }); qc.invalidateQueries({ queryKey: ['meeting-request-review', id] }); onClose(); };
   const decide = useMutation({
     mutationFn: (body) => fn('decideMeetingRequest', { id, ...body }),
     onSuccess: (_d, body) => { toast.success(body.action === 'approve' ? `Booked — ${r.mentor.name} and ${r.student.name} are emailed` : 'Rejected — the mentor is told'); done(); },
     onError: (err) => { toast.error(errorText(err, "That didn't work")); qc.invalidateQueries({ queryKey: ['meeting-request-review', id] }); },
+  });
+  const escalate = useMutation({
+    mutationFn: () => fn('escalateMeetingRequest', { id, note: note.trim() }),
+    onSuccess: () => { toast.success('Escalated — the CS Managers decide it now'); done(); },
+    onError: (err) => toast.error(errorText(err, "Couldn't escalate it")),
   });
   const takeBack = useMutation({
     mutationFn: () => fn('cancelMeetingRequest', { id }),
@@ -353,12 +362,18 @@ export function DecideMeetingDialog({ request: initial, onClose }) {
           {r.notes && <div className="mt-1 border-t border-slate-200 pt-2"><p className="text-xs text-slate-500">Mentor's reason</p><p className="whitespace-pre-wrap text-sm text-slate-900">{r.notes}</p></div>}
         </div>
         {rev.isLoading ? <p className="text-xs text-slate-400">Checking the 7-day rule…</p> : <Eligibility e={e} />}
+        {r.escalated && open && <p className="rounded-md bg-orange-50 px-3 py-2 text-sm text-orange-900">Escalated to the CS Managers by {r.escalated.by_name} · {when(r.escalated.at)}{r.escalated.note ? ` — ${r.escalated.note}` : ''}</p>}
         {r.status === 'blocked' && r.blocked?.reason && <p className="rounded-md bg-rose-50 px-3 py-2 text-sm text-rose-800">Blocked when asked: {r.blocked.reason}</p>}
         {r.status === 'approved' && <p className="rounded-md bg-emerald-50 px-3 py-2 text-sm text-emerald-800">Booked for {when(r.scheduled_start)}{r.decided_by_name ? ` by ${r.decided_by_name}` : ''}.{r.override_reason ? ` Approved anyway by ${r.override_by_name}: ${r.override_reason}` : ''}</p>}
         {r.status === 'rejected' && <p className="rounded-md bg-rose-50 px-3 py-2 text-sm text-rose-800">Rejected{r.decided_by_name ? ` by ${r.decided_by_name}` : ''}: {r.reason}</p>}
         <StudentMeetingHistory studentId={r.student.id} />
 
-        {decides && (rejecting ? (
+        {decides && (escalating ? (
+          <div className="space-y-1.5">
+            <Label htmlFor="rq-esc">Note for the CS Manager</Label>
+            <Textarea id="rq-esc" rows={2} value={note} onChange={(ev) => setNote(ev.target.value)} placeholder="Optional — why you're handing it on" autoFocus />
+          </div>
+        ) : rejecting ? (
           <div className="space-y-1.5">
             <Label htmlFor="rq-reason">Why — the mentor sees it *</Label>
             <Input id="rq-reason" value={reason} onChange={(ev) => setReason(ev.target.value)} placeholder="e.g. the student isn't ready yet" autoFocus />
@@ -366,7 +381,7 @@ export function DecideMeetingDialog({ request: initial, onClose }) {
         ) : blocked && !mayOverride ? (
           <div className="rounded-lg border border-slate-200 p-3 text-sm">
             <p className="font-semibold text-slate-900">Restricted action</p>
-            <p className="mt-1 text-slate-600">Another mentor met this student in the last 7 days or has a meeting booked with them, so it can't be approved here. A CS Manager can approve an exception, with the reason kept.</p>
+            <p className="mt-1 text-slate-600">Another mentor met this student in the last 7 days or has a meeting booked with them, so it can't be approved here. {r.escalated ? 'It is with the CS Managers now.' : 'Escalate it to the CS Manager — they can approve an exception, with the reason kept.'}</p>
           </div>
         ) : (
           <>
@@ -396,13 +411,19 @@ export function DecideMeetingDialog({ request: initial, onClose }) {
           </>
         ))}
         <DialogFooter className="gap-2 sm:gap-0">
-          {decides ? (rejecting ? (
+          {decides ? (escalating ? (
+            <>
+              <Button variant="outline" onClick={() => setEscalating(false)}>Back</Button>
+              <Button className="bg-orange-600 hover:bg-orange-700" disabled={escalate.isPending} onClick={() => escalate.mutate()}>{escalate.isPending && <Loader2 className="h-4 w-4 animate-spin" />} Escalate to CS Manager</Button>
+            </>
+          ) : rejecting ? (
             <>
               <Button variant="outline" onClick={() => setRejecting(false)}>Back</Button>
               <Button variant="destructive" disabled={!reason.trim() || decide.isPending} onClick={() => decide.mutate({ action: 'reject', reason: reason.trim() })}>{decide.isPending && <Loader2 className="h-4 w-4 animate-spin" />} Reject</Button>
             </>
           ) : (
             <>
+              {!mayOverride && !r.escalated && <Button variant="outline" className="gap-1.5 text-orange-700" onClick={() => setEscalating(true)}><ShieldAlert className="h-4 w-4" />Escalate to CS Manager</Button>}
               {r.status === 'pending' && <Button variant="outline" className="text-rose-700" onClick={() => setRejecting(true)}>Reject…</Button>}
               {(!blocked || mayOverride) && (
                 <Button disabled={!date || !time || !mode || (mode === 'offline' && place.trim().length < 2) || (blocked && why.trim().length < 3) || decide.isPending}

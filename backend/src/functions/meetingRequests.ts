@@ -50,7 +50,7 @@ async function mayDecide(user: AuthUser, r: any): Promise<boolean> {
 
 const out = (r: any) => ({
   id: String(r._id), number: r.number ?? `MR-${String(r._id).slice(-5).toUpperCase()}`, status: r.status,
-  blocked: r.blocked ?? null, override_reason: r.override_reason ?? "", override_by_name: r.override_by_name ?? "", student: { id: r.student_id, name: r.student_name, code: r.student_code ?? "", cs_name: r.cs_name ?? "" },
+  blocked: r.blocked ?? null, escalated: r.escalated ?? null, override_reason: r.override_reason ?? "", override_by_name: r.override_by_name ?? "", student: { id: r.student_id, name: r.student_name, code: r.student_code ?? "", cs_name: r.cs_name ?? "" },
   mentor: { id: r.mentor_id, name: r.mentor_name, email: r.mentor_email }, category: r.category ?? "", course: r.course ?? "",
   duration_mins: r.duration_mins, in_person: !!r.in_person, location: r.location_text ?? "", notes: r.notes ?? "",
   // "cs": the mentor left online or in person to the CS, to confirm with the student (2026-11-09).
@@ -242,6 +242,8 @@ async function viewsOf(list: any[]): Promise<Map<string, string>> {
     { projection: { student_id: 1, approved_at: 1, requested_at: 1, "course_payment.product": 1 } },
   ).toArray()) as any[]) : [];
   for (const r of list) {
+    // Escalated by the CS to the CS Managers, still open (2026-11-09).
+    if (r.escalated && ["pending", "booking", "blocked"].includes(r.status)) { views.set(String(r._id), "escalated"); continue; }
     if (r.status === "pending" || r.status === "booking") { views.set(String(r._id), "needs_review"); continue; }
     if (r.status !== "approved") { views.set(String(r._id), r.status); continue; }
     const at = String(r.scheduled_start ?? "");
@@ -273,7 +275,8 @@ export async function getMeetingRequestReview(req: Request, user: AuthUser): Pro
 export async function getMeetingRequestsWaiting(_req: Request, user: AuthUser): Promise<Response> {
   const f = await decidesFilter(user);
   if (f === false) return json({ count: 0, latest: [] });
-  const q = { ...f, status: "pending" };
+  // A CS Manager: also the blocked ones a CS escalated to them.
+  const q = isManager(user) ? { ...f, $or: [{ status: "pending" }, { status: "blocked", escalated: { $exists: true } }] } : { ...f, status: "pending" };
   const [count, latest] = await Promise.all([
     col("meeting_requests").countDocuments(q),
     col("meeting_requests").find(q).sort({ requested_at: -1 }).limit(10).toArray(),
@@ -351,6 +354,31 @@ export async function decideMeetingRequest(req: Request, user: AuthUser): Promis
     if (err instanceof LmsError) return error(err.message, err.status);
     throw err;
   }
+}
+
+/**
+ * POST /api/functions/escalateMeetingRequest { id, note? } — the CS hands a request to the CS Managers (the user,
+ * 2026-11-09): one still waiting, or blocked by the 7-day rule. It stays open; the location's CS Managers are told and
+ * decide it (a blocked one they may approve anyway).
+ */
+export async function escalateMeetingRequest(req: Request, user: AuthUser): Promise<Response> {
+  const body: any = await req.json().catch(() => ({}));
+  const oid = toObjectId(str(body?.id, 40));
+  const r: any = oid ? await col("meeting_requests").findOne({ _id: oid }) : null;
+  if (!r) return notFound("No such request");
+  if (!(await mayDecide(user, r))) return forbidden("This request is for the student's CS");
+  if (isManager(user)) return error("You decide it yourself — it's with the CS Managers already", 400);
+  if (r.escalated) return error("It's with the CS Managers already", 409);
+  const me: any = await col("users").findOne({ _id: toObjectId(user.id) as any }, { projection: { full_name: 1 } });
+  const escalated = { by_id: user.id, by_name: me?.full_name ?? user.full_name ?? "", at: nowIso(), note: str(body?.note, 500) };
+  const done = await col("meeting_requests").updateOne({ _id: oid as any, status: { $in: ["pending", "blocked"] }, escalated: { $exists: false } }, { $set: { escalated, updated_date: nowIso() } });
+  if (!done.modifiedCount) return error("Only a request still waiting or blocked can be escalated", 409);
+  await notify(await csManagersOf(r.location ?? "dubai"), {
+    type: "meeting_request", title: `Meeting request escalated — ${r.student_name}`,
+    body: `${escalated.by_name} escalated ${r.mentor_name}'s request${r.status === "blocked" ? " (blocked by the 7-day rule)" : ""}${escalated.note ? `: ${escalated.note}` : ""}. Decide it.`,
+    link: "/MeetingRequests", tag: `meeting-request-${r._id}`, renotify: true,
+  });
+  return json({ ok: true });
 }
 
 /** POST /api/functions/cancelMeetingRequest { id } — the mentor takes back a request still waiting. */
