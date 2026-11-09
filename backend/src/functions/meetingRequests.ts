@@ -49,7 +49,8 @@ async function mayDecide(user: AuthUser, r: any): Promise<boolean> {
 }
 
 const out = (r: any) => ({
-  id: String(r._id), status: r.status, student: { id: r.student_id, name: r.student_name, code: r.student_code ?? "", cs_name: r.cs_name ?? "" },
+  id: String(r._id), number: r.number ?? `MR-${String(r._id).slice(-5).toUpperCase()}`, status: r.status,
+  blocked: r.blocked ?? null, override_reason: r.override_reason ?? "", override_by_name: r.override_by_name ?? "", student: { id: r.student_id, name: r.student_name, code: r.student_code ?? "", cs_name: r.cs_name ?? "" },
   mentor: { id: r.mentor_id, name: r.mentor_name, email: r.mentor_email }, category: r.category ?? "", course: r.course ?? "",
   duration_mins: r.duration_mins, in_person: !!r.in_person, location: r.location_text ?? "", notes: r.notes ?? "",
   // "cs": the mentor left online or in person to the CS, to confirm with the student (2026-11-09).
@@ -69,6 +70,66 @@ async function csManagersOf(location: string): Promise<string[]> {
   const ids: string[] = [];
   for (const m of managers) if ((await locationOfUser(String(m._id))) === location) ids.push(String(m._id));
   return ids;
+}
+
+/* ── The 7-day rule (the user, 2026-11-09): a meeting with the student by ANOTHER mentor — held, or booked ahead — in
+   the last 7 days blocks a new request; it can be asked for 7 days after that meeting. The same mentor may ask again.
+   The meetings: the LMS's student meetings booked from this portal (by the student's email — the CS's and Chiefs'
+   direct bookings too), the outcomes mentors filled in, and the requests approved here. ── */
+const WEEK_MS = 7 * 864e5;
+const isManager = (user: AuthUser) => ADMINS.has(user.app_role) || user.app_role === "cs_manager";
+interface StudentMeeting { id: string; mentor_email: string; mentor_name: string; at: string; status: string; outcome: string }
+
+async function studentMeetings(studentId: string, email: string): Promise<{ meetings: StudentMeeting[]; lms: boolean }> {
+  const byId = new Map<string, StudentMeeting>();
+  let lms = false;
+  if (email.includes("@")) {
+    try {
+      const d: any = await callLms("/meeting-outcomes/meetings", { query: { emails: email.toLowerCase() }, verb: "list the student's meetings" });
+      lms = true;
+      for (const m of d?.meetings ?? []) {
+        if (m.status === "cancelled") continue;
+        byId.set(String(m.id), { id: String(m.id), mentor_email: String(m.mentor?.email ?? "").toLowerCase(), mentor_name: m.mentor?.name ?? "", at: m.startsAt, status: m.status === "upcoming" ? "upcoming" : "held", outcome: m.outcome?.stage ?? "" });
+      }
+    } catch { /* the LMS is down: what this portal knows still counts */ }
+  }
+  const [outcomes, approved] = await Promise.all([
+    col("meeting_outcomes").find({ student_ids: studentId }, { projection: { meeting: 1, mentor: 1, outcome: 1 } }).toArray(),
+    col("meeting_requests").find({ student_id: studentId, status: "approved" }, { projection: { lms_meeting_id: 1, mentor_email: 1, mentor_name: 1, scheduled_start: 1 } }).toArray(),
+  ]);
+  for (const o of outcomes as any[]) {
+    const id = String(o.meeting?.id ?? o._id);
+    if (!byId.has(id) && o.meeting?.starts_at) byId.set(id, { id, mentor_email: String(o.mentor?.email ?? "").toLowerCase(), mentor_name: o.mentor?.name ?? "", at: o.meeting.starts_at, status: "held", outcome: o.outcome?.stage ?? "" });
+  }
+  for (const a of approved as any[]) {
+    const id = String(a.lms_meeting_id || a._id);
+    if (!byId.has(id) && a.scheduled_start) byId.set(id, { id, mentor_email: String(a.mentor_email ?? "").toLowerCase(), mentor_name: a.mentor_name ?? "", at: a.scheduled_start, status: new Date(a.scheduled_start).getTime() > Date.now() ? "upcoming" : "held", outcome: "" });
+  }
+  return { meetings: [...byId.values()].sort((x, y) => String(y.at).localeCompare(String(x.at))), lms };
+}
+
+const day = (iso: string) => new Date(iso).toLocaleDateString("en-GB", { day: "numeric", month: "short", timeZone: "Asia/Dubai" });
+export async function eligibilityOf(studentId: string, email: string, mentorEmail: string, now = Date.now()) {
+  const { meetings, lms } = await studentMeetings(studentId, email);
+  const me = mentorEmail.trim().toLowerCase();
+  const conflict = meetings.filter((m) => m.mentor_email !== me && new Date(m.at).getTime() >= now - WEEK_MS)
+    .sort((a, b) => String(b.at).localeCompare(String(a.at)))[0] ?? null;
+  const last = meetings.find((m) => new Date(m.at).getTime() <= now) ?? null;
+  const allowedFrom = conflict ? new Date(new Date(conflict.at).getTime() + WEEK_MS).toISOString() : null;
+  return {
+    blocked: !!conflict, lms_checked: lms, allowed_from: allowedFrom,
+    conflict: conflict ? { mentor: conflict.mentor_name || conflict.mentor_email, at: conflict.at, status: conflict.status } : null,
+    last: last ? { mentor: last.mentor_name || last.mentor_email, at: last.at, days_ago: Math.floor((now - new Date(last.at).getTime()) / 864e5), outcome: last.outcome } : null,
+    upcoming: meetings.filter((m) => new Date(m.at).getTime() > now).map((m) => ({ mentor: m.mentor_name || m.mentor_email, at: m.at })),
+    message: conflict
+      ? `${conflict.mentor_name || "Another mentor"} ${conflict.status === "upcoming" ? "has a meeting booked" : "met the student"} on ${day(conflict.at)} — another mentor can ask from ${day(allowedFrom!)}.`
+      : "No other mentor's meeting with this student in the last 7 days.",
+  };
+}
+async function nextNumber(): Promise<string> {
+  const c: any = await col("counters").findOneAndUpdate({ _id: "meeting_request" as any }, { $inc: { seq: 1 } }, { upsert: true, returnDocument: "after" });
+  const seq = Number((c?.value ?? c)?.seq) || 1;
+  return `MR-${String(1000 + seq)}`;
 }
 
 /**
@@ -102,15 +163,23 @@ export async function createMeetingRequest(req: Request, user: AuthUser): Promis
   const csIds = csIdsOf(s);
   const where = csIds.length ? await locationOfUser(csIds[0]) : await locationOfUser(user.id);
   const now = nowIso();
+  const myEmail = String(me?.email ?? user.email ?? "");
+  const elig = await eligibilityOf(String(s._id), String(s.email ?? ""), myEmail);
   const doc: any = {
     student_id: String(s._id), student_name: s.full_name ?? "", student_code: s.student_code ?? "", student_email: s.email ?? "",
     cs_ids: csIds, cs_name: s.primary_mentor_name ?? "", location: where,
     mentor_id: user.id, mentor_name: me?.full_name ?? user.full_name ?? "", mentor_email: String(me?.email ?? user.email ?? ""),
     title: `Session with ${String(s.full_name ?? "").trim() || "a student"}`,
     category, course, duration_mins: duration, mode, in_person: inPerson, location_text: location, notes: reason,
-    status: "pending", requested_at: now, created_date: now, updated_date: now,
+    status: elig.blocked ? "blocked" : "pending", number: await nextNumber(), requested_at: now, created_date: now, updated_date: now,
+    ...(elig.blocked ? { blocked: { reason: elig.message, conflict: elig.conflict, allowed_from: elig.allowed_from, at: now }, decided_at: now } : {}),
   };
   const ins = await col("meeting_requests").insertOne(doc);
+  // Blocked by the 7-day rule: rejected at once — the mentor is told why; the CS isn't troubled.
+  if (elig.blocked) {
+    await notify([user.id], { type: "meeting_request", title: `Meeting request blocked — ${doc.student_name}`, body: elig.message, link: "/MeetingRequests", tag: `meeting-request-${ins.insertedId}` });
+    return json({ ok: true, blocked: true, message: elig.message, request: out({ ...doc, _id: ins.insertedId }) });
+  }
   const to = csIds.length ? csIds : await csManagersOf(where);
   await notify(to, {
     type: "meeting_request", title: `Meeting request — ${doc.student_name}`,
@@ -137,9 +206,67 @@ export async function listMeetingRequests(req: Request, user: AuthUser): Promise
     if (f === false) return json({ requests: [] });
     filter = f;
   }
-  const status = body?.status === "decided" ? { status: { $in: ["approved", "rejected", "cancelled"] } } : body?.status === "all" ? {} : { status: { $in: ["pending", "booking"] } };
-  const list = (await col("meeting_requests").find({ ...filter, ...status }).sort({ requested_at: -1 }).limit(300).toArray()) as any[];
-  return json({ requests: list.map(out) });
+  const status = body?.status === "decided" ? { status: { $in: ["approved", "rejected", "cancelled", "blocked"] } } : body?.status === "pending" ? { status: { $in: ["pending", "booking"] } } : {};
+  const list = (await col("meeting_requests").find({ ...filter, ...status }).sort({ requested_at: -1 }).limit(500).toArray()) as any[];
+  const views = await viewsOf(list);
+  const requests = list.map((r) => ({ ...out(r), view: views.get(String(r._id)) ?? r.status }));
+  const counts: Record<string, number> = { all: requests.length };
+  for (const q of requests) counts[q.view] = (counts[q.view] ?? 0) + 1;
+  return json({ requests, counts });
+}
+
+/**
+ * Where each request stands, for the inbox's tabs: needs_review, scheduled (approved, still to come), held, follow_up
+ * (held; the mentor's outcome says follow up), converted (an approved course payment after it — for a Course
+ * Upgradation, that course), blocked, rejected, cancelled.
+ */
+async function viewsOf(list: any[]): Promise<Map<string, string>> {
+  const views = new Map<string, string>();
+  const approved = list.filter((r) => r.status === "approved");
+  const outcomes = new Map<string, string>();
+  const emails = [...new Set(approved.map((r) => String(r.student_email ?? "").toLowerCase()).filter((e) => e.includes("@")))].slice(0, 200);
+  if (emails.length) {
+    try {
+      const d: any = await callLms("/meeting-outcomes/meetings", { query: { emails: emails.join(",") }, verb: "list the meetings" });
+      for (const m of d?.meetings ?? []) outcomes.set(String(m.id), m.outcome?.stage ?? "");
+    } catch { /* outcomes from the portal's own copy below */ }
+  }
+  if (approved.length) {
+    const ids = approved.map((r) => String(r.lms_meeting_id ?? "")).filter(Boolean);
+    for (const o of (await col("meeting_outcomes").find({ "meeting.id": { $in: ids } }, { projection: { meeting: 1, outcome: 1 } }).toArray()) as any[]) {
+      if (!outcomes.get(String(o.meeting?.id))) outcomes.set(String(o.meeting?.id), o.outcome?.stage ?? "");
+    }
+  }
+  const paid = approved.length ? ((await col("funding_transactions").find(
+    { type: "BONUS", status: "APPROVED", "course_payment.product": { $exists: true }, student_id: { $in: [...new Set(approved.map((r) => r.student_id))] } },
+    { projection: { student_id: 1, approved_at: 1, requested_at: 1, "course_payment.product": 1 } },
+  ).toArray()) as any[]) : [];
+  for (const r of list) {
+    if (r.status === "pending" || r.status === "booking") { views.set(String(r._id), "needs_review"); continue; }
+    if (r.status !== "approved") { views.set(String(r._id), r.status); continue; }
+    const at = String(r.scheduled_start ?? "");
+    const converted = paid.some((t) => String(t.student_id) === String(r.student_id) && String(t.approved_at ?? t.requested_at ?? "") > at
+      && (r.category !== "course_upgrade" || String(t.course_payment?.product ?? "").trim().toUpperCase() === String(r.course ?? "").trim().toUpperCase()));
+    const stage = outcomes.get(String(r.lms_meeting_id ?? "")) ?? "";
+    views.set(String(r._id), converted ? "converted" : new Date(at).getTime() > Date.now() ? "scheduled" : stage === "follow_up" ? "follow_up" : "held");
+  }
+  return views;
+}
+
+/**
+ * POST /api/functions/getMeetingRequestReview { id } → { request, eligibility, may_decide, may_override } — the
+ * request with the 7-day check worked out now. The mentor who asked, or whoever decides it.
+ */
+export async function getMeetingRequestReview(req: Request, user: AuthUser): Promise<Response> {
+  const body: any = await req.json().catch(() => ({}));
+  const oid = toObjectId(str(body?.id, 40));
+  const r: any = oid ? await col("meeting_requests").findOne({ _id: oid }) : null;
+  if (!r) return notFound("No such request");
+  const decides = await mayDecide(user, r);
+  if (!decides && r.mentor_id !== user.id) return forbidden();
+  const eligibility = await eligibilityOf(r.student_id, String(r.student_email ?? ""), String(r.mentor_email ?? ""));
+  const [view] = [...(await viewsOf([r])).values()];
+  return json({ request: { ...out(r), view }, eligibility, may_decide: decides, may_override: decides && isManager(user) });
 }
 
 /** POST /api/functions/getMeetingRequestsWaiting → { count, latest } — the sidebar, the banner and the popup. */
@@ -165,7 +292,12 @@ export async function decideMeetingRequest(req: Request, user: AuthUser): Promis
   const r: any = oid ? await col("meeting_requests").findOne({ _id: oid }) : null;
   if (!r) return notFound("No such request");
   if (!(await mayDecide(user, r))) return forbidden("This request is for the student's CS");
-  if (r.status !== "pending") return error(`This request is ${r.status} already`, 409);
+  // A blocked one: only a CS Manager or Super Admin, approving it anyway with a reason (an exception, kept).
+  const override = body?.override === true && isManager(user);
+  const overrideReason = str(body?.overrideReason, 500);
+  if (r.status === "blocked" && !(override && body?.action === "approve")) return error("Blocked by the 7-day rule — only a CS Manager can approve it anyway", 409);
+  if (!["pending", "blocked"].includes(r.status)) return error(`This request is ${r.status} already`, 409);
+  if (override && overrideReason.length < 3) return error("Say why it's approved anyway — it's kept", 400);
   const me: any = await col("users").findOne({ _id: toObjectId(user.id) as any }, { projection: { full_name: 1, email: 1 } });
   const by = { decided_by_id: user.id, decided_by_name: me?.full_name ?? user.full_name ?? "" };
 
@@ -187,9 +319,15 @@ export async function decideMeetingRequest(req: Request, user: AuthUser): Promis
   const inPerson = asked ? asked === "offline" : !!r.in_person;
   const place = inPerson ? (asked ? str(body?.location, 300) : String(r.location_text ?? "")) : "";
   if (inPerson && !place) return error("Say where, for an in-person meeting", 400);
+  // The 7-day rule again, now — another mentor may have met them since it was asked.
+  if (!override) {
+    const elig = await eligibilityOf(r.student_id, String(r.student_email ?? ""), String(r.mentor_email ?? ""));
+    if (elig.blocked) return error(`${elig.message}${isManager(user) ? " Approve it anyway, with the reason, if it must go ahead." : " A CS Manager can approve an exception."}`, 409);
+  }
 
   // Claimed first, so two people approving at once book it once.
-  const claim = await col("meeting_requests").updateOne({ _id: oid as any, status: "pending" }, { $set: { status: "booking", updated_date: nowIso() } });
+  const was = r.status;
+  const claim = await col("meeting_requests").updateOne({ _id: oid as any, status: was }, { $set: { status: "booking", updated_date: nowIso() } });
   if (!claim.modifiedCount) return error("Someone decided it just now", 409);
   try {
     const booked: any = await callLms("/mentor-meetings", {
@@ -203,12 +341,13 @@ export async function decideMeetingRequest(req: Request, user: AuthUser): Promis
       },
     });
     const meetingId = String(booked?.meeting?.id ?? "");
-    await col("meeting_requests").updateOne({ _id: oid as any }, { $set: { status: "approved", scheduled_start: start.toISOString(), lms_meeting_id: meetingId, in_person: inPerson, location_text: place, booked_mode: inPerson ? "offline" : "online", ...by, decided_at: nowIso(), updated_date: nowIso() } });
+    await col("meeting_requests").updateOne({ _id: oid as any }, { $set: { status: "approved", scheduled_start: start.toISOString(), lms_meeting_id: meetingId, in_person: inPerson, location_text: place, booked_mode: inPerson ? "offline" : "online", ...by, decided_at: nowIso(), updated_date: nowIso(),
+      ...(override ? { override_reason: overrideReason, override_by_id: user.id, override_by_name: by.decided_by_name, override_at: nowIso() } : {}) } });
     const when = start.toLocaleString("en-GB", { weekday: "short", day: "numeric", month: "short", hour: "numeric", minute: "2-digit", hour12: true, timeZone: "Asia/Dubai" });
     await notify([r.mentor_id], { type: "meeting_request", title: `Meeting approved — ${r.student_name}`, body: `${when} (Dubai), ${r.duration_mins} min, ${inPerson ? `in person — ${place}` : "online"} · set by ${by.decided_by_name}`, link: "/MentorCalendar?tab=meetings", tag: `meeting-request-${r._id}`, renotify: true });
     return json({ ok: true, meeting: booked?.meeting ?? null });
   } catch (err) {
-    await col("meeting_requests").updateOne({ _id: oid as any, status: "booking" }, { $set: { status: "pending", updated_date: nowIso() } });
+    await col("meeting_requests").updateOne({ _id: oid as any, status: "booking" }, { $set: { status: was, updated_date: nowIso() } });
     if (err instanceof LmsError) return error(err.message, err.status);
     throw err;
   }

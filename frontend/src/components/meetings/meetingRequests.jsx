@@ -9,7 +9,7 @@ import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Label } from '@/components/ui/label';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
-import { CalendarClock, CalendarPlus, Loader2, Search, X } from 'lucide-react';
+import { CalendarClock, CalendarPlus, ChevronRight, Loader2, Search, ShieldAlert, X } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { ringAlarm, showAlert } from '@/components/utils/browserAlerts';
 import { STAGE_LABEL } from '@/components/meetings/meetingStage';
@@ -37,6 +37,7 @@ export const STATUS = {
   approved: ['Approved', 'bg-emerald-50 text-emerald-700'],
   rejected: ['Rejected', 'bg-rose-50 text-rose-700'],
   cancelled: ['Taken back', 'bg-slate-100 text-slate-600'],
+  blocked: ['Blocked — 7-day rule', 'bg-rose-50 text-rose-700'],
 };
 const fn = async (name, body) => (await base44.functions.invoke(name, body)).data;
 const errorText = (e, fallback) => e?.response?.data?.error || e?.data?.error || e?.message || fallback;
@@ -141,8 +142,9 @@ export function RequestMeetingDialog({ open, onClose, student: initial = null, o
       studentId: student?.id, category: f.category, course: f.category === 'course_upgrade' ? f.course : '',
       durationMins: Number(f.durationMins), mode: f.mode, location: f.mode === 'offline' ? f.location.trim() : '', notes: f.notes.trim(),
     }),
-    onSuccess: () => {
-      toast.success(`Request sent — ${student?.cs_name ? `${student.cs_name} (the CS)` : 'the CS'} picks the time`);
+    onSuccess: (d) => {
+      if (d?.blocked) toast.error(`Blocked by the 7-day rule — ${d.message}`, { duration: 10000 });
+      else toast.success(`Request sent — ${student?.cs_name ? `${student.cs_name} (the CS)` : 'the CS'} picks the time`);
       qc.invalidateQueries({ queryKey: ['meeting-requests'] });
       onClose();
     },
@@ -262,71 +264,157 @@ function MentorDay({ email, date }) {
   );
 }
 
-/** The CS decides: a date and time, then Approve (booked in the LMS) — or Reject with a reason. */
-export function DecideMeetingDialog({ request: r, onClose }) {
+/** Where a request stands in the inbox (backend viewsOf) — its tab and badge. */
+export const VIEWS = [
+  ['needs_review', 'Needs review', 'bg-amber-50 text-amber-700'],
+  ['scheduled', 'Meeting scheduled', 'bg-sky-50 text-sky-700'],
+  ['held', 'Held', 'bg-slate-100 text-slate-700'],
+  ['follow_up', 'Follow-up', 'bg-violet-50 text-violet-700'],
+  ['converted', 'Converted', 'bg-emerald-50 text-emerald-700'],
+  ['blocked', 'Blocked', 'bg-rose-50 text-rose-700'],
+  ['rejected', 'Rejected', 'bg-rose-50 text-rose-700'],
+  ['cancelled', 'Taken back', 'bg-slate-100 text-slate-600'],
+];
+const VIEW = Object.fromEntries(VIEWS.map(([k, l, c]) => [k, [l, c]]));
+export function ViewBadge({ view }) {
+  const [label, cls] = VIEW[view] || [view, 'bg-slate-100 text-slate-600'];
+  return <span className={cn('whitespace-nowrap rounded-full px-2 py-0.5 text-[11px] font-semibold', cls)}>{label}</span>;
+}
+const Row = ({ label, children }) => (
+  <div className="flex items-start justify-between gap-3 py-1 text-sm"><span className="text-slate-500">{label}</span><span className="text-right font-medium text-slate-900">{children}</span></div>
+);
+
+/** The automatic 7-day check (backend eligibilityOf), worked out now. */
+function Eligibility({ e }) {
+  if (!e) return null;
+  return (
+    <div className={cn('rounded-lg border p-3', e.blocked ? 'border-rose-200 bg-rose-50/50' : 'border-emerald-200 bg-emerald-50/40')}>
+      <p className="mb-1 flex items-center gap-1.5 text-sm font-semibold text-slate-900"><ShieldAlert className={cn('h-4 w-4', e.blocked ? 'text-rose-600' : 'text-emerald-600')} />Automatic eligibility review</p>
+      <Row label="Last meeting">{e.last ? `${e.last.days_ago === 0 ? 'today' : `${e.last.days_ago} day${e.last.days_ago === 1 ? '' : 's'} ago`} · ${e.last.mentor}` : 'none'}</Row>
+      <Row label="7-day rule"><span className={cn('rounded-full px-2 py-0.5 text-[11px] font-semibold', e.blocked ? 'bg-rose-100 text-rose-700' : 'bg-emerald-100 text-emerald-700')}>{e.blocked ? 'Blocked' : 'OK'}</span></Row>
+      <Row label="Booked ahead">{e.upcoming?.length ? e.upcoming.map(u => `${when(u.at)} · ${u.mentor}`).join(', ') : 'No'}</Row>
+      <p className="mt-1 text-xs text-slate-600">{e.message}{e.lms_checked === false ? ' (The LMS could not be asked — meetings booked there may be missing.)' : ''}</p>
+    </div>
+  );
+}
+
+/**
+ * A request opened (the user, 2026-11-09): who, what, the mentor's reason and the 7-day check. Whoever decides it picks
+ * the date, time and online / in person and approves — or rejects; a blocked one only a CS Manager approves anyway,
+ * with a reason. The mentor who asked sees it read-only (and takes back one still waiting).
+ */
+export function DecideMeetingDialog({ request: initial, onClose }) {
   const qc = useQueryClient();
+  const id = initial?.id;
+  const rev = useQuery({ queryKey: ['meeting-request-review', id], queryFn: () => fn('getMeetingRequestReview', { id }), enabled: !!id, retry: false });
+  const r = rev.data?.request || initial;
+  const e = rev.data?.eligibility;
   const [date, setDate] = useState(todayDubai());
   const [time, setTime] = useState('11:00');
   const [rejecting, setRejecting] = useState(false);
   const [reason, setReason] = useState('');
-  // Online or in person — as the mentor asked, or for the CS to set when the mentor left it to them (2026-11-09).
   const [mode, setMode] = useState('');
   const [place, setPlace] = useState('');
-  useEffect(() => { if (r) { setDate(todayDubai()); setTime('11:00'); setRejecting(false); setReason(''); setMode(r.mode === 'cs' ? '' : r.in_person ? 'offline' : 'online'); setPlace(r.location || ''); } }, [r?.id]);
-  const done = () => { qc.invalidateQueries({ queryKey: ['meeting-requests'] }); qc.invalidateQueries({ queryKey: ['meeting-requests-waiting'] }); onClose(); };
+  const [why, setWhy] = useState('');
+  useEffect(() => { if (initial) { setDate(todayDubai()); setTime('11:00'); setRejecting(false); setReason(''); setWhy(''); setMode(initial.mode === 'cs' ? '' : initial.in_person ? 'offline' : 'online'); setPlace(initial.location || ''); } }, [id]);
+  const done = () => { qc.invalidateQueries({ queryKey: ['meeting-requests'] }); qc.invalidateQueries({ queryKey: ['meeting-requests-waiting'] }); qc.invalidateQueries({ queryKey: ['meeting-request-review', id] }); onClose(); };
   const decide = useMutation({
-    mutationFn: (body) => fn('decideMeetingRequest', { id: r.id, ...body }),
+    mutationFn: (body) => fn('decideMeetingRequest', { id, ...body }),
     onSuccess: (_d, body) => { toast.success(body.action === 'approve' ? `Booked — ${r.mentor.name} and ${r.student.name} are emailed` : 'Rejected — the mentor is told'); done(); },
-    onError: (e) => toast.error(errorText(e, "That didn't work")),
+    onError: (err) => { toast.error(errorText(err, "That didn't work")); qc.invalidateQueries({ queryKey: ['meeting-request-review', id] }); },
   });
-  if (!r) return null;
+  const takeBack = useMutation({
+    mutationFn: () => fn('cancelMeetingRequest', { id }),
+    onSuccess: () => { toast.success('Taken back'); done(); },
+    onError: (err) => toast.error(errorText(err, "Couldn't take it back")),
+  });
+  if (!initial) return null;
+  const open = ['pending', 'blocked'].includes(r.status);
+  const decides = !!rev.data?.may_decide && open;
+  const blocked = r.status === 'blocked' || !!e?.blocked;
+  const mayOverride = !!rev.data?.may_override;
+  const mine = !rev.data?.may_decide;
   return (
-    <Dialog open={!!r} onOpenChange={(v) => !v && onClose()}>
+    <Dialog open={!!initial} onOpenChange={(v) => !v && onClose()}>
       <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-lg">
         <DialogHeader>
-          <DialogTitle className="flex items-center gap-2 text-brand-navy"><CalendarClock className="h-5 w-5" />Meeting request — {r.student.name}</DialogTitle>
-          <DialogDescription>
-            {r.mentor.name} asks for a {categoryText(r.category, r.course) || 'meeting'}, {r.duration_mins} min, {modeText(r)}.
-          </DialogDescription>
+          <DialogTitle className="flex items-center justify-between gap-2 pr-6 text-brand-navy">
+            <span className="flex items-center gap-2"><CalendarClock className="h-5 w-5" />Request review</span>
+            <ViewBadge view={r.view || (r.status === 'pending' ? 'needs_review' : r.status)} />
+          </DialogTitle>
+          <DialogDescription>{r.number} · asked {when(r.requested_at)}</DialogDescription>
         </DialogHeader>
-        {r.notes && <div className="rounded-md bg-amber-50 px-3 py-2 text-sm text-amber-900"><span className="block text-[11px] font-semibold uppercase tracking-wide text-amber-700">Reason</span><span className="whitespace-pre-wrap">{r.notes}</span></div>}
+        <div className="rounded-lg border border-slate-200 bg-slate-50/60 px-3 py-2">
+          <Row label="Student">{r.student.name}{r.student.code ? ` · ${r.student.code}` : ''}</Row>
+          <Row label="Requesting mentor">{r.mentor.name}</Row>
+          <Row label="Assigned CS">{r.student.cs_name || '—'}</Row>
+          <Row label="For">{categoryText(r.category, r.course) || '—'}</Row>
+          <Row label="Length · where">{r.duration_mins} min · {modeText(r)}</Row>
+          {r.notes && <div className="mt-1 border-t border-slate-200 pt-2"><p className="text-xs text-slate-500">Mentor's reason</p><p className="whitespace-pre-wrap text-sm text-slate-900">{r.notes}</p></div>}
+        </div>
+        {rev.isLoading ? <p className="text-xs text-slate-400">Checking the 7-day rule…</p> : <Eligibility e={e} />}
+        {r.status === 'blocked' && r.blocked?.reason && <p className="rounded-md bg-rose-50 px-3 py-2 text-sm text-rose-800">Blocked when asked: {r.blocked.reason}</p>}
+        {r.status === 'approved' && <p className="rounded-md bg-emerald-50 px-3 py-2 text-sm text-emerald-800">Booked for {when(r.scheduled_start)}{r.decided_by_name ? ` by ${r.decided_by_name}` : ''}.{r.override_reason ? ` Approved anyway by ${r.override_by_name}: ${r.override_reason}` : ''}</p>}
+        {r.status === 'rejected' && <p className="rounded-md bg-rose-50 px-3 py-2 text-sm text-rose-800">Rejected{r.decided_by_name ? ` by ${r.decided_by_name}` : ''}: {r.reason}</p>}
         <StudentMeetingHistory studentId={r.student.id} />
-        {rejecting ? (
+
+        {decides && (rejecting ? (
           <div className="space-y-1.5">
             <Label htmlFor="rq-reason">Why — the mentor sees it *</Label>
-            <Input id="rq-reason" value={reason} onChange={(e) => setReason(e.target.value)} placeholder="e.g. the student isn't ready yet" autoFocus />
+            <Input id="rq-reason" value={reason} onChange={(ev) => setReason(ev.target.value)} placeholder="e.g. the student isn't ready yet" autoFocus />
+          </div>
+        ) : blocked && !mayOverride ? (
+          <div className="rounded-lg border border-slate-200 p-3 text-sm">
+            <p className="font-semibold text-slate-900">Restricted action</p>
+            <p className="mt-1 text-slate-600">Another mentor met this student in the last 7 days or has a meeting booked with them, so it can't be approved here. A CS Manager can approve an exception, with the reason kept.</p>
           </div>
         ) : (
           <>
             <div className="grid grid-cols-2 gap-3">
-              <div className="space-y-1.5"><Label htmlFor="rq-date">Date *</Label><Input id="rq-date" type="date" min={todayDubai()} value={date} onChange={(e) => setDate(e.target.value)} /></div>
-              <div className="space-y-1.5"><Label htmlFor="rq-time">Time (Dubai) *</Label><Input id="rq-time" type="time" step={900} value={time} onChange={(e) => setTime(e.target.value)} /></div>
+              <div className="space-y-1.5"><Label htmlFor="rq-date">Date *</Label><Input id="rq-date" type="date" min={todayDubai()} value={date} onChange={(ev) => setDate(ev.target.value)} /></div>
+              <div className="space-y-1.5"><Label htmlFor="rq-time">Time (Dubai) *</Label><Input id="rq-time" type="time" step={900} value={time} onChange={(ev) => setTime(ev.target.value)} /></div>
             </div>
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-1.5">
                 <Label htmlFor="rq-dmode">Online or in person *</Label>
-                <select id="rq-dmode" value={mode} onChange={(e) => setMode(e.target.value)} className={selectCls}>
+                <select id="rq-dmode" value={mode} onChange={(ev) => setMode(ev.target.value)} className={selectCls}>
                   {!mode && <option value="">Confirm with the student…</option>}
                   <option value="online">Online — Google Meet</option>
                   <option value="offline">Offline — in person</option>
                 </select>
               </div>
-              {mode === 'offline' && <div className="space-y-1.5"><Label htmlFor="rq-place">Where *</Label><Input id="rq-place" value={place} onChange={(e) => setPlace(e.target.value)} placeholder="e.g. Dubai office" /></div>}
+              {mode === 'offline' && <div className="space-y-1.5"><Label htmlFor="rq-place">Where *</Label><Input id="rq-place" value={place} onChange={(ev) => setPlace(ev.target.value)} placeholder="e.g. Dubai office" /></div>}
             </div>
             {r.mode === 'cs' && <p className="text-xs text-amber-700">The mentor left this to you — confirm online or in person with the student.</p>}
+            {blocked && (
+              <div className="space-y-1.5">
+                <Label htmlFor="rq-why">Why approve it anyway — kept with it *</Label>
+                <Textarea id="rq-why" rows={2} value={why} onChange={(ev) => setWhy(ev.target.value)} placeholder="The exception to the 7-day rule" />
+              </div>
+            )}
             {date && <MentorDay email={r.mentor.email} date={date} />}
           </>
-        )}
+        ))}
         <DialogFooter className="gap-2 sm:gap-0">
-          {rejecting ? (
+          {decides ? (rejecting ? (
             <>
               <Button variant="outline" onClick={() => setRejecting(false)}>Back</Button>
               <Button variant="destructive" disabled={!reason.trim() || decide.isPending} onClick={() => decide.mutate({ action: 'reject', reason: reason.trim() })}>{decide.isPending && <Loader2 className="h-4 w-4 animate-spin" />} Reject</Button>
             </>
           ) : (
             <>
-              <Button variant="outline" className="text-rose-700" onClick={() => setRejecting(true)}>Reject…</Button>
-              <Button disabled={!date || !time || !mode || (mode === 'offline' && place.trim().length < 2) || decide.isPending} onClick={() => decide.mutate({ action: 'approve', scheduledStart: dubaiIso(date, time), mode, location: mode === 'offline' ? place.trim() : '' })}>{decide.isPending && <Loader2 className="h-4 w-4 animate-spin" />} Approve &amp; book</Button>
+              {r.status === 'pending' && <Button variant="outline" className="text-rose-700" onClick={() => setRejecting(true)}>Reject…</Button>}
+              {(!blocked || mayOverride) && (
+                <Button disabled={!date || !time || !mode || (mode === 'offline' && place.trim().length < 2) || (blocked && why.trim().length < 3) || decide.isPending}
+                  onClick={() => decide.mutate({ action: 'approve', scheduledStart: dubaiIso(date, time), mode, location: mode === 'offline' ? place.trim() : '', ...(blocked ? { override: true, overrideReason: why.trim() } : {}) })}>
+                  {decide.isPending && <Loader2 className="h-4 w-4 animate-spin" />} {blocked ? 'Approve anyway & book' : 'Approve & book'}
+                </Button>
+              )}
+            </>
+          )) : (
+            <>
+              {mine && r.status === 'pending' && <Button variant="outline" className="text-rose-700" disabled={takeBack.isPending} onClick={() => takeBack.mutate()}>Take back</Button>}
+              <Button variant="outline" onClick={onClose}>Close</Button>
             </>
           )}
         </DialogFooter>
@@ -421,50 +509,66 @@ export function MeetingRequestPopup({ currentUser }) {
   );
 }
 
-/** A mentor's own requests — waiting, approved (with the time), rejected (with why); one still waiting can be taken back. */
-export function MyMeetingRequests({ onNew }) {
-  const qc = useQueryClient();
-  const q = useQuery({
-    queryKey: ['meeting-requests', 'mine'],
-    queryFn: () => fn('listMeetingRequests', { box: 'mine', status: 'all' }),
+/**
+ * The meeting request inbox (the user, 2026-11-09): search, a tab for where each stands with its count, and a card
+ * per request; a card opens its review. box "mine": a mentor's own; "to_decide": the ones this person decides.
+ */
+export function MeetingRequestInbox({ box, onNew }) {
+  const [q, setQ] = useState('');
+  const [tab, setTab] = useState(box === 'to_decide' ? 'needs_review' : 'all');
+  const [opened, setOpened] = useState(null);
+  const res = useQuery({
+    queryKey: ['meeting-requests', box, 'all'],
+    queryFn: () => fn('listMeetingRequests', { box, status: 'all' }),
     refetchInterval: 60_000,
   });
-  const cancel = useMutation({
-    mutationFn: (id) => fn('cancelMeetingRequest', { id }),
-    onSuccess: () => { toast.success('Taken back'); qc.invalidateQueries({ queryKey: ['meeting-requests'] }); },
-    onError: (e) => toast.error(errorText(e, "Couldn't take it back")),
-  });
-  const list = q.data?.requests || [];
+  const all = res.data?.requests || [];
+  const counts = res.data?.counts || {};
+  const needle = q.trim().toLowerCase();
+  const list = all.filter(r => (tab === 'all' || r.view === tab)
+    && (!needle || [r.student.name, r.student.code, r.number, r.mentor.name, r.student.cs_name, categoryText(r.category, r.course)].some(v => String(v || '').toLowerCase().includes(needle))));
   return (
     <div className="space-y-3">
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <p className="text-sm text-slate-600">Meetings you asked for — the student's CS picks the time and approves them.</p>
+      <div className="flex flex-wrap items-center gap-2">
+        <div className="relative min-w-[220px] flex-1">
+          <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+          <Input value={q} onChange={(ev) => setQ(ev.target.value)} placeholder="Search student, request or mentor" className="h-9 rounded-full pl-9" />
+        </div>
         {onNew && <Button size="sm" className="gap-1.5" onClick={onNew}><CalendarPlus className="h-4 w-4" />Request a meeting</Button>}
       </div>
-      {q.isLoading ? <p className="text-sm text-slate-400">Loading…</p>
-        : q.isError ? <p className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">{/unknown function|not found|404/i.test(String(q.error?.message)) ? 'This needs the server update (the API deploy).' : q.error?.message}</p>
-          : !list.length ? <p className="rounded-xl border border-slate-200 bg-white px-4 py-8 text-center text-sm text-slate-500">No requests yet.</p>
+      <div className="flex flex-wrap gap-2">
+        {[['all', 'All'], ...VIEWS.map(([k, l]) => [k, l === 'Meeting scheduled' ? 'Scheduled' : l])].map(([k, l]) => (
+          <button key={k} type="button" onClick={() => setTab(k)}
+            className={cn('rounded-full border px-3 py-1 text-sm font-medium', tab === k ? 'border-brand-navy bg-brand-navy text-white' : 'border-slate-200 bg-white text-slate-700 hover:bg-slate-50')}>
+            {l}{counts[k] ? <span className={cn('ml-1.5 text-xs', tab === k ? 'text-white/80' : 'text-slate-400')}>{counts[k]}</span> : null}
+          </button>
+        ))}
+      </div>
+      {res.isLoading ? <p className="text-sm text-slate-400">Loading…</p>
+        : res.isError ? <p className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">{/unknown function|not found|404/i.test(String(res.error?.message)) ? 'This needs the server update (the API deploy).' : res.error?.message}</p>
+          : !list.length ? <p className="rounded-xl border border-slate-200 bg-white px-4 py-8 text-center text-sm text-slate-500">{all.length ? 'Nothing here.' : 'No meeting requests yet.'}</p>
             : (
-              <ul className="divide-y divide-slate-100 rounded-xl border border-slate-200 bg-white">
+              <div className="grid gap-3 md:grid-cols-2">
                 {list.map(r => (
-                  <li key={r.id} className="flex flex-wrap items-center justify-between gap-2 px-4 py-3 text-sm">
-                    <div className="min-w-0">
-                      <p className="font-medium text-brand-navy">{r.student.name} <span className="ml-1 text-xs font-normal text-slate-500">{categoryText(r.category, r.course)} · {r.duration_mins} min · {modeText(r, false)}</span></p>
-                      <p className="text-xs text-slate-500">
-                        Asked {when(r.requested_at)}
-                        {r.status === 'approved' && <> · <span className="font-medium text-emerald-700">booked for {when(r.scheduled_start)}</span></>}
-                        {r.status === 'rejected' && <> · <span className="text-rose-700">{r.reason}</span></>}
-                        {r.decided_by_name && ` · by ${r.decided_by_name}`}
-                      </p>
+                  <button key={r.id} type="button" onClick={() => setOpened(r)}
+                    className="flex items-center justify-between gap-3 rounded-xl border border-slate-200 bg-white px-4 py-3 text-left transition-colors hover:border-brand-navy/40">
+                    <div className="min-w-0 space-y-0.5">
+                      <div className="flex flex-wrap items-center gap-2"><span className="font-semibold text-brand-navy">{r.student.name}</span><ViewBadge view={r.view} /></div>
+                      <p className="text-xs text-slate-500">{[r.number, r.student.code].filter(Boolean).join(' · ')}</p>
+                      <p className="text-sm text-slate-800">{r.mentor.name}{box === 'mine' && r.student.cs_name ? <span className="text-slate-500"> · CS {r.student.cs_name}</span> : null}</p>
+                      <p className="text-xs text-slate-500">{categoryText(r.category, r.course)} · {r.duration_mins} min · {modeText(r, false)}{r.scheduled_start ? ` · ${when(r.scheduled_start)}` : ''}</p>
                     </div>
-                    <div className="flex items-center gap-2">
-                      <StatusBadge status={r.status} />
-                      {r.status === 'pending' && <Button size="sm" variant="ghost" className="h-7 text-xs" disabled={cancel.isPending} onClick={() => cancel.mutate(r.id)}>Take back</Button>}
-                    </div>
-                  </li>
+                    <ChevronRight className="h-4 w-4 shrink-0 text-slate-400" />
+                  </button>
                 ))}
-              </ul>
+              </div>
             )}
+      <DecideMeetingDialog request={opened} onClose={() => setOpened(null)} />
     </div>
   );
+}
+
+/** A mentor's own requests — the inbox (kept by this name for the Mentor Calendar's tab). */
+export function MyMeetingRequests({ onNew }) {
+  return <MeetingRequestInbox box="mine" onNew={onNew} />;
 }

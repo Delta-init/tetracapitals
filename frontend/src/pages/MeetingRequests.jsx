@@ -2,102 +2,36 @@ import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { base44 } from '@/api/base44Client';
 import { PageTitle } from '@/components/common/PageHeader';
-import { Button } from '@/components/ui/button';
-import { CalendarClock, Loader2 } from 'lucide-react';
-import { cn } from '@/lib/utils';
-import { useUrlState } from '@/components/utils/urlState';
-import { ASKS_FOR_MEETINGS, modeText, DecideMeetingDialog, MyMeetingRequests, RequestMeetingDialog, StatusBadge, categoryText, when } from '@/components/meetings/meetingRequests';
+import { CalendarClock } from 'lucide-react';
+import { ASKS_FOR_MEETINGS, MeetingRequestInbox, RequestMeetingDialog } from '@/components/meetings/meetingRequests';
 import { getEffectiveUser } from '@/components/utils/ImpersonationContext';
 
 /* ────────────────────────────────────────────────────────────────────────────
-   Meeting Requests (the user, 2026-11-09): a mentor who asks sees their own
-   requests here. Everyone else: the meetings mentors ask for with
-   this person's students — a CS their own, a CS Manager their location's, a
-   Super Admin all. Waiting: pick the date and time and approve (it's booked in
-   the LMS then), or reject with a reason. Decided: what became of them.
+   Meeting Requests (the user, 2026-11-09): the request inbox — search, a tab
+   for where each stands (Needs review, Scheduled, Held, Follow-up, Converted,
+   Blocked by the 7-day rule, Rejected, Taken back) and a card per request that
+   opens its review. A mentor who asks sees their own; a CS their students',
+   a CS Manager their location's, a Super Admin all — and decides them there.
 ──────────────────────────────────────────────────────────────────────────── */
 
 export default function MeetingRequests() {
-  // A mentor who asks (2026-11-09): their own requests and where each stands.
   const { data: me } = useQuery({ queryKey: ['me', 'effective'], queryFn: async () => getEffectiveUser(await base44.auth.me()), staleTime: 5 * 60_000 });
   const [asking, setAsking] = useState(false);
-  if (me && ASKS_FOR_MEETINGS.includes(me.app_role)) {
-    return (
-      <div className="min-h-screen p-6">
-        <div className="mx-auto max-w-5xl space-y-6">
-          <div>
-            <PageTitle eyebrow="Students" icon={CalendarClock}>Meeting Requests</PageTitle>
-            <p className="mt-2 max-w-3xl text-sm text-slate-500">Every meeting you asked for, and where it stands. The student's CS picks the date and time and approves it — you're told then.</p>
-          </div>
-          <MyMeetingRequests onNew={() => setAsking(true)} />
-        </div>
-        <RequestMeetingDialog open={asking} onClose={() => setAsking(false)} />
-      </div>
-    );
-  }
-  return <DecideRequests />;
-}
-
-function DecideRequests() {
-  const [tab, setTab] = useUrlState('tab', 'waiting');
-  const [deciding, setDeciding] = useState(null);
-  const q = useQuery({
-    queryKey: ['meeting-requests', 'to_decide', tab],
-    queryFn: async () => (await base44.functions.invoke('listMeetingRequests', { box: 'to_decide', status: tab === 'decided' ? 'decided' : 'pending' })).data,
-    refetchInterval: 60_000,
-  });
-  const list = q.data?.requests || [];
+  const asks = me && ASKS_FOR_MEETINGS.includes(me.app_role);
   return (
     <div className="min-h-screen p-6">
       <div className="mx-auto max-w-6xl space-y-6">
         <div>
           <PageTitle eyebrow="Students" icon={CalendarClock}>Meeting Requests</PageTitle>
-          <p className="mt-2 max-w-3xl text-sm text-slate-500">Mentors ask to meet your students. You pick the date and time — it's booked in the LMS only when you approve, and the mentor and student get the invitation then.</p>
+          <p className="mt-2 max-w-3xl text-sm text-slate-500">
+            {asks
+              ? "Every meeting you asked for and where it stands. The student's CS picks the date and time and approves it. Another mentor's meeting with the student in the last 7 days blocks a new request."
+              : "Mentors ask to meet your students. Open one to see the 7-day check, then pick the date, time and online or in person — it's booked in the LMS when you approve."}
+          </p>
         </div>
-        <div className="flex rounded-md border bg-white p-0.5 text-sm w-fit" role="tablist">
-          {[['waiting', 'Waiting'], ['decided', 'Decided']].map(([v, l]) => (
-            <button key={v} type="button" role="tab" aria-selected={tab === v} onClick={() => setTab(v)}
-              className={cn('rounded px-3 py-1.5 font-medium', tab === v ? 'bg-brand-navy text-white' : 'text-slate-600 hover:bg-slate-50')}>{l}</button>
-          ))}
-        </div>
-        {q.isLoading ? <p className="flex items-center gap-2 text-sm text-slate-400"><Loader2 className="h-4 w-4 animate-spin" />Loading…</p>
-          : q.isError ? <p className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">{/unknown function|not found|404/i.test(String(q.error?.message)) ? 'This page needs the server update (the API deploy).' : q.error?.message}</p>
-            : !list.length ? <p className="rounded-xl border border-slate-200 bg-white px-4 py-10 text-center text-sm text-slate-500">{tab === 'waiting' ? 'No meeting requests waiting.' : 'Nothing decided yet.'}</p>
-              : (
-                <div className="overflow-x-auto rounded-2xl border border-slate-200/70 bg-white shadow-soft">
-                  <table className="w-full text-sm">
-                    <thead className="bg-slate-50 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">
-                      <tr>{['Asked', 'Student', 'Mentor', 'For', 'Length · where', 'Reason', tab === 'waiting' ? '' : 'Decision'].map(h => <th key={h} className="whitespace-nowrap px-4 py-2.5">{h}</th>)}</tr>
-                    </thead>
-                    <tbody className="divide-y divide-slate-100">
-                      {list.map(r => (
-                        <tr key={r.id} className="align-top">
-                          <td className="whitespace-nowrap px-4 py-3 text-slate-600">{when(r.requested_at)}</td>
-                          <td className="px-4 py-3"><div className="font-medium text-brand-navy">{r.student.name}</div><div className="text-xs text-slate-400">{[r.student.code, r.student.cs_name && `CS ${r.student.cs_name}`].filter(Boolean).join(' · ')}</div></td>
-                          <td className="px-4 py-3 text-slate-700">{r.mentor.name}</td>
-                          <td className="px-4 py-3"><span className="rounded bg-violet-50 px-1.5 py-0.5 text-xs text-violet-700">{categoryText(r.category, r.course)}</span></td>
-                          <td className="px-4 py-3 text-slate-600">{r.duration_mins} min · {modeText(r)}</td>
-                          <td className="max-w-[260px] whitespace-pre-wrap px-4 py-3 text-slate-600">{r.notes || '—'}</td>
-                          <td className="whitespace-nowrap px-4 py-3">
-                            {tab === 'waiting'
-                              ? <Button size="sm" onClick={() => setDeciding(r)}>Pick time &amp; decide</Button>
-                              : (
-                                <div className="space-y-0.5">
-                                  <StatusBadge status={r.status} />
-                                  {r.status === 'approved' && <div className="text-xs text-slate-600">{when(r.scheduled_start)}</div>}
-                                  {r.reason && <div className="max-w-[200px] whitespace-normal text-xs text-slate-500">{r.reason}</div>}
-                                  {r.decided_by_name && <div className="text-xs text-slate-400">by {r.decided_by_name}</div>}
-                                </div>
-                              )}
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              )}
+        {me && <MeetingRequestInbox box={asks ? 'mine' : 'to_decide'} onNew={asks ? () => setAsking(true) : null} />}
       </div>
-      <DecideMeetingDialog request={deciding} onClose={() => setDeciding(null)} />
+      <RequestMeetingDialog open={asking} onClose={() => setAsking(false)} />
     </div>
   );
 }
