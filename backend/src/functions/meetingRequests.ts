@@ -246,6 +246,8 @@ async function viewsOf(list: any[]): Promise<Map<string, string>> {
     if (r.escalated && ["pending", "booking", "blocked"].includes(r.status)) { views.set(String(r._id), "escalated"); continue; }
     if (r.status === "pending" || r.status === "booking") { views.set(String(r._id), "needs_review"); continue; }
     if (r.status !== "approved") { views.set(String(r._id), r.status); continue; }
+    // Its meeting cancelled by the CS when it came (meetingStatus.ts).
+    if (r.meeting_cancelled) { views.set(String(r._id), "meeting_cancelled"); continue; }
     const at = String(r.scheduled_start ?? "");
     const converted = paid.some((t) => String(t.student_id) === String(r.student_id) && String(t.approved_at ?? t.requested_at ?? "") > at
       && (r.category !== "course_upgrade" || String(t.course_payment?.product ?? "").trim().toUpperCase() === String(r.course ?? "").trim().toUpperCase()));

@@ -17,6 +17,7 @@ import { MeetingStatusBadge, MEETING_STATUS, CATEGORY, when } from './meetingsUi
    and the export in the columns chosen. The rows: backend getMeetingsDone.
 ──────────────────────────────────────────────────────────────────────────── */
 
+const CS_STATUS = { asked: 'Waiting for CS', asked_again: 'Waiting for CS', ongoing: 'Ongoing', completed: 'Completed', cancelled: 'Cancelled', cancelling: 'Cancelling…' };
 const money = (n, cur) => `${cur || ''} ${Number(n || 0).toLocaleString('en-US', { maximumFractionDigits: 2 })}`.trim();
 const o = (r) => r.outcome || {};
 const p = (r) => r.outcome?.profile || null;
@@ -40,6 +41,10 @@ export const COLUMNS = [
   { key: 'cs', label: 'CS', on: true, get: r => r.student?.cs || '', filter: 'select' },
   { key: 'team', label: 'Team', on: true, get: r => r.student?.team || '', filter: 'select' },
   { key: 'status', label: 'Status', on: true, get: r => MEETING_STATUS[r.status]?.label ?? r.status ?? '', filter: 'select', show: r => <MeetingStatusBadge status={r.status} /> },
+  // What the CS said became of it, 10 minutes in (2026-11-09).
+  { key: 'cs_status', label: 'Meeting status (CS)', on: true, get: r => CS_STATUS[r.cs_status?.status] ?? (r.cs_status?.status || ''), filter: 'select' },
+  { key: 'cancel_reason', label: 'Cancel reason', get: r => r.cs_status?.reason || r.cancel_reason || '', filter: 'text' },
+  { key: 'rescheduled_to', label: 'Rescheduled to', get: r => (r.cs_status?.rescheduled_to ? when(r.cs_status.rescheduled_to) : ''), filter: 'select' },
   { key: 'mode', label: 'Online / in person', get: r => (r.in_person ? `In person${r.location ? ` — ${r.location}` : ''}` : r.duration_mins ? 'Online' : ''), filter: 'select' },
   { key: 'length', label: 'Length', get: r => (r.duration_mins ? `${r.duration_mins} min` : ''), filter: 'select' },
   { key: 'booked_by', label: 'Booked by', get: r => r.booked_by || '', filter: 'select' },

@@ -82,6 +82,7 @@ import {
   sendWhatsApp, sendWhatsAppFile, linkWhatsAppChat, getStudentWhatsApp, getWhatsAppUnread,
 } from "./whatsapp";
 import { listPrograms, searchProgramStudents, createProgram, changeProgramStudents, rescheduleProgram, stopProgram, resendProgramNotice, setProgramResponse, getProgramAudiences, addProgramGuestToLms } from "./programs";
+import { getMeetingStatusChecks, answerMeetingStatus } from "./meetingStatus";
 import { createMeetingRequest, listMeetingRequests, getMeetingRequestReview, getMeetingRequestsWaiting, decideMeetingRequest, escalateMeetingRequest, cancelMeetingRequest, searchMeetingStudents, getStudentMeetingHistory } from "./meetingRequests";
 import { getMentorSchedule, getMentorClass, bookMentorMeeting, getMentorMeeting, updateMentorMeeting, cancelMentorMeeting, markMentorTimeOff, removeMentorTimeOff } from "./mentorCalendar";
 import { getInactivityTransfer, setInactivityTransfer, runInactivityTransfer } from "./inactivityTransfer";
@@ -125,6 +126,8 @@ const AUTHED: Record<string, AuthedHandler> = {
   getMentorClass,
   bookMentorMeeting,
   createMeetingRequest,
+  getMeetingStatusChecks,
+  answerMeetingStatus,
   listMeetingRequests,
   getMeetingRequestsWaiting,
   getMeetingRequestReview,

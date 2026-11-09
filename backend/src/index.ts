@@ -19,6 +19,7 @@ import { startMeetingOutcomeWorker } from "./students/meetingOutcomes";
 import { startGuestReminderWorker } from "./students/programNotices";
 import { startRemindersWorker } from "./students/reminderWorker";
 import { startMeetingRequestWorker } from "./functions/meetingRequests";
+import { startMeetingStatusWorker } from "./functions/meetingStatus";
 import { startLiveNotJoinedPushWorker } from "./students/liveNotJoinedPush";
 import { callLms } from "./lib/lms";
 import { ensureSalesRole } from "./students/closedBy";
@@ -78,6 +79,8 @@ async function main() {
   startRemindersWorker();
   // A meeting request waiting 4 hours: its CS and the CS Managers reminded once (MEETING_REQUEST_REMINDERS=off).
   startMeetingRequestWorker();
+  // 10 minutes after a student meeting starts, its CS says what became of it (MEETING_STATUS_CHECKS=off).
+  startMeetingStatusWorker();
   // Booked a live LMS class and not joined 5 minutes in: a push to whoever sees them on Not joined yet, every minute (LIVE_NOT_JOINED_PUSH=off).
   startLiveNotJoinedPushWorker();
 }

@@ -100,6 +100,8 @@ export interface MeetingRow {
   id: string; meeting_id: string; starts_at: string; ends_at: string; title: string; category: string; status: LmsMeeting["status"];
   /** Length, online or in person and where (2026-11-09 — Meetings done's columns). */
   duration_mins: number; in_person: boolean; location: string;
+  /** What the CS said became of it (functions/meetingStatus.ts, 2026-11-09) — null until asked. */
+  cs_status: { status: string; reason: string; rescheduled_to: string | null; by: string } | null; cancel_reason: string;
   mentor: { name: string; email: string }; booked_by: string; attendee: string;
   student: { id: string; name: string; code: string; cs: string; cs_id: string; team: string; team_id: string } | null;
   stage: string; summary: string; outcome: any; reminder: { date: string; created: boolean } | null;
@@ -132,6 +134,8 @@ export async function meetingRows(user: AuthUser, from: string, to: string): Pro
   const byEmail = new Map<string, any>();
   for (const s of students) for (const e of addressesIn(s.email)) if (!byEmail.has(e)) byEmail.set(e, s);
   const reminders = await remindersOf(meetings.filter((m) => m.status === "done").map((m) => m.id));
+  const checks = new Map(((await col("meeting_status_checks").find({ _id: { $in: meetings.map((m) => m.id) } } as any, { projection: { status: 1, reason: 1, rescheduled_to: 1, answered_by_name: 1 } }).toArray()) as any[])
+    .map((d) => [String(d._id), { status: d.status, reason: d.reason ?? "", rescheduled_to: d.rescheduled_to ?? null, by: d.answered_by_name ?? "" }]));
   const me = emailOf(user.email);
   const rows: MeetingRow[] = [];
   for (const m of meetings) {
@@ -140,6 +144,7 @@ export async function meetingRows(user: AuthUser, from: string, to: string): Pro
     const base = {
       meeting_id: m.id, starts_at: m.startsAt, ends_at: m.endsAt, title: m.title, category: m.category, status: m.status,
       duration_mins: Number((m as any).durationMins) || 0, in_person: (m as any).inPerson === true, location: String((m as any).location ?? ""),
+      cs_status: checks.get(m.id) ?? null, cancel_reason: String((m as any).cancelReason ?? ""),
       mentor: m.mentor, booked_by: m.bookedByEmail, stage: m.outcome?.stage ?? "", summary: m.outcome ? outcomeSummary(m.outcome) : "", outcome: m.outcome,
     };
     if (!theirs.length) {

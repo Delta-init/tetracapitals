@@ -275,6 +275,7 @@ export const VIEWS = [
   ['blocked', 'Blocked', 'bg-rose-50 text-rose-700'],
   ['rejected', 'Rejected', 'bg-rose-50 text-rose-700'],
   ['cancelled', 'Taken back', 'bg-slate-100 text-slate-600'],
+  ['meeting_cancelled', 'Meeting cancelled', 'bg-rose-50 text-rose-700'],
 ];
 const VIEW = Object.fromEntries(VIEWS.map(([k, l, c]) => [k, [l, c]]));
 export function ViewBadge({ view }) {

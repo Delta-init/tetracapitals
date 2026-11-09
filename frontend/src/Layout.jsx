@@ -17,6 +17,7 @@ import { NAV_ITEMS, NAV_GROUPS, NESTED_GROUPS, GROUP_OF, ROLE_HOME, ROLE_ONLY_PA
 import { readsClosedOnly } from '@/components/utils/roles';
 import { CallFlowProvider } from '@/components/followups/CallFlow';
 import MeetingOutcomeGate from '@/components/meetings/MeetingOutcomeGate';
+import MeetingStatusGate from '@/components/meetings/MeetingStatusGate';
 import { TodaySchedulePopup } from '@/components/dashboard/TodaySchedule';
 import { LiveNotJoinedPopup, useLiveNotJoined } from '@/components/live/LiveNotJoined';
 import { MeetingRequestPopup, useMeetingRequestsWaiting } from '@/components/meetings/meetingRequests';
@@ -638,6 +639,8 @@ export default function Layout({ children, currentPageName }) {
             </CallFlowProvider>
             {/* How a student meeting went — the mentor's form, open until it is filled */}
             {currentUser?.id && <MeetingOutcomeGate />}
+            {/* 10 minutes into a student meeting, its CS says what became of it (2026-11-09) */}
+            {currentUser?.id && <MeetingStatusGate />}
             {/* Mentors and Chiefs: today's LMS classes and meetings, the first time the portal is opened each day (2026-10-28) */}
             {currentUser?.id && <TodaySchedulePopup currentUser={currentUser} />}
             {currentUser?.id && <LiveNotJoinedPopup currentUser={currentUser} />}
