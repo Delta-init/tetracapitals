@@ -7,6 +7,9 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { STAGE_LABEL } from '@/components/meetings/meetingStage';
 import { fn, thisMonth } from '@/components/meetings/meetingsUi';
+import PaymentVerificationTab from '@/components/meetings/PaymentVerificationTab';
+import { useUrlState } from '@/components/utils/urlState';
+import { cn } from '@/lib/utils';
 import { ColumnPicker, FilterPanel, MeetingsDoneTable, applyFilters, exportMeetings, useColumns } from '@/components/meetings/MeetingsDoneTable';
 
 /**
@@ -20,6 +23,8 @@ const STATUSES = [['held', 'Held (done + waiting)'], ['done', 'Done'], ['waiting
 
 export default function MeetingsDone() {
   const [days, setDays] = useState(thisMonth);
+  // Meetings, or Payment verification (2026-11-09) — ?view=verification.
+  const [view, setView] = useUrlState('view', 'meetings');
   const [status, setStatus] = useState('held');
   const [stage, setStage] = useState('all');
   const [mentor, setMentor] = useState('all');
@@ -45,6 +50,21 @@ export default function MeetingsDone() {
       <div className="mx-auto max-w-[1600px] space-y-4">
         <PageTitle eyebrow="Students">Meetings done</PageTitle>
         <p className="text-sm text-slate-500">Student meetings booked from the Mentor Calendar, and what each mentor said after them.</p>
+        <div className="flex w-fit rounded-md border bg-white p-0.5 text-sm" role="tablist">
+          {[['meetings', 'Meetings'], ['verification', 'Payment verification']].map(([v, l]) => (
+            <button key={v} type="button" role="tab" aria-selected={view === v} onClick={() => setView(v)}
+              className={cn('rounded px-3 py-1.5 font-medium', view === v ? 'bg-brand-navy text-white' : 'text-slate-600 hover:bg-slate-50')}>{l}</button>
+          ))}
+        </div>
+        {view === 'verification' ? (
+          <Card><CardContent className="space-y-3 p-4">
+            <div className="flex flex-wrap items-center gap-2">
+              <label className="flex items-center gap-1 text-sm text-slate-600">Meetings from <Input type="date" className="h-9 w-40" value={days.from} max={days.to} onChange={e => e.target.value && setDays(d => ({ ...d, from: e.target.value }))} /></label>
+              <label className="flex items-center gap-1 text-sm text-slate-600">to <Input type="date" className="h-9 w-40" value={days.to} min={days.from} onChange={e => e.target.value && setDays(d => ({ ...d, to: e.target.value }))} /></label>
+            </div>
+            <PaymentVerificationTab days={days} />
+          </CardContent></Card>
+        ) : (
         <Card>
           <CardContent className="space-y-3 p-4">
             <div className="flex flex-wrap items-center gap-2">
@@ -93,6 +113,7 @@ export default function MeetingsDone() {
               : <MeetingsDoneTable rows={rows} columns={cols.shown} resetKey={JSON.stringify(filters) + needle + JSON.stringify(more)} />}
           </CardContent>
         </Card>
+        )}
       </div>
     </div>
   );

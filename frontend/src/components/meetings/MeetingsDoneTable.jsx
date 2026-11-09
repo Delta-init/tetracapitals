@@ -61,6 +61,7 @@ export const COLUMNS = [
   { key: 'stage', label: 'Stage', on: true, get: r => STAGE_LABEL[r.stage] ?? (r.status === 'waiting' ? 'Waiting for mentor' : r.stage || ''), filter: 'select', show: r => (r.stage ? <MeetingStageBadge stage={r.stage} /> : <span className="text-slate-300">—</span>) },
   { key: 'course', label: 'Course', on: true, get: r => o(r).courseTitle || '', filter: 'select' },
   { key: 'payment_date', label: 'Payment date', on: true, get: r => o(r).paymentDate || '', filter: 'date' },
+  { key: 'payment_intent', label: 'Payment intention', get: r => (r.stage === 'interested' ? ({ explicit_plan: 'Explicit plan', interested_no_commitment: 'No firm commitment', not_discussed: 'Not discussed' }[o(r).paymentIntent || 'explicit_plan']) : ''), filter: 'select' },
   { key: 'payment_mode', label: 'Payment mode', get: r => o(r).paymentMode || '', filter: 'select' },
   { key: 'followup_kind', label: 'Follow-up kind', get: r => FOLLOW_UP_LABEL[o(r).followUpKind] ?? o(r).followUpKind ?? '', filter: 'select' },
   { key: 'followup_date', label: 'Follow-up date', on: true, get: r => o(r).followUpDate || r.reminder?.date || '', filter: 'date' },

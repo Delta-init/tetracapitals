@@ -47,7 +47,7 @@ export async function saveMeetingOutcome(req: Request, user: AuthUser): Promise<
   const meetingId = str(body?.meetingId, 100);
   if (!meetingId) return error("meetingId is required", 400);
   const fields: Record<string, string> = {};
-  for (const k of ["stage", "concern", "remark", "courseId", "paymentDate", "paymentMode", "followUpKind", "followUpDate", "withMentorEmail", "moduleId", "reason"]) {
+  for (const k of ["stage", "concern", "remark", "courseId", "paymentDate", "paymentMode", "paymentIntent", "followUpKind", "followUpDate", "withMentorEmail", "moduleId", "reason"]) {
     if (body?.[k] !== undefined) fields[k] = str(body[k], k === "remark" ? 2000 : 200);
   }
   try {

@@ -156,8 +156,9 @@ export async function applyMeetingOutcome(m: LmsOutcomeMeeting, nowDate = new Da
       await notify(tell, {
         type: "meeting_outcome",
         title: `Meeting outcome: ${STAGE_LABEL[o.stage] ?? o.stage}`,
-        body: `${mentorName} met ${who} — ${outcomeSummary(o)}.${reminder ? ` Follow-up set for ${reminder.date}.` : ""}${o.concern ? ` Concern: ${o.concern}.` : ""} ${o.remark}`.trim(),
-        link: `/StudentDetail?id=${String(s._id)}`,
+        body: `${mentorName} met ${who} — ${outcomeSummary(o)}.${reminder ? ` Follow-up set for ${reminder.date}.` : ""}${o.concern ? ` Concern: ${o.concern}.` : ""} ${o.remark}${o.stage === "interested" ? " Verify the payment plan with the student (Meetings done → Payment verification)." : ""}`.trim(),
+        // Interested: the CS verifies the payment plan with the student (functions/paymentVerification.ts, 2026-11-09).
+        link: o.stage === "interested" ? "/MeetingsDone?view=verification" : `/StudentDetail?id=${String(s._id)}`,
         tag: `meeting-outcome-${m.id}-${String(s._id)}`,
       }).catch(() => {});
     }

@@ -45,6 +45,13 @@ function Pills({ value, options, onPick }) {
   );
 }
 
+/** How firm the payment was, as the mentor heard it (2026-11-09) — the CS verifies it with the student after. */
+export const INTENTS = [
+  ['explicit_plan', 'Student explicitly mentioned a payment plan'],
+  ['interested_no_commitment', 'Student expressed interest, but no firm commitment'],
+  ['not_discussed', 'Payment was not discussed'],
+];
+
 export default function MeetingOutcomeGate() {
   const queryClient = useQueryClient();
   const pending = useQuery({
@@ -96,7 +103,9 @@ export default function MeetingOutcomeGate() {
 
   const missing = () => {
     if (!form.stage) return 'Pick where the client stands';
-    if (form.stage === 'interested' && (!form.courseId || !form.paymentDate || !form.paymentMode)) return 'Pick the course, the payment date and how they will pay';
+    if (form.stage === 'interested' && !form.courseId) return 'Pick the course';
+    if (form.stage === 'interested' && !form.paymentIntent) return "Pick the student's payment intention";
+    if (form.stage === 'interested' && form.paymentIntent !== 'not_discussed' && (!form.paymentDate || !form.paymentMode)) return 'Pick the expected payment date and method';
     if (form.stage === 'follow_up' && (!form.followUpKind || !form.followUpDate)) return 'Pick the follow-up and its date';
     if (form.stage === 'meeting_with' && !form.withMentorEmail) return 'Pick the mentor they will meet';
     if (form.stage === 'revision' && !form.courseId) return 'Pick the course to revise';
@@ -236,9 +245,20 @@ export default function MeetingOutcomeGate() {
             )}
 
             {form.stage === 'interested' && (
+              <Field label="Student's payment intention">
+                <div className="space-y-1.5">
+                  {INTENTS.map(([k, l]) => (
+                    <label key={k} className="flex cursor-pointer items-center gap-2 text-sm text-slate-700">
+                      <input type="radio" name="paymentIntent" checked={form.paymentIntent === k} onChange={() => set({ paymentIntent: k })} />{l}
+                    </label>
+                  ))}
+                </div>
+              </Field>
+            )}
+            {form.stage === 'interested' && (
               <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                <Field label="Payment date"><input type="date" className={inputCls} value={form.paymentDate ?? ''} onChange={e => set({ paymentDate: e.target.value })} /></Field>
-                <Field label="Payment mode">
+                <Field label={form.paymentIntent === 'not_discussed' ? 'Expected payment date (optional)' : 'Expected payment date (mentor-reported)'}><input type="date" className={inputCls} value={form.paymentDate ?? ''} onChange={e => set({ paymentDate: e.target.value })} /></Field>
+                <Field label={form.paymentIntent === 'not_discussed' ? 'Expected payment method (optional)' : 'Expected payment method'}>
                   <select className={selectCls} value={form.paymentMode ?? ''} onChange={e => set({ paymentMode: e.target.value })}>
                     <option value="">Pick…</option>
                     {o?.paymentModes?.map(m => <option key={m} value={m}>{m}</option>)}
@@ -246,6 +266,8 @@ export default function MeetingOutcomeGate() {
                 </Field>
               </div>
             )}
+
+            {form.stage === 'interested' && <p className="rounded-md bg-slate-50 px-3 py-2 text-xs text-slate-600">This is what the student said in the meeting. Their CS still contacts them and verifies it — only a payment approved by finance counts.</p>}
 
             {form.stage === 'follow_up' && (
               <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">

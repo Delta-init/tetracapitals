@@ -270,6 +270,15 @@ export default function Layout({ children, currentPageName }) {
   const liveNotJoined = useLiveNotJoined(currentUser);
   // Mentors' meeting requests waiting for this person to time and approve (2026-11-09).
   const meetingRequests = useMeetingRequestsWaiting(currentUser);
+  // Payment plans from meetings not verified with the student yet (2026-11-09).
+  const { data: payVerify } = useQuery({
+    queryKey: ['payment-verify-count'],
+    queryFn: async () => (await base44.functions.invoke('getPaymentVerifyCount', {})).data,
+    enabled: !!currentUser && ['cs', 'cs_manager'].includes(currentUser.app_role),
+    refetchInterval: 120_000,
+    staleTime: 60_000,
+    retry: false,
+  });
 
   // The numbers a page shows in the sidebar, in order, each in the colour its page uses. Payment Links: a Super
   // Admin gets the requests waiting for them, a CS the links ready and the turn-downs they haven't seen (the
@@ -292,6 +301,7 @@ export default function Layout({ children, currentPageName }) {
       { n: navCounts?.payment_links_ready, cls: 'bg-emerald-400 text-brand-navy', title: 'payment links ready — not seen yet' },
       { n: navCounts?.payment_links_turned_down, cls: 'bg-rose-500 text-white', title: 'payment link requests turned down — not seen yet' },
     ],
+    MeetingsDone: [{ n: payVerify?.count, cls: 'bg-amber-400 text-brand-navy', title: 'payment plans from meetings to verify with the student' }],
     MeetingRequests: [{ n: meetingRequests.data?.count, cls: 'bg-amber-400 text-brand-navy', title: 'meeting requests waiting for you to pick the time' }],
     LiveNotJoined: [{ n: liveNotJoined.data?.counts?.live_students, cls: 'bg-rose-500 text-white', title: 'booked a live class and not joined yet' }],
     ClassCompletions: [{ n: navCounts?.class_completions_open, cls: 'bg-violet-500 text-white', title: 'class completions waiting for a call' }],
