@@ -98,6 +98,8 @@ async function remindersOf(ids: string[]): Promise<Map<string, Map<string, any>>
 
 export interface MeetingRow {
   id: string; meeting_id: string; starts_at: string; ends_at: string; title: string; category: string; status: LmsMeeting["status"];
+  /** Length, online or in person and where (2026-11-09 — Meetings done's columns). */
+  duration_mins: number; in_person: boolean; location: string;
   mentor: { name: string; email: string }; booked_by: string; attendee: string;
   student: { id: string; name: string; code: string; cs: string; cs_id: string; team: string; team_id: string } | null;
   stage: string; summary: string; outcome: any; reminder: { date: string; created: boolean } | null;
@@ -137,6 +139,7 @@ export async function meetingRows(user: AuthUser, from: string, to: string): Pro
     const theirs = m.attendees.map((a) => ({ a, s: byEmail.get(emailOf(a.email)) })).filter((x) => !!x.s);
     const base = {
       meeting_id: m.id, starts_at: m.startsAt, ends_at: m.endsAt, title: m.title, category: m.category, status: m.status,
+      duration_mins: Number((m as any).durationMins) || 0, in_person: (m as any).inPerson === true, location: String((m as any).location ?? ""),
       mentor: m.mentor, booked_by: m.bookedByEmail, stage: m.outcome?.stage ?? "", summary: m.outcome ? outcomeSummary(m.outcome) : "", outcome: m.outcome,
     };
     if (!theirs.length) {

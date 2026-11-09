@@ -6,7 +6,8 @@ import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { STAGE_LABEL } from '@/components/meetings/meetingStage';
-import { MeetingRowsTable, downloadMeetingsCsv, fn, thisMonth } from '@/components/meetings/meetingsUi';
+import { fn, thisMonth } from '@/components/meetings/meetingsUi';
+import { ColumnPicker, FilterPanel, MeetingsDoneTable, applyFilters, exportMeetings, useColumns } from '@/components/meetings/MeetingsDoneTable';
 
 /**
  * Meetings done (2026-10-28) — every student meeting booked from the Mentor Calendar that is over, one row per student:
@@ -32,12 +33,16 @@ export default function MeetingsDone() {
     placeholderData: (prev) => prev,
   });
   const needle = search.trim().toLowerCase();
-  const rows = useMemo(() => (data?.rows ?? []).filter(r => !needle
+  // Columns chosen and ordered, and a filter for every field (2026-11-09) — components/meetings/MeetingsDoneTable.jsx.
+  const cols = useColumns();
+  const [more, setMore] = useState({});
+  const searched = useMemo(() => (data?.rows ?? []).filter(r => !needle
     || [r.student?.name, r.student?.code, r.attendee, r.mentor?.name, r.student?.cs].some(v => String(v ?? '').toLowerCase().includes(needle))), [data, needle]);
+  const rows = useMemo(() => applyFilters(searched, more), [searched, more]);
 
   return (
     <div className="min-h-screen p-4 sm:p-6">
-      <div className="mx-auto max-w-7xl space-y-4">
+      <div className="mx-auto max-w-[1600px] space-y-4">
         <PageTitle eyebrow="Students">Meetings done</PageTitle>
         <p className="text-sm text-slate-500">Student meetings booked from the Mentor Calendar, and what each mentor said after them.</p>
         <Card>
@@ -70,18 +75,22 @@ export default function MeetingsDone() {
                 <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-slate-400" />
                 <Input className="h-9 w-56 pl-8" placeholder="Student, code, mentor, CS" value={search} onChange={e => setSearch(e.target.value)} />
               </div>
-              <Button variant="outline" size="sm" className="ml-auto h-9" disabled={!rows.length} onClick={() => downloadMeetingsCsv(rows, `meetings-${days.from}-to-${days.to}.csv`)}>
-                <Download className="mr-1 h-4 w-4" /> Export
-              </Button>
+              <div className="ml-auto flex gap-2">
+                <ColumnPicker cols={cols} />
+                <Button variant="outline" size="sm" className="h-9" disabled={!rows.length} onClick={() => exportMeetings(rows, cols.shown, `meetings-${days.from}-to-${days.to}.csv`)}>
+                  <Download className="mr-1 h-4 w-4" /> Export
+                </Button>
+              </div>
             </div>
+            <FilterPanel rows={searched} filters={more} setFilters={setMore} />
             <p className="flex items-center gap-2 text-xs text-slate-500">
-              <CalendarCheck className="h-3.5 w-3.5" />{rows.length} meeting{rows.length === 1 ? '' : 's'}
+              <CalendarCheck className="h-3.5 w-3.5" />{rows.length} meeting{rows.length === 1 ? '' : 's'}{rows.length !== searched.length ? ` of ${searched.length}` : ''} · click a row for its full details
               {isFetching && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
             </p>
             {isLoading ? <div className="flex justify-center py-12"><Loader2 className="h-5 w-5 animate-spin text-slate-400" /></div>
               : error ? <p className="py-12 text-center text-sm text-rose-600">{error.message || 'Could not load the meetings'}</p>
               : !rows.length ? <p className="py-12 text-center text-sm text-slate-400">No meetings for these days and filters.</p>
-              : <MeetingRowsTable rows={rows} resetKey={JSON.stringify(filters) + needle} />}
+              : <MeetingsDoneTable rows={rows} columns={cols.shown} resetKey={JSON.stringify(filters) + needle + JSON.stringify(more)} />}
           </CardContent>
         </Card>
       </div>
