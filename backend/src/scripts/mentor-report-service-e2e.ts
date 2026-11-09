@@ -44,12 +44,29 @@ const cs = person("Cee Cs", "cee@e2e.test", "cs");
 await db.collection("users").insertMany([chief, junior, gone, cs] as any[]);
 const id = (u: any) => String(u._id);
 await db.collection("commission_credits").insertMany([
-  { recipient_id: id(chief), commission_usd: 40, requested_at: at("2026-10-21") },
+  // A meeting mentor's own (the 2%, 2026-11-09): counted apart for Root's mentor KPIs too.
+  { recipient_id: id(chief), commission_usd: 40, requested_at: at("2026-10-21"), position: "Meeting mentor" },
   { recipient_id: id(chief), commission_usd: 12.5, requested_at: at("2026-10-21", "23") },  // 23:00 Dubai: still the 21st
   { recipient_id: id(junior), commission_usd: 7, created_date: at("2026-10-22"), requested_at: null }, // a pool share, no request date
   { recipient_id: id(chief), commission_usd: 100, requested_at: at("2026-10-19") },           // before the dates
   { recipient_id: id(cs), commission_usd: 99, requested_at: at("2026-10-21") },               // not a mentor
 ] as any[]);
+
+/* Ann's CS Portal meetings (2026-11-09, Root's mentor KPIs): Sara paid through a course payment linked to the meeting
+   and approved (AED 4,000); Omar's link is still pending; a cancelled meeting with Lina counts for nothing. */
+const sara = { _id: new ObjectId(), full_name: "Sara Student", email: "sara@e2e.test", student_code: "S1" };
+const omar = { _id: new ObjectId(), full_name: "Omar Student", email: "omar@e2e.test", student_code: "S2" };
+const lina = { _id: new ObjectId(), full_name: "Lina Student", email: "lina@e2e.test", student_code: "S3" };
+await db.collection("students").insertMany([sara, omar, lina] as any[]);
+await db.collection("funding_transactions").insertMany([
+  { type: "BONUS", status: "APPROVED", student_id: String(sara._id), course_payment: { product: "DWT", paid_today_aed: 4000 }, meeting_link: { meeting_id: "m1" }, approved_at: at("2026-10-21", "15"), requested_at: at("2026-10-21", "12") },
+  { type: "BONUS", status: "PENDING", student_id: String(omar._id), course_payment: { product: "MBT", paid_today_aed: 2250 }, meeting_link: { meeting_id: "m2" }, requested_at: at("2026-10-21", "16") },
+] as any[]);
+const meeting = (id: string, day: string, who: any, status: string) => ({
+  id, startsAt: at(day), endsAt: at(day, "11"), title: "Course pitch", category: "course_pitch", status,
+  mentor: { name: "Ann (LMS)", email: "ann@e2e.test" }, attendees: [{ name: who.full_name, email: who.email }], bookedByEmail: "cee@e2e.test",
+  outcome: status === "done" ? { stage: "interested", filledAt: at(day, "12") } : null,
+});
 
 /* The LMS: the mentors' report (Ann on two days, an instructor who isn't in the portal) and Ann's reviews. */
 const ANN_LMS = "a".repeat(24);
@@ -69,6 +86,9 @@ const lms = Bun.serve({
           days: [{ day: "2026-10-22", classes: 1, held: 1, bookings: 4 }, { day: "2026-10-20", classes: 2, held: 1, classesCancelled: 1, bookings: 5 }] },
         { instructorId: "b".repeat(24), email: "lms-only@e2e.test", name: "Only LMS", total: { classes: 1, held: 1, bookings: 2 }, days: [{ day: "2026-10-21", classes: 1, held: 1, bookings: 2 }] },
       ], students: { booked: 5, attended: 4 } } });
+    }
+    if (url.pathname === "/api/v1/service/meeting-outcomes/meetings") {
+      return Response.json({ success: true, data: { meetings: [meeting("m1", "2026-10-21", sara, "done"), meeting("m2", "2026-10-21", omar, "waiting"), meeting("m3", "2026-10-22", lina, "cancelled")] } });
     }
     if (url.pathname === "/api/v1/service/mentor-report/details") {
       return Response.json({ success: true, data: { kind: url.searchParams.get("kind"), total: 1, rows: [{ id: "c1", title: "Gold", mentor: "Ann (LMS)", booked: 3 }] } });
@@ -101,6 +121,10 @@ check("Ben: no LMS activity, a pool share of 7 on the 22nd", ben?.in_lms === fal
 check("the LMS-only instructor is there, without commission", row("lms-only@e2e.test")?.in_lms === true && row("lms-only@e2e.test")?.total?.commission_usd === 0);
 check("the LMS was asked for everyone (no address list), with the dates", asked.some((a) => a === `/api/v1/service/mentor-report?from=${FROM}&to=${TO}`), asked.join(" | "));
 check("most classes held first", d.mentors?.[0]?.name === "Chief Ann");
+check("Root's mentor KPIs: Ann met 2 students (the cancelled meeting aside), 1 paid through a linked, approved payment — AED 4,000",
+  ann?.total?.meetingStudents === 2 && ann?.total?.paidMeetingStudents === 1 && ann?.total?.verifiedCollectionsAed === 4000, JSON.stringify(ann?.total));
+check("…and her own meeting-mentor commission apart: 40 of the 52.50", ann?.total?.meetingMentorCommissionUsd === 40 && ann?.total?.commission_usd === 52.5, JSON.stringify(ann?.total));
+check("…Ben met nobody: 0, not missing", ben?.total?.meetingStudents === 0 && ben?.total?.verifiedCollectionsAed === 0, JSON.stringify(ben?.total));
 
 step("Case 2 — a mentor's reviews");
 r = await get(`/mentor-reviews?instructorId=${ANN_LMS}&from=${FROM}&to=${TO}&page=2`);

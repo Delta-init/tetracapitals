@@ -141,6 +141,9 @@ export async function answerMeetingStatus(req: Request, user: AuthUser): Promise
 
   const reason = str(body?.reason, 500);
   if (reason.length < 3) return error("Say why it was cancelled", 400);
+  // Who called it off (2026-11-09): only the mentor's own count against them in Root's mentor KPIs.
+  const cancelledBy = str(body?.cancelledBy, 10);
+  if (!["student", "mentor", "cs", "other"].includes(cancelledBy)) return error("Say who called it off: the student, the mentor, the CS or something else", 400);
   const re = str(body?.rescheduleAt, 40);
   const reAt = re ? new Date(re) : null;
   if (reAt && (Number.isNaN(reAt.getTime()) || reAt.getTime() < Date.now())) return error("The new date and time must be ahead", 400);
@@ -162,8 +165,8 @@ export async function answerMeetingStatus(req: Request, user: AuthUser): Promise
       });
       newMeeting = booked?.meeting ?? null;
     }
-    await callLms(`/mentor-meetings/${encodeURIComponent(d._id)}/cancel`, { method: "POST", verb: "cancel the meeting", body: { actorEmail: me?.email ?? user.email, actorIsRootAdmin: true, silent: true, reason, allAcademies: true } });
-    await col(C).updateOne({ _id: d._id }, { $set: { status: "cancelled", reason, rescheduled_to: reAt ? reAt.toISOString() : null, new_meeting_id: newMeeting?.id ?? null, ...by }, $push: { history } as any });
+    await callLms(`/mentor-meetings/${encodeURIComponent(d._id)}/cancel`, { method: "POST", verb: "cancel the meeting", body: { actorEmail: me?.email ?? user.email, actorIsRootAdmin: true, silent: true, reason, cancelledBy, allAcademies: true } });
+    await col(C).updateOne({ _id: d._id }, { $set: { status: "cancelled", reason, cancelled_by: cancelledBy, rescheduled_to: reAt ? reAt.toISOString() : null, new_meeting_id: newMeeting?.id ?? null, ...by }, $push: { history } as any });
     // A meeting request's meeting: it follows (the new one, or cancelled).
     await col("meeting_requests").updateOne({ lms_meeting_id: d._id }, { $set: newMeeting ? { lms_meeting_id: newMeeting.id, scheduled_start: reAt!.toISOString() } : { meeting_cancelled: { reason, at: nowIso(), by: by.answered_by_name } } });
     const mentor: any = d.mentor?.email ? await col("users").findOne({ email: { $regex: `^${String(d.mentor.email).replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}$`, $options: "i" } }, { projection: { _id: 1 } }) : null;

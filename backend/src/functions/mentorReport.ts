@@ -8,6 +8,7 @@ import { BUILTIN_MENTOR_ROLES } from "../lib/roles";
 import { callLms, lmsConfigured, LmsError } from "../lib/lms";
 import { mentorAttendance, attendanceTotal, type AttendanceDay } from "../students/mentorAttendance";
 import { hrmsPhotos } from "../lib/hrms";
+import { meetingRows } from "./meetingOutcomes";
 
 /* ────────────────────────────────────────────────────────────────────────────
    The mentors' report (the user, 2026-10-23) — the Team area: each mentor,
@@ -75,10 +76,13 @@ export async function mentorReport(user: AuthUser | null, from: string, to: stri
   const credits = ids.length
     ? ((await col("commission_credits").find(
         { recipient_id: { $in: ids }, $or: [{ requested_at: range }, { requested_at: { $in: [null, ""] }, created_date: range }] },
-        { projection: { recipient_id: 1, commission_usd: 1, requested_at: 1, created_date: 1 } },
+        { projection: { recipient_id: 1, commission_usd: 1, requested_at: 1, created_date: 1, position: 1 } },
       ).toArray()) as any[])
     : [];
   const commission = new Map<string, Map<string, number>>();
+  // The meeting mentor's own commission (the 2% on a course payment from a student they met) — Root's mentor KPIs.
+  const meetingMentorUsd = new Map<string, number>();
+  for (const c of credits) if (c.position === "Meeting mentor") meetingMentorUsd.set(String(c.recipient_id), (meetingMentorUsd.get(String(c.recipient_id)) ?? 0) + (Number(c.commission_usd) || 0));
   for (const c of credits) {
     const id = String(c.recipient_id), day = dubaiDay(String(c.requested_at || c.created_date));
     const days = commission.get(id) ?? new Map<string, number>();
@@ -113,6 +117,26 @@ export async function mentorReport(user: AuthUser | null, from: string, to: stri
     Object.assign(row, { in_lms: true, lms_id: String(m.instructorId ?? ""), total: { ...blank, ...m.total }, days: (m.days ?? []).map((d: any) => ({ ...blank, ...d })) });
     rows.set(key, row);
   }
+  /* What each mentor's CS Portal meetings brought in (2026-11-09, Root's mentor KPIs): the students met (meetings over,
+     not cancelled), those who paid through a course payment linked to that meeting and approved by finance, and its AED.
+     By the meeting's date; a payment that comes later counts when it does. Left out (not zero) when the LMS can't list
+     the meetings. */
+  let brought: Map<string, { students: number; paid: number; aed: number }> | null = null;
+  try {
+    const rows = await meetingRows(user ?? ({ id: "", email: "", app_role: "super_admin" } as AuthUser), from, to);
+    brought = new Map();
+    for (const x of rows) {
+      if (!x.student || (x.status !== "waiting" && x.status !== "done")) continue;
+      const key = String(x.mentor?.email ?? "").trim().toLowerCase();
+      const b = brought.get(key) ?? { students: 0, paid: 0, aed: 0 };
+      b.students++;
+      if (x.payment?.status === "approved" && x.payment.linked) { b.paid++; b.aed += Number(x.payment.aed) || 0; }
+      brought.set(key, b);
+    }
+  } catch {
+    brought = null;
+  }
+
   // Clock-ins and clock-outs from the HRMS, by address (2026-10-27).
   const att = await mentorAttendance([...rows.values()].map((r) => r.email), from, to);
   const mentors = [...rows.values()].map((r) => {
@@ -126,9 +150,14 @@ export async function mentorReport(user: AuthUser | null, from: string, to: stri
       days.set(day, { ...(days.get(day) ?? { day, ...blank, commission_usd: 0 }), hrms: a, ...attendanceTotal([a]) });
     }
     const total = round([...(paid?.values() ?? [])].reduce((s, n) => s + n, 0));
+    const b = brought?.get(String(r.email ?? "").toLowerCase());
     return {
       ...r, in_hrms: !!theirs?.size,
-      total: { ...r.total, commission_usd: total, ...attendanceTotal(theirs?.values() ?? []) },
+      total: {
+        ...r.total, commission_usd: total, ...attendanceTotal(theirs?.values() ?? []),
+        meetingMentorCommissionUsd: round(r.id ? meetingMentorUsd.get(r.id) ?? 0 : 0),
+        ...(brought ? { meetingStudents: b?.students ?? 0, paidMeetingStudents: b?.paid ?? 0, verifiedCollectionsAed: round(b?.aed ?? 0) } : {}),
+      },
       days: [...days.values()].sort((a, b) => b.day.localeCompare(a.day)),
     };
   }).sort((a, b) => b.total.held - a.total.held || b.total.bookings - a.total.bookings || b.total.commission_usd - a.total.commission_usd || String(a.name).localeCompare(String(b.name)));

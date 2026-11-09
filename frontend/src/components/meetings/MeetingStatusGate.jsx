@@ -37,9 +37,11 @@ export default function MeetingStatusGate() {
   const m = q.data?.pending?.[0];
   const [choice, setChoice] = useState('');
   const [reason, setReason] = useState('');
+  // Who called it off (2026-11-09): only the mentor's own count against them in Root's mentor KPIs.
+  const [cancelledBy, setCancelledBy] = useState('');
   const [date, setDate] = useState('');
   const [time, setTime] = useState('');
-  useEffect(() => { setChoice(''); setReason(''); setDate(''); setTime(''); if (m) ringAlarm(`meeting-status:${m.id}:${m.again ? 2 : 1}`); }, [m?.id, m?.again]);
+  useEffect(() => { setChoice(''); setReason(''); setCancelledBy(''); setDate(''); setTime(''); if (m) ringAlarm(`meeting-status:${m.id}:${m.again ? 2 : 1}`); }, [m?.id, m?.again]);
   // Nothing closes it: Escape is swallowed while it shows.
   useEffect(() => {
     if (!m) return undefined;
@@ -50,6 +52,7 @@ export default function MeetingStatusGate() {
   const save = useMutation({
     mutationFn: () => fn('answerMeetingStatus', {
       id: m.id, status: choice, reason: choice === 'cancelled' ? reason.trim() : undefined,
+      cancelledBy: choice === 'cancelled' ? cancelledBy : undefined,
       rescheduleAt: choice === 'cancelled' && date && time ? new Date(`${date}T${time}:00+04:00`).toISOString() : undefined,
     }),
     onSuccess: (d) => {
@@ -64,7 +67,7 @@ export default function MeetingStatusGate() {
   if (!m) return null;
   const who = m.student?.name || (m.attendees || []).join(', ') || m.title;
   const halfReschedule = (date && !time) || (!date && time);
-  const ready = choice && (choice !== 'cancelled' || (reason.trim().length >= 3 && !halfReschedule));
+  const ready = choice && (choice !== 'cancelled' || (reason.trim().length >= 3 && !!cancelledBy && !halfReschedule));
   const left = (q.data?.pending?.length || 1) - 1;
   const opt = (k, label, Icon, cls) => (
     <button type="button" onClick={() => setChoice(k)}
@@ -93,6 +96,17 @@ export default function MeetingStatusGate() {
             <label className="block">
               <span className="mb-1 block text-xs font-semibold text-slate-700">Why was it cancelled? *</span>
               <Textarea rows={3} value={reason} onChange={(e) => setReason(e.target.value)} placeholder="e.g. the student didn't join — not reachable" autoFocus />
+            </label>
+            <label className="block">
+              <span className="mb-1 block text-xs font-semibold text-slate-700">Who called it off? *</span>
+              <select value={cancelledBy} onChange={(e) => setCancelledBy(e.target.value)} aria-label="Who called it off"
+                className="h-9 w-full rounded-md border border-slate-300 bg-white px-2 text-sm">
+                <option value="">Choose…</option>
+                <option value="student">The student</option>
+                <option value="mentor">The mentor</option>
+                <option value="cs">The CS</option>
+                <option value="other">Something else</option>
+              </select>
             </label>
             <div>
               <span className="mb-1 block text-xs font-semibold text-slate-700">Reschedule to (optional)</span>
