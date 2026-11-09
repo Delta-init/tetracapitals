@@ -38,6 +38,7 @@ const standardRows = () => [
 const emptyForm = () => ({
   name: '',
   active: true,
+  meeting_mentor_pct: '',
   bonus_with: standardRows(),
   bonus_without: standardRows(),
   deposit: standardRows(),
@@ -74,6 +75,8 @@ export default function CommissionPlans() {
   const saveMutation = useMutation({
     mutationFn: async () => {
       const payload = { name: form.name.trim(), active: !!form.active };
+      // Empty: the Junior + Senior levels' % (2026-11-09).
+      payload.meeting_mentor_pct = String(form.meeting_mentor_pct ?? '').trim() === '' ? null : (parseFloat(form.meeting_mentor_pct) || 0);
       for (const m of METHODS) {
         payload[`${m.key}_levels`] = form[m.key].map((l, i) => ({
           level: i + 1,
@@ -102,7 +105,7 @@ export default function CommissionPlans() {
 
   const openNew = () => { setForm(emptyForm()); setEditing({}); };
   const openEdit = (plan) => {
-    const next = { name: plan.name || '', active: plan.active !== false };
+    const next = { name: plan.name || '', active: plan.active !== false, meeting_mentor_pct: plan.meeting_mentor_pct ?? '' };
     for (const m of METHODS) {
       const lv = planLevels(plan, m).map(l => ({ label: l.label, percentage: String(l.percentage ?? ''), pool: !!l.pool }));
       next[m.key] = lv.length ? lv : [emptyLevel()];
@@ -232,6 +235,22 @@ export default function CommissionPlans() {
               <p className="text-xs text-gray-400">
                 Level 1 = the staff who submits (the CS); each next level is the next person up the Up Head chain. Positions ticked <strong>Pool</strong> don't pay per-transaction — their % accrues to one shared pool, split equally among the pool members at closing (bonus at month-end, deposit at quarter-end).
               </p>
+
+              {/* The meeting mentor (the user, 2026-11-09): on a plan paid by role, a bonus's Junior / Senior % goes to the
+                  mentor who first held a meeting with the student — nobody when no mentor met them. */}
+              <div className="rounded-lg border border-violet-200 bg-violet-50 p-4 space-y-2">
+                <div className="flex items-center justify-between gap-3">
+                  <Label className="text-base text-violet-700">Meeting mentor (bonus)</Label>
+                  <div className="flex items-center gap-1.5">
+                    <Input type="number" step="0.01" min="0" value={form.meeting_mentor_pct} onChange={e => setForm(f => ({ ...f, meeting_mentor_pct: e.target.value }))}
+                      placeholder={String(form.bonus_with.filter(l => /junior|senior/i.test(l.label || '')).reduce((t, l) => t + (parseFloat(l.percentage) || 0), 0))} className="w-20 h-8 text-right" />
+                    <span className="text-sm text-violet-700">%</span>
+                  </div>
+                </div>
+                <p className="text-xs text-violet-700/80">
+                  On a plan with CS / CS Manager / Junior / Senior / Chief positions, a bonus's Junior and Senior levels are not pooled: the Junior, Senior or Sub-junior Mentor who first held a meeting with the student (outcome filled in, before the payment) gets this % of every payment, partial ones too. No meeting — no mentor is paid. A Chief's own meeting adds nothing to the Chief %. Empty = the Junior + Senior %.
+                </p>
+              </div>
 
               <label className="flex items-center gap-2 text-sm cursor-pointer">
                 <input type="checkbox" checked={form.active} onChange={e => setForm(f => ({ ...f, active: e.target.checked }))} className="h-4 w-4" />

@@ -151,6 +151,23 @@ export async function creditCommissionFor(txId: string, opts: { preview?: boolea
     chain = line.slice(0, levels.length).map((u) => [u]);
   }
 
+  // A bonus on a plan paid by role (the user, 2026-11-09): the Junior / Senior levels no longer go to the pool — the
+  // mentor who first held a meeting with the student, before this payment, gets their % (the levels' sum, 2%; or the
+  // plan's meeting_mentor_pct) as their own commission, on every payment, partial ones too. Nobody met the student:
+  // no mentor is paid. A Chief's own meeting adds nothing to their Chief %. CS, CS Manager and Chief: as before.
+  let meeting: { mentor: any; outcome: any; pct: number } | null = null;
+  if (byRole && tx.type === "BONUS") {
+    const mentorLevels = roles.map((r: string | null, i: number) => (r && MEETING_MENTOR_ROLES.has(r) ? i : -1)).filter((i: number) => i >= 0);
+    if (mentorLevels.length) {
+      const set = plan.meeting_mentor_pct;
+      const pct = set !== null && set !== undefined && set !== "" && Number.isFinite(Number(set))
+        ? Number(set) : mentorLevels.reduce((sum: number, i: number) => sum + (Number(levels[i]?.percentage) || 0), 0);
+      for (const i of mentorLevels) chain[i] = [];
+      const found = tx.student_id ? await meetingMentorFor(String(tx.student_id), String(tx.requested_at || tx.approved_at || new Date().toISOString())) : null;
+      if (found && pct > 0) meeting = { ...found, pct };
+    }
+  }
+
   // A course payment (a Bonus request with a course): on the AED the student paid, at 3.67 — not a USD the CS typed
   // or converted (the user, 2026-10-13: "2% of the AED"). Everything else: its USD amount.
   const paidAed = tx.type === "BONUS" ? Number(tx.course_payment?.paid_today_aed) || 0 : 0;
@@ -246,6 +263,19 @@ export async function creditCommissionFor(txId: string, opts: { preview?: boolea
     }
   }
 
+  if (meeting) {
+    const m = meeting.mentor;
+    credits.push({
+      transaction_id: txId, transaction_type: tx.type, plan_id: plan._id.toString(), plan_name: plan.name, method: methodKey,
+      bonus_type: bonusType, tag: tagName, level: levels.length + 1, position: "Meeting mentor", percentage: meeting.pct,
+      base_amount: commissionBase, full_amount: amount, commission_usd: commissionBase * (meeting.pct / 100),
+      student_id: tx.student_id, student_name: tx.student_name, student_email: studentEmail, txn_id: txnId,
+      initiator_id: startId, initiator_name: tx.initiating_mentor_name || tx.primary_mentor_name, requested_at: tx.requested_at,
+      created_date: now, updated_date: now, is_pool: false, recipient_id: m._id.toString(), recipient_name: m.full_name, status: "accrued",
+      meeting_outcome_id: String(meeting.outcome._id), meeting_at: meeting.outcome.meeting?.starts_at ?? null,
+    });
+  }
+
   if (opts.preview) return { ok: true, preview: true, credits };
   if (credits.length) await col("commission_credits").insertMany(credits as any[]);
   return {
@@ -255,6 +285,25 @@ export async function creditCommissionFor(txId: string, opts: { preview?: boolea
     method: methodKey,
     breakdown: credits.map((c) => ({ level: c.level, recipient: c.recipient_name, pct: c.percentage, amount: c.commission_usd })),
   };
+}
+
+const MEETING_MENTOR_ROLES = new Set(["junior_mentor", "senior_mentor", "subjunior_mentor"]);
+
+/**
+ * The mentor who first held a meeting with this student before `before` — a meeting whose outcome the mentor filled in
+ * (meeting_outcomes, from the Mentor Calendar), held by a Junior, Senior or Sub-junior Mentor (a Chief's own meeting
+ * pays them nothing more). Null when there is none.
+ */
+export async function meetingMentorFor(studentId: string, before: string): Promise<{ mentor: any; outcome: any } | null> {
+  const meetings = (await col("meeting_outcomes").find({ student_ids: studentId, "meeting.starts_at": { $lt: before } },
+    { projection: { meeting: 1, mentor: 1 } }).sort({ "meeting.starts_at": 1 }).toArray()) as any[];
+  for (const o of meetings) {
+    const email = String(o.mentor?.email ?? "").trim().toLowerCase();
+    if (!email) continue;
+    const u: any = await col("users").findOne({ email: { $regex: `^${email.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}$`, $options: "i" } }, { projection: { full_name: 1, app_role: 1 } });
+    if (u && MEETING_MENTOR_ROLES.has(String(u.app_role))) return { mentor: u, outcome: o };
+  }
+  return null;
 }
 
 /** The role a plan position is named for — "CS Manager" → cs_manager, "Junior" → junior_mentor … — or null. */
