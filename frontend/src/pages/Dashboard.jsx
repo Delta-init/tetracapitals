@@ -9,6 +9,7 @@ import StatsCard from "../components/dashboard/StatsCard";
 import LocationTotals from "../components/dashboard/LocationTotals";
 import { CsPendingPanel, CsReportPanel, MentorPendingPanel } from "../components/dashboard/TeamPending";
 import { TodayScheduleCard } from "../components/dashboard/TodaySchedule";
+import TeamCollectedPanel from "../components/dashboard/TeamCollectedPanel";
 import { WalletCard } from "@/components/wallet/WalletCard";
 import { Users, DollarSign, Target, AlertCircle, AlertTriangle, ArrowRight, Award, Wallet, Activity } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -262,7 +263,7 @@ export default function Dashboard() {
                 {/* As Funding Activities' Course upgradation, this month: the team's course payments (a Chief's) and
                     what was credited to them — not the deposits they raised themselves (the user, 2026-10-28). */}
                 <StatsCard
-                  title="Collected this month"
+                  title={monthCourse.data?.scope === 'team' ? 'Team collected this month' : 'Collected this month'}
                   value={monthCourse.isLoading ? '…' : localFromAed(monthCourse.data?.collected?.course_payments_aed)}
                   icon={DollarSign}
                   color="emerald"
@@ -333,6 +334,9 @@ export default function Dashboard() {
 
         {/* A CS / CS Manager: their course payments and commission, as on Funding Activities (2026-10-13) */}
         {['cs', 'cs_manager'].includes(currentUser.app_role) && <CourseCommissionSummary isManager={currentUser.app_role === 'cs_manager'} />}
+
+        {/* A mentor's / Chief's team: collected this month, each person's share (2026-11-09) */}
+        {isMentorRole(currentUser.app_role) && <TeamCollectedPanel data={monthCourse.data} loading={monthCourse.isLoading} />}
 
         {/* Mentors and Chiefs: today's LMS classes and meetings (2026-10-28) */}
         <TodayScheduleCard currentUser={currentUser} />
