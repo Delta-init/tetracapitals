@@ -6,6 +6,7 @@ import { col } from "../db";
 import { toObjectId } from "../lib/id";
 import { getDownlineIds } from "../lib/scope";
 import { isAdmin } from "../students/followups";
+import { ASKS_FOR_MEETINGS } from "./meetingRequests";
 
 /* ────────────────────────────────────────────────────────────────────────────
    The Mentor Calendar — the Sales CRM's, ported: the academy's mentors, when
@@ -113,6 +114,10 @@ export async function bookMentorMeeting(req: Request, user: AuthUser): Promise<R
   const body: any = await req.json().catch(() => ({}));
   const mentorEmail = str(body?.mentorEmail, 200);
   if (!mentorEmail) return error("Choose a mentor", 400);
+  // A Senior / Junior / Sub-junior Mentor asks for a student meeting; its CS picks the time (meetingRequests.ts, 2026-11-09).
+  if (ASKS_FOR_MEETINGS.has(user.app_role) && str(body?.kind, 20) === "student") {
+    return error("Send a meeting request — the student's CS picks the time and approves it", 403);
+  }
   const inPerson = body?.inPerson === true;
   return lms(() =>
     callLms("/mentor-meetings", {
@@ -124,6 +129,8 @@ export async function bookMentorMeeting(req: Request, user: AuthUser): Promise<R
         kind: str(body?.kind, 20),
         // What it's for (2026-10-25): course_pitch | overview | other, or none.
         category: str(body?.category, 20),
+        // A Course Upgradation meeting's course (2026-11-09).
+        course: str(body?.category, 20) === "course_upgrade" ? str(body?.course, 60) : undefined,
         scheduledStart: str(body?.scheduledStart, 40),
         durationMins: Number(body?.durationMins ?? 0),
         // In person: a place, and no link (the LMS makes no Google Meet for it).
@@ -169,6 +176,7 @@ export async function updateMentorMeeting(req: Request, user: AuthUser): Promise
         ...(has("title") ? { title: str(body.title, 200) } : {}),
         ...(has("kind") ? { kind: str(body.kind, 20) } : {}),
         ...(has("category") ? { category: str(body.category, 20) } : {}),
+        ...(has("course") ? { course: str(body.course, 60) } : {}),
         ...(has("scheduledStart") ? { scheduledStart: str(body.scheduledStart, 40) } : {}),
         ...(has("durationMins") ? { durationMins: Number(body.durationMins) } : {}),
         ...(has("inPerson") ? { inPerson: body.inPerson === true } : {}),

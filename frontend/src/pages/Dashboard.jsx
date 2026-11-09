@@ -10,6 +10,7 @@ import LocationTotals from "../components/dashboard/LocationTotals";
 import { CsPendingPanel, CsReportPanel, MentorPendingPanel } from "../components/dashboard/TeamPending";
 import { TodayScheduleCard } from "../components/dashboard/TodaySchedule";
 import TeamCollectedPanel from "../components/dashboard/TeamCollectedPanel";
+import { MeetingRequestBanner } from "@/components/meetings/meetingRequests";
 import { WalletCard } from "@/components/wallet/WalletCard";
 import { Users, DollarSign, Target, AlertCircle, AlertTriangle, ArrowRight, Award, Wallet, Activity } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -229,6 +230,9 @@ export default function Dashboard() {
             <span className="inline-flex items-center gap-1 whitespace-nowrap rounded-full bg-rose-600 px-3 py-1.5 text-sm font-semibold text-white">Correct now <ArrowRight className="h-4 w-4" /></span>
           </Link>
         )}
+
+        {/* Mentors' meeting requests waiting for this CS to time and approve (2026-11-09) */}
+        <MeetingRequestBanner currentUser={currentUser} />
 
         {/* First in the row: this month's pay from the HRMS — earned, deducted, paid (2026-11-04) */}
         <WalletCard />

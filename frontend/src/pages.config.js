@@ -94,6 +94,7 @@ import StudentWorkflow from './pages/StudentWorkflow';
 import StudentFollowups from './pages/StudentFollowups';
 import OverdueFollowups from './pages/OverdueFollowups';
 import StudentCalls from './pages/StudentCalls';
+import MeetingRequests from './pages/MeetingRequests';
 import MentorCalendar from './pages/MentorCalendar';
 import Programs from './pages/Programs';
 import Tickets from './pages/Tickets';
@@ -190,6 +191,7 @@ export const PAGES = {
     "NotCreditedYet": NotCreditedYet,
     "StudentCalls": StudentCalls,
     "MentorCalendar": MentorCalendar,
+    "MeetingRequests": MeetingRequests,
     "Programs": Programs,
     "Tickets": Tickets,
     "Transactions": Transactions,

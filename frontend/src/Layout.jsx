@@ -19,6 +19,7 @@ import { CallFlowProvider } from '@/components/followups/CallFlow';
 import MeetingOutcomeGate from '@/components/meetings/MeetingOutcomeGate';
 import { TodaySchedulePopup } from '@/components/dashboard/TodaySchedule';
 import { LiveNotJoinedPopup, useLiveNotJoined } from '@/components/live/LiveNotJoined';
+import { MeetingRequestPopup, useMeetingRequestsWaiting } from '@/components/meetings/meetingRequests';
 import { forgetThisDevice } from '@/components/utils/usePushNotifications';
 
 const initials = (name = '') =>
@@ -229,7 +230,7 @@ export default function Layout({ children, currentPageName }) {
     // …and the Mentor Report the same way (2026-10-23).
     if (item.name === 'MentorReport' && item.roles.includes(currentUser?.app_role)) return true;
     // …and Not joined yet and Message Logs (2026-10-29): made after the roles' page lists, so for everyone they're made for.
-    if (['LiveNotJoined', 'MessageLogs'].includes(item.name) && item.roles.includes(currentUser?.app_role)) return true;
+    if (['LiveNotJoined', 'MessageLogs', 'MeetingRequests'].includes(item.name) && item.roles.includes(currentUser?.app_role)) return true;
     if (Array.isArray(allowedPages)) return allowedPages.includes(item.sameAccessAs || item.name);
     return item.roles.includes('all') || item.roles.includes(currentUser?.app_role);
   });
@@ -266,6 +267,8 @@ export default function Layout({ children, currentPageName }) {
 
   // Booked a live class and not joined yet (2026-10-28) — the same check the window uses.
   const liveNotJoined = useLiveNotJoined(currentUser);
+  // Mentors' meeting requests waiting for this person to time and approve (2026-11-09).
+  const meetingRequests = useMeetingRequestsWaiting(currentUser);
 
   // The numbers a page shows in the sidebar, in order, each in the colour its page uses. Payment Links: a Super
   // Admin gets the requests waiting for them, a CS the links ready and the turn-downs they haven't seen (the
@@ -288,6 +291,7 @@ export default function Layout({ children, currentPageName }) {
       { n: navCounts?.payment_links_ready, cls: 'bg-emerald-400 text-brand-navy', title: 'payment links ready — not seen yet' },
       { n: navCounts?.payment_links_turned_down, cls: 'bg-rose-500 text-white', title: 'payment link requests turned down — not seen yet' },
     ],
+    MeetingRequests: [{ n: meetingRequests.data?.count, cls: 'bg-amber-400 text-brand-navy', title: 'meeting requests waiting for you to pick the time' }],
     LiveNotJoined: [{ n: liveNotJoined.data?.counts?.live_students, cls: 'bg-rose-500 text-white', title: 'booked a live class and not joined yet' }],
     ClassCompletions: [{ n: navCounts?.class_completions_open, cls: 'bg-violet-500 text-white', title: 'class completions waiting for a call' }],
     FundingActivities: [
@@ -637,6 +641,7 @@ export default function Layout({ children, currentPageName }) {
             {/* Mentors and Chiefs: today's LMS classes and meetings, the first time the portal is opened each day (2026-10-28) */}
             {currentUser?.id && <TodaySchedulePopup currentUser={currentUser} />}
             {currentUser?.id && <LiveNotJoinedPopup currentUser={currentUser} />}
+            {currentUser?.id && <MeetingRequestPopup currentUser={currentUser} />}
           </motion.div>
         </main>
       </div>

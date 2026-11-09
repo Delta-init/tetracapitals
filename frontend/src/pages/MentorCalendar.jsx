@@ -18,6 +18,8 @@ import { cn } from '@/lib/utils';
 import { createPageUrl } from '@/utils';
 import { TablePagination, usePagination } from '@/components/common/TablePagination';
 import { ClassInfoSection } from '@/components/classes/ClassInfo';
+import { useUrlState } from '@/components/utils/urlState';
+import { ASKS_FOR_MEETINGS, MEETING_CATEGORIES, UPGRADE_COURSES, MyMeetingRequests, RequestMeetingDialog } from '@/components/meetings/meetingRequests';
 
 /* ────────────────────────────────────────────────────────────────────────────
    Mentor Calendar — the Sales CRM's Mentors page, ported. When the academy's
@@ -43,9 +45,9 @@ import { ClassInfoSection } from '@/components/classes/ClassInfo';
 
 const KIND_LABEL = { staff: 'Staff', student: 'Student', client: 'Client' };
 /* What a meeting is for (the user, 2026-10-25) — beside its kind; kept in the LMS. */
-const MEETING_CATEGORIES = [['course_pitch', 'Course Pitch'], ['overview', 'Overview'], ['other', 'Other']];
+// Course Upgradation, with its course (2026-11-09) — components/meetings/meetingRequests.jsx.
 const CATEGORY_LABEL = Object.fromEntries(MEETING_CATEGORIES);
-const kindAndCategory = (v) => [KIND_LABEL[v.kind] ?? v.kind, CATEGORY_LABEL[v.category]].filter(Boolean).join(' · ');
+const kindAndCategory = (v) => [KIND_LABEL[v.kind] ?? v.kind, CATEGORY_LABEL[v.category], v.category === 'course_upgrade' && v.course].filter(Boolean).join(' · ');
 
 /* ── Working hours and leave from the HRMS (backend/src/students/mentorHours.ts), in Dubai time ── */
 const DAY_NAMES = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
@@ -132,7 +134,7 @@ const timeOffLabel = (t, tz) => {
   return day(a) === day(b) ? `${day(a)}, ${hm(a)}–${hm(b)}` : `${day(a)}, ${hm(a)} – ${day(b)}, ${hm(b)}`;
 };
 
-const emptyForm = { title: '', kind: 'staff', category: '', time: '10:00', durationMins: '30', inPerson: false, location: '', meetingUrl: '', notes: '' };
+const emptyForm = { title: '', kind: 'staff', category: '', course: '', time: '10:00', durationMins: '30', inPerson: false, location: '', meetingUrl: '', notes: '' };
 
 export default function MentorCalendar() {
   const qc = useQueryClient();
@@ -190,6 +192,13 @@ export default function MentorCalendar() {
   const myEmail = String(me?.email || '').trim().toLowerCase();
   const myMentor = useMemo(() => (schedule.data?.mentors ?? []).find(m => String(m.email || '').trim().toLowerCase() === myEmail) || null, [schedule.data, myEmail]);
   const [onlyMe, setOnlyMe] = useState(false);
+  /* Senior / Junior / Sub-junior Mentors ask for student meetings — the CS picks the time (2026-11-09); their tabs:
+     the calendar, their own meetings, the requests they sent. */
+  const asks = ASKS_FOR_MEETINGS.includes(me?.app_role);
+  const [tab, setTab] = useUrlState('tab', 'calendar');
+  const [requesting, setRequesting] = useState(false);
+  // From a student's page (?student=): a mentor who asks gets the request form, the student in it.
+  useEffect(() => { if (asks && forStudent?.id) setRequesting(true); }, [asks, forStudent?.id]);
 
   /* Search the sessions — a class by its title, course or module, a booked session by its title or who it is with —
      and narrow the classes to a course and its module (the user, 2026-10-09). Booked sessions belong to no course,
@@ -320,6 +329,7 @@ export default function MentorCalendar() {
       title: d.title,
       kind: d.kind,
       category: d.category || '',
+      course: d.course || '',
       time: when.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', timeZone: tz }),
       durationMins: String(d.durationMins),
       inPerson: Boolean(d.inPerson),
@@ -398,6 +408,7 @@ export default function MentorCalendar() {
         title: form.title.trim(),
         kind: form.kind,
         category: form.category || '',
+        course: form.category === 'course_upgrade' ? form.course : undefined,
         scheduledStart: startsAt.toISOString(),
         durationMins: Number(form.durationMins),
         attendees: guests.map(g => ({ name: g.name.trim(), email: g.email.trim() })).filter(g => g.name),
@@ -522,6 +533,19 @@ export default function MentorCalendar() {
           </div>
         </div>
 
+        {(asks || myMentor) && (
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <div className="flex rounded-md border bg-white p-0.5 text-sm" role="tablist">
+              {[['calendar', 'Calendar'], ['meetings', 'My meetings'], ['requests', 'Meeting requests']].map(([v, l]) => (
+                <button key={v} type="button" role="tab" aria-selected={tab === v} onClick={() => setTab(v)}
+                  className={cn('rounded px-3 py-1.5 font-medium', tab === v ? 'bg-brand-navy text-white' : 'text-slate-600 hover:bg-slate-50')}>{l}</button>
+              ))}
+            </div>
+            {asks && <Button size="sm" className="gap-1.5" onClick={() => setRequesting(true)}><Plus className="h-4 w-4" />Request a meeting</Button>}
+          </div>
+        )}
+
+        {tab === 'requests' ? <MyMeetingRequests onNew={asks ? () => setRequesting(true) : null} /> : <>
         {studentId && (
           <div className="flex flex-col gap-2 rounded-xl border border-cyan-200 bg-cyan-50 px-4 py-3 text-sm text-cyan-900 sm:flex-row sm:items-center sm:justify-between">
             <span className="flex items-center gap-2">
@@ -563,6 +587,7 @@ export default function MentorCalendar() {
           </Card>
         )}
 
+        {tab !== 'meetings' && <>
         <div className="flex flex-wrap items-center gap-3 text-xs text-slate-500">
           {legend.map(([cls, label]) => (
             <span key={label} className="inline-flex items-center gap-1.5"><span className={cn('h-3 w-5 rounded border', cls)} /> {label}</span>
@@ -722,7 +747,12 @@ export default function MentorCalendar() {
             <TablePagination {...bar} />
           </Card>
         )}
+        </>}
+        </>}
       </div>
+
+      <RequestMeetingDialog open={requesting} onClose={() => setRequesting(false)}
+        student={asks && forStudent ? { id: forStudent.id, name: studentName, code: forStudent.student_code || '', cs_name: forStudent.primary_mentor_name || '' } : null} />
 
       {timeOffFor && (
         <TimeOffDialog mentor={timeOffFor.mentor} day={timeOffFor.day} tz={tz} isMe={String(timeOffFor.mentor.email || '').toLowerCase() === myEmail}
@@ -748,7 +778,7 @@ export default function MentorCalendar() {
               <Label htmlFor="mkind">Kind</Label>
               <select id="mkind" value={form.kind} onChange={e => setForm(f => ({ ...f, kind: e.target.value }))} className={selectCls}>
                 <option value="staff">Staff meeting</option>
-                <option value="student">With a student</option>
+                <option value="student" disabled={asks && !editingId}>With a student{asks && !editingId ? ' — use Request a meeting' : ''}</option>
                 <option value="client">Outside client</option>
               </select>
             </div>
@@ -759,6 +789,15 @@ export default function MentorCalendar() {
                 {MEETING_CATEGORIES.map(([k, l]) => <option key={k} value={k}>{l} meeting</option>)}
               </select>
             </div>
+            {form.category === 'course_upgrade' && (
+              <div className="space-y-1.5">
+                <Label htmlFor="mcourse">Which course</Label>
+                <select id="mcourse" value={form.course || ''} onChange={e => setForm(f => ({ ...f, course: e.target.value }))} className={selectCls}>
+                  <option value="">Pick…</option>
+                  {UPGRADE_COURSES.map(c => <option key={c} value={c}>{c}</option>)}
+                </select>
+              </div>
+            )}
             <div className="grid grid-cols-2 gap-2">
               <div className="space-y-1.5">
                 <Label htmlFor="mtime">Start</Label>
@@ -821,7 +860,7 @@ export default function MentorCalendar() {
           {chosenTaken && <p className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">No free time left on this day{chosenTaken === 'Not available' ? ` — ${booking?.mentor.name || 'the mentor'} is not available` : ''}. Pick another day.</p>}
           <DialogFooter className="gap-2 sm:gap-0">
             <Button variant="outline" onClick={() => setBooking(null)}>Cancel</Button>
-            <Button disabled={Boolean(chosenTaken) || book.isPending || form.title.trim().length < 3 || !guests.some(g => g.name.trim()) || (form.inPerson && form.location.trim().length < 2)} onClick={() => book.mutate()}>
+            <Button disabled={Boolean(chosenTaken) || book.isPending || (form.category === 'course_upgrade' && !form.course) || (asks && !editingId && form.kind === 'student') || form.title.trim().length < 3 || !guests.some(g => g.name.trim()) || (form.inPerson && form.location.trim().length < 2)} onClick={() => book.mutate()}>
               {book.isPending && <Loader2 className="h-4 w-4 animate-spin" />} {editingId ? 'Save changes' : 'Book it'}
             </Button>
           </DialogFooter>
