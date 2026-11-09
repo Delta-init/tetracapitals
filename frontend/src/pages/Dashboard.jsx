@@ -9,6 +9,7 @@ import StatsCard from "../components/dashboard/StatsCard";
 import LocationTotals from "../components/dashboard/LocationTotals";
 import { CsPendingPanel, CsReportPanel, MentorPendingPanel } from "../components/dashboard/TeamPending";
 import { TodayScheduleCard } from "../components/dashboard/TodaySchedule";
+import { MyKpisCard } from "../components/dashboard/MyKpisCard";
 import TeamCollectedPanel from "../components/dashboard/TeamCollectedPanel";
 import { MeetingRequestBanner } from "@/components/meetings/meetingRequests";
 import { WalletCard } from "@/components/wallet/WalletCard";
@@ -341,6 +342,9 @@ export default function Dashboard() {
 
         {/* A mentor's / Chief's team: collected this month, each person's share (2026-11-09) */}
         {isMentorRole(currentUser.app_role) && <TeamCollectedPanel data={monthCourse.data} loading={monthCourse.isLoading} />}
+
+        {/* A mentor's KPI points from Root (2026-11-09) — once they're opened, no ranking */}
+        {isMentorRole(currentUser.app_role) && <MyKpisCard />}
 
         {/* Mentors and Chiefs: today's LMS classes and meetings (2026-10-28) */}
         <TodayScheduleCard currentUser={currentUser} />
