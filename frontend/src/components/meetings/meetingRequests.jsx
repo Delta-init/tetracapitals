@@ -127,7 +127,7 @@ export function AnyStudentPicker({ value, onPick }) {
 }
 
 /** A mentor asks for a meeting with a student — the CS picks the time. `student` pre-picks one ({ id, name, code, cs_name }). */
-export function RequestMeetingDialog({ open, onClose, student: initial = null }) {
+export function RequestMeetingDialog({ open, onClose, student: initial = null, onStaffMeeting = null }) {
   const qc = useQueryClient();
   const [student, setStudent] = useState(initial);
   const [f, setF] = useState({ category: '', course: '', durationMins: '30', inPerson: false, location: '', notes: '' });
@@ -206,6 +206,7 @@ export function RequestMeetingDialog({ open, onClose, student: initial = null })
           </div>
         </div>
         <DialogFooter className="gap-2 sm:gap-0">
+          {onStaffMeeting && <Button variant="ghost" className="sm:mr-auto" onClick={onStaffMeeting}>A staff meeting instead</Button>}
           <Button variant="outline" onClick={onClose}>Cancel</Button>
           <Button disabled={!ready || send.isPending} onClick={() => send.mutate()}>{send.isPending && <Loader2 className="h-4 w-4 animate-spin" />} Send request</Button>
         </DialogFooter>

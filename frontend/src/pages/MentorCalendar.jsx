@@ -19,6 +19,7 @@ import { createPageUrl } from '@/utils';
 import { TablePagination, usePagination } from '@/components/common/TablePagination';
 import { ClassInfoSection } from '@/components/classes/ClassInfo';
 import { useUrlState } from '@/components/utils/urlState';
+import { getEffectiveUser } from '@/components/utils/ImpersonationContext';
 import { ASKS_FOR_MEETINGS, MEETING_CATEGORIES, UPGRADE_COURSES, MyMeetingRequests, RequestMeetingDialog } from '@/components/meetings/meetingRequests';
 
 /* ────────────────────────────────────────────────────────────────────────────
@@ -188,7 +189,8 @@ export default function MentorCalendar() {
   };
 
   // The person looking, when they are one of the mentors (same email): their own week first (the user, 2026-10-08).
-  const { data: me } = useQuery({ queryKey: ['me'], queryFn: () => base44.auth.me(), staleTime: 5 * 60_000 });
+  // The person this is for — the one being viewed as, under View as (2026-11-09).
+  const { data: me } = useQuery({ queryKey: ['me', 'effective'], queryFn: async () => getEffectiveUser(await base44.auth.me()), staleTime: 5 * 60_000 });
   const myEmail = String(me?.email || '').trim().toLowerCase();
   const myMentor = useMemo(() => (schedule.data?.mentors ?? []).find(m => String(m.email || '').trim().toLowerCase() === myEmail) || null, [schedule.data, myEmail]);
   const [onlyMe, setOnlyMe] = useState(false);
@@ -197,6 +199,7 @@ export default function MentorCalendar() {
   const asks = ASKS_FOR_MEETINGS.includes(me?.app_role);
   const [tab, setTab] = useUrlState('tab', 'calendar');
   const [requesting, setRequesting] = useState(false);
+  const [staffSlot, setStaffSlot] = useState(null); // the day Book was pressed on — for "a staff meeting instead"
   // From a student's page (?student=): a mentor who asks gets the request form, the student in it.
   useEffect(() => { if (asks && forStudent?.id) setRequesting(true); }, [asks, forStudent?.id]);
 
@@ -302,8 +305,16 @@ export default function MentorCalendar() {
   });
   const openTimeOff = (mentor, day) => setTimeOffFor({ mentor, day: day ?? null });
 
-  const openBooking = (mentor, day) => {
+  const openBooking = (mentor, day, staff = false) => {
+    // A mentor who asks: Book is a meeting request — the CS picks the time (2026-11-09); a staff meeting books as before.
+    if (asks && !staff) { setStaffSlot({ mentor, day }); setRequesting(true); return; }
     setBooking({ mentor, day });
+    if (asks) {
+      setForm({ ...emptyForm, kind: 'staff' });
+      setGuests([{ name: '', email: '' }]);
+      setEditingId(null);
+      return;
+    }
     if (forStudent) {
       setForm({ ...emptyForm, title: `Session with ${studentName}`, kind: 'student' });
       setGuests([{ name: studentName, email: String(forStudent.email || '') }]);
@@ -751,7 +762,8 @@ export default function MentorCalendar() {
         </>}
       </div>
 
-      <RequestMeetingDialog open={requesting} onClose={() => setRequesting(false)}
+      <RequestMeetingDialog open={requesting} onClose={() => { setRequesting(false); setStaffSlot(null); }}
+        onStaffMeeting={staffSlot ? () => { const s = staffSlot; setRequesting(false); setStaffSlot(null); openBooking(s.mentor, s.day, true); } : null}
         student={asks && forStudent ? { id: forStudent.id, name: studentName, code: forStudent.student_code || '', cs_name: forStudent.primary_mentor_name || '' } : null} />
 
       {timeOffFor && (

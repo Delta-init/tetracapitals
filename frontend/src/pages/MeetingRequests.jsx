@@ -6,16 +6,39 @@ import { Button } from '@/components/ui/button';
 import { CalendarClock, Loader2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useUrlState } from '@/components/utils/urlState';
-import { DecideMeetingDialog, StatusBadge, categoryText, when } from '@/components/meetings/meetingRequests';
+import { ASKS_FOR_MEETINGS, DecideMeetingDialog, MyMeetingRequests, RequestMeetingDialog, StatusBadge, categoryText, when } from '@/components/meetings/meetingRequests';
+import { getEffectiveUser } from '@/components/utils/ImpersonationContext';
 
 /* ────────────────────────────────────────────────────────────────────────────
-   Meeting Requests (the user, 2026-11-09): the meetings mentors ask for with
+   Meeting Requests (the user, 2026-11-09): a mentor who asks sees their own
+   requests here. Everyone else: the meetings mentors ask for with
    this person's students — a CS their own, a CS Manager their location's, a
    Super Admin all. Waiting: pick the date and time and approve (it's booked in
    the LMS then), or reject with a reason. Decided: what became of them.
 ──────────────────────────────────────────────────────────────────────────── */
 
 export default function MeetingRequests() {
+  // A mentor who asks (2026-11-09): their own requests and where each stands.
+  const { data: me } = useQuery({ queryKey: ['me', 'effective'], queryFn: async () => getEffectiveUser(await base44.auth.me()), staleTime: 5 * 60_000 });
+  const [asking, setAsking] = useState(false);
+  if (me && ASKS_FOR_MEETINGS.includes(me.app_role)) {
+    return (
+      <div className="min-h-screen p-6">
+        <div className="mx-auto max-w-5xl space-y-6">
+          <div>
+            <PageTitle eyebrow="Students" icon={CalendarClock}>Meeting Requests</PageTitle>
+            <p className="mt-2 max-w-3xl text-sm text-slate-500">Every meeting you asked for, and where it stands. The student's CS picks the date and time and approves it — you're told then.</p>
+          </div>
+          <MyMeetingRequests onNew={() => setAsking(true)} />
+        </div>
+        <RequestMeetingDialog open={asking} onClose={() => setAsking(false)} />
+      </div>
+    );
+  }
+  return <DecideRequests />;
+}
+
+function DecideRequests() {
   const [tab, setTab] = useUrlState('tab', 'waiting');
   const [deciding, setDeciding] = useState(null);
   const q = useQuery({

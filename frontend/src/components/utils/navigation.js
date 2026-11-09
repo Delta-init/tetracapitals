@@ -142,7 +142,8 @@ export const NAV_ITEMS = [
   { name: 'Exams', label: 'Exams', page: 'Exams', icon: FileCheck, roles: ['super_admin', 'admin', 'broker_admin', 'academic_head', 'academic_admin', 'junior_mentor', 'chief_mentor', 'senior_mentor', 'subjunior_mentor', 'assistance'], sameAccessAs: 'Students', notForSales: true },
   { name: 'MentorCalendar', label: 'Mentor Calendar', page: 'MentorCalendar', icon: CalendarDays, roles: ['all'], everyone: true },
   // Mentors' meeting requests for the CS to time and approve (the user, 2026-11-09).
-  { name: 'MeetingRequests', label: 'Meeting Requests', page: 'MeetingRequests', icon: CalendarDays, roles: ['super_admin', 'admin', 'cs', 'cs_manager'], only: ['super_admin', 'admin', 'cs', 'cs_manager'] },
+  // …and mentors who ask see theirs there, with where each stands.
+  { name: 'MeetingRequests', label: 'Meeting Requests', page: 'MeetingRequests', icon: CalendarDays, roles: ['super_admin', 'admin', 'cs', 'cs_manager', 'senior_mentor', 'junior_mentor', 'subjunior_mentor'], only: ['super_admin', 'admin', 'cs', 'cs_manager', 'senior_mentor', 'junior_mentor', 'subjunior_mentor'] },
   // Repeating LMS classes for chosen students — a CS their own (and others' one by one), leaders their team's
   // (backend/src/functions/programs.ts).
   { name: 'Programs', label: 'Programs', page: 'Programs', icon: Repeat, roles: ['super_admin', 'chief_mentor'], sameAccessAs: 'StudentFollowups', notForSales: true },
@@ -231,7 +232,7 @@ export const GROUP_OF = {
  * student's page stays open to them (MT5 Approvals links to it), and the report details the Reports open.
  */
 // Senior / junior / sub-junior mentors (the user, 2026-11-07): these pages and no others; Chief Mentors unchanged.
-const MENTOR_PAGES = ['Dashboard', 'MentorLeaderboard', 'Teams', 'MyWallet', 'Students', 'StudentDetail', 'FundingActivities', 'MentorCalendar',
+const MENTOR_PAGES = ['Dashboard', 'MentorLeaderboard', 'Teams', 'MyWallet', 'Students', 'StudentDetail', 'FundingActivities', 'MentorCalendar', 'MeetingRequests',
   'StudentWorkflow', 'Reports', 'DepositReport', 'WithdrawalReport', 'FundingRequestReport', 'BonusReport', 'CommissionReport', 'ReportTransactionDetails', 'MentorReport'];
 export const ROLE_ONLY_PAGES = {
   senior_mentor: MENTOR_PAGES,
