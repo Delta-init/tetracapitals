@@ -104,6 +104,9 @@ export interface MeetingRow {
   cs_status: { status: string; reason: string; rescheduled_to: string | null; by: string } | null; cancel_reason: string;
   /** The payment that came from it, and the promised payment date's status (2026-11-09). */
   payment: MeetingPayment | null; promise: { date: string; status: string } | null;
+  /** An approved course payment came from it (2026-11-10): one linked to this meeting, or one after it that names this
+   *  meeting's mentor as "Meeting Conducted By" (as a backfilled one does). Worked out, never stored. */
+  converted: boolean;
   mentor: { name: string; email: string }; booked_by: string; attendee: string;
   student: { id: string; name: string; code: string; cs: string; cs_id: string; team: string; team_id: string } | null;
   stage: string; summary: string; outcome: any; reminder: { date: string; created: boolean } | null;
@@ -141,6 +144,28 @@ export async function paymentsFor(items: { meeting_id: string; student_id: strin
   }
   return out;
 }
+/**
+ * Which meetings converted (the user, 2026-11-10: a backfilled "meeting done by" mentor's meeting shows converted): an
+ * approved course payment from the student linked to that meeting, or — not linked to any — raised after it and naming
+ * the meeting's mentor as the one who held it. → the "<meeting id>|<student id>" keys that did.
+ */
+export async function convertedFor(items: { meeting_id: string; student_id: string; starts_at: string; mentor_id: string }[]): Promise<Set<string>> {
+  const out = new Set<string>();
+  const sids = [...new Set(items.map((i) => i.student_id).filter(Boolean))];
+  if (!sids.length) return out;
+  const txs = (await col("funding_transactions").find(
+    { type: "BONUS", "course_payment.product": { $exists: true }, student_id: { $in: sids }, status: "APPROVED", bonus_credit: { $in: [null, ""] } },
+    { projection: { student_id: 1, requested_at: 1, meeting_link: 1, meeting_mentor_id: 1 } },
+  ).toArray()) as any[];
+  for (const i of items) {
+    const done = txs.some((t) => String(t.student_id) === i.student_id && (t.meeting_link?.meeting_id
+      ? t.meeting_link.meeting_id === i.meeting_id
+      : !!i.mentor_id && String(t.meeting_mentor_id ?? "") === i.mentor_id && String(t.requested_at ?? "") >= i.starts_at));
+    if (done) out.add(`${i.meeting_id}|${i.student_id}`);
+  }
+  return out;
+}
+
 /** A promised payment date (an "interested" outcome) against what came: paid, due (today or ahead) or overdue. */
 export function promiseOf(outcome: any, payment: MeetingPayment | undefined): { date: string; status: "paid" | "due" | "overdue" } | null {
   const date = outcome?.stage === "interested" ? String(outcome?.paymentDate ?? "") : "";
@@ -186,7 +211,7 @@ export async function meetingRows(user: AuthUser, from: string, to: string): Pro
     };
     if (!theirs.length) {
       // Nobody of ours on it: an admin's, or its mentor's, to see.
-      if (!mine || held) rows.push({ ...base, id: m.id, attendee: m.attendees.map((a) => a.name).join(", "), student: null, reminder: null, payment: null, promise: promiseOf(m.outcome, undefined) });
+      if (!mine || held) rows.push({ ...base, id: m.id, attendee: m.attendees.map((a) => a.name).join(", "), student: null, reminder: null, payment: null, promise: promiseOf(m.outcome, undefined), converted: false });
       continue;
     }
     for (const { a, s } of theirs) {
@@ -196,16 +221,26 @@ export async function meetingRows(user: AuthUser, from: string, to: string): Pro
       rows.push({
         ...base, id: `${m.id}|${sid}`, attendee: a.name,
         student: { id: sid, name: String(s.full_name ?? "").trim(), code: String(s.student_code ?? ""), cs: String(s.primary_mentor_name ?? ""), cs_id: String(s.primary_mentor_id ?? ""), team: String(s.team_name ?? ""), team_id: String(s.team_id ?? "") },
-        reminder: r ? { date: String(r.date ?? ""), created: r.created === true } : null, payment: null, promise: null,
+        reminder: r ? { date: String(r.date ?? ""), created: r.created === true } : null, payment: null, promise: null, converted: false,
       });
     }
   }
   const pays = await paymentsFor(rows.filter((x) => x.student).map((x) => ({ meeting_id: x.meeting_id, student_id: x.student!.id, starts_at: x.starts_at })));
+  // The meetings' mentors as staff here, for "Meeting Conducted By" on a payment.
+  const mentorEmails = [...new Set(rows.filter((x) => x.student).map((x) => emailOf(x.mentor?.email)).filter((e) => e.includes("@")))];
+  const staff = mentorEmails.length
+    ? ((await col("users").find({ email: { $in: mentorEmails.map((e) => new RegExp(`^\\s*${escRe(e)}\\s*$`, "i")) } }, { projection: { email: 1 } }).toArray()) as any[])
+    : [];
+  const staffId = new Map(staff.map((u) => [emailOf(u.email), String(u._id)]));
+  const converted = await convertedFor(rows.filter((x) => x.student).map((x) => ({
+    meeting_id: x.meeting_id, student_id: x.student!.id, starts_at: x.starts_at, mentor_id: staffId.get(emailOf(x.mentor?.email)) ?? "",
+  })));
   for (const x of rows) {
     if (!x.student) continue;
     const pmt = pays.get(`${x.meeting_id}|${x.student.id}`);
     x.payment = pmt ?? null;
     x.promise = promiseOf(x.outcome, pmt);
+    x.converted = converted.has(`${x.meeting_id}|${x.student.id}`);
   }
   return rows;
 }
@@ -226,7 +261,7 @@ async function rowsFor(req: Request, user: AuthUser): Promise<{ rows: MeetingRow
 
 /**
  * POST /api/functions/getMeetingsDone { from, to (YYYY-MM-DD), status?: done | waiting | held (both, the default) |
- *   cancelled | upcoming | all, stage?, mentor? (email), cs? (id), team? (id), search? } → { rows, mentors, cses, teams }
+ *   converted | cancelled | upcoming | all, stage?, mentor? (email), cs? (id), team? (id), search? } → { rows, mentors, cses, teams }
  * — the Meetings done page: newest first; the lists are for its filters.
  */
 export async function getMeetingsDone(req: Request, user: AuthUser): Promise<Response> {
@@ -236,7 +271,7 @@ export async function getMeetingsDone(req: Request, user: AuthUser): Promise<Res
   const status = str(body?.status, 20) || "held";
   const q = str(body?.search, 100).toLowerCase();
   const out = rows.filter((r) =>
-    (status === "all" || (status === "held" ? r.status === "done" || r.status === "waiting" : r.status === status))
+    (status === "all" || (status === "held" ? r.status === "done" || r.status === "waiting" : status === "converted" ? r.converted : r.status === status))
     && (!body?.stage || body.stage === "all" || (body.stage === "waiting" ? r.status === "waiting" : r.stage === body.stage))
     && (!body?.mentor || body.mentor === "all" || emailOf(r.mentor.email) === emailOf(body.mentor))
     && (!body?.cs || body.cs === "all" || (body.cs === "none" ? !r.student?.cs_id : r.student?.cs_id === body.cs))

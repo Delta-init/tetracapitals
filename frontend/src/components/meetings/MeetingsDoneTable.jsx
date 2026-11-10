@@ -26,6 +26,10 @@ const p = (r) => r.outcome?.profile || null;
 const day = (iso) => (iso ? new Date(new Date(iso).getTime() + 4 * 3600e3).toISOString().slice(0, 10) : '');
 const experience = (r) => { const x = p(r); if (!x) return ''; const e = EXPERIENCE_LABEL[x.experience] ?? x.experience ?? ''; return x.experience === 'fresher' || x.years == null ? e : `${e} · ${x.years} yr`; };
 const lossWays = (r) => (p(r)?.lossHow ?? []).map(w => LOSS_WAY_LABEL[w] ?? w);
+/** An approved course payment came from the meeting (2026-11-10). */
+const ConvertedBadge = () => (
+  <span title="An approved course payment came from this meeting" className="inline-flex items-center whitespace-nowrap rounded-full border border-emerald-300 bg-emerald-100 px-2 py-0.5 text-xs font-semibold text-emerald-800">Converted</span>
+);
 
 /**
  * Every field a meeting has. get: its text (filter, sort, export); show: how the cell looks (else the text);
@@ -58,7 +62,10 @@ export const COLUMNS = [
   { key: 'mode', label: 'Online / in person', get: r => (r.in_person ? `In person${r.location ? ` — ${r.location}` : ''}` : r.duration_mins ? 'Online' : ''), filter: 'select' },
   { key: 'length', label: 'Length', get: r => (r.duration_mins ? `${r.duration_mins} min` : ''), filter: 'select' },
   { key: 'booked_by', label: 'Booked by', get: r => r.booked_by || '', filter: 'select' },
-  { key: 'stage', label: 'Stage', on: true, get: r => STAGE_LABEL[r.stage] ?? (r.status === 'waiting' ? 'Waiting for mentor' : r.stage || ''), filter: 'select', show: r => (r.stage ? <MeetingStageBadge stage={r.stage} /> : <span className="text-slate-300">—</span>) },
+  { key: 'stage', label: 'Stage', on: true, get: r => STAGE_LABEL[r.stage] ?? (r.status === 'waiting' ? 'Waiting for mentor' : r.stage || ''), filter: 'select',
+    show: r => (r.stage || r.converted ? <span className="inline-flex flex-wrap items-center gap-1">{r.stage && <MeetingStageBadge stage={r.stage} />}{r.converted && <ConvertedBadge />}</span> : <span className="text-slate-300">—</span>) },
+  // An approved course payment came from it (2026-11-10) — worked out from the payments (backend convertedFor).
+  { key: 'converted', label: 'Converted', get: r => (r.student ? (r.converted ? 'Converted' : 'Not converted') : ''), filter: 'select' },
   { key: 'course', label: 'Course', on: true, get: r => o(r).courseTitle || '', filter: 'select' },
   { key: 'payment_date', label: 'Payment date', on: true, get: r => o(r).paymentDate || '', filter: 'date' },
   { key: 'payment_intent', label: 'Payment intention', get: r => (r.stage === 'interested' ? ({ explicit_plan: 'Explicit plan', interested_no_commitment: 'No firm commitment', not_discussed: 'Not discussed' }[o(r).paymentIntent || 'explicit_plan']) : ''), filter: 'select' },

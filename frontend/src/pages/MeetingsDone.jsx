@@ -8,6 +8,9 @@ import { Input } from '@/components/ui/input';
 import { STAGE_LABEL } from '@/components/meetings/meetingStage';
 import { fn, thisMonth } from '@/components/meetings/meetingsUi';
 import PaymentVerificationTab from '@/components/meetings/PaymentVerificationTab';
+import MeetingCommissionTab, { seesMeetingCommission } from '@/components/meetings/MeetingCommissionTab';
+import { base44 } from '@/api/base44Client';
+import { getEffectiveUser } from '@/components/utils/ImpersonationContext';
 import { useUrlState } from '@/components/utils/urlState';
 import { cn } from '@/lib/utils';
 import { ColumnPicker, FilterPanel, MeetingsDoneTable, applyFilters, exportMeetings, useColumns } from '@/components/meetings/MeetingsDoneTable';
@@ -19,12 +22,15 @@ import { ColumnPicker, FilterPanel, MeetingsDoneTable, applyFilters, exportMeeti
  * leaders their people's, admins everyone's), and a mentor the meetings they held.
  */
 const selectCls = 'h-9 rounded-md border border-slate-200 bg-white px-2 text-sm';
-const STATUSES = [['held', 'Held (done + waiting)'], ['done', 'Done'], ['waiting', 'Waiting for mentor'], ['upcoming', 'Upcoming'], ['cancelled', 'Cancelled'], ['all', 'All']];
+// Converted (2026-11-10): an approved course payment came from the meeting — backend functions/meetingOutcomes.ts convertedFor.
+const STATUSES = [['held', 'Held (done + waiting)'], ['done', 'Done'], ['waiting', 'Waiting for mentor'], ['converted', 'Converted'], ['upcoming', 'Upcoming'], ['cancelled', 'Cancelled'], ['all', 'All']];
 
 export default function MeetingsDone() {
   const [days, setDays] = useState(thisMonth);
-  // Meetings, or Payment verification (2026-11-09) — ?view=verification.
+  // Meetings, Payment verification (2026-11-09) — ?view=verification — or Meeting commission (2026-11-10) — ?view=commission.
   const [view, setView] = useUrlState('view', 'meetings');
+  const { data: me } = useQuery({ queryKey: ['me-effective'], queryFn: async () => getEffectiveUser(await base44.auth.me()) });
+  const tabs = [['meetings', 'Meetings'], ['verification', 'Payment verification'], ...(seesMeetingCommission(me) ? [['commission', 'Meeting commission']] : [])];
   const [status, setStatus] = useState('held');
   const [stage, setStage] = useState('all');
   const [mentor, setMentor] = useState('all');
@@ -51,12 +57,20 @@ export default function MeetingsDone() {
         <PageTitle eyebrow="Students">Meetings done</PageTitle>
         <p className="text-sm text-slate-500">Student meetings booked from the Mentor Calendar, and what each mentor said after them.</p>
         <div className="flex w-fit rounded-md border bg-white p-0.5 text-sm" role="tablist">
-          {[['meetings', 'Meetings'], ['verification', 'Payment verification']].map(([v, l]) => (
+          {tabs.map(([v, l]) => (
             <button key={v} type="button" role="tab" aria-selected={view === v} onClick={() => setView(v)}
               className={cn('rounded px-3 py-1.5 font-medium', view === v ? 'bg-brand-navy text-white' : 'text-slate-600 hover:bg-slate-50')}>{l}</button>
           ))}
         </div>
-        {view === 'verification' ? (
+        {view === 'commission' && seesMeetingCommission(me) ? (
+          <Card><CardContent className="space-y-3 p-4">
+            <div className="flex flex-wrap items-center gap-2">
+              <label className="flex items-center gap-1 text-sm text-slate-600">Payments from <Input type="date" className="h-9 w-40" value={days.from} max={days.to} onChange={e => e.target.value && setDays(d => ({ ...d, from: e.target.value }))} /></label>
+              <label className="flex items-center gap-1 text-sm text-slate-600">to <Input type="date" className="h-9 w-40" value={days.to} min={days.from} onChange={e => e.target.value && setDays(d => ({ ...d, to: e.target.value }))} /></label>
+            </div>
+            <MeetingCommissionTab days={days} />
+          </CardContent></Card>
+        ) : view === 'verification' ? (
           <Card><CardContent className="space-y-3 p-4">
             <div className="flex flex-wrap items-center gap-2">
               <label className="flex items-center gap-1 text-sm text-slate-600">Meetings from <Input type="date" className="h-9 w-40" value={days.from} max={days.to} onChange={e => e.target.value && setDays(d => ({ ...d, from: e.target.value }))} /></label>

@@ -64,6 +64,7 @@ import { getInstructorReviews, getInstructorReviewList } from "./instructorRevie
 import { getMentorReport, getMentorReportDetails, getMentorLeaderboard } from "./mentorReport";
 import { getMyKpis, getTeamKpis, getMentorKpis, requestKpiCorrection } from "./mentorKpis";
 import { getPendingMeetingOutcomes, getMeetingOutcomeOptions, saveMeetingOutcome, getStudentMeetingOutcomes, getMeetingsDone, getMeetingsReport, getStudentMeetings, getPaymentMeetings } from "./meetingOutcomes";
+import { getMeetingCommissions } from "./meetingCommissions";
 import { getVoiceRecordings, saveVoiceRecording, deleteVoiceRecording } from "./voiceRecordings";
 import { getCsTvLink } from "./csTv";
 import { getLmsCourseAccess, giveLmsCourses, setLmsModuleAccess } from "./lmsCourseAccess";
@@ -263,6 +264,8 @@ const AUTHED: Record<string, AuthedHandler> = {
   saveMeetingOutcome,
   getStudentMeetingOutcomes,
   getMeetingsDone,
+  // Meetings done → Meeting commission tab (2026-11-10)
+  getMeetingCommissions,
   getPaymentMeetings,
   getMeetingsReport,
   getStudentMeetings,
