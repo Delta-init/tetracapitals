@@ -60,7 +60,7 @@ import { removeStudentMt5, setPrimaryMt5 } from "./studentMt5";
 import { markNotStudent, unmarkNotStudent, listNotStudents } from "./notStudent";
 import { getStudentEmails, getStudentEmail } from "./studentEmails";
 import { getMessageLogs, getMessageLogEmail, getStudentLmsWhatsApp } from "./messageLogs";
-import { getInstructorReviews, getInstructorReviewList } from "./instructorReviews";
+import { getInstructorReviews, getInstructorReviewList, getInstructorReviewFeed } from "./instructorReviews";
 import { getMentorReport, getMentorReportDetails, getMentorLeaderboard } from "./mentorReport";
 import { getMyKpis, getTeamKpis, getMentorKpis, requestKpiCorrection } from "./mentorKpis";
 import { getPendingMeetingOutcomes, getMeetingOutcomeOptions, saveMeetingOutcome, getStudentMeetingOutcomes, getMeetingsDone, getMeetingsReport, getStudentMeetings, getPaymentMeetings } from "./meetingOutcomes";
@@ -274,6 +274,7 @@ const AUTHED: Record<string, AuthedHandler> = {
   deleteVoiceRecording,
   getCsTvLink,
   getInstructorReviewList,
+  getInstructorReviewFeed,
   getStudentEmail,
   getProgramAudiences,
   addProgramGuestToLms,

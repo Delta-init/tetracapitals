@@ -235,7 +235,7 @@ export const GROUP_OF = {
  */
 // Senior / junior / sub-junior mentors (the user, 2026-11-07): these pages and no others; Chief Mentors unchanged.
 // My KPIs and Meetings done (2026-11-10) — Meetings done showing them only its Meeting commission tab (pages/MeetingsDone.jsx).
-export const MENTOR_PAGES = ['Dashboard', 'MentorLeaderboard', 'Teams', 'MyWallet', 'MyKpis', 'Students', 'StudentDetail', 'FundingActivities', 'MentorCalendar', 'MeetingRequests',
+export const MENTOR_PAGES = ['Dashboard', 'MentorLeaderboard', 'Teams', 'MyWallet', 'MyKpis', 'InstructorReviews', 'Students', 'StudentDetail', 'FundingActivities', 'MentorCalendar', 'MeetingRequests',
   'MeetingsDone', 'StudentWorkflow', 'Reports', 'DepositReport', 'WithdrawalReport', 'FundingRequestReport', 'BonusReport', 'CommissionReport', 'ReportTransactionDetails', 'MentorReport'];
 export const ROLE_ONLY_PAGES = {
   senior_mentor: MENTOR_PAGES,

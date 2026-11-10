@@ -32,27 +32,37 @@ import { getMeetingCommissions } from "../functions/meetingCommissions";
      getMeetingsDone           a Chief only — their team's meetings, Converted
    Never deciding, escalating or paying. The LMS's own secret in
    `x-lms-secret`, as for new students (lms/students.ts).
+
+   An LMS admin (the user, 2026-11-10: "show in the sidebar the meeting done
+   and meeting request"): what their account here may read — a Super Admin or
+   Admin every request and meeting, a CS Manager their location's requests and
+   the Meeting commission — never asking, taking back or deciding.
 ──────────────────────────────────────────────────────────────────────────── */
 
 export const MENTOR_ROLES = new Set(["junior_mentor", "senior_mentor", "subjunior_mentor", "chief_mentor"]);
+/** Who reads from the LMS admin without being a mentor: these accounts' own reach here, read only. */
+export const VIEWER_ROLES = new Set(["super_admin", "admin", "cs_manager"]);
+const ADMINS = new Set(["super_admin", "admin"]);
 const CHIEF = new Set(["chief_mentor"]);
 type Handler = (req: Request, user: AuthUser) => Promise<Response>;
-const ACTIONS: Record<string, { run: Handler; roles?: Set<string>; body?: (b: Record<string, unknown>) => Record<string, unknown> }> = {
-  listMeetingRequests: { run: listMeetingRequests, body: () => ({ box: "mine", status: "all" }) },
+/** `viewers`: a viewer may run it too (read only). */
+const ACTIONS: Record<string, { run: Handler; roles?: Set<string>; viewers?: Set<string>; body?: (b: Record<string, unknown>, u: AuthUser) => Record<string, unknown> }> = {
+  // A mentor: their own; a viewer: the ones they decide here (read only from the LMS).
+  listMeetingRequests: { run: listMeetingRequests, viewers: VIEWER_ROLES, body: (_b, u) => ({ box: MENTOR_ROLES.has(u.app_role) ? "mine" : "to_decide", status: "all" }) },
   createMeetingRequest: { run: createMeetingRequest, roles: ASKS_FOR_MEETINGS },
   cancelMeetingRequest: { run: cancelMeetingRequest },
-  getMeetingRequestReview: { run: getMeetingRequestReview },
+  getMeetingRequestReview: { run: getMeetingRequestReview, viewers: VIEWER_ROLES },
   searchMeetingStudents: { run: searchMeetingStudents, roles: ASKS_FOR_MEETINGS },
-  getStudentMeetingHistory: { run: getStudentMeetingHistory },
-  getMeetingCommissions: { run: getMeetingCommissions },
-  getMeetingsDone: { run: getMeetingsDone, roles: CHIEF },
+  getStudentMeetingHistory: { run: getStudentMeetingHistory, viewers: VIEWER_ROLES },
+  getMeetingCommissions: { run: getMeetingCommissions, viewers: VIEWER_ROLES },
+  getMeetingsDone: { run: getMeetingsDone, roles: CHIEF, viewers: ADMINS },
 };
 const esc = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 
 /** The staff account with this address, as an AuthUser — a mentor's first, if the address is on more than one. */
 async function staffWithEmail(email: string): Promise<AuthUser | null> {
   const found = (await col("users").find({ email: new RegExp(`^\\s*${esc(email)}\\s*$`, "i"), status: { $ne: "inactive" } }).limit(5).toArray()) as any[];
-  const doc = found.find((u) => MENTOR_ROLES.has(String(u.app_role))) ?? found[0];
+  const doc = found.find((u) => MENTOR_ROLES.has(String(u.app_role))) ?? found.find((u) => VIEWER_ROLES.has(String(u.app_role))) ?? found[0];
   if (!doc) return null;
   const { password_hash, ...safe } = doc;
   return serialize(safe) as AuthUser;
@@ -70,19 +80,29 @@ export async function handleLmsMentorMeetings(req: Request): Promise<Response> {
   const user = await staffWithEmail(email);
   const mentor = !!user && MENTOR_ROLES.has(user.app_role);
 
+  const viewer = !!user && !mentor && VIEWER_ROLES.has(user.app_role);
+
   if (action === "me") {
-    if (!mentor) return ok({ mentor: false, message: user ? "Your CS Portal account isn't a mentor's" : "No CS Portal account has your email" });
+    if (viewer) {
+      return ok({ mentor: false, viewer: true, role: user!.app_role, name: user!.full_name ?? "", asks: false, requests: "to_decide",
+        meetings_done: ADMINS.has(user!.app_role) ? ["meetings", "commission"] : ["commission"] });
+    }
+    if (!mentor) return ok({ mentor: false, viewer: false, message: user ? "Your CS Portal account isn't a mentor's" : "No CS Portal account has your email" });
     const asks = ASKS_FOR_MEETINGS.has(user!.app_role);
-    return ok({ mentor: true, role: user!.app_role, name: user!.full_name ?? "", asks, meetings_done: asks ? ["commission"] : ["meetings", "commission"] });
+    return ok({ mentor: true, viewer: false, role: user!.app_role, name: user!.full_name ?? "", asks, requests: asks ? "mine" : null, meetings_done: asks ? ["commission"] : ["meetings", "commission"] });
   }
   const spec = ACTIONS[action];
   if (!spec) return refuse(400, "VALIDATION_ERROR", "Unknown action");
   if (!user) return refuse(404, "NO_ACCOUNT", "No CS Portal account has your email");
-  if (!mentor) return refuse(403, "NOT_A_MENTOR", "Your CS Portal account isn't a mentor's");
-  if (spec.roles && !spec.roles.has(user.app_role)) return refuse(403, "NOT_FOR_YOUR_ROLE", "Not for your role");
+  if (viewer) {
+    if (!spec.viewers?.has(user.app_role)) return refuse(403, "READ_ONLY", "Read only from the LMS — do it in the CS Portal");
+  } else {
+    if (!mentor) return refuse(403, "NOT_A_MENTOR", "Your CS Portal account isn't a mentor's");
+    if (spec.roles && !spec.roles.has(user.app_role)) return refuse(403, "NOT_FOR_YOUR_ROLE", "Not for your role");
+  }
 
   const inner = got.body && typeof got.body === "object" && !Array.isArray(got.body) ? (got.body as Record<string, unknown>) : {};
-  const body = spec.body ? { ...inner, ...spec.body(inner) } : inner;
+  const body = spec.body ? { ...inner, ...spec.body(inner, user) } : inner;
   let res: Response;
   try {
     res = await spec.run(new Request(`http://lms.local/api/functions/${action}`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) }), user);

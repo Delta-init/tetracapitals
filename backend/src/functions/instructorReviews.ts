@@ -29,7 +29,18 @@ async function teamEmails(user: AuthUser): Promise<Set<string> | null> {
 const lmsTrouble = (err: unknown) =>
   err instanceof LmsError && /route \S+ \S+ not found|cannot get/i.test(err.message) ? "Instructor reviews need the LMS update" : err instanceof Error ? err.message : "The LMS did not answer";
 
-/** POST /api/functions/getInstructorReviews { scope?: "team" | "all" } → { rows, scope, teamSize } */
+const DAY = /^\d{4}-\d{2}-\d{2}$/;
+const PROGRAMS = new Set(["4x-trading", "digital-marketing", "ai", "jura", "cma"]);
+/** The page's filters as the LMS reads them (?from&to — Dubai days, to included — &program…). */
+function filtersOf(body: any): Record<string, string> {
+  const q: Record<string, string> = {};
+  if (DAY.test(String(body?.from ?? ""))) q.from = String(body.from);
+  if (DAY.test(String(body?.to ?? ""))) q.to = String(body.to);
+  if (PROGRAMS.has(String(body?.program ?? ""))) q.program = String(body.program);
+  return q;
+}
+
+/** POST /api/functions/getInstructorReviews { scope?: "team" | "all", from?, to?, program? } → { rows, scope, team } */
 export async function getInstructorReviews(req: Request, user: AuthUser): Promise<Response> {
   if (!mayView(user)) return forbidden();
   const body: any = await req.json().catch(() => ({}));
@@ -37,9 +48,39 @@ export async function getInstructorReviews(req: Request, user: AuthUser): Promis
   const team = await teamEmails(user);
   const scope = !team || body?.scope === "all" ? "all" : "team";
   try {
-    const all = ((await callLms("/instructor-reviews", { verb: "share its instructor reviews" })) as any[]) ?? [];
+    const all = ((await callLms("/instructor-reviews", { query: filtersOf(body), verb: "share its instructor reviews" })) as any[]) ?? [];
     const rows = scope === "all" ? all : all.filter((r) => team!.has(String(r.email ?? "").trim().toLowerCase()));
     return json({ scope, team: !!team, rows: rows.map((r, i) => ({ ...r, rank: i + 1 })) });
+  } catch (err) {
+    return error(lmsTrouble(err), 502);
+  }
+}
+
+/**
+ * POST /api/functions/getInstructorReviewFeed { scope?: "team" | "all", mine?, instructor? (LMS id), rating? (1–5 | "low"),
+ *   from?, to?, withComment?, kind? ("mentor_rating" | "class_feedback"), program?, q?, page? } → { reviews, total, page,
+ *   perPage, stats, scope, team } — All reviews (the user, 2026-11-10: "full review with filter … they can see their review
+ *   and others review also"): every mentor's ("Everyone"), their team's, or their own ("mine"), 25 a page.
+ */
+export async function getInstructorReviewFeed(req: Request, user: AuthUser): Promise<Response> {
+  if (!mayView(user)) return forbidden();
+  const body: any = await req.json().catch(() => ({}));
+  if (!lmsConfigured()) return error("The LMS isn't linked to this server", 503);
+  const team = await teamEmails(user);
+  const scope = body?.mine === true ? "mine" : !team || body?.scope === "all" ? "all" : "team";
+  const query: Record<string, string> = { ...filtersOf(body), page: String(Math.max(1, Math.floor(Number(body?.page) || 1))), per_page: String(Math.min(100, Math.max(1, Math.floor(Number(body?.perPage) || 25)))) };
+  if (/^[a-f\d]{24}$/i.test(String(body?.instructor ?? ""))) query.instructor = String(body.instructor);
+  if (/^([1-5]|low)$/.test(String(body?.rating ?? ""))) query.rating = String(body.rating);
+  if (body?.withComment === true) query.withComment = "1";
+  if (body?.kind === "mentor_rating" || body?.kind === "class_feedback") query.kind = body.kind;
+  const q = String(body?.q ?? "").trim().slice(0, 80);
+  if (q) query.q = q;
+  // Mine: their own address; the team: its mentors' (nobody known → nobody); everyone: no narrowing.
+  if (scope === "mine") query.emails = String(user.email ?? "").trim().toLowerCase() || "-";
+  else if (scope === "team") query.emails = [...team!].join(",") || "-";
+  try {
+    const got: any = await callLms("/instructor-reviews/feed", { query, verb: "share the reviews" });
+    return json({ ...got, scope, team: !!team });
   } catch (err) {
     return error(lmsTrouble(err), 502);
   }

@@ -46,7 +46,9 @@ const senior = u("Senior A", "senior_mentor", chief._id);
 const junior = u("Junior A", "junior_mentor", chief._id);
 const cs = u("Cee Ess", "cs", senior._id);
 const gone = u("Gone Mentor", "senior_mentor", chief._id, { status: "inactive" });
-await db.collection("users").insertMany([chief, senior, junior, cs, gone] as any[]);
+const boss = u("Boss Admin", "super_admin");
+const csm = u("Cee Manager", "cs_manager");
+await db.collection("users").insertMany([chief, senior, junior, cs, gone, boss, csm] as any[]);
 const s1 = { _id: new ObjectId(), full_name: "Student One", student_code: "STU-0001", email: "one@e2e.test", primary_mentor_id: String(cs._id), primary_mentor_name: cs.full_name };
 await db.collection("students").insertOne(s1 as any);
 meetings = [{
@@ -155,6 +157,29 @@ r = await as(chief, "getMeetingsDone", { from: "2026-11-30", to: "2026-11-01" })
 check("days the wrong way round: the portal's message", r.status === 400 && /Pick the days/.test(r.body.error.message), show(r.body));
 r = await as(cs, "getMeetingCommissions", { from: "2026-11-01", to: "2026-11-30" });
 check("a CS: refused", r.status === 403);
+
+step("An LMS admin: what their account here may read, read only");
+r = await as(boss, "me");
+check("a Super Admin: a viewer — the requests they decide, Meetings + Meeting commission", r.status === 200 && r.body.data.viewer === true && r.body.data.mentor === false
+  && r.body.data.requests === "to_decide" && JSON.stringify(r.body.data.meetings_done) === '["meetings","commission"]', show(r.body));
+r = await as(csm, "me");
+check("a CS Manager: a viewer — Meeting commission only", r.body.data.viewer === true && JSON.stringify(r.body.data.meetings_done) === '["commission"]', show(r.body));
+r = await as(boss, "listMeetingRequests", { box: "mine" });
+check("…every request (the ones they decide), whatever box is sent", r.status === 200 && r.body.data.requests.length === 2, show(r.body.data?.counts));
+r = await as(boss, "getMeetingRequestReview", { id: juniorReq });
+check("…opens one", r.status === 200 && r.body.data.request.id === juniorReq);
+r = await as(boss, "createMeetingRequest", ask);
+check("…can't ask", r.status === 403 && r.body.error.code === "READ_ONLY", show(r.body));
+r = await as(boss, "cancelMeetingRequest", { id: juniorReq });
+check("…can't take one back", r.status === 403 && (await db.collection("meeting_requests").findOne({ _id: new ObjectId(juniorReq) }))?.status === "pending");
+r = await as(boss, "getMeetingsDone", { from: "2026-11-01", to: "2026-11-30", status: "all" });
+check("…every meeting", r.status === 200 && r.body.data.rows.some((x: any) => x.meeting_id === "m-chief"), show(r.body));
+r = await as(boss, "getMeetingCommissions", { from: "2026-11-01", to: "2026-11-30" });
+check("…everyone's commission", r.status === 200 && r.body.data.sees === "everyone" && r.body.data.rows.length === 1, show(r.body));
+r = await as(csm, "getMeetingsDone", { from: "2026-11-01", to: "2026-11-30" });
+check("a CS Manager: no meetings list", r.status === 403);
+r = await as(csm, "getMeetingCommissions", { from: "2026-11-01", to: "2026-11-30" });
+check("…the commission", r.status === 200 && r.body.data.rows.length === 1, show(r.body));
 
 await closeDb(); await client.close(); lms.stop(true);
 console.log(`\n${pass} passed, ${fail} failed`);
