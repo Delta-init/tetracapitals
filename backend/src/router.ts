@@ -13,6 +13,7 @@ import { handleFinanceCsCommission, handleFinanceCsCommissionApprove, handleFina
 import { handleReceiptFile } from "./finance/receiptFile";
 import { handleLmsStudents } from "./lms/students";
 import { handleLmsStudentCs } from "./lms/studentCs";
+import { handleLmsMentorMeetings } from "./lms/mentorMeetings";
 import {
   listEntity, filterEntity, getEntityById, createEntity,
   bulkCreateEntity, updateEntity, deleteEntity,
@@ -95,6 +96,8 @@ export async function route(req: Request): Promise<Response> {
   if (path === "/api/v1/integrations/lms/students" && req.method === "POST") return handleLmsStudents(req);
   // ---- …and asking, now, who looks after one of them (the same secret) ----
   if (path === "/api/v1/integrations/lms/student-cs" && req.method === "POST") return handleLmsStudentCs(req);
+  // ---- …and its admin's Meeting requests / Meetings done pages, as the mentor signed in there (the same secret) ----
+  if (path === "/api/v1/integrations/lms/mentor-meetings" && req.method === "POST") return handleLmsMentorMeetings(req);
 
   // ---- The button in a follow-up reminder email: noted as seen, then on to the portal ----
   const reminderOpen = path.match(/^\/api\/reminders\/open\/([A-Za-z0-9_-]{16,64})$/);
