@@ -5,7 +5,7 @@ import { json, error, forbidden, notFound } from "../lib/response";
 import { toObjectId } from "../lib/id";
 import { allOf as and, escapeRe, pageOf, textMatch } from "../lib/paging";
 import type { AuthUser } from "../auth/middleware";
-import { buildScopeFilter, getConfiguredScope, getDownlineIds } from "../lib/scope";
+import { FOREX_READERS, buildScopeFilter, getConfiguredScope, getDownlineIds } from "../lib/scope";
 import { isMentorRole } from "../lib/roles";
 import { userCanListEntity, userCanReadDoc } from "../entities/crud";
 import { courseLabel } from "../students/tags";
@@ -29,7 +29,9 @@ const BONUS_FILTERS = ["pending", "sent_back", "after_payment", "needs_call", "w
                        — not their own
      co_managed        where they are a co-mentor
      all               everyone they may see (admin roles, and anyone who is
-                       not a mentor)
+                       not a mentor); a CS Manager every team's, and the
+                       Chief / Senior / Junior / Sub-junior Mentors every
+                       Forex student (2026-11-10) — to read
      open_pool         Delta Open Students
      admin_co_managed  every student with co-mentors
 
@@ -50,8 +52,9 @@ async function tabsFor(user: AuthUser): Promise<Tab[]> {
   if (isMentorRole(user.app_role)) {
     const tabs: Tab[] = ["my"];
     if ((await getConfiguredScope(user)) === "downline") tabs.push("team");
-    // A CS Manager sees every team's students too (lib/scope.ts CS_MANAGER_READS_ALL).
-    if (user.app_role === "cs_manager") tabs.push("all");
+    // A CS Manager sees every team's students too (lib/scope.ts CS_MANAGER_READS_ALL); and the mentors every Forex
+    // student — everyone in the portal — to read (FOREX_READERS, 2026-11-10).
+    if (user.app_role === "cs_manager" || FOREX_READERS.has(user.app_role)) tabs.push("all");
     tabs.push("co_managed");
     return tabs;
   }

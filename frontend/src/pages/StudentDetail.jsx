@@ -50,7 +50,7 @@ import { EnrolmentControl } from "@/components/students/enrolment";
 import { OnboardingControl } from "@/components/students/onboarding";
 import { isStudentOf } from "@/components/students/common";
 import { StudentTagsEditor } from "@/components/students/tags";
-import { isMentorRole as isMentorTier, readsClosedOnly, TEAM_WIDE_MENTORS } from "@/components/utils/roles";
+import { isMentorRole as isMentorTier, readsClosedOnly, TEAM_WIDE_MENTORS, FOREX_READERS, viewOnlyActor } from "@/components/utils/roles";
 import { closedByMe, ClosedByList } from "@/components/students/closedBy";
 import { canEditStudent, applyStudentMasking } from "../components/utils/StudentAccessControl";
 import { getEffectiveUser } from "../components/utils/ImpersonationContext";
@@ -254,7 +254,7 @@ export default function StudentDetail() {
   })();
 
   const ofMyTeam = leads && teamIds.some(id => isStudentOf(student, id));
-  const hasAccess = isAdminRole ||
+  const ownAccess = isAdminRole ||
     // Every CS Manager reads every student's page, in all teams (2026-10-09).
     currentUser.app_role === 'cs_manager' ||
     isStudentOf(student, currentUser.id) ||
@@ -262,9 +262,17 @@ export default function StudentDetail() {
     currentUser.id === student.senior_mentor_id ||
     isCoMentor ||
     (salesOnly && closedByMe(student, currentUser));
+  // Every Forex student's page opens for the Chief / Senior / Junior / Sub-junior Mentors (the user, 2026-11-10) — view
+  // only when the student isn't theirs or their team's: every control acts as nobody (viewOnlyActor), and the header's
+  // call / book / edit actions are left out.
+  const forexReader = FOREX_READERS.includes(currentUser.app_role) && !salesOnly;
+  const hasAccess = ownAccess || forexReader;
+  const viewOnly = forexReader && !ownAccess;
+  const actor = viewOnly ? viewOnlyActor(currentUser) : currentUser;
 
-  // A leader's team is still on its way: wait for it rather than say "no access".
-  if (isMentorRole && !hasAccess && leads && !myTeam) {
+  // A leader's team is still on its way: wait for it rather than say "no access" — or show their own team's student
+  // as view only.
+  if (isMentorRole && !ownAccess && leads && !myTeam) {
     return <div className="flex min-h-screen items-center justify-center"><div className="h-10 w-10 animate-spin rounded-full border-b-2 border-blue-600" /></div>;
   }
   if (isMentorRole && !hasAccess) {
@@ -345,59 +353,67 @@ export default function StudentDetail() {
                   </button>
                 )}
                 {/* A bonus still not in their MT5 — to the broker admins (Not Credited Yet) */}
-                {!salesOnly && <RaiseCreditRequestButton student={student} currentUser={currentUser} />}
+                {!salesOnly && <RaiseCreditRequestButton student={student} currentUser={actor} />}
               </p>
               {/* Open, or Closed = enrolled */}
-              <div className="mt-2"><EnrolmentControl student={student} currentUser={currentUser} /></div>
+              <div className="mt-2"><EnrolmentControl student={student} currentUser={actor} /></div>
               {/* Onboarded: the welcome email / WhatsApp sent, or marked so */}
-              <div className="mt-2"><OnboardingControl student={student} currentUser={currentUser} /></div>
-              <div className="mt-2"><StudentTagsEditor student={student} currentUser={currentUser} /></div>
+              <div className="mt-2"><OnboardingControl student={student} currentUser={actor} /></div>
+              <div className="mt-2"><StudentTagsEditor student={student} currentUser={actor} /></div>
             </div>
           </div>
           <div className="flex flex-wrap items-center gap-2 lg:max-w-[60%] lg:justify-end">
-            {/* Call with 3CX, then log it against the student's follow-up */}
-            <CallButton student={displayStudent} className="h-9 px-4 text-sm" />
+            {/* Call with 3CX, then log it against the student's follow-up — not on a view-only page */}
+            {!viewOnly && <CallButton student={displayStudent} className="h-9 px-4 text-sm" />}
             {/* A reminder about this student, for yourself (2026-10-28) */}
             <Button variant="outline" className="h-9" onClick={() => setReminderOpen(true)}>
               <AlarmClock className="h-4 w-4 mr-2" />
               Reminder
             </Button>
             {/* Time with a mentor, in the LMS's diary — the Mentor Calendar, filled in for this student */}
-            <Link to={`${createPageUrl('MentorCalendar')}?student=${displayStudent.id}`}>
-              <Button variant="outline" className="h-9">
-                <CalendarPlus className="h-4 w-4 mr-2" />
-                Book mentor session
-              </Button>
-            </Link>
+            {!viewOnly && (
+              <Link to={`${createPageUrl('MentorCalendar')}?student=${displayStudent.id}`}>
+                <Button variant="outline" className="h-9">
+                  <CalendarPlus className="h-4 w-4 mr-2" />
+                  Book mentor session
+                </Button>
+              </Link>
+            )}
             {/* Their own LMS as they see it, read-only — for their own CS and the Super Admin */}
-            {mayViewInLms(currentUser, student, teamIds) && student.email && (
+            {mayViewInLms(actor, student, teamIds) && student.email && (
               <ViewInLmsButton studentId={student.id} name={displayStudent.full_name} className="h-9" />
             )}
-            {mayActInLms(currentUser, student, teamIds) && student.email && (
+            {mayActInLms(actor, student, teamIds) && student.email && (
               <ViewInLmsButton studentId={student.id} name={displayStudent.full_name} className="h-9" mode="write" />
             )}
             {/* A one-time login link to send them: signs them in with no password (2026-10-29) — whoever may act as them */}
-            {mayActInLms(currentUser, student, teamIds) && student.email && (
+            {mayActInLms(actor, student, teamIds) && student.email && (
               <LoginLinkButton student={displayStudent} className="h-9" />
             )}
             {/* Not a student (2026-10-14): off every list, onto Inactive students */}
-            {!salesOnly && !student.not_student && mayMarkNotStudent(currentUser, student) && (
+            {!salesOnly && !student.not_student && mayMarkNotStudent(actor, student) && (
               <Button variant="outline" className="h-9 text-gray-600 hover:bg-red-50 hover:text-red-700" onClick={() => setNotStudentOpen(true)}>
                 <UserX className="mr-2 h-4 w-4" />Not a student
               </Button>
             )}
-            {canEdit ? (
+            {canEdit && !viewOnly ? (
               <Button onClick={() => setShowEditDialog(true)} className="bg-blue-600 hover:bg-blue-700">
                 <Edit className="h-4 w-4 mr-2" />
                 Edit Student
               </Button>
             ) : (
               // Their CS and the people above them: name, email, phone and country
-              <EditDetailsButton student={student} currentUser={currentUser} label="Edit details" />
+              <EditDetailsButton student={student} currentUser={actor} label="Edit details" />
             )}
           </div>
         </div>
 
+        {viewOnly && (
+          <div className="rounded-xl border border-blue-200 bg-blue-50 px-4 py-3 text-sm text-blue-900">
+            <p className="font-semibold">View only</p>
+            <p className="mt-0.5">{displayStudent.primary_mentor_name ? `${displayStudent.primary_mentor_name}'s student` : 'Not one of your team\'s students'}{displayStudent.team_name ? ` · ${displayStudent.team_name}` : ''} — you can read everything here; their CS and their team work on them.</p>
+          </div>
+        )}
         {student.not_student && (
           <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800">
             <p className="font-semibold">Marked not a student{student.not_student_by_name ? ` by ${student.not_student_by_name}` : ''}{student.not_student_at ? ` on ${new Date(student.not_student_at).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}` : ''}</p>
@@ -433,9 +449,9 @@ export default function StudentDetail() {
                   <CardTitle className="text-lg font-semibold tracking-tight sm:text-xl">Student Information</CardTitle>
                   <div className="flex flex-wrap items-center gap-2">
                     <span className="text-xs text-slate-500">Priority</span>
-                    <PriorityPicker student={displayStudent} currentUser={currentUser} />
+                    <PriorityPicker student={displayStudent} currentUser={actor} />
                     <span className="text-xs text-slate-500">Language</span>
-                    <LanguagePicker student={displayStudent} currentUser={currentUser} />
+                    <LanguagePicker student={displayStudent} currentUser={actor} />
                     <Badge variant="outline" className={getStatusColor(displayStudent.status)}>
                       {displayStudent.status}
                     </Badge>
@@ -627,7 +643,7 @@ export default function StudentDetail() {
             <CourseFeesCard fees={displayStudent.course_fees} />
             {/* Their Zoho Books invoices, 2024 – Jun 2026 — apart from Delta finance's course fees */}
             <ZohoInvoicesCard studentId={student.id} />
-            <StudentLmsCoursesCard student={displayStudent} canManage={canViewInLms(currentUser) && !!student.email} />
+            <StudentLmsCoursesCard student={displayStudent} canManage={canViewInLms(actor) && !!student.email} />
           </TabsContent>
 
           {/* Their live classes in the Delta LMS: attended, missed, upcoming */}
@@ -652,7 +668,7 @@ export default function StudentDetail() {
 
           {/* MT5 Accounts Section */}
           <TabsContent {...panel('mt5')}>
-            <MT5AccountSection student={student} currentUser={currentUser} />
+            <MT5AccountSection student={student} currentUser={actor} />
           </TabsContent>
 
           {/* Everything that happened to this student */}

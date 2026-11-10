@@ -99,6 +99,14 @@ export const readsClosedOnly = (user) => !!user && isCustomRole(user.app_role) &
 /** Mentors whose team is everyone on it (backend lib/scope TEAM_WIDE_MENTORS, 2026-10-20). */
 export const TEAM_WIDE_MENTORS = ['senior_mentor', 'junior_mentor', 'subjunior_mentor'];
 
+/** Mentors who read every Forex student — every student in the portal — under All Students, and open any student's
+ *  page (the user, 2026-11-10: "every forex student can see by the mentors"). Outside their own and their team's it is
+ *  view only (backend lib/scope FOREX_READERS). */
+export const FOREX_READERS = ['chief_mentor', 'senior_mentor', 'junior_mentor', 'subjunior_mentor'];
+/** Who a view-only page acts as: a role that changes nothing — no admin, no Chief, no CS Manager — so every control
+ *  keyed on the role shows what is there and offers no change. */
+export const viewOnlyActor = (user) => (user ? { ...user, app_role: 'view_only' } : user);
+
 export const downlineIds = (userId, users = []) => {
   // A senior / junior / sub-junior mentor: their whole team, as the Teams page groups it.
   const me = users.find(u => u.id === userId);

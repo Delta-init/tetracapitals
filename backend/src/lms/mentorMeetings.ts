@@ -9,6 +9,7 @@ import {
 } from "../functions/meetingRequests";
 import { getMeetingsDone } from "../functions/meetingOutcomes";
 import { getMeetingCommissions } from "../functions/meetingCommissions";
+import { getCommissionReport, getReportFilters } from "../functions/reports";
 
 /* ────────────────────────────────────────────────────────────────────────────
    POST /api/v1/integrations/lms/mentor-meetings — the Delta LMS admin's
@@ -30,13 +31,21 @@ import { getMeetingCommissions } from "../functions/meetingCommissions";
      getStudentMeetingHistory  a student's earlier meetings, for the form
      getMeetingCommissions     their Meeting mentor commission (a Chief: the team's)
      getMeetingsDone           a Chief only — their team's meetings, Converted
+     getCommissionReport       the Commission report (2026-11-10: "the commission
+                               also they can see from the lms"), with the same
+                               reach as on its page here — a Senior / Junior /
+                               Sub-junior their team's, a Chief their people's —
+                               and the credits behind any number
+     getReportFilters          its teams and people to filter by
    Never deciding, escalating or paying. The LMS's own secret in
    `x-lms-secret`, as for new students (lms/students.ts).
 
    An LMS admin (the user, 2026-11-10: "show in the sidebar the meeting done
    and meeting request"): what their account here may read — a Super Admin or
    Admin every request and meeting, a CS Manager their location's requests and
-   the Meeting commission — never asking, taking back or deciding.
+   the Meeting commission — never asking, taking back or deciding. The
+   Commission report too: a Super Admin or Admin everyone's, a CS Manager
+   their location's.
 ──────────────────────────────────────────────────────────────────────────── */
 
 export const MENTOR_ROLES = new Set(["junior_mentor", "senior_mentor", "subjunior_mentor", "chief_mentor"]);
@@ -56,6 +65,8 @@ const ACTIONS: Record<string, { run: Handler; roles?: Set<string>; viewers?: Set
   getStudentMeetingHistory: { run: getStudentMeetingHistory, viewers: VIEWER_ROLES },
   getMeetingCommissions: { run: getMeetingCommissions, viewers: VIEWER_ROLES },
   getMeetingsDone: { run: getMeetingsDone, roles: CHIEF, viewers: ADMINS },
+  getCommissionReport: { run: getCommissionReport, viewers: VIEWER_ROLES },
+  getReportFilters: { run: getReportFilters, viewers: VIEWER_ROLES },
 };
 const esc = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 
@@ -85,11 +96,11 @@ export async function handleLmsMentorMeetings(req: Request): Promise<Response> {
   if (action === "me") {
     if (viewer) {
       return ok({ mentor: false, viewer: true, role: user!.app_role, name: user!.full_name ?? "", asks: false, requests: "to_decide",
-        meetings_done: ADMINS.has(user!.app_role) ? ["meetings", "commission"] : ["commission"] });
+        meetings_done: ADMINS.has(user!.app_role) ? ["meetings", "commission"] : ["commission"], commission_report: true });
     }
     if (!mentor) return ok({ mentor: false, viewer: false, message: user ? "Your CS Portal account isn't a mentor's" : "No CS Portal account has your email" });
     const asks = ASKS_FOR_MEETINGS.has(user!.app_role);
-    return ok({ mentor: true, viewer: false, role: user!.app_role, name: user!.full_name ?? "", asks, requests: asks ? "mine" : null, meetings_done: asks ? ["commission"] : ["meetings", "commission"] });
+    return ok({ mentor: true, viewer: false, role: user!.app_role, name: user!.full_name ?? "", asks, requests: asks ? "mine" : null, meetings_done: asks ? ["commission"] : ["meetings", "commission"], commission_report: true });
   }
   const spec = ACTIONS[action];
   if (!spec) return refuse(400, "VALIDATION_ERROR", "Unknown action");

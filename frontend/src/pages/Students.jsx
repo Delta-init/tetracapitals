@@ -29,7 +29,7 @@ import { EditDetailsButton } from '@/components/students/EditDetails';
 import StudentRowExtras from '@/components/students/StudentRowExtras';
 import StudentRequestForm from "../components/students/StudentRequestForm";
 import BulkImportStudentsDialog from "../components/students/BulkImportStudentsDialog";
-import { isMentorRole as isMentorTier, getScope, readsClosedOnly } from "@/components/utils/roles";
+import { isMentorRole as isMentorTier, getScope, readsClosedOnly, FOREX_READERS, viewOnlyActor } from "@/components/utils/roles";
 
 import { Plus, Search, Eye, Users, UserCheck, Upload, Download, Filter, ArrowUp, Trash2, ArrowRightLeft, Sparkles, RefreshCw, Loader2, ChevronDown, FileSpreadsheet, FileText } from "lucide-react";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
@@ -518,7 +518,11 @@ export default function Students() {
   const isAssistance = currentUser.app_role === 'assistance';
   const isAdmin = ['super_admin', 'broker_admin', 'academic_head'].includes(currentUser.app_role);
   // A CS Manager has every team's students under All Students too (2026-10-09) — to read.
-  const seesAllStudents = isAdmin || currentUser.app_role === 'cs_manager';
+  // …and the Chief / Senior / Junior / Sub-junior Mentors every Forex student, view only (2026-11-10): the row's
+  // controls act as nobody (viewOnlyActor) — they work on their own and their team's from the other tabs.
+  const forexReader = FOREX_READERS.includes(currentUser.app_role) && !salesOnly;
+  const seesAllStudents = isAdmin || currentUser.app_role === 'cs_manager' || forexReader;
+  const allTabUser = forexReader ? viewOnlyActor(currentUser) : currentUser;
   const isSuperAdmin = currentUser.app_role === 'super_admin';
   const newForMe = counts.new_for_me || 0;
 
@@ -958,7 +962,7 @@ export default function Students() {
               )}
 
               {/* Admin Filters — CS Managers too, on All Students: their own location's teams and CSs (the user, 2026-10-14) */}
-              {(['super_admin', 'broker_admin'].includes(currentUser.app_role) || (currentUser.app_role === 'cs_manager' && activeTab === 'all')) && (activeTab === 'all' || activeTab === 'open_pool') && (
+              {(['super_admin', 'broker_admin'].includes(currentUser.app_role) || ((currentUser.app_role === 'cs_manager' || forexReader) && activeTab === 'all')) && (activeTab === 'all' || activeTab === 'open_pool') && (
                 <>
                   {/* Mentor Filter */}
                   {activeTab === 'all' && (
@@ -967,7 +971,7 @@ export default function Students() {
                         <SelectValue placeholder="Filter by CS" />
                       </SelectTrigger>
                       <SelectContent>
-                        <SelectItem value="all">{currentUser.app_role === 'cs_manager' ? 'All CSs' : 'All Mentors'}</SelectItem>
+                        <SelectItem value="all">{currentUser.app_role === 'cs_manager' || forexReader ? 'All CSs' : 'All Mentors'}</SelectItem>
                         {uniqueMentors.map((mentor) => (
                           <SelectItem key={mentor} value={mentor}>
                             {mentor}
@@ -1260,7 +1264,7 @@ export default function Students() {
             </TabsContent>
           )}
 
-          {/* All Students Tab (Admins Only) */}
+          {/* All Students Tab (admins, CS Managers; the mentors every Forex student, view only) */}
           {seesAllStudents && (
             <TabsContent value="all">
               <div className="rounded-2xl border border-slate-200/70 bg-white overflow-hidden shadow-soft">
@@ -1269,6 +1273,7 @@ export default function Students() {
                     <Users className="h-5 w-5 text-blue-600" />
                     All Students ({total.toLocaleString()})
                   </h3>
+                  {forexReader && <p className="mt-1 text-sm text-gray-600">Every Forex student in the portal — view only here. Your own and your team&apos;s you work on from {hasTeamView ? 'My Students and Team Students' : 'My Students'}.</p>}
                 </div>
                 {canTransfer && selectedStudents.length > 0 && (
                   <div className="flex flex-wrap items-center gap-3 border-b border-gray-200 bg-blue-50/60 px-4 py-2 text-sm text-slate-700">
@@ -1330,7 +1335,7 @@ export default function Students() {
                           )}
                           <TableCell className="font-mono text-sm font-medium text-blue-600">
                             {student.student_code}
-                            <div className="mt-1.5 font-sans"><PriorityPicker student={student} currentUser={currentUser} /></div>
+                            <div className="mt-1.5 font-sans"><PriorityPicker student={student} currentUser={allTabUser} /></div>
                           </TableCell>
                           <TableCell>
                             <div className="font-medium text-slate-900">{student.full_name}<NewForYou student={student} me={currentUser.id} /></div>
@@ -1339,7 +1344,7 @@ export default function Students() {
 <BirthdayTag date={student.birth_date} className="mt-1 ml-1" />
 <StudentCategoryTags student={student} className="mt-1 ml-1" />
                           </TableCell>
-                          <TableCell><div className="text-sm font-mono">{student.phone}</div><div className="mt-1.5"><LanguagePicker student={student} currentUser={currentUser} /></div></TableCell>
+                          <TableCell><div className="text-sm font-mono">{student.phone}</div><div className="mt-1.5"><LanguagePicker student={student} currentUser={allTabUser} /></div></TableCell>
 <TableCell className="whitespace-nowrap font-mono text-sm">{student.mt5_primary ? <span title={student.mt5_count > 1 ? `Primary of ${student.mt5_count} MT5 accounts` : "Primary MT5"}>{student.mt5_primary}{student.mt5_count > 1 && <span className="ml-1 font-sans text-[10px] text-gray-400">+{student.mt5_count - 1}</span>}</span> : <span className="text-gray-300">—</span>}</TableCell>
                           <TableCell className="text-sm">{student.primary_mentor_name}</TableCell>
                           <TableCell className="text-sm">{student.team_name || '-'}<BangaloreBadge location={studentLocationOf(student)} className="ml-1.5" /></TableCell>
@@ -1351,8 +1356,8 @@ export default function Students() {
                             </Badge>
                           </TableCell>
                           <TableCell>{student.meeting_stage ? <MeetingStageBadge stage={student.meeting_stage} summary={student.meeting_stage_summary} /> : <span className="text-gray-300">—</span>}</TableCell>
-                          <TableCell><EnrolledSwitch student={student} currentUser={currentUser} /></TableCell>
-                          <TableCell><OnboardedSwitch student={student} currentUser={currentUser} /></TableCell>
+                          <TableCell><EnrolledSwitch student={student} currentUser={allTabUser} /></TableCell>
+                          <TableCell><OnboardedSwitch student={student} currentUser={allTabUser} /></TableCell>
                             <TableCell><ClassesCell student={student} /></TableCell>
                           <TableCell><StudentTagChips student={student} catalog={tagCatalog} /></TableCell>
                           <TableCell className="text-sm">
@@ -1360,9 +1365,9 @@ export default function Students() {
                           </TableCell>
                           <TableCell className="text-right">
                             <div className="flex justify-end gap-1">
-                              <CallButton variant="icon" student={student} />
-                              <EditDetailsButton student={student} currentUser={currentUser} />
-                              <StudentRowExtras student={student} currentUser={currentUser} />
+                              {!forexReader && <CallButton variant="icon" student={student} />}
+                              <EditDetailsButton student={student} currentUser={allTabUser} />
+                              <StudentRowExtras student={student} currentUser={allTabUser} />
                               <Link to={createPageUrl('StudentDetail') + '?id=' + student.id}>
                                 <Button size="sm" variant="ghost" className="h-8 w-8 p-0" title="View">
                                   <Eye className="h-4 w-4" />

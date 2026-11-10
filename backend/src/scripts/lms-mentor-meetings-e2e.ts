@@ -181,6 +181,34 @@ check("a CS Manager: no meetings list", r.status === 403);
 r = await as(csm, "getMeetingCommissions", { from: "2026-11-01", to: "2026-11-30" });
 check("…the commission", r.status === 200 && r.body.data.rows.length === 1, show(r.body));
 
+step("The Commission report (2026-11-10), with the reach of its page here");
+// Another team (Chief B → Senior B), and commission for everyone: the Senior, the Junior, the Chief, Senior B.
+const chiefB = u("Chief B", "chief_mentor");
+const seniorB = u("Senior B", "senior_mentor", chiefB._id);
+await db.collection("users").insertMany([chiefB, seniorB] as any[]);
+const credit = (who: any, usd: number, position: string, is_pool = false) => ({ transaction_id: String(txId), position, percentage: 1, commission_usd: usd, status: "accrued",
+  recipient_id: String(who._id), recipient_name: who.full_name, requested_at: "2026-11-04T08:00:00.000Z", transaction_type: "BONUS", student_id: String(s1._id), student_name: s1.full_name, is_pool, txn_id: "MB-0001" });
+await db.collection("commission_credits").insertMany([credit(junior, 20, "Junior Mentor", true), credit(chief, 30, "Chief Mentor"), credit(seniorB, 40, "Senior Mentor")] as any[]);
+const month = { period: "custom", from: "2026-11-01", to: "2026-11-30" };
+const people = (r: any) => (r.body.data?.people ?? []).map((p: any) => p.name).sort().join(",");
+r = await as(senior, "me");
+check("me says the report is there", r.body.data.commission_report === true, show(r.body));
+r = await as(senior, "getCommissionReport", month);
+check("a Senior: their team's — themself and the Junior, never their Chief's nor another team's", r.status === 200 && people(r) === "Junior A,Senior A" && r.body.data.total.usd === 30.9, show(r.body));
+check("…own vs pool shares", r.body.data.total.pool_usd === 20 && r.body.data.total.own_usd === 10.9, show(r.body.data?.total));
+r = await as(senior, "getCommissionReport", { ...month, details: { bucket: "count", view: "person", key: String(junior._id) } });
+check("…the credits behind a number", r.status === 200 && r.body.data.details.length === 1 && r.body.data.details[0].usd === 20 && r.body.data.details[0].student_name === "Student One", show(r.body));
+r = await as(chief, "getCommissionReport", month);
+check("a Chief: their own and their people's, not another team's", r.status === 200 && people(r) === "Chief A,Junior A,Senior A" && r.body.data.total.usd === 60.9, show(r.body));
+r = await as(senior, "getReportFilters", {});
+check("…filters: their own team's people only", r.status === 200 && r.body.data.people.some((p: any) => p.name === "Junior A") && !r.body.data.people.some((p: any) => p.name === "Senior B"), show(r.body));
+r = await as(boss, "getCommissionReport", month);
+check("an LMS admin's account (Super Admin): everyone's", r.status === 200 && r.body.data.total.usd === 100.9, show(r.body));
+r = await as(cs, "getCommissionReport", month);
+check("a CS: refused", r.status === 403 && r.body.error.code === "NOT_A_MENTOR", show(r.body));
+r = await as(senior, "getCommissionReport", { period: "custom", from: "2026-11-30", to: "2026-11-01" });
+check("dates the wrong way round: the portal's message", r.status === 400 && /from and a to/.test(r.body.error.message), show(r.body));
+
 await closeDb(); await client.close(); lms.stop(true);
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);

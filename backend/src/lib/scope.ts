@@ -69,6 +69,11 @@ export const DEFAULT_SCOPES: Record<string, DataScope> = {
 /** Mentors whose "team" is everyone on their team (Teams page), not only who reports to them (2026-10-20). */
 export const TEAM_WIDE_MENTORS = new Set(["senior_mentor", "junior_mentor", "subjunior_mentor"]);
 
+/** Mentors who read every Forex student — every student in the portal — on the Students page's All tab (the user,
+ *  2026-11-10: "every forex student can see by the mentors"); built-in mentor roles aren't row-scoped on students here,
+ *  so their student page opens too — the page keeps a student outside their team view only. */
+export const FOREX_READERS = new Set(["chief_mentor", "senior_mentor", "junior_mentor", "subjunior_mentor"]);
+
 const isScope = (v: unknown): v is DataScope => v === "all" || v === "own" || v === "downline" || v === "closed";
 
 /**
