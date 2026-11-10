@@ -234,8 +234,9 @@ export const GROUP_OF = {
  * student's page stays open to them (MT5 Approvals links to it), and the report details the Reports open.
  */
 // Senior / junior / sub-junior mentors (the user, 2026-11-07): these pages and no others; Chief Mentors unchanged.
-const MENTOR_PAGES = ['Dashboard', 'MentorLeaderboard', 'Teams', 'MyWallet', 'Students', 'StudentDetail', 'FundingActivities', 'MentorCalendar', 'MeetingRequests',
-  'StudentWorkflow', 'Reports', 'DepositReport', 'WithdrawalReport', 'FundingRequestReport', 'BonusReport', 'CommissionReport', 'ReportTransactionDetails', 'MentorReport'];
+// My KPIs and Meetings done (2026-11-10) — Meetings done showing them only its Meeting commission tab (pages/MeetingsDone.jsx).
+export const MENTOR_PAGES = ['Dashboard', 'MentorLeaderboard', 'Teams', 'MyWallet', 'MyKpis', 'Students', 'StudentDetail', 'FundingActivities', 'MentorCalendar', 'MeetingRequests',
+  'MeetingsDone', 'StudentWorkflow', 'Reports', 'DepositReport', 'WithdrawalReport', 'FundingRequestReport', 'BonusReport', 'CommissionReport', 'ReportTransactionDetails', 'MentorReport'];
 export const ROLE_ONLY_PAGES = {
   senior_mentor: MENTOR_PAGES,
   junior_mentor: MENTOR_PAGES,

@@ -30,7 +30,11 @@ export default function MeetingsDone() {
   // Meetings, Payment verification (2026-11-09) — ?view=verification — or Meeting commission (2026-11-10) — ?view=commission.
   const [view, setView] = useUrlState('view', 'meetings');
   const { data: me } = useQuery({ queryKey: ['me-effective'], queryFn: async () => getEffectiveUser(await base44.auth.me()) });
-  const tabs = [['meetings', 'Meetings'], ['verification', 'Payment verification'], ...(seesMeetingCommission(me) ? [['commission', 'Meeting commission']] : [])];
+  // A Senior / Junior / Sub-junior Mentor sees only the Meeting commission tab (the user, 2026-11-10).
+  const commissionOnly = ['senior_mentor', 'junior_mentor', 'subjunior_mentor'].includes(me?.app_role);
+  const tabs = commissionOnly ? [['commission', 'Meeting commission']]
+    : [['meetings', 'Meetings'], ['verification', 'Payment verification'], ...(seesMeetingCommission(me) ? [['commission', 'Meeting commission']] : [])];
+  const shown = commissionOnly ? 'commission' : view;
   const [status, setStatus] = useState('held');
   const [stage, setStage] = useState('all');
   const [mentor, setMentor] = useState('all');
@@ -42,6 +46,8 @@ export default function MeetingsDone() {
     queryKey: ['meetings-done', filters],
     queryFn: () => fn('getMeetingsDone', filters),
     placeholderData: (prev) => prev,
+    // Not for a mentor who sees only the commission tab — and not before we know who it is.
+    enabled: !!me && !commissionOnly,
   });
   const needle = search.trim().toLowerCase();
   // Columns chosen and ordered, and a filter for every field (2026-11-09) — components/meetings/MeetingsDoneTable.jsx.
@@ -58,11 +64,13 @@ export default function MeetingsDone() {
         <p className="text-sm text-slate-500">Student meetings booked from the Mentor Calendar, and what each mentor said after them.</p>
         <div className="flex w-fit rounded-md border bg-white p-0.5 text-sm" role="tablist">
           {tabs.map(([v, l]) => (
-            <button key={v} type="button" role="tab" aria-selected={view === v} onClick={() => setView(v)}
-              className={cn('rounded px-3 py-1.5 font-medium', view === v ? 'bg-brand-navy text-white' : 'text-slate-600 hover:bg-slate-50')}>{l}</button>
+            <button key={v} type="button" role="tab" aria-selected={shown === v} onClick={() => setView(v)}
+              className={cn('rounded px-3 py-1.5 font-medium', shown === v ? 'bg-brand-navy text-white' : 'text-slate-600 hover:bg-slate-50')}>{l}</button>
           ))}
         </div>
-        {view === 'commission' && seesMeetingCommission(me) ? (
+        {!me ? (
+          <div className="flex justify-center py-12"><Loader2 className="h-5 w-5 animate-spin text-slate-400" /></div>
+        ) : shown === 'commission' && seesMeetingCommission(me) ? (
           <Card><CardContent className="space-y-3 p-4">
             <div className="flex flex-wrap items-center gap-2">
               <label className="flex items-center gap-1 text-sm text-slate-600">Payments from <Input type="date" className="h-9 w-40" value={days.from} max={days.to} onChange={e => e.target.value && setDays(d => ({ ...d, from: e.target.value }))} /></label>
@@ -70,7 +78,7 @@ export default function MeetingsDone() {
             </div>
             <MeetingCommissionTab days={days} />
           </CardContent></Card>
-        ) : view === 'verification' ? (
+        ) : shown === 'verification' ? (
           <Card><CardContent className="space-y-3 p-4">
             <div className="flex flex-wrap items-center gap-2">
               <label className="flex items-center gap-1 text-sm text-slate-600">Meetings from <Input type="date" className="h-9 w-40" value={days.from} max={days.to} onChange={e => e.target.value && setDays(d => ({ ...d, from: e.target.value }))} /></label>
