@@ -9,7 +9,7 @@ import { buildScopeFilter, applyScope, docMatchesScope } from "../lib/scope";
 import { stampNewStudents, recordCreated, prepareStudentUpdate, recordHistory, type HistoryEntry } from "../students/history";
 import { notifyStudentsGiven } from "../lib/notify";
 import type { TeamIndex } from "../students/teams";
-import { stampFundingForFinance, kickFinanceFunding, financeLock, withFinance, WITH_FINANCE_MESSAGE, decisionRefusal, bonusMissing, depositReceiptMissing, meetingMentorMissing, dropServerFields, claimResubmit, releaseResubmit, bonusEdit } from "../finance/funding";
+import { stampFundingForFinance, kickFinanceFunding, financeLock, withFinance, WITH_FINANCE_MESSAGE, decisionRefusal, bonusMissing, depositReceiptMissing, meetingMentorMissing, dropServerFields, claimResubmit, releaseResubmit, bonusEdit, stampRequestMt5Email, keepRequestMt5Email, tidyStudentMt5Email, mt5EmailOf, MT5_EMAIL_INVALID } from "../finance/funding";
 import { seesClosedOnly, SALES_READ_ONLY } from "../students/closedBy";
 import { keepRequestMt5 } from "../students/mt5";
 
@@ -194,6 +194,9 @@ export async function createEntity(req: Request, entityName: string): Promise<Re
     dropServerFields(data);
     const missing = bonusMissing(data) ?? meetingMentorMissing(data) ?? depositReceiptMissing(data) ?? await (await import("../finance/funding")).studentEmailMissing(data);
     if (missing) return error(missing, 400);
+    // The MT5 email it goes on: as typed, else the student's MT5 email, else their LMS email (2026-11-10).
+    const badMt5Email = await stampRequestMt5Email(data);
+    if (badMt5Email) return error(badMt5Email, 400);
     // The same course paid in full twice (2026-10-23).
     const paidTwice = await (await import("../finance/funding")).coursePaidInFullRefusal(data);
     if (paidTwice) return error(paidTwice, 409);
@@ -203,6 +206,11 @@ export async function createEntity(req: Request, entityName: string): Promise<Re
     // A rejected request, corrected and sent again: that one claimed, once (finance/funding.ts).
     const refused = await claimResubmit(data, ctx.user);
     if (refused) return error(refused.message, refused.status);
+  }
+  // A student's MT5 email: one address, lower-cased (finance/funding.ts).
+  if (entityName === "Student") {
+    const badMt5Email = tidyStudentMt5Email(data);
+    if (badMt5Email) return error(badMt5Email, 400);
   }
   // Attribution
   if (!data.created_by) data.created_by = ctx.user.id;
@@ -236,6 +244,8 @@ export async function createEntity(req: Request, entityName: string): Promise<Re
   // The MT5 login it names, kept as the student's — the forms offer it next time (students/mt5.ts).
   if (entityName === "FundingTransaction" && created) {
     await keepRequestMt5(created, { email: ctx.user.email, name: ctx.user.full_name || ctx.user.email }, "funding request");
+    // …and its MT5 email, for a student with none yet.
+    await keepRequestMt5Email(created, { id: ctx.user.id, name: ctx.user.full_name || ctx.user.email || "somebody" });
   }
   return json(serialize(created));
 }
@@ -254,7 +264,12 @@ export async function bulkCreateEntity(req: Request, entityName: string): Promis
     const { studentEmailMissing } = await import("../finance/funding");
     let missing = toInsert.map((it) => bonusMissing(it)).find(Boolean);
     for (const it of toInsert) missing ??= await studentEmailMissing(it);
+    for (const it of toInsert) missing ??= await stampRequestMt5Email(it);
     if (missing) return error(missing, 400);
+  }
+  if (entityName === "Student") {
+    const badMt5Email = toInsert.map((it) => tidyStudentMt5Email(it)).find(Boolean);
+    if (badMt5Email) return error(badMt5Email, 400);
   }
 
   // Enforce uniqueFields: drop rows that duplicate an existing record OR an
@@ -324,6 +339,8 @@ export async function updateEntity(req: Request, entityName: string, id: string)
   if (entityName === "Student") {
     const existing = await col(ctx.cfg.collection).findOne({ _id: oid });
     if (!existing) return notFound();
+    const badMt5Email = tidyStudentMt5Email(data);
+    if (badMt5Email) return error(badMt5Email, 400);
     history = await prepareStudentUpdate(existing, data, ctx.user);
   }
   // A request Delta finance is deciding is decided there, not here.
@@ -335,6 +352,11 @@ export async function updateEntity(req: Request, entityName: string, id: string)
     fundingBefore = existing;
     wasApproved = existing.status === "APPROVED";
     dropServerFields(data);
+    if ("mt5_email" in data) {
+      const v = mt5EmailOf(data.mt5_email);
+      if (v === null) return error(MT5_EMAIL_INVALID, 400);
+      data.mt5_email = v;
+    }
     const locked = financeLock(existing, data);
     if (locked) return error(locked, 409);
     // A deposit, a withdrawal or a bonus: decided by a broker admin or a Super Admin (finance/funding.ts).

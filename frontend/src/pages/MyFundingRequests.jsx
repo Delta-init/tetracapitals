@@ -14,7 +14,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Plus, TrendingUp, TrendingDown, Banknote, Award, Wallet, Eye, Users, Clock, Filter, X, AlertTriangle } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import FundingRequestForm from "../components/funding/FundingRequestForm";
+import FundingRequestForm, { requestMt5Email } from "../components/funding/FundingRequestForm";
 import { AmountCell, PaidCell, studentInfoOf, sourceOf } from "../components/funding/mt5Cells";
 import CourseCommissionSummary from "../components/funding/CourseCommissionSummary";
 import NotCreditedYet from "./NotCreditedYet";
@@ -405,7 +405,7 @@ export default function MyFundingRequests() {
     if (filterSearch) {
       const q = filterSearch.toLowerCase();
       const matches = (v) => v != null && String(v).toLowerCase().includes(q);
-      if (!matches(t.student_name) && !matches(t.student_code)) return false;
+      if (!matches(t.student_name) && !matches(t.student_code) && !matches(requestMt5Email(t, students.find(s => s.id === t.student_id)))) return false;
     }
     return true;
   });
@@ -443,7 +443,7 @@ export default function MyFundingRequests() {
     if (teamCs !== 'ALL' && t.primary_mentor_name !== teamCs) return false;
     if (teamSearch) {
       const q = teamSearch.toLowerCase();
-      if (![t.student_name, t.student_code, t.mt5_login, t.transaction_id, t.requested_by_name].some(v => v != null && String(v).toLowerCase().includes(q))) return false;
+      if (![t.student_name, t.student_code, t.mt5_login, requestMt5Email(t, students.find(s => s.id === t.student_id)), t.transaction_id, t.requested_by_name].some(v => v != null && String(v).toLowerCase().includes(q))) return false;
     }
     return true;
   }).sort(byNewest);
@@ -853,7 +853,10 @@ export default function MyFundingRequests() {
                                   <TableCell className="font-medium">{transaction.student_name}</TableCell>
                                   <TableCell className="font-mono text-sm text-blue-600">{transaction.student_code}</TableCell>
                                   <TableCell className="text-sm">{transaction.meeting_mentor_name || '-'}</TableCell>
-                                  <TableCell className="font-mono text-sm">{transaction.mt5_login || '-'}</TableCell>
+                                  <TableCell className="font-mono text-sm">
+                                    {transaction.mt5_login || '-'}
+                                    <Mt5EmailLine email={requestMt5Email(transaction, students.find(s => s.id === transaction.student_id))} />
+                                  </TableCell>
                                   <TableCell className="whitespace-nowrap"><AmountCell t={rowOf(transaction)} original={originalOf(transaction)} /></TableCell>
                                   {!isAssistance && (
                                     <TableCell className={`font-semibold ${commissionEarned >= 0 ? 'text-green-600' : 'text-red-600'}`}>
@@ -1091,6 +1094,7 @@ export default function MyFundingRequests() {
                               </TableCell>
                               <TableCell className="font-mono text-sm">
                                 {transaction.mt5_login || '-'}
+                                <Mt5EmailLine email={requestMt5Email(transaction, students.find(s => s.id === transaction.student_id))} />
                               </TableCell>
                               <TableCell className="whitespace-nowrap"><AmountCell t={rowOf(transaction)} original={originalOf(transaction)} /></TableCell>
                               <TableCell className={`font-semibold ${uplineCommission >= 0 ? 'text-green-600' : 'text-red-600'}`}>
@@ -1151,4 +1155,9 @@ export default function MyFundingRequests() {
       </div>
     </div>
   );
+}
+/** The email the request's MT5 account is under (2026-11-10), under its login. */
+function Mt5EmailLine({ email }) {
+  if (!email) return null;
+  return <div className="max-w-[220px] truncate font-sans text-xs text-slate-500" title={`MT5 email: ${email}`}>{email}</div>;
 }

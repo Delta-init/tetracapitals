@@ -1,6 +1,6 @@
 import { displayCurrency, USD_PER_INR } from '@/components/utils/displayCurrency';
 import LmsModulesPreview from '@/components/students/LmsModulesPreview';
-import React, { useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { EnterCoursesDialog, UpgradeDialog, PaymentDialog } from '../students/StudentCoursesCard';
 import ReferralRequestPopup from './ReferralRequestPopup';
@@ -22,6 +22,21 @@ import { Mt5LoginField, MT5_LOGIN, mt5LoginOf } from '../students/mt5Accounts';
 import { PaymentRows, newPayment, paymentsOf, paymentsTotal, paymentsMissing, paymentsToSave } from './payments';
 
 const NONE = '__none__';
+
+/* ────────────────────────────────────────────────────────────────────────────
+   A student's two emails (the user, 2026-11-10): `email`, the primary one, is
+   their LMS email — View / Act as student, every LMS link, finance's invoice;
+   `mt5_email` is the one their MT5 account is under, used only for funding
+   requests. Each request keeps the MT5 email it was raised with — filled in
+   from the student (MT5, else LMS) and changeable here; one typed for a student
+   with none yet is kept as theirs (backend finance/funding.ts).
+──────────────────────────────────────────────────────────────────────────── */
+export const MT5_EMAIL = /^[^\s@,;<>/]+@[^\s@,;<>/]+\.[^\s@,;<>/]+$/;
+const tidyEmail = (v) => String(v ?? '').trim().toLowerCase();
+/** The email a student's funding requests go on: their MT5 email, else their LMS email. */
+export const fundingEmailOf = (student) => tidyEmail(student?.mt5_email) || tidyEmail(student?.email);
+/** The MT5 email a request went on — kept on it since 2026-11-10; an older one, the student's now. */
+export const requestMt5Email = (tx, student) => tidyEmail(tx?.mt5_email) || fundingEmailOf(student);
 // "junior_mentor" -> "Junior Mentor"
 const roleLabel = (r) => String(r || '').replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
 
@@ -267,6 +282,7 @@ const startFrom = (tx) => ({
   payment_kind: tx.course_payment?.kind || '',
   payment_method: tx.payment_method || '',
   mt5_login: tx.mt5_login || '',
+  mt5_email: tx.mt5_email || '',
   screenshot_url: tx.screenshot_url || '',
   tags: Array.isArray(tx.tags) ? tx.tags : [],
   meeting_mentor_id: tx.meeting_mentor_id || (tx.meeting_mentor_none ? NONE : ''),
@@ -299,6 +315,7 @@ export default function FundingRequestForm({ students, allStudents = [], current
     payment_kind: '', // a Bonus: 'full' or 'partial' — asked once the course is picked
     payment_method: '',
     mt5_login: '',
+    mt5_email: '',    // the email their MT5 account is under — filled in from the student
     screenshot_url: '',
     tags: [],          // only meaningful when type === 'BONUS'
     meeting_mentor_id: '', // mentor who conducted the meeting with the client
@@ -311,6 +328,14 @@ export default function FundingRequestForm({ students, allStudents = [], current
   // A withdrawal has one amount and method, and no receipt yet.
   const [payments, setPayments] = useState(() => (from ? paymentsFrom(from) : [newPayment()]));
   const takesPayments = formData.type !== 'WITHDRAWAL';
+  // The MT5 email, filled in once per student from their record (MT5 email, else LMS email); a resent request keeps its own.
+  const mt5EmailFor = useRef((from || start)?.mt5_email ? (from || start).student_id || null : null);
+  const pickedStudent = students.find(s => s.id === formData.student_id) || null;
+  useEffect(() => {
+    if (!pickedStudent || mt5EmailFor.current === pickedStudent.id) return;
+    mt5EmailFor.current = pickedStudent.id;
+    setFormData(f => ({ ...f, mt5_email: fundingEmailOf(pickedStudent) }));
+  }, [pickedStudent?.id]);
   // A course upgrade's payment is recorded on the upgrade (CourseUpgradePanel), not as a funding request.
   const upgradeMode = formData.type === 'COURSE_UPGRADE';
   const { data: studentCourses } = useQuery({
@@ -474,6 +499,11 @@ export default function FundingRequestForm({ students, allStudents = [], current
       toast.error('The MT5 login is its number — digits only');
       return;
     }
+    const mt5Email = tidyEmail(formData.mt5_email);
+    if (mt5Email && !MT5_EMAIL.test(mt5Email)) {
+      toast.error('The MT5 email is one email address — or leave it empty to use their LMS email');
+      return;
+    }
     if (product && loadingEarlier) {
       toast.error("Still loading the course's earlier payments — try again in a moment");
       return;
@@ -505,6 +535,7 @@ export default function FundingRequestForm({ students, allStudents = [], current
         screenshot_url: payments[0].receipt_url,
       } : {}),
       mt5_login: mt5,
+      mt5_email: mt5Email,
       meeting_mentor_id: meetingMentor?.id || null,
       meeting_mentor_name: meetingMentor?.full_name || (formData.meeting_mentor_id === NONE ? 'None' : null),
       // None picked on purpose: no mentor met the student — no mentor's commission (creditCommission, 2026-11-09).
@@ -777,6 +808,7 @@ export default function FundingRequestForm({ students, allStudents = [], current
             value={formData.mt5_login}
             onChange={(v) => setFormData(f => ({ ...f, mt5_login: v }))}
           />
+          <Mt5EmailField student={pickedStudent} value={formData.mt5_email} onChange={(v) => setFormData(f => ({ ...f, mt5_email: v }))} />
 
           {/* A withdrawal's receipt, if there is one yet — money in has a receipt on each payment above */}
           {!takesPayments && (
@@ -905,6 +937,26 @@ function CourseUpgradePanel({ student, data, onDone }) {
       {open === 'enter' && <EnterCoursesDialog student={student} owned={data.owned} onClose={() => setOpen(null)} onSaved={refresh} />}
       {open === 'start' && <UpgradeDialog student={student} options={data.options} onClose={() => setOpen(null)} onSaved={refresh} />}
       {open === 'pay' && a && <PaymentDialog upgrade={a} onClose={() => setOpen(null)} onSaved={() => { refresh(); onDone?.(); }} />}
+    </div>
+  );
+}
+
+/** The MT5 email on a funding request: the student's filled in, changeable; it says which of their emails it is. */
+function Mt5EmailField({ student, value, onChange }) {
+  const typed = tidyEmail(value);
+  const mt5 = tidyEmail(student?.mt5_email), lms = tidyEmail(student?.email);
+  const hint = !student ? 'Pick the student — the email their MT5 account is under shows here'
+    : typed && !MT5_EMAIL.test(typed) ? 'One email address'
+    : !typed ? (lms ? `Empty — their LMS email (${lms}) is used` : 'They have no email yet')
+    : mt5 && typed === mt5 ? 'Their MT5 email'
+    : typed === lms ? (mt5 ? 'Their LMS email — not their MT5 email' : 'Their LMS email — they have no separate MT5 email; type it if their MT5 account is under another')
+    : mt5 ? `Another email for this request — their MT5 email is ${mt5}`
+    : 'A new one — saved to their page as their MT5 email with the request';
+  return (
+    <div className="space-y-2">
+      <Label htmlFor="mt5_email">MT5 Email</Label>
+      <Input id="mt5_email" type="email" value={value || ''} onChange={(e) => onChange(e.target.value)} placeholder="The email their MT5 account is under" disabled={!student} />
+      <p className={`text-xs ${typed && !MT5_EMAIL.test(typed) ? 'text-red-600' : 'text-gray-500'}`}>{hint}</p>
     </div>
   );
 }

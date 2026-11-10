@@ -15,6 +15,7 @@ export default function StudentForm({ student, onSubmit, onCancel, isSubmitting,
   const [formData, setFormData] = useState({
     full_name: '',
     email: '',
+    mt5_email: '',
     phone: '',
     country: '',
     language: '',
@@ -118,7 +119,7 @@ export default function StudentForm({ student, onSubmit, onCancel, isSubmitting,
         </div>
         
         <div className="space-y-2">
-          <Label htmlFor="email">Email *</Label>
+          <Label htmlFor="email">LMS Email (primary) *</Label>
           <Input
             id="email"
             type="email"
@@ -126,6 +127,20 @@ export default function StudentForm({ student, onSubmit, onCancel, isSubmitting,
             onChange={(e) => setFormData({ ...formData, email: e.target.value })}
             required
           />
+          <p className="text-xs text-gray-500">Their LMS account — View as student and every LMS link use it.</p>
+        </div>
+
+        {/* The email their MT5 account is under — only funding requests use it (2026-11-10) */}
+        <div className="space-y-2">
+          <Label htmlFor="mt5_email">MT5 Email</Label>
+          <Input
+            id="mt5_email"
+            type="email"
+            value={formData.mt5_email || ''}
+            onChange={(e) => setFormData({ ...formData, mt5_email: e.target.value })}
+            placeholder="Empty: their LMS email is used"
+          />
+          <p className="text-xs text-gray-500">For funding requests only. Empty: their LMS email.</p>
         </div>
         
         <div className="space-y-2">

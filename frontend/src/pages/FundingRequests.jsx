@@ -33,7 +33,7 @@ import { toast } from "sonner";
 import { format } from "date-fns";
 import { logAction } from "../components/utils/AuditLogger";
 import { methodsOf, methodsText } from "../components/funding/payments";
-import { AED_PER_USD, USD_PER_INR } from "../components/funding/FundingRequestForm";
+import { AED_PER_USD, USD_PER_INR, requestMt5Email } from "../components/funding/FundingRequestForm";
 import { AmountCell, PaidCell, InvoiceCell, SourceCell, studentInfoOf, sourceOf, bonusUsdOf, receivedOf, paidLines, invoicesOf, sourceLabel } from "../components/funding/mt5Cells";
 import { CopyText } from "../components/funding/corrections";
 
@@ -239,7 +239,9 @@ export default function FundingRequests() {
         has(t.transaction_id) ||
         has(t.user_id) ||
         has(t.meeting_mentor_name) ||
-        has(student?.email);
+        has(student?.email) ||
+        // …or the MT5 email it went on (2026-11-10)
+        has(requestMt5Email(t, student));
     });
   }
 
@@ -499,7 +501,7 @@ export default function FundingRequests() {
     };
 
     const csvContent = [
-      ['Requested Date', 'Type', 'Status', 'Student Name', 'Student Email', 'Student Code', 'CS', 'Added By', 'Meeting Conducted By', 'MT5 Login', 'Amount to credit USD', 'Paid by the student', 'Collected (AED)', 'Payment Method', 'Tags', 'Finance invoice', 'From', 'Transaction ID', 'Approved By', 'Approved Date', 'Notes'].join(','),
+      ['Requested Date', 'Type', 'Status', 'Student Name', 'Student Email', 'MT5 Email', 'Student Code', 'CS', 'Added By', 'Meeting Conducted By', 'MT5 Login', 'Amount to credit USD', 'Paid by the student', 'Collected (AED)', 'Payment Method', 'Tags', 'Finance invoice', 'From', 'Transaction ID', 'Approved By', 'Approved Date', 'Notes'].join(','),
       ...filteredTransactions.map(t => {
         const student = students.find(s => s.id === t.student_id);
         // Tags are stored as a string array; join with "; " so they fit in one CSV cell.
@@ -513,6 +515,7 @@ export default function FundingRequests() {
           escapeCSV(t.status || ''),
           escapeCSV(t.student_name || ''),
           escapeCSV(student?.email || ''),
+          escapeCSV(requestMt5Email(t, student)),
           escapeCSV(t.student_code || ''),
           escapeCSV(t.primary_mentor_name || ''),
           escapeCSV(t.initiating_mentor_name || t.requested_by_name || ''),
@@ -911,6 +914,10 @@ export default function FundingRequests() {
                         </TableCell>
                         <TableCell className="font-mono text-sm">
                           {transaction.mt5_login || '-'}
+                          {/* The email the MT5 account is under (2026-11-10): the request's, else the student's MT5 or LMS email */}
+                          <div className="font-sans" title="MT5 email">
+                            <CopyText text={requestMt5Email(transaction, student)} className="mt-0.5" />
+                          </div>
                         </TableCell>
                         <TableCell className="whitespace-nowrap">
                           <AmountCell t={row} original={transaction.amount_currency && transaction.amount_currency !== 'USD' && transaction.amount_original ? `${transaction.amount_currency} ${Number(transaction.amount_original).toLocaleString('en-US', { maximumFractionDigits: 2 })}` : null} />

@@ -291,6 +291,85 @@ export async function studentEmailMissing(doc: any): Promise<string | null> {
 export const noEmailMessage = (name: unknown) =>
   `${String(name ?? "").trim() || "This student"} has no email — add it on their profile first: Delta finance invoices the course payment to the student's email`;
 
+/* ────────────────────────────────────────────────────────────────────────────
+   A student's two emails (the user, 2026-11-10):
+     - `email` — the primary one, their LMS email: View / Act as student, every
+       LMS link, and the client Delta finance invoices a course payment to;
+     - `mt5_email` — the email their MT5 (broker) account is under, used only for
+       funding requests. None set: their LMS email.
+   Each funding request keeps the MT5 email it was raised with (`mt5_email`):
+   as typed on the form, else the student's MT5 email, else their LMS email.
+──────────────────────────────────────────────────────────────────────────── */
+
+const ONE_ADDRESS = /^[^\s@,;<>/]+@[^\s@,;<>/]+\.[^\s@,;<>/]+$/;
+export const MT5_EMAIL_INVALID = "The MT5 email is one email address — or leave it empty to use their LMS email";
+
+/** An MT5 email as typed → lower-cased and trimmed; "" for none; null when it isn't one address. */
+export function mt5EmailOf(raw: unknown): string | null {
+  const v = String(raw ?? "").trim().toLowerCase();
+  if (!v) return "";
+  return ONE_ADDRESS.test(v) ? v : null;
+}
+
+/** The email a student's funding requests go on: their MT5 email, else their LMS (primary) email. */
+export const fundingEmailOf = (student: any): string => mt5EmailOf(student?.mt5_email) || mt5EmailOf(student?.email) || "";
+
+/**
+ * A student saved through the entity API (the full Edit Student form, a new student): their MT5 email tidied, or
+ * refused when it isn't one address. Not sent: left as it is. → the refusal's words, or null.
+ */
+export function tidyStudentMt5Email(data: Record<string, any>): string | null {
+  if (!("mt5_email" in data)) return null;
+  const v = mt5EmailOf(data.mt5_email);
+  if (v === null) return MT5_EMAIL_INVALID;
+  data.mt5_email = v;
+  return null;
+}
+
+/**
+ * Before a funding request is saved: the MT5 email it goes on — as typed on the form, else the student's (MT5, else
+ * LMS). → the refusal's words when what was typed isn't one address, or null.
+ */
+export async function stampRequestMt5Email(data: Record<string, any>): Promise<string | null> {
+  const typed = mt5EmailOf(data.mt5_email);
+  if (typed === null) return MT5_EMAIL_INVALID;
+  if (typed) {
+    data.mt5_email = typed;
+    return null;
+  }
+  const oid = toObjectId(String(data.student_id ?? ""));
+  const s: any = oid ? await col("students").findOne({ _id: oid }, { projection: { email: 1, mt5_email: 1 } }) : null;
+  const fallback = fundingEmailOf(s);
+  if (fallback) data.mt5_email = fallback;
+  else delete data.mt5_email;
+  return null;
+}
+
+/**
+ * After a funding request is saved: an MT5 email typed on it, for a student who has none yet, kept as theirs — the
+ * form offers it next time, as with an MT5 login (students/mt5.ts). Never their LMS email (that is the default
+ * anyway), never over one they have. In their history. → whether it was kept.
+ */
+export async function keepRequestMt5Email(tx: any, by: { id: string | null; name: string }): Promise<boolean> {
+  const email = mt5EmailOf(tx?.mt5_email);
+  const oid = toObjectId(String(tx?.student_id ?? ""));
+  if (!email || !oid) return false;
+  const s: any = await col("students").findOne({ _id: oid }, { projection: { email: 1, mt5_email: 1 } });
+  if (!s || mt5EmailOf(s.mt5_email) || email === mt5EmailOf(s.email)) return false;
+  const now = new Date().toISOString();
+  const res = await col("students").updateOne(
+    { _id: oid, $or: [{ mt5_email: { $exists: false } }, { mt5_email: "" }, { mt5_email: null }] } as any,
+    { $set: { mt5_email: email, updated_date: now } },
+  );
+  if (!res.modifiedCount) return false;
+  await recordHistory([{
+    student_id: String(oid), at: now, type: "details_changed",
+    text: `Details changed — MT5 email: none → ${email} (from a funding request)`,
+    by_id: by.id, by_name: by.name, from: { mt5_email: "" }, to: { mt5_email: email },
+  }]);
+  return true;
+}
+
 /**
  * A deposit asked for needs its receipt — on every payment when paid in several (the user, 2026-10-12): the funding
  * form has asked for it since 2026-10-04, and now the server does too, so no request comes without one whatever sends
@@ -543,7 +622,7 @@ async function depositPayload(tx: any, location: "dubai" | "bangalore" = "dubai"
   const inr = location === "bangalore" && tx.type === "BONUS";
   const sid = tx.student_id ? toObjectId(String(tx.student_id)) : null;
   const student: any = sid
-    ? await col("students").findOne({ _id: sid }, { projection: { email: 1, phone: 1, full_name: 1, student_code: 1, student_level: 1, team_name: 1 } })
+    ? await col("students").findOne({ _id: sid }, { projection: { email: 1, mt5_email: 1, phone: 1, full_name: 1, student_code: 1, student_level: 1, team_name: 1 } })
     : null;
   const accounts = tx.student_id
     ? await col("mt5_accounts").find({ student_id: String(tx.student_id) }).project({ mt5_login: 1, platform: 1 }).limit(20).toArray()
@@ -578,6 +657,8 @@ async function depositPayload(tx: any, location: "dubai" | "bangalore" = "dubai"
     // Paid in several payments: the first one's method and receipt here, and all of them in the notes.
     paymentMethod: String(tx.payment_method ?? ""),
     mt5Login: String(tx.mt5_login ?? ""),
+    // The email the MT5 account is under (2026-11-10) — the invoice stays on student.email, their LMS email.
+    mt5Email: mt5EmailOf(tx.mt5_email) || fundingEmailOf(student),
     mt5Accounts: accounts
       .map((a: any) => ({ login: String(a.mt5_login ?? ""), platform: String(a.platform ?? "") }))
       .filter((a) => a.login),

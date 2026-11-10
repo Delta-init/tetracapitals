@@ -451,11 +451,21 @@ export default function StudentDetail() {
                     </p>
                   </div>
 
+                  {/* Two emails (2026-11-10): the LMS one is primary — View as student, the LMS; the MT5 one, funding requests only */}
                   <div>
-                    <label className="text-sm font-medium text-gray-500">Email</label>
+                    <label className="text-sm font-medium text-gray-500">LMS Email <span className="font-normal text-gray-400">· primary</span></label>
                     <p className="mt-1 text-base text-gray-900 break-all">
-                      {displayStudent.email}
+                      {displayStudent.email || '-'}
                     </p>
+                  </div>
+
+                  <div>
+                    <label className="text-sm font-medium text-gray-500">MT5 Email <span className="font-normal text-gray-400">· funding requests</span></label>
+                    {String(displayStudent.mt5_email || '').trim() ? (
+                      <p className="mt-1 text-base text-gray-900 break-all">{displayStudent.mt5_email}</p>
+                    ) : (
+                      <p className="mt-1 text-sm text-gray-500">{displayStudent.email ? 'Same as the LMS email' : '-'}</p>
+                    )}
                   </div>
 
                   <div>

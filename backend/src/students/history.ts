@@ -204,6 +204,11 @@ export async function prepareStudentUpdate(existing: any, data: Record<string, a
   if (changed("status")) {
     entries.push({ ...base, type: "status_changed", text: `Status changed from ${existing.status || "none"} to ${data.status || "none"}`, from: existing.status ?? null, to: data.status ?? null });
   }
+  // Their MT5 email — the one their funding requests go on (2026-11-10); their LMS email stays `email`.
+  if (changed("mt5_email")) {
+    const from = String(existing.mt5_email ?? "").trim(), to = String(data.mt5_email ?? "").trim();
+    entries.push({ ...base, type: "details_changed", text: `Details changed — MT5 email: ${from || "none"} → ${to || "none (their LMS email is used)"}`, from: { mt5_email: from }, to: { mt5_email: to } });
+  }
   if (changed("assignment_status") && data.assignment_status === "open_pool") {
     entries.push({ ...base, type: "pool_changed", text: "Moved to Delta Open Students", from: existing.assignment_status ?? null, to: "open_pool" });
   }
