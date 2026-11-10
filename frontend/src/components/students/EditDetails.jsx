@@ -13,8 +13,9 @@ import { isStudentOf } from '@/components/students/common';
 import { LANGUAGES, NO_LANGUAGE } from '@/components/students/languages';
 
 /* ────────────────────────────────────────────────────────────────────────────
-   A student's own details — name, email, phone, country and the language they
-   study in — changed from the Students list or the student page by the people
+   A student's own details — name, LMS email (the primary one), MT5 email (the
+   one their funding requests go on, 2026-11-10), phone, country and the
+   language they study in — changed from the Students list or the student page by the people
    who look after them: their CS (or a CS they are Common with), the people
    above them and admins (the server checks, functions/studentDetails.ts).
    Each change is in the student's history. The full Edit Student form stays
@@ -27,7 +28,8 @@ export const mayEditDetails = (user, student) =>
 
 const FIELDS = [
   { key: 'full_name', label: 'Name', type: 'text' },
-  { key: 'email', label: 'Email', type: 'email' },
+  { key: 'email', label: 'LMS email (primary)', type: 'email', hint: 'Their LMS account — View as student and every LMS link use it' },
+  { key: 'mt5_email', label: 'MT5 email', type: 'email', hint: 'The email their MT5 account is under — for funding requests only', placeholder: 'Empty: their LMS email is used' },
   { key: 'phone', label: 'Phone', type: 'tel' },
   { key: 'country', label: 'Country', type: 'text' },
   { key: 'language', label: 'Language', type: 'language' },
@@ -78,7 +80,7 @@ export function EditDetailsButton({ student, currentUser, label }) {
         <DialogContent className="max-w-md" onClick={stop}>
           <DialogHeader>
             <DialogTitle>Edit {student.student_code}</DialogTitle>
-            <DialogDescription>Name, email, phone, country and language. The change goes in the student's history.</DialogDescription>
+            <DialogDescription>Name, LMS and MT5 emails, phone, country and language. The change goes in the student's history.</DialogDescription>
           </DialogHeader>
           <div className="space-y-3">
             {FIELDS.map(f => (
@@ -99,9 +101,11 @@ export function EditDetailsButton({ student, currentUser, label }) {
                     value={form[f.key] ?? ''}
                     onChange={(e) => setForm(v => ({ ...v, [f.key]: e.target.value }))}
                     onKeyDown={(e) => { if (e.key === 'Enter') save(); }}
+                    placeholder={f.placeholder}
                     className="mt-1"
                   />
                 )}
+                {f.hint && <p className="mt-1 text-xs text-gray-500">{f.hint}</p>}
               </div>
             ))}
           </div>

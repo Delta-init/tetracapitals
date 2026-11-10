@@ -82,6 +82,7 @@ const EXPORT_COLUMNS = [
   { header: 'Team', value: t => t.student?.team },
   { header: 'Meeting by', value: t => t.meeting_mentor_name },
   { header: 'MT5 login', value: t => t.mt5_login },
+  { header: 'MT5 email', value: t => t.mt5_email },
   { header: 'Amount to credit USD', type: 'number', value: t => bonusUsdOf(t) },
   { header: 'Original amount', value: t => original(t) },
   { header: 'Paid by the student', value: t => (receivedOf(t) ? `Received ${receivedOf(t).received}${receivedOf(t).method ? ` · ${receivedOf(t).method}` : ''}` : paidLines(t).map(l => (l.collected ? `Collected by counsellor ${l.collected}` : `Paid ${l.paid}`)).join('; ')) },
@@ -188,7 +189,7 @@ export default function BonusApprovals() {
   const rows = useMemo(() => {
     const out = listOf(tab).filter(t => {
       if (type !== 'all' && t.type !== type) return false;
-      if (needle && ![t.student?.full_name, t.student?.student_code, t.student?.email, t.student?.cs, t.mt5_login, t.course, t.student_name, t.transaction_id, t.user_id, t.sales_close?.invoice_number, ...(t.student?.invoices || []).map(f => f.invoice_number), ...(t.student?.closed_by || []).map(c => c.name)]
+      if (needle && ![t.student?.full_name, t.student?.student_code, t.student?.email, t.student?.cs, t.mt5_login, t.mt5_email, t.course, t.student_name, t.transaction_id, t.user_id, t.sales_close?.invoice_number, ...(t.student?.invoices || []).map(f => f.invoice_number), ...(t.student?.closed_by || []).map(c => c.name)]
         .some(v => String(v || '').toLowerCase().includes(needle))) return false;
       // The date range: when it was requested (Approved / Rejected are already that range's decisions, from the server).
       if (tabOf(t) === 'pending' || tabOf(t) === 'returned') {
@@ -381,7 +382,11 @@ export default function BonusApprovals() {
                               {t.student?.team && <div className="text-xs text-slate-400">{t.student.team}</div>}
                             </td>
                             <td className="whitespace-nowrap px-3 py-2.5 text-sm text-slate-600">{t.meeting_mentor_name || '—'}</td>
-                            <td className="whitespace-nowrap px-3 py-2.5 font-mono text-sm text-slate-700">{t.mt5_login || <span className="font-sans text-xs text-rose-600">No MT5 login</span>}</td>
+                            <td className="whitespace-nowrap px-3 py-2.5 font-mono text-sm text-slate-700">
+                              {t.mt5_login || <span className="font-sans text-xs text-rose-600">No MT5 login</span>}
+                              {/* The email the MT5 account is under (2026-11-10) — the request's, else the student's MT5 or LMS email */}
+                              {t.mt5_email && <div className="font-sans" title="MT5 email"><CopyText text={t.mt5_email} className="mt-0.5" /></div>}
+                            </td>
                             <td className="whitespace-nowrap px-3 py-2.5">
                               {t.type === 'BONUS' ? (
                                 <>

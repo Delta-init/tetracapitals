@@ -2,7 +2,7 @@ import { col } from "../db";
 import { json, error, forbidden, notFound } from "../lib/response";
 import { serialize, serializeMany, toObjectId } from "../lib/id";
 import type { AuthUser } from "../auth/middleware";
-import { stampFundingForFinance, kickFinanceFunding, bonusMissing } from "../finance/funding";
+import { stampFundingForFinance, kickFinanceFunding, bonusMissing, stampRequestMt5Email } from "../finance/funding";
 import { keepRequestMt5 } from "../students/mt5";
 
 /**
@@ -200,6 +200,8 @@ export async function processReferralResponse(req: Request, user: AuthUser): Pro
       created_date: now,
       updated_date: now,
     };
+    // The MT5 email it goes on, as a request raised directly (2026-11-10): the student's MT5 email, else their LMS email.
+    await stampRequestMt5Email(funding);
     // A deposit goes to Delta finance for approval, like one raised directly.
     const toFinance = stampFundingForFinance(funding);
     await col("funding_transactions").insertOne(funding as any);

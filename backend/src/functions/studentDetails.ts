@@ -5,13 +5,15 @@ import type { AuthUser } from "../auth/middleware";
 import { visibleMentorIds, isStudentOf } from "../students/followups";
 import { recordHistory } from "../students/history";
 import { LANGUAGES, languageOf } from "../students/language";
+import { mt5EmailOf, MT5_EMAIL_INVALID } from "../finance/funding";
 
-/** The details a student's people may change, and what the history calls them. */
-const FIELDS: Record<string, string> = { full_name: "Name", email: "Email", phone: "Phone", country: "Country", language: "Language" };
+/** The details a student's people may change, and what the history calls them. `email` is their LMS email, the
+ *  primary one; `mt5_email` the one their MT5 account is under, for funding requests only (2026-11-10). */
+const FIELDS: Record<string, string> = { full_name: "Name", email: "LMS email", mt5_email: "MT5 email", phone: "Phone", country: "Country", language: "Language" };
 const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 /**
- * POST /api/functions/updateStudentDetails { studentId, full_name?, email?, phone?, country?, language? }
+ * POST /api/functions/updateStudentDetails { studentId, full_name?, email?, mt5_email?, phone?, country?, language? }
  *
  * A student's own details — name, email, phone, country and the language they study in — changed by the people who
  * look after them: their CS (or a CS they are Common with), the people above them and admin roles, the same people
@@ -37,6 +39,12 @@ export async function updateStudentDetails(req: Request, user: AuthUser): Promis
     if (f === "language" && v) {
       v = languageOf(v);
       if (!v) return error(`The language is one of ${LANGUAGES.join(", ")} — or none`, 400);
+    }
+    // The MT5 email: one address, lower-cased — or none, and their LMS email is used.
+    if (f === "mt5_email") {
+      const m = mt5EmailOf(v);
+      if (m === null) return error(MT5_EMAIL_INVALID, 400);
+      v = m;
     }
     if (v !== String(s[f] ?? "").trim()) data[f] = v;
   }

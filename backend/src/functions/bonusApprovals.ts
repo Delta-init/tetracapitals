@@ -2,7 +2,7 @@ import { col } from "../db";
 import { json, forbidden } from "../lib/response";
 import { serialize, toObjectId } from "../lib/id";
 import type { AuthUser } from "../auth/middleware";
-import { BONUS_APPROVERS, BONUS_APPROVERS_MESSAGE, withFinance, financeFundingConfigured } from "../finance/funding";
+import { BONUS_APPROVERS, BONUS_APPROVERS_MESSAGE, withFinance, financeFundingConfigured, mt5EmailOf, fundingEmailOf } from "../finance/funding";
 import { forBrokerLocation } from "../finance/bonusLocation";
 
 /**
@@ -65,9 +65,9 @@ export async function getBonusApprovals(req: Request, user: AuthUser): Promise<R
   const search = String(body?.search ?? "").trim().slice(0, 100);
   const rx = search.length >= 3 ? new RegExp(search.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "i") : null;
   const searchIds = rx
-    ? ((await col("students").find({ $or: [{ full_name: rx }, { email: rx }, { student_code: rx }] }, { projection: { _id: 1 } }).limit(500).toArray()) as any[]).map((s) => String(s._id))
+    ? ((await col("students").find({ $or: [{ full_name: rx }, { email: rx }, { mt5_email: rx }, { student_code: rx }] }, { projection: { _id: 1 } }).limit(500).toArray()) as any[]).map((s) => String(s._id))
     : [];
-  const searchOr = rx ? [{ student_id: { $in: searchIds } }, { student_name: rx }, { mt5_login: rx }, { transaction_id: rx }] : [];
+  const searchOr = rx ? [{ student_id: { $in: searchIds } }, { student_name: rx }, { mt5_login: rx }, { mt5_email: rx }, { transaction_id: rx }] : [];
   // A broker admin: their own location's bonuses (Bangalore's or Dubai's — finance/bonusLocation.ts, 2026-10-15).
   const found = (await col("funding_transactions")
     .find({
@@ -119,7 +119,7 @@ export async function getBonusApprovals(req: Request, user: AuthUser): Promise<R
   const students = (await col("students")
     .find({ _id: { $in: studentIds as any[] } }, {
       projection: {
-        full_name: 1, student_code: 1, email: 1, primary_mentor_name: 1, team_name: 1, onboarded: 1, onboarded_at: 1, lms_course: 1,
+        full_name: 1, student_code: 1, email: 1, mt5_email: 1, primary_mentor_name: 1, team_name: 1, onboarded: 1, onboarded_at: 1, lms_course: 1,
         student_level: 1, lms_courses: 1, closed_by: 1, course_fees: 1, finance_invoice_number: 1,
       },
     })
@@ -143,6 +143,8 @@ export async function getBonusApprovals(req: Request, user: AuthUser): Promise<R
     const o = owed.get(String(t._id));
     return {
       ...serialize(t),
+      // The email the MT5 account is under (2026-11-10): the request's, else the student's MT5 email, else their LMS email.
+      mt5_email: mt5EmailOf(t.mt5_email) || fundingEmailOf(s),
       ...(o ? { course_owed: owedText(o.minor, o.currency) } : {}),
       upgrade_receipts: t.course_upgrade?.upgrade_id
         ? (paymentsOfUpgrade.get(String(t.course_upgrade.upgrade_id)) ?? []).filter((p) => /^https?:\/\//i.test(String(p.receipt_url ?? ""))).map((p) => ({

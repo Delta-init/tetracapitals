@@ -7,7 +7,9 @@
  *     their LMS email; one typed for a student with none yet is kept as theirs (never their LMS email, never over one
  *     they have); not one address: refused, nothing raised;
  *   - a course payment sent to finance still names the student by their LMS email (finance invoices that client), and
- *     carries the MT5 email beside it.
+ *     carries the MT5 email beside it;
+ *   - their CS sets it on Edit details (updateStudentDetails); MT5 Approvals shows and finds it; a co-management
+ *     request, once approved, goes on the student's MT5 email too.
  *
  * Run through ./test-mt5-email.sh (throwaway mongod, the API, a stand-in finance — no .env).
  * Refuses anything but a scratch database on 127.0.0.1.
@@ -75,7 +77,8 @@ const person = (full_name: string, email: string, app_role: string) => ({
 });
 const admin = person("Super Admin", "admin@e2e-mt5mail.test", "super_admin");
 const cs = person("Cee Ess", "cs@e2e-mt5mail.test", "junior_mentor");
-await db.collection("users").insertMany([admin, cs] as any[]);
+const other = person("Other Mentor", "other@e2e-mt5mail.test", "junior_mentor");
+await db.collection("users").insertMany([admin, cs, other] as any[]);
 const student = (n: number, extra: Record<string, unknown> = {}) => ({
   _id: new ObjectId(), student_code: `STU-${String(n).padStart(4, "0")}`, full_name: `Student ${n}`, email: `lms${n}@e2e-mt5mail.test`,
   phone: `+9715000000${n}`, primary_mentor_id: String(cs._id), primary_mentor_name: cs.full_name, status: "ACTIVE", created_date: now, ...extra,
@@ -172,6 +175,53 @@ check("sent to finance", await until(async () => received.length > 0));
 const sent = received[0];
 check("the student by their LMS email (whom finance invoices)", sent?.student?.email === "lms2@e2e-mt5mail.test", JSON.stringify(sent?.student));
 check("…their MT5 email beside it", sent?.mt5Email === "mt5-2@broker.test", String(sent?.mt5Email));
+
+step("Their CS sets it on Edit details");
+const details = (s: any, body: Record<string, unknown>) => call("POST", "/api/functions/updateStudentDetails", tCs, { studentId: sid(s), ...body });
+r = await details(sD, { mt5_email: " CS-Set@Broker.TEST " });
+let d: any = await studentOf(sD);
+h = await historyOf(sD);
+check("saved, lower-cased", r.status === 200 && d.mt5_email === "cs-set@broker.test" && d.email === "lms4@e2e-mt5mail.test", JSON.stringify(r.body));
+check("…in their history, by their CS", /MT5 email: none → cs-set@broker\.test/.test(h[h.length - 1]?.text ?? "") && h[h.length - 1]?.by_name === cs.full_name, JSON.stringify(h.map((x) => x.text)));
+r = await details(sD, { mt5_email: "two@a.test b@c.test" });
+check("not one address: refused, unchanged", r.status === 400 && /one email address/.test(r.body?.error ?? "") && (await studentOf(sD)).mt5_email === "cs-set@broker.test", JSON.stringify(r.body));
+r = await details(sD, { email: "lms4-new@e2e-mt5mail.test" });
+h = await historyOf(sD);
+check("the LMS email changed: called that in their history, the MT5 email left alone", r.status === 200 && /LMS email: lms4@e2e-mt5mail\.test → lms4-new@e2e-mt5mail\.test/.test(h[h.length - 1]?.text ?? "") && (await studentOf(sD)).mt5_email === "cs-set@broker.test", JSON.stringify(h.map((x) => x.text)));
+r = await details(sD, { full_name: "Student 4", email: "lms4-new@e2e-mt5mail.test", mt5_email: "cs-set@broker.test", phone: (sD as any).phone, country: "", language: "" });
+check("the whole dialog saved, nothing different: unchanged", r.status === 200 && r.body?.unchanged === true, JSON.stringify(r.body));
+r = await details(sD, { mt5_email: "" });
+check("emptied: their LMS email is used again", r.status === 200 && (await studentOf(sD)).mt5_email === "");
+
+step("MT5 Approvals shows it");
+// Finance has decided these already (a bonus with finance waits there before it is listed here).
+await db.collection("funding_transactions").insertMany([
+  { type: "BONUS", status: "PENDING", student_id: sid(sB), student_name: sB.full_name, student_code: sB.student_code, amount_usd: 50, mt5_login: "7002222", tags: ["Course"], requested_at: new Date().toISOString(), created_date: new Date().toISOString() },
+  { type: "BONUS", status: "PENDING", student_id: sid(sB), student_name: sB.full_name, student_code: sB.student_code, amount_usd: 55, mt5_login: "7002111", mt5_email: "own-2@broker.test", tags: ["Course"], requested_at: new Date().toISOString(), created_date: new Date().toISOString() },
+] as any[]);
+r = await call("POST", "/api/functions/getBonusApprovals", tAdmin, {});
+const listed = (b: any): any[] => ["pending", "approved", "rejected", "returned"].flatMap((k) => (Array.isArray(b?.[k]) ? b[k] : []));
+const rows = listed(r.body);
+const viaRequest = rows.find((t) => t.mt5_login === "7002111");
+const older = rows.find((t) => t.mt5_login === "7002222");
+check("a bonus raised with its own: that one, not the student's", r.status === 200 && viaRequest?.mt5_email === "own-2@broker.test", `${r.status} ${Object.keys(r.body ?? {}).join(",")} ${JSON.stringify(viaRequest?.mt5_email)}`);
+check("one from before (none on it): the student's MT5 email", older?.mt5_email === "mt5-2@broker.test", JSON.stringify(older?.mt5_email));
+await db.collection("funding_transactions").insertOne({ type: "BONUS", status: "APPROVED", approved_at: "2026-01-05T08:00:00.000Z", student_id: sid(sA), student_name: sA.full_name, student_code: sA.student_code, amount_usd: 60, mt5_login: "7001999", mt5_email: "old-only@broker.test", tags: ["Course"], created_date: "2026-01-05T08:00:00.000Z" } as any);
+r = await call("POST", "/api/functions/getBonusApprovals", tAdmin, { search: "old-only@broker" });
+const foundRows = listed(r.body);
+check("an older approved one found by its MT5 email", r.status === 200 && foundRows.some((t) => t.mt5_login === "7001999"), JSON.stringify(foundRows.map((t) => t.mt5_login)));
+
+step("A co-management request goes on the student's MT5 email");
+const tOther = await login(other.email);
+r = await call("POST", "/api/functions/createReferralRequest", tOther, {
+  student_id: sid(sB), student_name: sB.full_name, student_code: sB.student_code, receiving_mentor_id: String(cs._id), receiving_mentor_name: cs.full_name,
+  requested_deposit_amount: 275, payment_method: "UPI", mt5_login: "7002333", screenshot_url: "http://127.0.0.1/uploads/proof.png", transaction_type: "DEPOSIT",
+});
+const referralId = r.body?.referral?.id;
+check("asked", r.status === 200 && !!referralId, JSON.stringify(r.body).slice(0, 200));
+r = await call("POST", "/api/functions/processReferralResponse", tCs, { referral_id: referralId, action: "approve" });
+const viaReferral: any = await db.collection("funding_transactions").findOne({ mt5_login: "7002333" });
+check("approved: the request made with the student's MT5 email", r.status === 200 && viaReferral?.mt5_email === "mt5-2@broker.test", JSON.stringify({ status: r.status, mt5_email: viaReferral?.mt5_email }));
 
 finance.stop(true);
 await client.close();
