@@ -71,19 +71,21 @@ export async function handleFinanceStudentLookup(req: Request): Promise<Response
   const rows = (await col("students")
     .find({
       $or: [
-        ...(codes.length ? [{ student_code: { $in: codes } }] : []),
+        ...(codes.length ? [{ student_code: { $in: codes } }, { other_codes: { $in: codes } }] : []),
         ...emails.map((e) => ({ email: { $regex: `^${escapeRegex(e)}$`, $options: "i" } })),
+        // A record merged into another (students/merge.ts): asked for by its old code or email, answered with the one it went into.
+        ...(emails.length ? [{ other_emails: { $in: emails } }] : []),
       ],
     })
     .project({
       student_code: 1, email: 1, primary_mentor_name: 1, team_name: 1, assignment_status: 1,
-      onboarded: 1, onboarded_at: 1, onboarded_by_name: 1, course_fees: 1,
+      onboarded: 1, onboarded_at: 1, onboarded_by_name: 1, course_fees: 1, other_codes: 1, other_emails: 1,
     })
     .toArray()) as Row[];
   const checks = await bonusChecksFor(rows);
 
-  const byCode = new Map(rows.map((r) => [String(r.student_code ?? "").toUpperCase(), r]));
-  const byEmail = new Map(rows.map((r) => [String(r.email ?? "").toLowerCase(), r]));
+  const byCode = new Map(rows.flatMap((r) => [String(r.student_code ?? "").toUpperCase(), ...((r as any).other_codes ?? []).map((c: string) => String(c).toUpperCase())].map((c) => [c, r] as const)));
+  const byEmail = new Map(rows.flatMap((r) => [String(r.email ?? "").toLowerCase(), ...((r as any).other_emails ?? []).map((e: string) => String(e).toLowerCase())].map((e) => [e, r] as const)));
   return ok({
     students: [
       ...codes.map((c) => describe(c, byCode.get(c), checks)),

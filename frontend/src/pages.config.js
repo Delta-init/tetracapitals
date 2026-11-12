@@ -127,6 +127,7 @@ import Reminders from './pages/Reminders';
 import VoiceRecordings from './pages/VoiceRecordings';
 import MyWallet from './pages/MyWallet';
 import BalancePayments from './pages/BalancePayments';
+import DuplicateStudents from './pages/DuplicateStudents';
 import BonusApprovals from './pages/BonusApprovals';
 import NotCreditedYet from './pages/NotCreditedYet';
 import __Layout from './Layout.jsx';
@@ -189,6 +190,7 @@ export const PAGES = {
     "VoiceRecordings": VoiceRecordings,
     "MyWallet": MyWallet,
     "BalancePayments": BalancePayments,
+    "DuplicateStudents": DuplicateStudents,
     "BonusApprovals": BonusApprovals,
     "NotCreditedYet": NotCreditedYet,
     "StudentCalls": StudentCalls,

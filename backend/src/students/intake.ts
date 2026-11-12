@@ -154,7 +154,9 @@ export const madeUpNote = (email: string) => `The email ${email} is made up — 
  */
 export async function studentWithEmail(email: string) {
   if (madeUpEmail(email)) return null;
-  return col("students").findOne({ email: { $regex: `^${escapeRegex(email)}$`, $options: "i" } });
+  return (await col("students").findOne({ email: { $regex: `^${escapeRegex(email)}$`, $options: "i" } }))
+    // …or the email of a record merged into another (students/merge.ts): that one.
+    ?? col("students").findOne({ other_emails: email.toLowerCase() });
 }
 
 /**

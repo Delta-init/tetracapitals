@@ -22,6 +22,7 @@ import { searchStudents } from "./searchStudents";
 import { getStudentHistory } from "./getStudentHistory";
 import { reassignStudents } from "./reassignStudents";
 import { getStudentMoves } from "./getStudentMoves";
+import { findDuplicateStudents, previewStudentMerge, mergeStudentRecords, getStudentMerges, undoStudentMerge, dismissDuplicateGroup } from "./studentMerge";
 import { getFollowups, createFollowup, logFollowup, addFollowupNote, getFollowupTeams } from "./studentFollowups";
 import { getReminderLog, resendReminder, runRemindersNow, sendTestReminder } from "./followupReminders";
 import { getCalls, getCallRecording, syncCallsNow, testThreecx, getClickToCall, callStudent, getMyCallState, hangUpMyCall } from "./studentCalls";
@@ -99,6 +100,13 @@ type AnonHandler = (req: Request) => Promise<Response>;
 const AUTHED: Record<string, AuthedHandler> = {
   getAllUsers,
   reassignStudents,
+  // Duplicate students merged into one (2026-11-12, students/merge.ts): Super Admin, CS Manager.
+  findDuplicateStudents,
+  previewStudentMerge,
+  mergeStudents: mergeStudentRecords,
+  getStudentMerges,
+  undoStudentMerge,
+  dismissDuplicateGroup,
   getStudentMoves,
   getFollowups,
   createFollowup,

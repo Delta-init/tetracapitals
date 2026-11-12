@@ -47,6 +47,8 @@ const DOT = {
   course_upgrade: 'bg-emerald-500',
   course_fees: 'bg-amber-500',
   pool_changed: 'bg-cyan-500',
+  merged: 'bg-fuchsia-500',
+  merge_undone: 'bg-fuchsia-300',
   request: 'bg-slate-400',
 };
 

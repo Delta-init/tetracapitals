@@ -108,6 +108,15 @@ export async function ensureIndexes(): Promise<void> {
     d.collection("student_calls").createIndex({ user_id: 1, started_at: -1 }),
     d.collection("student_calls").createIndex({ extension: 1, user_id: 1 }),
     d.collection("students").createIndex({ team_id: 1 }),
+    // Merging students (students/merge.ts): one merge of a student at a time — the claim is this unique key, while it runs;
+    // the merges, newest first; a group marked "Not a duplicate"; the closed records' identity on the kept one.
+    d.collection("student_merges").createIndex({ lock_keys: 1 }, { unique: true, partialFilterExpression: { status: "running" } }),
+    d.collection("student_merges").createIndex({ at: -1 }),
+    d.collection("student_duplicate_dismissals").createIndex({ key: 1 }, { unique: true }),
+    d.collection("students").createIndex({ other_codes: 1 }, { sparse: true }),
+    d.collection("students").createIndex({ other_emails: 1 }, { sparse: true }),
+    d.collection("students").createIndex({ other_lms_user_ids: 1 }, { sparse: true }),
+    d.collection("students").createIndex({ other_finance_invoice_ids: 1 }, { sparse: true }),
     d.collection("students").createIndex({ new_for_id: 1 }, { sparse: true }),
     d.collection("students").createIndex({ created_date: -1 }),
     d.collection("student_logs").createIndex({ created_date: -1 }),

@@ -40,7 +40,8 @@ export async function handleLmsStudents(req: Request): Promise<Response> {
   const academy = text(body.academy, 80);
 
   // The same LMS account again — the LMS retrying, or finance got there first.
-  const already = await col("students").findOne({ lms_user_id: lmsUserId });
+  // Their LMS account — or one merged into another record here (students/merge.ts, other_lms_user_ids).
+  const already = await col("students").findOne({ $or: [{ lms_user_id: lmsUserId }, { other_lms_user_ids: lmsUserId }] });
   if (already) return ok(answer(already, false, "lms", "This LMS student is already here"));
 
   const existing = await studentWithEmail(email);

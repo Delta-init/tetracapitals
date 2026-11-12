@@ -277,7 +277,8 @@ export async function handleFinanceStudents(req: Request): Promise<Response> {
   const fee = courseFee(body.feeSummary, invoiceId, invoiceNumber, course, language, salesCrm, location);
 
   // The same invoice again — finance retrying, or asked twice. One student.
-  const already = await col("students").findOne({ finance_invoice_id: invoiceId });
+  // …or on a record another was merged into (students/merge.ts, other_finance_invoice_ids).
+  const already = await col("students").findOne({ $or: [{ finance_invoice_id: invoiceId }, { other_finance_invoice_ids: invoiceId }] });
   if (already) {
     // Not the language: this close's was set when it first came, and a later close may have set another since.
     await recordCourseFee(already, fee);

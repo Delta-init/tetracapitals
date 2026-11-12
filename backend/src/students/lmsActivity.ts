@@ -113,7 +113,7 @@ async function activeCs(id: unknown): Promise<any | null> {
 async function studentFor(ev: LmsActivity): Promise<any | null> {
   const lmsId = String(ev.student?.lmsUserId ?? "").trim();
   if (lmsId) {
-    const s = await col("students").findOne({ lms_user_id: lmsId });
+    const s = await col("students").findOne({ $or: [{ lms_user_id: lmsId }, { other_lms_user_ids: lmsId }] });
     if (s) return s;
   }
   const email = String(ev.student?.email ?? "").trim().toLowerCase();
@@ -121,6 +121,8 @@ async function studentFor(ev: LmsActivity): Promise<any | null> {
   let matches = await col("students").find({ email: { $regex: `^\\s*${escapeRegex(email)}\\s*$`, $options: "i" } }).toArray();
   // Else the address as one of several on the record ("a@x.com, b@y.com" — 2026-10-23: those were never matched).
   if (!matches.length) matches = await col("students").find({ email: { $regex: `(^|[\\s,;<>/])${escapeRegex(email)}($|[\\s,;<>/])`, $options: "i" } }).limit(20).toArray();
+  // Else a record merged into another here (students/merge.ts): that one.
+  if (!matches.length) matches = await col("students").find({ other_emails: email }).limit(2).toArray();
   if (matches.length <= 1) return matches[0] ?? null;
   // The same address on two students (an import and a sign-up): the one an active CS holds, else the newest.
   for (const s of matches) if (await activeCs(s.primary_mentor_id)) return s;

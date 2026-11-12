@@ -183,7 +183,7 @@ export async function getLmsEnrolmentRequests(req: Request, user: AuthUser): Pro
     // An STU code: that student's requests, by their email — the LMS doesn't know the code.
     let onlyEmail: string | null = null;
     if (filters.q && /^stu-\d+$/i.test(filters.q)) {
-      const s: any = await col("students").findOne({ student_code: filters.q.toUpperCase() }, { projection: { email: 1 } });
+      const s: any = await col("students").findOne({ $or: [{ student_code: filters.q.toUpperCase() }, { other_codes: filters.q.toUpperCase() }] }, { projection: { email: 1 } });
       onlyEmail = emailOf(s?.email);
       delete filters.q;
       if (!onlyEmail) return json({ configured: true, available: true, ...empty });
@@ -653,7 +653,7 @@ export async function assignLmsApplicant(req: Request, user: AuthUser): Promise<
     return lmsRefusal(err);
   }
   // Their LMS account may be here already under another address.
-  const sameAccount: any = await col("students").findOne({ lms_user_id: found.userId }, { projection: STUDENT_FIELDS });
+  const sameAccount: any = await col("students").findOne({ $or: [{ lms_user_id: found.userId }, { other_lms_user_ids: found.userId }] }, { projection: STUDENT_FIELDS });
   if (sameAccount) return error(`This LMS account is already ${sameAccount.student_code} ${sameAccount.full_name} (${sameAccount.email || "no email"}) — ${unassigned(sameAccount) ? "assign them from the Students page" : `with ${sameAccount.primary_mentor_name}`}`, 409);
 
   const academy = str(request?.academy, 80);

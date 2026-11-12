@@ -27,7 +27,8 @@ export async function handleLmsStudentCs(req: Request): Promise<Response> {
   const email = text(body.email).toLowerCase();
   if (!isEmail(email) && !/^[0-9a-f]{24}$/i.test(lmsUserId)) return refuse(400, "VALIDATION_ERROR", "A valid email or lmsUserId is required");
 
-  const s: any = (/^[0-9a-f]{24}$/i.test(lmsUserId) ? await col("students").findOne({ lms_user_id: lmsUserId }) : null)
+  // By the LMS account — theirs, or one merged into theirs (students/merge.ts) — else by email.
+  const s: any = (/^[0-9a-f]{24}$/i.test(lmsUserId) ? await col("students").findOne({ $or: [{ lms_user_id: lmsUserId }, { other_lms_user_ids: lmsUserId }] }) : null)
     ?? (isEmail(email) ? await studentWithEmail(email) : null);
   if (!s) return ok({ found: false });
 

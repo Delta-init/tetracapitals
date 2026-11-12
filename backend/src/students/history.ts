@@ -36,7 +36,9 @@ export type HistoryType =
   | "lms_enrolment"    // their LMS enrolment request approved or rejected from here (functions/lmsEnrolmentRequests.ts)
   | "lms_access"       // put on an LMS course, or its modules opened or locked, from here (functions/lmsCourseAccess.ts)
   | "course_upgrade"   // their CSE courses entered, or an upgrade started or cancelled (functions/courseUpgrades.ts)
-  | "course_fees";     // a course's money changed in Delta finance, or a balance payment recorded or decided (finance/feeUpdates.ts, finance/enrolmentPayments.ts)
+  | "course_fees"      // a course's money changed in Delta finance, or a balance payment recorded or decided (finance/feeUpdates.ts, finance/enrolmentPayments.ts)
+  | "merged"           // another record of the same student merged into this one (students/merge.ts)
+  | "merge_undone";    // …and that merge undone
 
 export interface HistoryEntry {
   student_id: string;
