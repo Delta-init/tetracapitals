@@ -106,11 +106,11 @@ const fn = async (name, body) => (await base44.functions.invoke(name, body)).dat
 const errorText = (e, fallback) => e?.message || fallback;
 const selectCls = 'h-9 w-full rounded-md border border-slate-200 bg-white px-2 text-sm';
 
-/** Midnight on the Sunday of whatever week this date falls in. */
-const weekStart = (d) => {
+/** Midnight at the start of this date. The calendar shows seven days from today (the user, 2026-11-12: "show from
+ *  the day today"), not a Sunday-to-Saturday week; the arrows step seven days at a time, back as well as forward. */
+const dayStart = (d) => {
   const start = new Date(d);
   start.setHours(0, 0, 0, 0);
-  start.setDate(start.getDate() - start.getDay());
   return start;
 };
 
@@ -142,11 +142,11 @@ export default function MentorCalendar() {
   const navigate = useNavigate();
   const studentId = new URLSearchParams(useLocation().search).get('student');
   const [offset, setOffset] = useState(0);
-  // The phone's day, as an index into the week, so stepping the week keeps the weekday.
-  const [dayIndex, setDayIndex] = useState(() => new Date().getDay());
+  // The phone's day, as an index into the seven on show (today first), so stepping seven days keeps the weekday.
+  const [dayIndex, setDayIndex] = useState(0);
 
   const { from, to, days } = useMemo(() => {
-    const start = weekStart(new Date());
+    const start = dayStart(new Date());
     start.setDate(start.getDate() + offset * 7);
     const end = new Date(start);
     end.setDate(end.getDate() + 7);
@@ -537,12 +537,12 @@ export default function MentorCalendar() {
               <Input value={query} onChange={e => setQuery(e.target.value)} placeholder="Search by name or email…" className="h-9 pl-9" />
             </div>
             <div className="flex items-center gap-1">
-              <Button variant="outline" size="icon" className="h-9 w-9" onClick={() => setOffset(o => o - 1)} aria-label="Previous week"><ChevronLeft className="h-4 w-4" /></Button>
-              <Button variant="outline" size="sm" className="h-9 min-w-28 gap-1.5" onClick={() => setOffset(0)}>
+              <Button variant="outline" size="icon" className="h-9 w-9" onClick={() => setOffset(o => o - 1)} aria-label="Previous 7 days"><ChevronLeft className="h-4 w-4" /></Button>
+              <Button variant="outline" size="sm" className="h-9 min-w-28 gap-1.5" onClick={() => { setOffset(0); setDayIndex(0); }}>
                 <CalendarDays className="h-3.5 w-3.5" />
-                {offset === 0 ? 'This week' : days[0].toLocaleDateString(undefined, { day: 'numeric', month: 'short' })}
+                {offset === 0 ? 'From today' : days[0].toLocaleDateString(undefined, { day: 'numeric', month: 'short' })}
               </Button>
-              <Button variant="outline" size="icon" className="h-9 w-9" onClick={() => setOffset(o => o + 1)} aria-label="Next week"><ChevronRight className="h-4 w-4" /></Button>
+              <Button variant="outline" size="icon" className="h-9 w-9" onClick={() => setOffset(o => o + 1)} aria-label="Next 7 days"><ChevronRight className="h-4 w-4" /></Button>
             </div>
           </div>
         </div>
@@ -580,7 +580,7 @@ export default function MentorCalendar() {
               <div className="flex flex-wrap items-center justify-between gap-2">
                 <button type="button" onClick={toggleSchedule} aria-expanded={!scheduleShut} className="flex items-center gap-1.5 text-left text-sm font-semibold text-slate-900 hover:text-brand-navy">
                   <ChevronDown className={cn('h-4 w-4 text-slate-500 transition-transform', scheduleShut && '-rotate-90')} />
-                  Your schedule{offset === 0 ? ' this week' : ''} · {myItems.length ? `${myItems.length} coming up` : 'nothing booked'}
+                  Your schedule{offset === 0 ? ' from today' : ''} · {myItems.length ? `${myItems.length} coming up` : 'nothing booked'}
                   <span className="ml-1 text-xs font-normal text-slate-500">{scheduleShut ? 'Show' : 'Collapse'}</span>
                 </button>
                 <div className="flex flex-wrap gap-2">
@@ -646,7 +646,7 @@ export default function MentorCalendar() {
           </select>
           <Button type="button" size="sm" variant={liveOnly ? 'default' : 'outline'} aria-pressed={liveOnly}
             className={cn('h-9', liveOnly && 'bg-rose-600 text-white hover:bg-rose-700')}
-            onClick={() => { const on = !liveOnly; setLiveOnly(on); if (on) { setOffset(0); setDayIndex(new Date().getDay()); setTick(Date.now()); } }}>
+            onClick={() => { const on = !liveOnly; setLiveOnly(on); if (on) { setOffset(0); setDayIndex(0); setTick(Date.now()); } }}>
             <Radio className="mr-1.5 h-4 w-4" />Live now
           </Button>
           {filtering && <Button variant="ghost" size="sm" className="h-9" onClick={() => { setFind(''); setCourse(''); setMod(''); setMeetCat(''); setLiveOnly(false); }}>Clear</Button>}
@@ -668,7 +668,7 @@ export default function MentorCalendar() {
             <Users2 className="mx-auto h-8 w-8 text-slate-300" />
             {query.trim() || filtering ? (
               <>
-                <p className="mt-3 text-sm font-medium text-slate-700">{liveOnly ? 'No class is live right now' : filtering ? 'Nothing this week matches' : 'Nobody matches that'}</p>
+                <p className="mt-3 text-sm font-medium text-slate-700">{liveOnly ? 'No class is live right now' : filtering ? 'Nothing in these 7 days matches' : 'Nobody matches that'}</p>
                 <button onClick={() => { setQuery(''); setFind(''); setCourse(''); setMod(''); setMeetCat(''); }} className="mt-2 text-xs text-cyan-700 hover:underline">Clear the search</button>
               </>
             ) : (
