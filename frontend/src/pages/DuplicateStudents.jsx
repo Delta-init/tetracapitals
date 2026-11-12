@@ -251,6 +251,19 @@ const STATUS = {
   undoing: { label: 'Undoing', cls: 'border-sky-200 bg-sky-50 text-sky-700' },
 };
 
+/** What the LMS made of a merge made here (backend students/lmsMergeLink.ts). */
+function LmsState({ m }) {
+  if (m.origin === 'lms' || !m.lms) return null;
+  const st = m.lmsUndo?.state === 'pending' ? { label: 'LMS: undo waiting', cls: 'border-amber-200 bg-amber-50 text-amber-800', title: m.lmsUndo.error }
+    : m.lms.state === 'done' ? { label: 'LMS accounts merged too', cls: 'border-emerald-200 bg-emerald-50 text-emerald-700' }
+    : m.lms.state === 'pending' ? { label: 'LMS: waiting — tried again every minute', cls: 'border-amber-200 bg-amber-50 text-amber-800', title: m.lms.error }
+    : m.lms.state === 'failed' ? { label: 'LMS refused', cls: 'border-rose-200 bg-rose-50 text-rose-700', title: m.lms.error }
+    : m.lms.state === 'nothing' ? { label: 'LMS: nothing to merge', cls: 'border-slate-200 bg-slate-50 text-slate-600' }
+    : m.lms.state === 'not_linked' ? { label: 'LMS not linked on this server', cls: 'border-slate-200 bg-slate-50 text-slate-600' }
+    : null;
+  return st ? <Badge variant="outline" className={st.cls} title={st.title || undefined}>{st.label}</Badge> : null;
+}
+
 function HistoryList() {
   const qc = useQueryClient();
   const [page, setPage] = useState(1);
@@ -279,7 +292,13 @@ function HistoryList() {
               <div className="min-w-0 space-y-1">
                 <div className="flex flex-wrap items-center gap-2">
                   <Badge variant="outline" className={st.cls}>{st.label}</Badge>
-                  <span><b className="font-mono">{m.closed?.code}</b> {m.closed?.name} → <Link to={studentUrl(m.kept?.id)} className="font-mono font-medium text-brand-navy hover:underline">{m.kept?.code}</Link> {m.kept?.name}</span>
+                  {m.type === 'relink' ? (
+                    <span><Link to={studentUrl(m.kept?.id)} className="font-mono font-medium text-brand-navy hover:underline">{m.kept?.code}</Link> {m.kept?.name} — LMS accounts merged: {m.relink?.fromEmail || 'their account'} → {m.relink?.toEmail || 'the kept account'}</span>
+                  ) : (
+                    <span><b className="font-mono">{m.closed?.code}</b> {m.closed?.name} → <Link to={studentUrl(m.kept?.id)} className="font-mono font-medium text-brand-navy hover:underline">{m.kept?.code}</Link> {m.kept?.name}</span>
+                  )}
+                  {m.origin === 'lms' && <Badge variant="outline" className="border-violet-200 bg-violet-50 text-violet-700">From the LMS</Badge>}
+                  <LmsState m={m} />
                 </div>
                 <p className="text-xs text-slate-500">By {m.by} · {String(m.at).slice(0, 16).replace('T', ' ')}{m.undoneAt ? ` · undone by ${m.undoneBy} ${String(m.undoneAt).slice(0, 16).replace('T', ' ')}` : ''}</p>
                 {m.moved?.length > 0 && <p className="text-xs text-slate-500">Moved: {m.moved.map((x) => `${x.label} ${x.count}`).join(' · ')}</p>}

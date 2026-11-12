@@ -13,6 +13,7 @@ import { handleFinanceCsCommission, handleFinanceCsCommissionApprove, handleFina
 import { handleReceiptFile } from "./finance/receiptFile";
 import { handleLmsStudents } from "./lms/students";
 import { handleLmsStudentCs } from "./lms/studentCs";
+import { handleLmsMerge, handleLmsMergePreview, handleLmsMergeUndo } from "./students/lmsMergeLink";
 import { handleLmsMentorMeetings } from "./lms/mentorMeetings";
 import {
   listEntity, filterEntity, getEntityById, createEntity,
@@ -96,6 +97,10 @@ export async function route(req: Request): Promise<Response> {
   if (path === "/api/v1/integrations/lms/students" && req.method === "POST") return handleLmsStudents(req);
   // ---- …and asking, now, who looks after one of them (the same secret) ----
   if (path === "/api/v1/integrations/lms/student-cs" && req.method === "POST") return handleLmsStudentCs(req);
+  // Merges between the LMS and here (students/lmsMergeLink.ts): who two LMS accounts are here, merge them here, undo.
+  if (path === "/api/v1/integrations/lms/merge/preview" && req.method === "POST") return handleLmsMergePreview(req);
+  if (path === "/api/v1/integrations/lms/merge" && req.method === "POST") return handleLmsMerge(req);
+  if (path === "/api/v1/integrations/lms/merge/undo" && req.method === "POST") return handleLmsMergeUndo(req);
   // ---- …and its admin's Meeting requests / Meetings done pages, as the mentor signed in there (the same secret) ----
   if (path === "/api/v1/integrations/lms/mentor-meetings" && req.method === "POST") return handleLmsMentorMeetings(req);
 

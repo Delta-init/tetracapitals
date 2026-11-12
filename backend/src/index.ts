@@ -14,6 +14,7 @@ import { startWhatsApp } from "./whatsapp/service";
 import { startLmsEnrolmentWorker } from "./students/lmsEnrolment";
 import { startLmsActivityWorker } from "./students/lmsActivity";
 import { startLmsCsWorker } from "./students/lmsCs";
+import { startMergeLinkWorker } from "./students/lmsMergeLink";
 import { startMentorScheduleWorker } from "./students/mentorScheduleAlerts";
 import { startMeetingOutcomeWorker } from "./students/meetingOutcomes";
 import { startGuestReminderWorker } from "./students/programNotices";
@@ -72,6 +73,8 @@ async function main() {
   startLmsActivityWorker();
   // Each student's CS and CS team, told to the LMS for its admin every 10 minutes (LMS_CS_SYNC=off to keep a server out of it).
   startLmsCsWorker();
+  // Merges the LMS could not be told of yet (students/lmsMergeLink.ts), tried again every minute (MERGE_LMS_SYNC=off).
+  startMergeLinkWorker();
   // Each mentor told of sessions booked with them, moved or cancelled, and 30 minutes before (MENTOR_SCHEDULE_ALERTS=off).
   startMentorScheduleWorker();
   // How student meetings went (the mentor's form, kept in the LMS) onto the students every 2 minutes.

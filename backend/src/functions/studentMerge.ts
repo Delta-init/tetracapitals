@@ -97,6 +97,9 @@ export async function getStudentMerges(req: Request, user: AuthUser): Promise<Re
       id: String(m._id), status: m.status, at: m.at, by: m.by?.name ?? "", kept: m.kept, closed: m.closed,
       csFrom: m.choice?.csFrom, otherCsAsCommon: !!m.choice?.otherCsAsCommon, moved: m.moved ?? [], leftovers: m.leftovers ?? [],
       error: m.error ?? null, undoneAt: m.undone_at ?? null, undoneBy: m.undone_by?.name ?? null, leftAsIs: m.left_as_is ?? [],
+      type: m.type ?? "merge", origin: m.origin ?? "cs_portal", relink: m.relink ?? null,
+      lms: m.lms ? { state: m.lms.state, action: m.lms.action ?? null, error: m.lms.error ?? null } : null,
+      lmsUndo: m.lms_undo ? { state: m.lms_undo.state, error: m.lms_undo.error ?? null } : null,
     })),
   });
 }

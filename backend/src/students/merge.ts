@@ -263,14 +263,20 @@ export async function countMoves(closed: any): Promise<{ label: string; count: n
 /* ── The merge ───────────────────────────────────────────────────────────── */
 
 /** One field the merge changed: what it held (`had` false: it was not there) and what the merge put there. */
-interface Change { col: string; id: unknown; field: string; had: boolean; before: unknown; after: unknown }
+export interface Change { col: string; id: unknown; field: string; had: boolean; before: unknown; after: unknown }
+
+/**
+ * Where a merge came from (2026-11-12, phase 2): this page, or the Delta LMS merging two accounts
+ * (students/lmsMergeLink.ts) — that one is not sent back to the LMS, and its undo comes from there.
+ */
+export interface MergeOrigin { origin?: "cs_portal" | "lms"; lmsMergeId?: string }
 
 /**
  * Merge `closeId` into `keepId`. Claimed first (two people merging the same
  * student at once: one wins), written down as it goes, and marked done — or
  * failed, with what was done so far, for undo.
  */
-export async function mergeStudents(choice: MergeChoice, user: AuthUser): Promise<any> {
+export async function mergeStudents(choice: MergeChoice, user: AuthUser, from: MergeOrigin = {}): Promise<any> {
   const { k, c } = await loadPair(choice.keepId, choice.closeId);
   if (!(await mayMerge(user, [k, c]))) throw new MergeError(403, "Only a Super Admin, or a CS Manager for their own students, merges students");
   const by = { id: user.id, name: user.full_name || user.email || "somebody" };
@@ -283,6 +289,9 @@ export async function mergeStudents(choice: MergeChoice, user: AuthUser): Promis
       kept: { id: String(k._id), code: k.student_code, name: k.full_name },
       closed: { id: String(c._id), code: c.student_code, name: c.full_name, email: c.email },
       choice: { csFrom: choice.csFrom, otherCsAsCommon: choice.otherCsAsCommon },
+      origin: from.origin ?? "cs_portal", ...(from.lmsMergeId ? { lms_merge_id: from.lmsMergeId } : {}),
+      // Their LMS accounts, for the LMS to merge them too (students/lmsMergeLink.ts).
+      lms_identity: { kept: { lmsUserId: k.lms_user_id ?? "", email: k.email ?? "" }, closed: { lmsUserId: c.lms_user_id ?? "", email: c.email ?? "" } },
       by, at: now, changes: [] as Change[], closed_doc: c, moved: [],
     });
   } catch (err) {
@@ -385,7 +394,9 @@ export async function mergeStudents(choice: MergeChoice, user: AuthUser): Promis
     // 6. Anything still pointing at the closed record — a place REFS does not know.
     const leftovers = await scanFor(String(c._id), code);
     await col(MERGES).updateOne({ _id: mergeId }, { $set: { status: "merged", done_at: new Date().toISOString(), leftovers }, $unset: { lock_keys: "" } });
-    return { mergeId: String(mergeId), kept: { id: String(k._id), code: k.student_code }, closed: { id: String(c._id), code: c.student_code }, moved, leftovers };
+    // Made here: the LMS merges the two students' LMS accounts too — retried until it has (students/lmsMergeLink.ts).
+    const lms = from.origin === "lms" ? null : await (await import("./lmsMergeLink")).sendMergeToLms(String(mergeId)).catch(() => null);
+    return { mergeId: String(mergeId), kept: { id: String(k._id), code: k.student_code }, closed: { id: String(c._id), code: c.student_code }, moved, leftovers, lms };
   } catch (err) {
     await col(MERGES).updateOne({ _id: mergeId }, { $set: { status: "failed", error: (err as Error).message, failed_at: new Date().toISOString() }, $unset: { lock_keys: "" } });
     console.error("[student merge] stopped part-way — undo it from the merge history", { mergeId: String(mergeId), err });
@@ -419,13 +430,14 @@ const sameValue = (a: unknown, b: unknown) => JSON.stringify(a ?? null) === JSON
  * merge changed back to what it was — only where it still holds what the
  * merge put there. What has changed since is left as it is and reported.
  */
-export async function undoMerge(mergeId: string, user: AuthUser): Promise<any> {
+export async function undoMerge(mergeId: string, user: AuthUser, opts: { fromLms?: boolean } = {}): Promise<any> {
   if (!ObjectId.isValid(mergeId)) throw new MergeError(404, "Merge not found");
   const m: any = await col(MERGES).findOne({ _id: new ObjectId(mergeId) });
   if (!m) throw new MergeError(404, "Merge not found");
   if (m.status === "undone") throw new MergeError(409, "This merge was undone already");
   if (m.status === "running") throw new MergeError(409, "This merge is still running");
-  if (!(await mayMerge(user, [m.closed_doc, { primary_mentor_id: m.closed_doc?.primary_mentor_id }]))) throw new MergeError(403, "Only a Super Admin, or a CS Manager for their own students, undoes a merge");
+  const keptNow: any = m.kept?.id && ObjectId.isValid(m.kept.id) ? await col("students").findOne({ _id: new ObjectId(m.kept.id) }) : null;
+  if (!opts.fromLms && !(await mayMerge(user, [m.closed_doc, keptNow].filter(Boolean)))) throw new MergeError(403, "Only a Super Admin, or a CS Manager for their own students, undoes a merge");
   const claim = await col(MERGES).updateOne({ _id: m._id, status: { $in: ["merged", "failed"] } }, { $set: { status: "undoing" } });
   if (!claim.modifiedCount) throw new MergeError(409, "Somebody is undoing it right now");
 
@@ -445,10 +457,14 @@ export async function undoMerge(mergeId: string, user: AuthUser): Promise<any> {
     }
     await recordHistory([{
       student_id: String(m.kept.id), at: new Date().toISOString(), by_id: user.id, by_name: user.full_name || user.email || "somebody", type: "merge_undone",
-      text: `Merge with ${m.closed.code ?? "another record"} undone — its records are back on it`,
+      text: m.type === "relink"
+        ? `Re-linked LMS account undone — back on ${m.relink?.fromEmail || "the earlier account"}`
+        : `Merge with ${m.closed?.code ?? "another record"} undone — its records are back on it`,
     }]);
     await col(MERGES).updateOne({ _id: m._id }, { $set: { status: "undone", undone_at: new Date().toISOString(), undone_by: { id: user.id, name: user.full_name || user.email }, left_as_is: kept } });
-    return { undone: true, leftAsIs: kept };
+    // Undone here: the LMS undoes its side too. Asked by the LMS: it has already.
+    const lms = opts.fromLms ? null : await (await import("./lmsMergeLink")).sendUndoToLms(String(m._id)).catch(() => null);
+    return { undone: true, leftAsIs: kept, lms };
   } catch (err) {
     await col(MERGES).updateOne({ _id: m._id }, { $set: { status: m.status, undo_error: (err as Error).message } });
     throw err;

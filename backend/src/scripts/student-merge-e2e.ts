@@ -13,6 +13,10 @@
  *   6. undo: every record back exactly; a field changed since is left and reported;
  *   7. a merge that stops part-way is marked so and undone cleanly;
  *   8. History: a Super Admin every merge, a CS Manager their own.
+ *   9. Both ways with the LMS (students/lmsMergeLink.ts, against a stand-in LMS): the LMS asking who its two accounts
+ *      are here; its merge merging them here with the CS it picked — once, never sent back — or re-linking a lone
+ *      student, or nothing; its undo undoing this side. A merge made here telling the LMS (who, which accounts), and
+ *      its undo; the LMS down — waiting, tried again; the LMS refusing — recorded, not retried; the wrong secret.
  * Run through ./test-student-merge.sh (throwaway mongod, the API — no .env). Scratch database only.
  */
 import bcrypt from "bcryptjs";
@@ -48,6 +52,25 @@ async function login(email: string): Promise<string> {
   if (!token) throw new Error(`could not sign in as ${email}: ${r.status}`);
   return token;
 }
+
+/* ── A stand-in LMS: what this side tells it, checked by the secret only the two share. ── */
+const LMS_SECRET = process.env.LMS_S2S_SECRET!;
+let lmsMode: "up" | "down" | "refuse" = "up";
+const lmsGot: { path: string; body: any }[] = [];
+const fakeLms = Bun.serve({
+  port: Number(process.env.E2E_FAKE_LMS_PORT),
+  async fetch(req) {
+    const path = new URL(req.url).pathname;
+    if (req.headers.get("x-commission-secret") !== LMS_SECRET) return Response.json({ success: false, error: { message: "Bad secret" } }, { status: 401 });
+    if (lmsMode === "down") return Response.json({ error: { message: "LMS is down" } }, { status: 503 });
+    if (lmsMode === "refuse") return Response.json({ success: false, error: { message: "Those accounts cannot be merged" } }, { status: 422 });
+    const body = await req.json().catch(() => ({}));
+    lmsGot.push({ path, body });
+    if (path === "/api/v1/integrations/cs-portal/merge") return Response.json({ success: true, data: { action: "merge", mergeId: new ObjectId().toHexString() } });
+    if (path === "/api/v1/integrations/cs-portal/merge/undo") return Response.json({ success: true, data: { undone: true } });
+    return Response.json({ error: "Not found" }, { status: 404 });
+  },
+});
 
 const client = new MongoClient(uri);
 await client.connect();
@@ -248,6 +271,94 @@ await db.collection("student_merges").insertOne({ status: "running", lock_keys: 
 check("one merge of a student at a time: a second is refused while one runs", (await fn("mergeStudents", mergeBody, tAdmin)).status === 409);
 await db.collection("student_merges").deleteOne({ status: "running" });
 void tOutsider; void mystery;
+
+/* ── 9 ── */
+step("9. Both ways with the LMS");
+const fromLms = (path: string, body: unknown, secret = process.env.LMS_S2S_SECRET!) => integration(`/api/v1/integrations/lms${path}`, body, { "x-lms-secret": secret });
+const lmsA = "aaaaaaaaaaaaaaaaaaaaaaa1", lmsB = "aaaaaaaaaaaaaaaaaaaaaaa2";
+check("the wrong secret: refused", (await fromLms("/merge/preview", { primary: { lmsUserId: lmsA } }, "nope")).status === 401);
+r = await fromLms("/merge/preview", { primary: { lmsUserId: lmsA, email: K.email }, secondary: { lmsUserId: lmsB, email: C.email } });
+const pv9 = r.body.data ?? r.body;
+check("the LMS asks who its two accounts are here: two students, different CSs → a merge here", r.status === 200 && pv9.action === "merge"
+  && pv9.primary?.code === "STU-0101" && pv9.secondary?.code === "STU-0102" && pv9.sameCs === false && pv9.secondary?.deposits === 2, show(r.body));
+lmsGot.length = 0;
+const L1 = new ObjectId().toHexString();
+r = await fromLms("/merge", { lmsMergeId: L1, primary: { lmsUserId: lmsA, email: K.email }, secondary: { lmsUserId: lmsB, email: C.email }, csFrom: "secondary", otherCsAsCommon: true, by: { email: "lms.admin@e2e-merge.test" } });
+const lm = r.body.data ?? r.body;
+const k9 = await db.collection("students").findOne({ _id: K._id }) as any;
+check("the LMS merged them: merged here into the kept account's student, with the CS the LMS picked (the closed one's)", r.status === 200 && lm.action === "merge"
+  && !(await db.collection("students").findOne({ _id: C._id })) && k9.primary_mentor_id === String(cs2._id) && (k9.common_cs ?? []).some((c: any) => c.id === String(cs1._id)), show(r.body));
+const m9: any = await db.collection("student_merges").findOne({ lms_merge_id: L1 });
+check("…recorded as from the LMS, by its admin", m9?.origin === "lms" && /LMS · lms\.admin@e2e-merge\.test/.test(m9?.by?.name ?? ""), show({ origin: m9?.origin, by: m9?.by }));
+check("…and not sent back to the LMS", lmsGot.length === 0, show(lmsGot));
+r = await fromLms("/merge", { lmsMergeId: L1, primary: { lmsUserId: lmsA }, secondary: { lmsUserId: lmsB } });
+check("the same LMS merge again: the same one, nothing twice", (r.body.data ?? r.body).already === true && (await db.collection("student_merges").countDocuments({ lms_merge_id: L1 })) === 1, show(r.body));
+r = await fromLms("/merge/undo", { lmsMergeId: L1 });
+check("the LMS undid it: undone here — both students back", r.status === 200 && (r.body.data ?? r.body).undone === true && !!(await db.collection("students").findOne({ _id: C._id }))
+  && (await db.collection("students").findOne({ _id: K._id }) as any)?.primary_mentor_id === String(cs1._id), show(r.body));
+check("…and not sent back to the LMS", lmsGot.length === 0, show(lmsGot));
+
+// One student here, the LMS's closed account: re-linked to the kept account.
+const lone = stu("STU-0105", cs1, { full_name: "Lone Student", phone: "+971508887777", email: "lone.old@e2e-merge.test", lms_user_id: "bbbbbbbbbbbbbbbbbbbbbbb2" });
+await db.collection("students").insertOne(lone as any);
+const L2 = new ObjectId().toHexString();
+r = await fromLms("/merge/preview", { primary: { lmsUserId: "bbbbbbbbbbbbbbbbbbbbbbb1", email: "lone.new@e2e-merge.test" }, secondary: { lmsUserId: "bbbbbbbbbbbbbbbbbbbbbbb2", email: "lone.old@e2e-merge.test" } });
+check("preview: only the closed account here → re-link", (r.body.data ?? r.body).action === "relink", show(r.body));
+r = await fromLms("/merge", { lmsMergeId: L2, primary: { lmsUserId: "bbbbbbbbbbbbbbbbbbbbbbb1", email: "lone.new@e2e-merge.test" }, secondary: { lmsUserId: "bbbbbbbbbbbbbbbbbbbbbbb2", email: "lone.old@e2e-merge.test" } });
+const ln = await db.collection("students").findOne({ _id: lone._id }) as any;
+check("re-linked: the kept LMS account and its email; the old ones still findable on them; the CS unchanged", (r.body.data ?? r.body).action === "relink"
+  && ln.lms_user_id === "bbbbbbbbbbbbbbbbbbbbbbb1" && ln.email === "lone.new@e2e-merge.test" && JSON.stringify(ln.other_emails) === '["lone.old@e2e-merge.test"]'
+  && JSON.stringify(ln.other_lms_user_ids) === '["bbbbbbbbbbbbbbbbbbbbbbb2"]' && ln.primary_mentor_id === String(cs1._id), show(ln));
+const lcs9 = await integration("/api/v1/integrations/lms/student-cs", { lmsUserId: "bbbbbbbbbbbbbbbbbbbbbbb1" }, { "x-lms-secret": process.env.LMS_S2S_SECRET! });
+check("…so the LMS asking by the kept account finds them", (lcs9.body.data ?? lcs9.body).code === "STU-0105", show(lcs9.body));
+r = await fromLms("/merge/undo", { lmsMergeId: L2 });
+const ln2 = await db.collection("students").findOne({ _id: lone._id }) as any;
+check("its undo: back on the old account", (r.body.data ?? r.body).undone === true && ln2.lms_user_id === "bbbbbbbbbbbbbbbbbbbbbbb2" && ln2.email === "lone.old@e2e-merge.test" && !("other_emails" in ln2), show(ln2));
+r = await fromLms("/merge", { lmsMergeId: new ObjectId().toHexString(), primary: { lmsUserId: "ccccccccccccccccccccccc1", email: "x@e2e-merge.test" }, secondary: { lmsUserId: "ccccccccccccccccccccccc2", email: "y@e2e-merge.test" } });
+check("neither account here: nothing to do", (r.body.data ?? r.body).action === "nothing", show(r.body));
+check("an LMS merge without its id: refused", (await fromLms("/merge", { primary: {}, secondary: {} })).status === 400);
+
+// Merged here: the LMS is told, with both students' LMS accounts; undone here: told too.
+lmsGot.length = 0;
+r = await fn("mergeStudents", { ...mergeBody, csFrom: "kept", otherCsAsCommon: false }, tAdmin);
+const m10: any = await db.collection("student_merges").findOne({ _id: new ObjectId(r.body.mergeId) });
+const sent = lmsGot.find((x) => x.path === "/api/v1/integrations/cs-portal/merge");
+check("merged here: the LMS is told — this merge, the kept student's LMS account, the closed one's, who", r.status === 200 && sent?.body.csMergeId === r.body.mergeId
+  && sent.body.primary.lmsUserId === lmsA && sent.body.primary.email === K.email && sent.body.secondary.lmsUserId === lmsB && sent.body.secondary.email === C.email
+  && sent.body.by?.name === "Super Admin", show(sent));
+check("…recorded as done, with the LMS merge's id", m10?.lms?.state === "done" && /^[0-9a-f]{24}$/.test(m10?.lms?.lms_merge_id ?? "") && r.body.lms?.state === "done", show(m10?.lms));
+r = await fn("undoStudentMerge", { mergeId: String(m10._id) }, tAdmin);
+check("undone here: the LMS is told to undo its merge", r.status === 200 && lmsGot.some((x) => x.path === "/api/v1/integrations/cs-portal/merge/undo" && x.body.csMergeId === String(m10._id))
+  && ((await db.collection("student_merges").findOne({ _id: m10._id })) as any)?.lms_undo?.state === "done", show(lmsGot.map((x) => x.path)));
+
+// The LMS down: waiting, tried again until it answers.
+const { connectDb } = await import("../db");
+const { retryMergeLinks } = await import("../students/lmsMergeLink");
+await connectDb();
+lmsMode = "down"; lmsGot.length = 0;
+r = await fn("mergeStudents", { ...mergeBody, csFrom: "kept", otherCsAsCommon: false }, tAdmin);
+let m11: any = await db.collection("student_merges").findOne({ _id: new ObjectId(r.body.mergeId) });
+check("the LMS down: the merge here still done; the LMS side waiting, with why", r.status === 200 && m11?.lms?.state === "pending" && /503|down/i.test(m11?.lms?.error ?? "") && m11?.lms?.attempts === 1, show(m11?.lms));
+check("…not tried again before its time", (await retryMergeLinks(new Date())).merges === 0);
+lmsMode = "up";
+const later = new Date(Date.now() + 2 * 60 * 60_000);
+check("…tried again once due, and done", (await retryMergeLinks(later)).merges === 1
+  && ((m11 = await db.collection("student_merges").findOne({ _id: m11._id })) as any)?.lms?.state === "done" && lmsGot.some((x) => x.body.csMergeId === String(m11._id)), show(m11?.lms));
+lmsMode = "down";
+await fn("undoStudentMerge", { mergeId: String(m11._id) }, tAdmin);
+m11 = await db.collection("student_merges").findOne({ _id: m11._id });
+check("undone while the LMS is down: its undo waiting", m11?.status === "undone" && m11?.lms_undo?.state === "pending", show(m11?.lms_undo));
+lmsMode = "up";
+check("…and done once it answers", (await retryMergeLinks(later)).undos === 1 && ((await db.collection("student_merges").findOne({ _id: m11._id })) as any)?.lms_undo?.state === "done");
+// The LMS refusing: recorded, not retried.
+lmsMode = "refuse";
+r = await fn("mergeStudents", { ...mergeBody, csFrom: "kept", otherCsAsCommon: false }, tAdmin);
+const m12: any = await db.collection("student_merges").findOne({ _id: new ObjectId(r.body.mergeId) });
+check("the LMS refusing: recorded failed, with its reason — not tried again", m12?.lms?.state === "failed" && /cannot be merged/.test(m12?.lms?.error ?? "")
+  && (await retryMergeLinks(later)).merges === 0, show(m12?.lms));
+lmsMode = "up";
+await fn("undoStudentMerge", { mergeId: String(m12._id) }, tAdmin);
+fakeLms.stop(true);
 
 console.log(`\n${pass} passed, ${fail} failed`);
 await client.close();
