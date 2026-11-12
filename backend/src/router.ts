@@ -8,6 +8,7 @@ import { handlePortalService } from "./portal/service";
 import { handleFinanceStudents } from "./finance/students";
 import { handleFinanceStudentLookup } from "./finance/studentLookup";
 import { handleFundingDecision } from "./finance/funding";
+import { handleFinanceFundingDeleted } from "./finance/fundingDelete";
 import { handleFeeUpdate } from "./finance/feeUpdates";
 import { handleFinanceCsCommission, handleFinanceCsCommissionApprove, handleFinanceCsCommissionSplitPool, handleFinanceCsCommissionUnapprove } from "./finance/csCommission";
 import { handleReceiptFile } from "./finance/receiptFile";
@@ -86,6 +87,8 @@ export async function route(req: Request): Promise<Response> {
   if (path === "/api/v1/integrations/finance/students/lookup" && req.method === "POST") return handleFinanceStudentLookup(req);
   // ---- Delta finance's decision on a deposit request it was sent (the same secret) ----
   if (path === "/api/v1/integrations/finance/funding-decisions" && req.method === "POST") return handleFundingDecision(req);
+  // A pending or rejected request deleted in Delta Finance: deleted here too (2026-11-12).
+  if (path === "/api/v1/integrations/finance/funding-deleted" && req.method === "POST") return handleFinanceFundingDeleted(req);
   // ---- Delta finance: an enrolment's money changed — paid, balance, next due date (the same secret) ----
   if (path === "/api/v1/integrations/finance/fee-updates" && req.method === "POST") return handleFeeUpdate(req);
   // ---- Delta finance's CS commission page: each period's commission, and its Finance step (the same secret) ----

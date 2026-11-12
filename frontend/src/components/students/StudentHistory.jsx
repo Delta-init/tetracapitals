@@ -49,6 +49,7 @@ const DOT = {
   pool_changed: 'bg-cyan-500',
   merged: 'bg-fuchsia-500',
   merge_undone: 'bg-fuchsia-300',
+  funding_deleted: 'bg-red-400',
   request: 'bg-slate-400',
 };
 

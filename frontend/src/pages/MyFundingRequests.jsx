@@ -15,6 +15,7 @@ import { Plus, TrendingUp, TrendingDown, Banknote, Award, Wallet, Eye, Users, Cl
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import FundingRequestForm, { requestMt5Email } from "../components/funding/FundingRequestForm";
+import { DeleteFundingButton } from "../components/funding/DeleteFundingRequest";
 import { AmountCell, PaidCell, studentInfoOf, sourceOf } from "../components/funding/mt5Cells";
 import CourseCommissionSummary from "../components/funding/CourseCommissionSummary";
 import NotCreditedYet from "./NotCreditedYet";
@@ -886,6 +887,8 @@ export default function MyFundingRequests() {
                                     {transaction.resubmit_of && <div className="mt-1 text-xs text-slate-500">A corrected request, sent again</div>}
                                     {/* Sent back by a broker admin to correct the email or MT5 (2026-10-12) */}
                                     <SentBackNotice tx={transaction} email={students.find(s => s.id === transaction.student_id)?.email} />
+                                    {/* Pending or rejected: deleted, with a reason — off Delta Finance too (2026-11-12) */}
+                                    <div><DeleteFundingButton tx={transaction} role={currentUser?.app_role} label /></div>
                                   </TableCell>
                                 </TableRow>
                               );
@@ -1116,7 +1119,8 @@ export default function MyFundingRequests() {
                                     </Button>
                                   ))}
                                   <SentBackNotice tx={transaction} email={students.find(s => s.id === transaction.student_id)?.email} />
-                                  {transaction.status !== 'REJECTED' && !transaction.returned?.at && <span className="text-gray-400">-</span>}
+                                  <div><DeleteFundingButton tx={transaction} role={currentUser?.app_role} label /></div>
+                                  {transaction.status === 'APPROVED' && !transaction.returned?.at && <span className="text-gray-400">-</span>}
                                 </TableCell>
                               )}
                               </TableRow>

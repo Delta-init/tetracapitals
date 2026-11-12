@@ -107,7 +107,7 @@ const raise = (aed = 2000, over: Record<string, unknown> = {}) => call("POST", "
   amount_usd: Math.round(aed / 3.67 * 100) / 100, amount_original: aed, amount_currency: "AED", course_payment: cp(aed), payment_method: "Card", mt5_login: "5550001",
   screenshot_url: "http://127.0.0.1/uploads/proof.png", primary_mentor_id: String(mentor._id), primary_mentor_name: mentor.full_name,
   requested_by_id: String(mentor._id), requested_by_name: mentor.full_name, requested_at: new Date().toISOString(),
-  initiating_mentor_id: String(mentor._id), initiating_mentor_name: mentor.full_name, ...over,
+  initiating_mentor_id: String(mentor._id), initiating_mentor_name: mentor.full_name, meeting_mentor_none: true, ...over,
 }, as(mentorToken));
 const decide = (body: Record<string, unknown>) => call("POST", "/api/v1/integrations/finance/funding-decisions", body, { "x-finance-secret": DECISION_SECRET });
 const financeApproves = async (id: string, aed = 2000) => {

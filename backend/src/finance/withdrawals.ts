@@ -92,11 +92,13 @@ async function sendOne(w: any): Promise<void> {
   const orgId = w.org === "bangalore" ? config.financeOrgIdBangalore : config.financeOrgId;
   if (!orgId) return later(`${w.org === "bangalore" ? "FINANCE_ORG_ID_BANGALORE" : "FINANCE_ORG_ID"} is not set on the CS Portal server`);
   try {
-    const result = await postToFinance(PATH, { externalId: String(w.funding_id), byName: String(w.by_name ?? ""), reason: String(w.reason ?? "") }, orgId);
+    // A request deleted here that never counted (finance/fundingDelete.ts): finance takes its pending or rejected copy off.
+    const removal = w.removal === true ? { deleted: true, expect: ["pending", "rejected"] } : {};
+    const result = await postToFinance(PATH, { externalId: String(w.funding_id), byName: String(w.by_name ?? ""), reason: String(w.reason ?? ""), ...removal }, orgId);
     const outcome = String(result?.outcome ?? "");
     const message = String(result?.message ?? "");
     if (outcome === "pending") return later(message || "Being decided in finance again");
-    const state = outcome === "kept" ? "kept" : "done";
+    const state = outcome === "kept" || outcome === "decided" ? "kept" : "done";
     await settle(w, { state, outcome, message, attempts, done_at: new Date().toISOString(), last_error: null });
     console.log(`[finance withdrawals] ${w.funding_id} (${w.student_name}): ${outcome}${message ? ` — ${message}` : ""}`);
   } catch (err) {

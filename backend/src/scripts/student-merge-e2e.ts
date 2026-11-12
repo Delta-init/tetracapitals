@@ -324,8 +324,8 @@ r = await fn("mergeStudents", { ...mergeBody, csFrom: "kept", otherCsAsCommon: f
 const m10: any = await db.collection("student_merges").findOne({ _id: new ObjectId(r.body.mergeId) });
 const sent = lmsGot.find((x) => x.path === "/api/v1/integrations/cs-portal/merge");
 check("merged here: the LMS is told — this merge, the kept student's LMS account, the closed one's, who", r.status === 200 && sent?.body.csMergeId === r.body.mergeId
-  && sent.body.primary.lmsUserId === lmsA && sent.body.primary.email === K.email && sent.body.secondary.lmsUserId === lmsB && sent.body.secondary.email === C.email
-  && sent.body.by?.name === "Super Admin", show(sent));
+  && sent?.body.primary.lmsUserId === lmsA && sent?.body.primary.email === K.email && sent?.body.secondary.lmsUserId === lmsB && sent?.body.secondary.email === C.email
+  && sent?.body.by?.name === "Super Admin", show(sent));
 check("…recorded as done, with the LMS merge's id", m10?.lms?.state === "done" && /^[0-9a-f]{24}$/.test(m10?.lms?.lms_merge_id ?? "") && r.body.lms?.state === "done", show(m10?.lms));
 r = await fn("undoStudentMerge", { mergeId: String(m10._id) }, tAdmin);
 check("undone here: the LMS is told to undo its merge", r.status === 200 && lmsGot.some((x) => x.path === "/api/v1/integrations/cs-portal/merge/undo" && x.body.csMergeId === String(m10._id))

@@ -38,7 +38,8 @@ export type HistoryType =
   | "course_upgrade"   // their CSE courses entered, or an upgrade started or cancelled (functions/courseUpgrades.ts)
   | "course_fees"      // a course's money changed in Delta finance, or a balance payment recorded or decided (finance/feeUpdates.ts, finance/enrolmentPayments.ts)
   | "merged"           // another record of the same student merged into this one (students/merge.ts)
-  | "merge_undone";    // …and that merge undone
+  | "merge_undone"     // …and that merge undone
+  | "funding_deleted"; // a pending or rejected funding request deleted, here or in Delta Finance (finance/fundingDelete.ts)
 
 export interface HistoryEntry {
   student_id: string;

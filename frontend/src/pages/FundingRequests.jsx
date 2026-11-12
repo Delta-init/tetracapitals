@@ -36,6 +36,7 @@ import { methodsOf, methodsText } from "../components/funding/payments";
 import { AED_PER_USD, USD_PER_INR, requestMt5Email } from "../components/funding/FundingRequestForm";
 import { AmountCell, PaidCell, InvoiceCell, SourceCell, studentInfoOf, sourceOf, bonusUsdOf, receivedOf, paidLines, invoicesOf, sourceLabel } from "../components/funding/mt5Cells";
 import { CopyText } from "../components/funding/corrections";
+import { DeleteFundingButton } from "../components/funding/DeleteFundingRequest";
 
 export default function FundingRequests() {
   const [currentUser, setCurrentUser] = useState(null);
@@ -990,6 +991,8 @@ export default function FundingRequests() {
                             >
                               <Award className="h-4 w-4" />
                             </Button>
+                            {/* Pending or rejected: deleted, with a reason — off Delta Finance too (2026-11-12) */}
+                            <DeleteFundingButton tx={transaction} role={currentUser.app_role} />
                           </div>
                         </TableCell>
                       </TableRow>

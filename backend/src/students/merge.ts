@@ -87,7 +87,8 @@ export const REFS: Ref[] = [
 ];
 
 /** Never scanned for leftovers: the merge's own records, and the students themselves. */
-const NOT_SCANNED = new Set(["students", MERGES, DISMISSALS]);
+// Kept-whole copies: a deleted funding request (finance/fundingDelete.ts) names the student as it was.
+const NOT_SCANNED = new Set(["students", MERGES, DISMISSALS, "deleted_funding_requests"]);
 
 /* ── The student record ──────────────────────────────────────────────── */
 

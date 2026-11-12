@@ -8,6 +8,7 @@ import { releaseDailyPayout } from "./releaseDailyPayout";
 import { resetUserPassword } from "./resetUserPassword";
 import { setUserStatus } from "./setUserStatus";
 import { masterEditTransaction, masterDeleteTransaction, masterBulkEditTransactions } from "./masterEditTransaction";
+import { deleteFundingRequest } from "../finance/fundingDelete";
 import { wipeData } from "./wipeData";
 import { getReportsData } from "./getReportsData";
 import { getMentorCommissions } from "./getMentorCommissions";
@@ -353,6 +354,7 @@ const AUTHED: Record<string, AuthedHandler> = {
   setUserStatus,
   masterEditTransaction,
   masterDeleteTransaction,
+  deleteFundingRequest,
   masterBulkEditTransactions,
   creditCommission,
   releaseCommission,
