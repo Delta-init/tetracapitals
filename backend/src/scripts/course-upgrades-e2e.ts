@@ -160,7 +160,8 @@ check("its CS records 4,500: queued for finance", r.status === 200 && ((await db
 r = await fn("getStudentCourses", { studentId: S1 }, tCs);
 check("…shown with finance, nothing counted yet", r.body.active?.payments?.[0]?.status === "pending" && r.body.active?.progress?.paidAed === 0 && r.body.active?.pendingAed === 4500, show(r.body.active));
 check("…and the upgrade can no longer be cancelled", (await fn("cancelCourseUpgrade", { upgradeId: up }, tCs)).status === 409);
-check("more than what is left after the one waiting is refused", (await pay({ amountAed: 12251 })).status === 400 && (await pay({ amountAed: 12250 })).status === 200);
+// POS and Razorpay (the owner, 2026-11-13): this 12,250 goes by Razorpay, the last payment below by POS.
+check("more than what is left after the one waiting is refused", (await pay({ amountAed: 12251 })).status === 400 && (await pay({ amountAed: 12250, method: "Razorpay" })).status === 200);
 const decide = async (body: any, secret = process.env.FINANCE_S2S_SECRET!) => {
   const res = await fetch(`${API}/api/v1/integrations/finance/funding-decisions`, { method: "POST", headers: { "content-type": "application/json", "x-finance-secret": secret }, body: JSON.stringify(body) });
   const j: any = await res.json().catch(() => ({})); return { status: res.status, body: j.data ?? j };
@@ -193,7 +194,7 @@ check("finance approving again raises no second bonus", (await bonusRows()).leng
 check("finance rejects the 12,250 with a reason", r.status === 200 && r.body.status === "rejected");
 r = await fn("getStudentCourses", { studentId: S1 }, tCs);
 check("…shown rejected with the reason, the balance unchanged", r.body.active?.payments?.find((x: any) => x.id === String(p2._id))?.reason === "Receipt unreadable" && r.body.active?.progress?.balanceAed === 12250);
-const p3 = (await pay({ amountAed: 12250 })).body.id;
+const p3 = (await pay({ amountAed: 12250, method: "POS" })).body.id;
 r = await approve(p3, 12250);
 check("the rest approved: the upgrade is done", r.status === 200 && r.body.upgradeDone === true, show(r.body));
 r = await fn("getStudentCourses", { studentId: S1 }, tCs);
@@ -201,12 +202,16 @@ bs = await bonusRows();
 check("the last payment's 7 steps → $3,500 more; nothing for the rejected one", bs.length === 2 && bs.some((b) => b.amount_usd === 3500 && b.course_upgrade?.payment_id === p3)
   && bs.reduce((t, b) => t + b.amount_usd, 0) === 4000, JSON.stringify(bs.map((b) => b.amount_usd)));
 check("the card shows each payment's bonus", r.body.past?.[0]?.payments?.find((x: any) => x.id === p3)?.bonus?.usd === 3500, show(r.body.past?.[0]?.payments));
+check("POS and Razorpay are methods it takes (2026-11-13): kept as written, and shown on the card",
+  p2.method === "Razorpay" && ((await db.collection("course_payments").findOne({ _id: new ObjectId(p3) })) as any)?.method === "POS"
+  && r.body.past?.[0]?.payments?.find((x: any) => x.id === p3)?.method === "POS", show(r.body.past?.[0]?.payments));
 check("…DSLP Offer now theirs, at 16,750, all $4,000 earned", !r.body.active && r.body.owned?.some((o: any) => o.code === "DSLP_OFFER" && o.paidAed === 16750)
   && r.body.past?.[0]?.progress?.bonusEarnedUsd === 4000, show(r.body.owned));
 check("no more payments on a done upgrade", (await pay({ amountAed: 1 })).status === 409);
 check("an unknown id: 410", (await approve(String(new ObjectId()), 1)).status === 410);
 const hist = await db.collection("student_history").find({ student_id: S1, type: "course_upgrade" }).toArray();
 check("history: payments recorded, approved, rejected", hist.some((h: any) => /approved by Delta Finance/.test(h.text)) && hist.some((h: any) => /rejected by Delta Finance/.test(h.text)) && hist.some((h: any) => /recorded/.test(h.text)), String(hist.length));
+check("…the history naming the method of each: (Card), (Razorpay), (POS)", ["Card", "Razorpay", "POS"].every((m) => hist.some((h: any) => String(h.text).includes(`(${m}) recorded`))), show(hist.map((h: any) => h.text)));
 
 step("Case 6 — the LMS modules an upgrade opens (a stand-in LMS)");
 // The student's academy in the LMS: their Forex courses, and the ones they could be put on.

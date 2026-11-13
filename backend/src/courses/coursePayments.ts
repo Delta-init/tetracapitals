@@ -27,7 +27,9 @@ const courseName = (u: any) => DEFAULT_PRICE_LIST.find((c) => c.code === u?.cour
  *                     approved_amount_aed?, transaction_id?, reason?, decided_by_name?, decided_at?, recorded_by… }
  */
 
-export const PAYMENT_METHODS = ["Card", "Cash", "Bank transfer", "Payment link", "Tabby"] as const;
+// POS (the card machine — beside Card) and Razorpay (the owner, 2026-11-13). Delta Finance is sent the method as it is
+// written here (payload.paymentMethod), so it has to know these two names too.
+export const PAYMENT_METHODS = ["Card", "POS", "Cash", "Bank transfer", "Payment link", "Tabby", "Razorpay"] as const;
 const BATCH = 20;
 
 export const approvedAmounts = (payments: any[]): number[] =>

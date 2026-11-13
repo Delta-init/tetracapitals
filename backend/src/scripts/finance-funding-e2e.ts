@@ -357,10 +357,11 @@ const coursePayment = {
   paid_today_aed: 2000, paid_before_aed: 0, paid_total_aed: 2000, price: 3250, price_currency: "AED", instalments: 2,
 };
 // Each its own payment: one of the same amount within a day is refused as raised twice (2026-10-31) — so a bonus
-// asked for in other dollars is that many dirhams paid.
+// asked for in other dollars is that many dirhams paid. No mentor met the student: a bonus has had to say who did, or
+// None, since 2026-11-09 — without it every bonus below was refused and this script stopped here (put right 2026-11-13).
 const bonus = (over: Record<string, unknown> = {}) => {
   const aed = over.amount_usd !== undefined ? Math.round(Number(over.amount_usd) * 3.67) : 2000;
-  return raise({ type: "BONUS", tags: ["Course"], amount_usd: 544.96, amount_original: aed, amount_currency: "AED", course_payment: { ...coursePayment, paid_today_aed: aed, paid_total_aed: aed }, ...over });
+  return raise({ type: "BONUS", tags: ["Course"], amount_usd: 544.96, amount_original: aed, amount_currency: "AED", course_payment: { ...coursePayment, paid_today_aed: aed, paid_total_aed: aed }, meeting_mentor_none: true, ...over });
 };
 r = await bonus({ mt5_login: "" });
 check("a bonus without the student's MT5 login: refused", r.status === 400 && /MT5/.test(JSON.stringify(r.body)), show(r));
@@ -486,6 +487,27 @@ await withFinanceAlready(none);
 r = await approve(none, { transactionId: "", amountMinor: 10000 });
 td = await txOf(none);
 check("no transaction ID at all: approved, with none set", r.status === 200 && td?.status === "APPROVED" && !td.transaction_id && !td.transaction_id_shared_with, show(r));
+
+step("POS and Razorpay (the owner, 2026-11-13): a bonus paid by both reaches finance under those names");
+{
+  const at = received.length;
+  const two = [
+    { method: "POS", amount: 351, currency: "AED", receipt_url: "http://127.0.0.1/uploads/pos.png", receipt_name: "pos.png" },
+    { method: "Razorpay", amount: 200, currency: "AED", receipt_url: "http://127.0.0.1/uploads/razorpay.png", receipt_name: "razorpay.png" },
+  ];
+  // As the form sends it: every payment, and the first one's method and receipt where only one is read.
+  const pr = await bonus({ amount_usd: 150, payment_method: two[0]!.method, screenshot_url: two[0]!.receipt_url, payments: two });
+  const pid = String(pr.body?.id ?? "");
+  check("raised, and sent to finance", pr.status === 200 && await until(async () => (await stateOf(pid)) === "sent", 3000), show(pr));
+  const sent = received.slice(at).find((x) => x.body?.externalId === pid)?.body;
+  check("…its one method POS, with the POS receipt", sent?.paymentMethod === "POS" && sent.screenshotUrl === "http://127.0.0.1/uploads/pos.png", JSON.stringify(sent).slice(0, 300));
+  check("…and each payment under its own name, with its amount and receipt",
+    JSON.stringify(sent?.payments?.map((p: any) => [p.method, p.amountMinor, p.currency, p.receiptUrl]))
+      === JSON.stringify([["POS", 35100, "AED", "http://127.0.0.1/uploads/pos.png"], ["Razorpay", 20000, "AED", "http://127.0.0.1/uploads/razorpay.png"]]),
+    JSON.stringify(sent?.payments));
+  check("…the notes saying both too", /1\. POS · AED 351\.00/.test(sent?.notes ?? "") && /2\. Razorpay · AED 200\.00/.test(sent?.notes ?? ""), String(sent?.notes));
+  check("…and kept here as written", JSON.stringify(((await txOf(pid))?.payments ?? []).map((p: any) => p.method)) === JSON.stringify(["POS", "Razorpay"]) && (await txOf(pid))?.payment_method === "POS");
+}
 
 finance.stop(true);
 await client.close();
