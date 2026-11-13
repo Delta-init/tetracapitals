@@ -10,6 +10,8 @@ import { Loader2, Medal, Monitor, Trophy, Users } from 'lucide-react';
 import { toast } from 'sonner';
 import { getEffectiveUser } from '@/components/utils/ImpersonationContext';
 import { cn } from '@/lib/utils';
+import { Link } from 'react-router-dom';
+import { createPageUrl } from '@/utils';
 
 /* ────────────────────────────────────────────────────────────────────────────
    Leaderboard (the user, 2026-10-13): the CSs only — no mentors — ranked by the
@@ -178,6 +180,7 @@ function TvLinks() {
       <span className="inline-flex items-center gap-1 text-slate-500"><Monitor className="h-3.5 w-3.5" />Office TV:</span>
       <button type="button" onClick={() => copy('dubai')} className="rounded-full border border-slate-200 bg-white px-2.5 py-1 hover:bg-slate-50">Copy Dubai link</button>
       <button type="button" onClick={() => copy('bangalore')} className="rounded-full border border-slate-200 bg-white px-2.5 py-1 hover:bg-slate-50">Copy Bangalore link</button>
+      <Link to={createPageUrl('CsTvExtras')} className="rounded-full border border-slate-200 bg-white px-2.5 py-1 hover:bg-slate-50">TV amounts</Link>
     </div>
   );
 }

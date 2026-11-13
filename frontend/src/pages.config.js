@@ -125,6 +125,7 @@ import MyKpis from './pages/MyKpis';
 import MentorLeaderboard from './pages/MentorLeaderboard';
 import Reminders from './pages/Reminders';
 import VoiceRecordings from './pages/VoiceRecordings';
+import CsTvExtras from './pages/CsTvExtras';
 import MyWallet from './pages/MyWallet';
 import BalancePayments from './pages/BalancePayments';
 import DuplicateStudents from './pages/DuplicateStudents';
@@ -188,6 +189,7 @@ export const PAGES = {
     "MentorLeaderboard": MentorLeaderboard,
     "Reminders": Reminders,
     "VoiceRecordings": VoiceRecordings,
+    "CsTvExtras": CsTvExtras,
     "MyWallet": MyWallet,
     "BalancePayments": BalancePayments,
     "DuplicateStudents": DuplicateStudents,

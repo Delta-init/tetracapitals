@@ -5,6 +5,7 @@ import { json, error, forbidden } from "../lib/response";
 import type { AuthUser } from "../auth/middleware";
 import { loadTeams } from "../students/teams";
 import { hrmsPhotos } from "../lib/hrms";
+import { EXTRAS, onExtrasChange } from "./csTvExtras";
 
 /* ────────────────────────────────────────────────────────────────────────────
    The CS TV board (the user, 2026-10-22: "a public leaderboard link of the CS,
@@ -40,6 +41,7 @@ export async function getCsTvLink(req: Request, user: AuthUser): Promise<Respons
 }
 
 const cache = new Map<string, { at: number; data: any }>();
+onExtrasChange(() => cache.clear());
 
 /** "2026-10" → the next month, "2026-11". */
 const nextMonth = (m: string) => { const [y, mm] = m.split("-").map(Number) as [number, number]; return mm === 12 ? `${y + 1}-01` : `${y}-${String(mm + 1).padStart(2, "0")}`; };
@@ -64,14 +66,20 @@ async function board(location: "dubai" | "bangalore", month?: string) {
   const txs = (await col("funding_transactions").find({
     type: "BONUS", status: "APPROVED", bonus_credit: { $in: [null, ""] }, "course_payment.product": { $exists: true }, approved_at: { $gte: monthStart, $lt: monthEnd },
   }, { projection: { initiating_mentor_id: 1, requested_by_id: 1, course_payment: 1, amount_aed: 1, approved_at: 1, tags: 1 } }).sort({ approved_at: -1 }).toArray()) as any[];
+  // The amounts a Super Admin adds for the TV (functions/csTvExtras.ts, 2026-11-13) count here exactly like payments.
+  const extras = (await col(EXTRAS).find({ location, at: { $gte: monthStart, $lt: monthEnd } }).toArray()) as any[];
+  const items = [
+    ...txs.map((t) => ({ id: String(t._id), cs_id: String(t.initiating_mentor_id || t.requested_by_id || ""), aed: Number(t.course_payment?.paid_today_aed) || Number(t.amount_aed) || 0,
+      product: String(t.course_payment?.product ?? (t.tags ?? [])[0] ?? ""), at: String(t.approved_at) })),
+    ...extras.map((e) => ({ id: String(e._id), cs_id: String(e.cs_id), aed: Number(e.aed) || 0, product: String(e.product ?? ""), at: String(e.at) })),
+  ].sort((a, b) => b.at.localeCompare(a.at));
   const recent: any[] = [];
-  for (const t of txs) {
-    const r = row.get(String(t.initiating_mentor_id || t.requested_by_id || ""));
+  for (const t of items) {
+    const r = row.get(t.cs_id);
     if (!r) continue;
-    const aed = Number(t.course_payment?.paid_today_aed) || Number(t.amount_aed) || 0;
-    r.month_aed += aed; r.payments += 1;
-    if (!past && String(t.approved_at) >= todayStart) { r.today_aed += aed; r.today_payments += 1; }
-    if (!past && recent.length < 20) recent.push({ id: String(t._id), cs_id: r.id, cs: r.name, team: r.team, aed: round(aed), product: String(t.course_payment?.product ?? (t.tags ?? [])[0] ?? ""), at: t.approved_at });
+    r.month_aed += t.aed; r.payments += 1;
+    if (!past && t.at >= todayStart) { r.today_aed += t.aed; r.today_payments += 1; }
+    if (!past && recent.length < 20) recent.push({ id: t.id, cs_id: r.id, cs: r.name, team: r.team, aed: round(t.aed), product: t.product, at: t.at });
   }
   const photos = await hrmsPhotos([...row.values()].map((r) => ({ email: r.email, name: r.name })));
   const cs = [...row.values()]

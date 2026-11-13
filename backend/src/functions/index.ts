@@ -68,6 +68,7 @@ import { getMyKpis, getTeamKpis, getMentorKpis, requestKpiCorrection } from "./m
 import { getPendingMeetingOutcomes, getMeetingOutcomeOptions, saveMeetingOutcome, getStudentMeetingOutcomes, getMeetingsDone, getMeetingsReport, getStudentMeetings, getPaymentMeetings } from "./meetingOutcomes";
 import { getMeetingCommissions } from "./meetingCommissions";
 import { getVoiceRecordings, saveVoiceRecording, deleteVoiceRecording } from "./voiceRecordings";
+import { getCsTvExtras, addCsTvExtra, removeCsTvExtra } from "./csTvExtras";
 import { getCsTvLink } from "./csTv";
 import { getLmsCourseAccess, giveLmsCourses, setLmsModuleAccess } from "./lmsCourseAccess";
 import { getClassCompletions } from "./classCompletions";
@@ -281,6 +282,9 @@ const AUTHED: Record<string, AuthedHandler> = {
   getVoiceRecordings,
   saveVoiceRecording,
   deleteVoiceRecording,
+  getCsTvExtras,
+  addCsTvExtra,
+  removeCsTvExtra,
   getCsTvLink,
   getInstructorReviewList,
   getInstructorReviewFeed,
