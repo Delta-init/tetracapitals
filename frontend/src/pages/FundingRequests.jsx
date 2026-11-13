@@ -1115,8 +1115,11 @@ export default function FundingRequests() {
                     <SelectItem value="AED TRANSFER">AED TRANSFER</SelectItem>
                     <SelectItem value="UPI">UPI</SelectItem>
                     <SelectItem value="CARD PAYMENT">CARD PAYMENT</SelectItem>
+                    {/* POS and Razorpay (the owner, 2026-11-13) */}
+                    <SelectItem value="POS">POS</SelectItem>
                     <SelectItem value="USDT">USDT</SelectItem>
                     <SelectItem value="INR TRANSFER">INR TRANSFER</SelectItem>
+                    <SelectItem value="Razorpay">Razorpay</SelectItem>
                     <SelectItem value="Cash deposit">Cash deposit</SelectItem>
                     <SelectItem value="Cash Withdrawal">Cash Withdrawal</SelectItem>
                     <SelectItem value="Bank Withdrawal">Bank Withdrawal</SelectItem>

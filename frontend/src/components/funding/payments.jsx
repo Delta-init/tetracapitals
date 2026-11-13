@@ -22,9 +22,12 @@ import { Eye, Loader2, Paperclip, Plus, Upload, X } from 'lucide-react';
 ──────────────────────────────────────────────────────────────────────────── */
 
 /** How money came in: the portal's own, Pay by link (the student paid a payment link), and the sales CRMs' — the user,
- *  2026-10-06. */
+ *  2026-10-06. POS (the card machine, beside CARD PAYMENT) and Razorpay (rupees, beside INR TRANSFER) added, and
+ *  'Other' no longer picked for a new payment — the owner, 2026-11-13. */
 export const SALES_CRM_METHODS = ['Cash', 'Bank Transfer', 'Cheque', 'Card', 'Easebuzz EMI', 'Tabby', 'Tamara', 'BillExPro'];
-export const DEPOSIT_METHODS = ['AED TRANSFER', 'UPI', 'CARD PAYMENT', 'USDT', 'INR TRANSFER', 'Cash deposit', 'Pay by link', ...SALES_CRM_METHODS, 'Other'];
+export const DEPOSIT_METHODS = ['AED TRANSFER', 'UPI', 'CARD PAYMENT', 'POS', 'USDT', 'INR TRANSFER', 'Razorpay', 'Cash deposit', 'Pay by link', ...SALES_CRM_METHODS];
+/** The same, for a request already saved (processing it): older ones say 'Other', and must go on showing it. */
+export const SAVED_DEPOSIT_METHODS = [...DEPOSIT_METHODS, 'Other'];
 export const MAX_PAYMENTS = 10;
 
 // A row's own id — random, not a counter, so no two rows ever share one (a counter restarts when the module reloads).
@@ -114,7 +117,9 @@ export function PaymentRows({ rows, onChange, currency, methods = DEPOSIT_METHOD
                 <SelectValue placeholder="Paid by…" />
               </SelectTrigger>
               <SelectContent>
-                {methods.map(m => <SelectItem key={m} value={m}>{m}</SelectItem>)}
+                {/* A payment from an older request, corrected: its own method ('Other', say) still shows though it is
+                    no longer on the list (2026-11-13) */}
+                {(p.method && !methods.includes(p.method) ? [...methods, p.method] : methods).map(m => <SelectItem key={m} value={m}>{m}</SelectItem>)}
               </SelectContent>
             </Select>
             <div className="relative min-w-0 flex-1">

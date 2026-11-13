@@ -19,7 +19,8 @@ import {
 
 import { toast } from "sonner";
 
-const PAYMENT_METHODS = ['AED TRANSFER','UPI','CARD PAYMENT','USDT','INR TRANSFER','Cash deposit','Pay by link','Cash','Bank Transfer','Cheque','Card','Easebuzz EMI','Tabby','Tamara','BillExPro','Other'];
+// POS and Razorpay added, 'Other' no longer picked for a new payment (the owner, 2026-11-13).
+const PAYMENT_METHODS = ['AED TRANSFER','UPI','CARD PAYMENT','POS','USDT','INR TRANSFER','Razorpay','Cash deposit','Pay by link','Cash','Bank Transfer','Cheque','Card','Easebuzz EMI','Tabby','Tamara','BillExPro'];
 
 export default function ReferralRequestPopup({ student, currentUser, onClose, transactionType = 'DEPOSIT', initialTags = [] }) {
   const isBonus = transactionType === 'BONUS';

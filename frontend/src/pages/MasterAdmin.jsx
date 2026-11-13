@@ -21,7 +21,8 @@ import { startImpersonation } from '../components/utils/ImpersonationContext';
 import { logAction } from '../components/utils/AuditLogger';
 import { TablePagination, usePagination } from '@/components/common/TablePagination';
 
-const PAYMENT_METHODS = ['AED TRANSFER','UPI','CARD PAYMENT','USDT','INR TRANSFER','Cash deposit','Pay by link','Cash','Bank Transfer','Cheque','Card','Easebuzz EMI','Tabby','Tamara','BillExPro','Cash Withdrawal','Bank Withdrawal','Other'];
+// POS and Razorpay added (the owner, 2026-11-13). 'Other' stays: this list edits requests already saved, and older ones say it.
+const PAYMENT_METHODS = ['AED TRANSFER','UPI','CARD PAYMENT','POS','USDT','INR TRANSFER','Razorpay','Cash deposit','Pay by link','Cash','Bank Transfer','Cheque','Card','Easebuzz EMI','Tabby','Tamara','BillExPro','Cash Withdrawal','Bank Withdrawal','Other'];
 
 function toLocalInput(iso) {
   if (!iso) return '';

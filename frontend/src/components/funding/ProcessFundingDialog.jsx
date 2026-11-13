@@ -9,7 +9,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Button } from "@/components/ui/button";
 import { CheckCircle, XCircle } from "lucide-react";
 import TagsPicker from "./TagsPicker";
-import { DEPOSIT_METHODS as DEPOSIT_PAYMENT_METHODS, PaymentsList, paymentsOf } from "./payments";
+// A request already saved: the deposit methods with 'Other', which older requests still say (2026-11-13).
+import { SAVED_DEPOSIT_METHODS as DEPOSIT_PAYMENT_METHODS, PaymentsList, paymentsOf } from "./payments";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import StudentPayments, { useStudentZohoInvoices, paymentsCount } from "./StudentPayments";
 import { partLabel } from "./mt5Cells";
