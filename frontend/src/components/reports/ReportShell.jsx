@@ -47,8 +47,10 @@ const FIRST = {
  * columns: [{ key, label, fmt?, type?: 'money' (a USD figure, shown in AED) | 'number', get?(row) }] — the same for every view.
  * A card or column with `open` (a bucket the server counts — "count", "pending", "needs_call" …) opens the
  * requests behind its number (2026-10-27). details: 'commission' — the breakdown lists commission credits (2026-11-09).
+ * extra(d): anything more to show between the totals and the table; rowNote(row, d): a line under a person's name, By
+ * person only (2026-11-13 — the Commission report's stopped counting and finance's additions / deductions).
  */
-export default function ReportShell({ title, description, fn, body = {}, cards, columns, sortNote, details }) {
+export default function ReportShell({ title, description, fn, body = {}, cards, columns, sortNote, details, extra, rowNote }) {
   const [period, setPeriod] = useUrlState('period', 'month');
   const [from, setFrom] = useUrlState('from', '');
   const [to, setTo] = useUrlState('to', '');
@@ -195,6 +197,8 @@ export default function ReportShell({ title, description, fn, body = {}, cards, 
                   ))}
                 </div>
 
+                {extra?.(d)}
+
                 <div className="overflow-hidden rounded-2xl border border-slate-200/70 bg-white shadow-soft">
                   <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-100 px-4 py-2.5">
                     <div className="flex rounded-md border bg-white p-0.5 text-xs" role="tablist">
@@ -220,6 +224,7 @@ export default function ReportShell({ title, description, fn, body = {}, cards, 
                               <td className="px-4 py-2.5">
                                 <div className="font-medium text-slate-900">{first.fmt ? first.fmt(r[first.key]) : r[first.key]}</div>
                                 {first.sub && first.sub(r) && <div className="text-xs text-slate-500">{first.sub(r)}</div>}
+                                {view === 'people' && rowNote?.(r, d)}
                               </td>
                               {columns.map(c => <td key={c.label} className={`whitespace-nowrap px-4 py-2.5 ${c.type ? 'text-right tabular-nums' : ''} ${TONE[c.tone] || ''}`}>{opener(c.open, r, c.label, cell(c, r))}</td>)}
                             </tr>
