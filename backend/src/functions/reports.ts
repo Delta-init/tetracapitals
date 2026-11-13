@@ -8,7 +8,7 @@ import { loadTeams, type TeamIndex } from "../students/teams";
 import { notSentOf, stageWithPayment } from "../students/bonusPending";
 import { owedSalesCredits } from "../students/salesBonusPaid";
 import { csManagerReach } from "../lib/userLocation";
-import { adjustmentRows, adjustmentView } from "../finance/commissionStops";
+import { adjustmentRows, adjustmentView, inStop, windowsOf } from "../finance/commissionStops";
 
 /* ────────────────────────────────────────────────────────────────────────────
    The Reports section (the user, 2026-10-11): each report added up here, for
@@ -367,6 +367,8 @@ const periodMs = (period: string): [number, number] | null => {
  * finance/commissionStops.ts), so each knows why their figure differs: `stopped` — whose counting is stopped, or was at
  * some time in the period — and `adjustments` — the amounts finance added or deducted on a bonus month or deposit
  * quarter the period touches. Read only, and never added into the figures: those stay the credits, in USD.
+ * A Senior/Junior pool accrual written while its holder's counting was stopped is nobody's (resumed since or not), so
+ * it is not counted as their pool share here either.
  */
 const LEADERS = new Set(["chief_mentor", "cs_manager", "super_admin", "admin"]);
 export async function getCommissionReport(req: Request, user: AuthUser): Promise<Response> {
@@ -383,9 +385,13 @@ export async function getCommissionReport(req: Request, user: AuthUser): Promise
   const blank = () => ({ count: 0, usd: 0, own: 0, own_usd: 0, pool: 0, pool_usd: 0, bonus: 0, bonus_usd: 0, deposit: 0, deposit_usd: 0, students: 0 });
   const g = grouper(blank, pick);
   const studentsOf = new Map<string, Set<string>>();
+  const stops = (await col("commission_stops").find({}).sort({ stopped_at: -1 }).toArray()) as any[];
+  const windows = windowsOf(stops);
   for (const c of credits) {
     const at = when(c.requested_at, c.created_date);
     if (!inRange(ctx, at)) continue;
+    // A pool accrual written while its holder was stopped (2026-11-13): nobody's — not their pool share.
+    if (c.is_pool && inStop(c, windows)) continue;
     const p = personOf(ctx, String(c.recipient_id ?? ""), c.recipient_name);
     if (!counts(ctx, p)) continue;
     // A team's view (a Chief's or a mentor's): not their leaders' commission — a Chief's, a CS Manager's — only their own.
@@ -412,7 +418,7 @@ export async function getCommissionReport(req: Request, user: AuthUser): Promise
     return p.id && counts(ctx, p) && !leaderOf(p) ? p : null;
   };
   const stopped = [];
-  for (const s of (await col("commission_stops").find({}).sort({ stopped_at: -1 }).toArray()) as any[]) {
+  for (const s of stops) {
     const p = seen(s.recipient_id);
     // Stopped now, or at some time in the period.
     if (!p || !(when(s.stopped_at) < ctx.until) || (s.resumed_at && when(s.resumed_at) < ctx.since)) continue;

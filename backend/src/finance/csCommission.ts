@@ -5,7 +5,7 @@ import { toObjectId } from "../lib/id";
 import { locationOfUser, teamIndex } from "../lib/userLocation";
 import { METHODS, periodRange, releaseCredits } from "../functions/approveCommissionPeriod";
 import { splitPool } from "../functions/distributeDepositPool";
-import { adjustmentRows, adjustmentView, afterStop, stopOf, stoppedNow, type Stop } from "./commissionStops";
+import { adjustmentRows, adjustmentView, inStop, stopOf, stoppedNow, stopWindows, type StopWindows } from "./commissionStops";
 
 /* ────────────────────────────────────────────────────────────────────────────
    The CS commission Delta finance pays (the user, 2026-11-03: "CS commission in finance, beside the CRM
@@ -50,9 +50,10 @@ import { adjustmentRows, adjustmentView, afterStop, stopOf, stoppedNow, type Sto
    Of a Senior/Junior pool a stopped member keeps what their position put in before the stop ("stop counting from
    now"): the list shows that as their share; approving them pays it out of the pool on its own, as their credit, and
    releases it with the rest — everyone else's part stays pooled, to be split as ever; a split pays it like anyone's.
-   Only what was written to the pool for them from the stop on goes to nobody. Taking the approval back treats that
-   pool share as any credit the approval released — accrued again, theirs to be approved again; it is not put back
-   into the pool, as a pool split by an approval never was.
+   What was written to the pool for them while they were stopped goes to nobody — and stays nobody's once they are
+   resumed: resumed, they are a member like any other again, their share what was written outside the stop. Taking
+   the approval back treats that pool share as any credit the approval released — accrued again, theirs to be
+   approved again; it is not put back into the pool, as a pool split by an approval never was.
 ──────────────────────────────────────────────────────────────────────────── */
 
 /** Who finance's approvals are recorded as here: not a user of this portal. */
@@ -121,9 +122,9 @@ async function poolsOf(kind: string, range: { start: Date; end: Date }): Promise
   return [...groups.values()].filter((g) => g.members.size > 0);
 }
 /** A member's share of a pool: their own accruals in it — their position's % (the user, 2026-11-07: "B, by own share") —
- *  for someone whose counting is stopped, those from before the stop (2026-11-13): the rest of theirs is nobody's. */
-const shareOf = (g: Pool, memberId: string, stops: Map<string, Stop>) =>
-  g.accruals.filter((c) => String(c.recipient_id) === memberId && !afterStop(c, stops)).reduce((t, c) => t + (Number(c.commission_usd) || 0), 0);
+ *  less those written while their counting was stopped, resumed since or not (2026-11-13): those are nobody's. */
+const shareOf = (g: Pool, memberId: string, stops: StopWindows) =>
+  g.accruals.filter((c) => String(c.recipient_id) === memberId && !inStop(c, stops)).reduce((t, c) => t + (Number(c.commission_usd) || 0), 0);
 
 /** Split the pools given, as Delta finance; the first refusal stops it. `only`: just that member's own share of each (2026-11-13). */
 async function splitAll(pools: Pool[], period: string, by: string, only?: string) {
@@ -131,11 +132,11 @@ async function splitAll(pools: Pool[], period: string, by: string, only?: string
   for (const g of pools) {
     const r = await splitPool(g.group_id, g.method, period, { id: FINANCE_ID, name: `${by} (Delta finance)` }, only);
     if ("error" in r) return r;
-    // Nothing in it but what was added after its members were stopped (2026-11-13): left as it is — not one of those split.
+    // Nothing in it but what was added while its members were stopped (2026-11-13): left as it is — not one of those split.
     if (!r.distributed) continue;
     done.push({ group_id: r.group_id, method: r.method, pool_total: cents(r.pool_total), members: r.members, share_each: cents(r.share_each),
       shares: r.breakdown.map((b) => ({ id: b.member_id, name: b.member, share_usd: cents(b.share) })),
-      // Members whose counting is stopped, with the part written for each from their stop on — paid to nobody (2026-11-13).
+      // Members with the part written for each while their counting was stopped — paid to nobody (2026-11-13).
       stopped: (r.stopped ?? []).map((b) => ({ id: b.member_id, name: b.member, share_usd: cents(b.share) })) });
   }
   return done;
@@ -170,13 +171,14 @@ export async function handleFinanceCsCommission(req: Request): Promise<Response>
   if (refused) return refused;
   const a = await asked(req, false);
   if (a instanceof Response) return a;
-  const [credits, approvals, idx, pools, stops, adjustments] = await Promise.all([
+  const [credits, approvals, idx, pools, stops, adjustments, windows] = await Promise.all([
     creditsOf(a.kind, a.range),
     col("commission_period_approvals").find({ kind: a.kind, period: a.period }).toArray() as Promise<any[]>,
     teamIndex(),
     poolsOf(a.kind, a.range),
     stoppedNow(),
     adjustmentRows({ kind: a.kind, period: a.period }),
+    stopWindows(),
   ]);
   const approvalOf = new Map(approvals.map((r) => [String(r.recipient_id), r]));
   const byPerson = new Map<string, any[]>();
@@ -190,8 +192,8 @@ export async function handleFinanceCsCommission(req: Request): Promise<Response>
     adjustmentsOf.set(id, [...(adjustmentsOf.get(id) ?? []), r]);
     if (id && !byPerson.has(id)) byPerson.set(id, []);
   }
-  // A member whose counting is stopped: their share is what their position put in before the stop (2026-11-13).
-  const share = (g: Pool, memberId: string) => shareOf(g, memberId, stops);
+  // Someone stopped now or at some time before: their share leaves out what was written meanwhile (2026-11-13).
+  const share = (g: Pool, memberId: string) => shareOf(g, memberId, windows);
   const poolCredit = (c: any) => ({
     id: String(c._id), date: String(c.requested_at || c.created_date || ""), student: String(c.student_name ?? ""),
     method: String(c.method), level: Number(c.level) || 0, position: String(c.position ?? ""), percentage: Number(c.percentage) || 0,
@@ -258,11 +260,11 @@ export async function handleFinanceCsCommissionApprove(req: Request): Promise<Re
   let record: any = await coll.findOne({ kind: a.kind, period: a.period, recipient_id: a.recipientId });
   let mine = await creditsOf(a.kind, a.range, a.recipientId);
   // The Senior/Junior pools they are in, not split yet (2026-11-07): split once this approval goes ahead. Someone
-  // stopped (2026-11-13): only their own share comes out of each — what their position put in before the stop — and
-  // the rest stays pooled for the others; a pool holding nothing of theirs from before the stop is left alone.
-  const stops = new Map<string, Stop>(stopped ? [[a.recipientId, stopped]] : []);
+  // stopped (2026-11-13): only their own share comes out of each — what their position put in outside a stop — and
+  // the rest stays pooled for the others; a pool holding nothing of theirs but what was written during one is left alone.
+  const windows = stopped ? await stopWindows([a.recipientId]) : null;
   const theirPools = (await poolsOf(a.kind, a.range)).filter((g) => g.members.has(a.recipientId)
-    && (!stopped || g.accruals.some((c) => String(c.recipient_id) === a.recipientId && !afterStop(c, stops))));
+    && (!windows || g.accruals.some((c) => String(c.recipient_id) === a.recipientId && !inStop(c, windows))));
   const who = await person(a.recipientId, await teamIndex());
   const adjustments = (await adjustmentRows({ kind: a.kind, period: a.period, recipient_id: a.recipientId })).map(adjustmentView);
   const answer = (already: boolean, override = false) => ok({

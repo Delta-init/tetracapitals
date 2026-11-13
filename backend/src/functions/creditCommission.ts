@@ -289,7 +289,7 @@ export async function creditCommissionFor(txId: string, opts: { preview?: boolea
   // Counting stopped by Delta finance (2026-11-13, finance/commissionStops.ts): whoever is stopped at this moment gets
   // no credit — not as the initiator, not as someone's up-line, not as the meeting mentor. Their amount goes to nobody:
   // everyone else's credit is what it would have been anyway. A pool's accrual stays, so the pool accrues as before —
-  // its split pays nobody what was written for a member from their stop on (functions/distributeDepositPool.ts).
+  // its split pays nobody what was written for a member while they were stopped (functions/distributeDepositPool.ts).
   const stopped = await stoppedNow([...new Set(credits.map((c) => String(c.recipient_id)))]);
   const skipped = credits.filter((c) => !c.is_pool && stopped.has(String(c.recipient_id)));
   const kept = skipped.length ? credits.filter((c) => !skipped.includes(c)) : credits;

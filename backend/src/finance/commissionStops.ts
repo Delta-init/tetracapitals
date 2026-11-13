@@ -12,10 +12,11 @@ import { col } from "../db";
    what they would have got anyway. Finance may then approve and pay their month while it is still running.
 
    A Senior/Junior pool (the user, 2026-11-13: "stop counting from now" — what was earned before stays theirs): the pool
-   accrues as before, each accrual in the name of who held the position. What a stopped member's position put in before
-   the stop — their accruals written (created_date) before stopped_at — is still their share, paid like anyone's when
-   the pool is split, or on its own when finance approves them (functions/distributeDepositPool.ts). Only their accruals
-   written from the stop on are theirs no longer: those are paid to nobody (afterStop, below).
+   accrues as before, each accrual in the name of who held the position. An accrual written (created_date) while its
+   holder was stopped — from stopped_at until resumed_at, or still — is nobody's, and stays nobody's after a resume: as
+   with credits, what a stop leaves out is not made up once it is lifted (inStop, below). Every other accrual of theirs
+   — from before a stop, or after a resume — is their share, paid like anyone's when the pool is split, or on its own
+   when finance approves them while they are stopped (functions/distributeDepositPool.ts).
 
    An addition or deduction — commission_adjustments { kind, period, recipient_id, type, amount_minor, currency,
    reason, by, at } — is an amount in AED or INR (minor units) on someone's bonus month or deposit quarter. Finance
@@ -33,10 +34,24 @@ export async function stoppedNow(ids?: string[]): Promise<Map<string, Stop>> {
   for (const r of rows) if (r.recipient_id && !out.has(String(r.recipient_id))) out.set(String(r.recipient_id), stopView(r));
   return out;
 }
-/** A pool accrual its holder has no share of: written at or after their stop. One with no date they keep. */
-export const afterStop = (accrual: any, stops: Map<string, Stop>): boolean => {
-  const stop = stops.get(String(accrual?.recipient_id ?? ""));
-  return !!stop && Date.parse(String(accrual?.created_date ?? "")) >= Date.parse(stop.at);
+/** Each person's stops, open and resumed, as [from, until) in ms — an open one until forever. */
+export type StopWindows = Map<string, Array<[number, number]>>;
+export function windowsOf(stopRows: any[]): StopWindows {
+  const out: StopWindows = new Map();
+  for (const r of stopRows) {
+    const id = String(r.recipient_id ?? "");
+    if (id) out.set(id, [...(out.get(id) ?? []), [Date.parse(String(r.stopped_at ?? "")), r.resumed_at ? Date.parse(String(r.resumed_at)) : Infinity]]);
+  }
+  return out;
+}
+/** Everyone's stop windows, or only `ids`'. */
+export async function stopWindows(ids?: string[]): Promise<StopWindows> {
+  return windowsOf((await col("commission_stops").find(ids ? { recipient_id: { $in: ids } } : {}).toArray()) as any[]);
+}
+/** A pool accrual its holder has no share of: written while they were stopped. One with no readable date they keep. */
+export const inStop = (accrual: any, windows: StopWindows): boolean => {
+  const at = Date.parse(String(accrual?.created_date ?? ""));
+  return (windows.get(String(accrual?.recipient_id ?? "")) ?? []).some(([from, until]) => at >= from && at < until);
 };
 /** One person's stop, or null when their commission is being counted. */
 export const stopOf = async (recipientId: string): Promise<Stop | null> => (await stoppedNow([recipientId])).get(recipientId) ?? null;

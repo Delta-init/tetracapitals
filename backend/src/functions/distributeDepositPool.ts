@@ -2,7 +2,7 @@ import { col } from "../db";
 import { json, error, forbidden } from "../lib/response";
 import { toObjectId } from "../lib/id";
 import type { AuthUser } from "../auth/middleware";
-import { afterStop, stoppedNow } from "../finance/commissionStops";
+import { inStop, stopWindows } from "../finance/commissionStops";
 
 /**
  * POST /api/functions/distributeDepositPool
@@ -15,8 +15,8 @@ import { afterStop, stoppedNow } from "../finance/commissionStops";
  * put into it (the user, 2026-11-07: "B, by own share"; it was equal before). Members are the
  * people who held the pooled positions during the period. Marks the pooled
  * accruals as distributed so they can't be paid twice. Admin only.
- * A member whose commission counting Delta finance has stopped (2026-11-13) keeps what their position put in before
- * the stop; what was written for them from the stop on is paid to nobody: see splitPool.
+ * What was written to the pool for a member while Delta finance had their commission counting stopped (2026-11-13)
+ * is paid to nobody, the stop resumed since or not; the rest of theirs is their share: see splitPool.
  * (Named "deposit" for backward compat, but works for bonus pools too.)
  */
 const ALLOWED = new Set(["super_admin", "admin", "broker_admin", "finance_admin"]);
@@ -42,7 +42,7 @@ export function poolPeriodRange(period: string): { start: Date; end: Date; kind:
 /** What a split gave: the pool, how many shared it, each one's own share (share_each: the average, for older readers). */
 export type PoolSplit = {
   group_id: string; method: string; pool_total: number; members: number; share_each: number; distributed: number; breakdown: Array<{ member: string; member_id: string; share: number }>;
-  /** Members whose commission counting is stopped, with the part of the pool written for each from their stop on — paid to nobody (2026-11-13)… */
+  /** Members with the part of the pool written for each while their commission counting was stopped — paid to nobody (2026-11-13)… */
   stopped?: Array<{ member: string; member_id: string; share: number }>;
   /** …and, when nothing else was left in it, why the pool was not split. */
   reason?: string;
@@ -53,15 +53,16 @@ export type PoolSplit = {
  * paid their own accruals (their %, not an equal part — 2026-11-07) as their own credit (dated inside the period); the accruals marked
  * distributed, so nothing is split twice. Shared by the Distribute button here and Delta finance's Split (2026-11-07).
  * Nothing pooled: distributed 0. A period still running: refused (`open`).
- * Counting stopped by Delta finance (2026-11-13, finance/commissionStops.ts — "stop counting from now"): a member
- * stopped at the moment of the split is paid, like anyone, what their position put in before the stop; their accruals
- * written from the stop on are paid to nobody — marked distributed with the rest, and `stopped_no_share`. Everyone
- * else's share is as it would have been. Nothing in the pool but such accruals: it is left as it is — distributed 0,
- * with the reason.
- * `only` — one member's own share and nothing else: their accruals (from before the stop) marked distributed and paid
- * to them as their credit, every other accrual left pooled for the split to come. For Delta finance approving someone
- * whose counting is stopped (finance/csCommission.ts), so also while the period still runs; what it took is not in the
- * pool any more, so the later split cannot pay it again.
+ * Counting stopped by Delta finance (2026-11-13, finance/commissionStops.ts — "stop counting from now"): an accrual
+ * written while its holder was stopped — that stop still open, or resumed since — is paid to nobody: marked
+ * distributed with the rest, and `stopped_no_share`. Their accruals from outside a stop are their share, paid like
+ * anyone's; everyone else's share is as it would have been. Nothing in the pool but accruals written during a stop: it
+ * is left as it is — distributed 0, with the reason.
+ * `only` — one member's own share and nothing else: their accruals from outside a stop marked distributed and paid to
+ * them as their credit, those written during one marked `stopped_no_share` (they stay in the pool until it is split),
+ * every other accrual left pooled for the split to come. For Delta finance approving someone whose counting is stopped
+ * (finance/csCommission.ts), so also while the period still runs; what it took is not in the pool any more, so the
+ * later split cannot pay it again.
  */
 export async function splitPool(groupId: string, method: string, period: string, by: { id: string; name: string }, only?: string): Promise<PoolSplit | { error: string; status: number }> {
   const range = poolPeriodRange(period);
@@ -83,28 +84,28 @@ export async function splitPool(groupId: string, method: string, period: string,
   const total = pooled.reduce((s, c) => s + (c.commission_usd || 0), 0);
 
   // Members = distinct people who held a pooled position in the period, each with what their own accruals come to —
-  // for a member whose counting is stopped, their accruals from before the stop; those from the stop on are nobody's.
-  const stops = await stoppedNow([...new Set(pooled.map((c) => String(c.recipient_id ?? "")).filter(Boolean))]);
+  // less those written while their counting was stopped (now, or at any time before): those are nobody's.
+  const stops = await stopWindows([...new Set(pooled.map((c) => String(c.recipient_id ?? "")).filter(Boolean))]);
   const memberMap = new Map<string, string>();
   const ownOf = new Map<string, number>(), lostOf = new Map<string, number>();
   for (const c of pooled) {
     if (!c.recipient_id) continue;
     memberMap.set(c.recipient_id, c.recipient_name || "—");
-    const into = afterStop(c, stops) ? lostOf : ownOf;
+    const into = inStop(c, stops) ? lostOf : ownOf;
     into.set(c.recipient_id, (into.get(c.recipient_id) ?? 0) + (c.commission_usd || 0));
   }
   const members = [...memberMap.entries()];
   if (!members.length) return { error: "No pool members found on the accruals", status: 400 };
   // Paid: everyone with something of their own in it — or, asked for one member's share alone, that member.
   const paid = members.filter(([id]) => ownOf.has(id) && (!only || id === only));
-  const lost = only ? [] : pooled.filter((c) => c.recipient_id && afterStop(c, stops));
+  const lost = pooled.filter((c) => c.recipient_id && inStop(c, stops) && (!only || String(c.recipient_id) === only));
   const leftOut = only ? [] : members.filter(([id]) => lostOf.has(id)).map(([id, name]) => ({ member: name, member_id: id, share: lostOf.get(id) ?? 0 }));
   if (!paid.length) {
-    return only ? empty : { ...empty, pool_total: total, stopped: leftOut, reason: "All that is left in this pool was added after its members' commission counting was stopped — left unsplit." };
+    return only ? empty : { ...empty, pool_total: total, stopped: leftOut, reason: "All that is left in this pool was added while its members' commission counting was stopped — left unsplit." };
   }
 
   // Claimed first (2026-11-07): the accruals marked distributed in one step, so two splits at once pay once.
-  const ids = (only ? pooled.filter((c) => String(c.recipient_id) === only && !afterStop(c, stops)) : pooled).map((c) => c._id).filter(Boolean);
+  const ids = (only ? pooled.filter((c) => String(c.recipient_id) === only && !inStop(c, stops)) : pooled).map((c) => c._id).filter(Boolean);
   const now = new Date().toISOString();
   const claimed = await col("commission_credits").updateMany(
     { _id: { $in: ids }, status: "pooled" },
@@ -159,7 +160,7 @@ export async function splitPool(groupId: string, method: string, period: string,
     );
     throw err;
   }
-  // Why these accruals paid nobody: written after their holder's counting was stopped.
+  // Why these accruals pay nobody: written while their holder's counting was stopped.
   if (lost.length) await col("commission_credits").updateMany({ _id: { $in: lost.map((c) => c._id) } }, { $set: { stopped_no_share: true } });
 
   return {
