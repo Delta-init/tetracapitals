@@ -5,7 +5,8 @@ import { json, error, forbidden } from "../lib/response";
 import type { AuthUser } from "../auth/middleware";
 import { loadTeams } from "../students/teams";
 import { hrmsPhotos } from "../lib/hrms";
-import { EXTRAS, onExtrasChange } from "./csTvExtras";
+import { EXTRAS, onExtrasChange, onScreen } from "./csTvExtras";
+import { toObjectId } from "../lib/id";
 
 /* ────────────────────────────────────────────────────────────────────────────
    The CS TV board (the user, 2026-10-22: "a public leaderboard link of the CS,
@@ -15,6 +16,13 @@ import { EXTRAS, onExtrasChange } from "./csTvExtras";
    (approved, never a sales close) and today's, ranked, with their HRMS photos;
    the teams; and the latest approved payments, for a pop-up. Names and amounts
    only — never a student, never an email. Kept 20 seconds, whatever the screens.
+
+   The amounts added for the TV (functions/csTvExtras.ts) count like payments on
+   the boards they say. Somebody of the other location with one to show here —
+   a Bangalore CS on the Dubai TV (the user, 2026-11-14) — gets a row among this
+   location's, with only what was added for them: never their own board's
+   payments. `?real=1` leaves every added amount out, and those rows with them:
+   what Root's Manager TV asks for, so managers read what was collected.
 ──────────────────────────────────────────────────────────────────────────── */
 
 const TOKEN_KEY = "cs_tv_token";
@@ -50,7 +58,7 @@ const nextMonth = (m: string) => { const [y, mm] = m.split("-").map(Number) as [
  * The board — this month's, or with `month` (YYYY-MM, the Root Manager TV's month switch, 2026-11-01) that month's as
  * it ended: what each CS collected in it, nothing for today, no latest payments.
  */
-async function board(location: "dubai" | "bangalore", month?: string) {
+async function board(location: "dubai" | "bangalore", month?: string, real = false) {
   const index = await loadTeams();
   const people = ((await col("users").find({ app_role: "cs", status: { $ne: "inactive" } }, { projection: { full_name: 1, email: 1 } }).toArray()) as any[])
     .filter((u) => (index.teamOf(String(u._id))?.location ?? "dubai") === location);
@@ -66,11 +74,24 @@ async function board(location: "dubai" | "bangalore", month?: string) {
   const txs = (await col("funding_transactions").find({
     type: "BONUS", status: "APPROVED", bonus_credit: { $in: [null, ""] }, "course_payment.product": { $exists: true }, approved_at: { $gte: monthStart, $lt: monthEnd },
   }, { projection: { initiating_mentor_id: 1, requested_by_id: 1, course_payment: 1, amount_aed: 1, approved_at: 1, tags: 1 } }).sort({ approved_at: -1 }).toArray()) as any[];
-  // The amounts a Super Admin adds for the TV (functions/csTvExtras.ts, 2026-11-13) count here exactly like payments.
-  const extras = (await col(EXTRAS).find({ location, at: { $gte: monthStart, $lt: monthEnd } }).toArray()) as any[];
+  // The amounts a Super Admin adds for the TV (functions/csTvExtras.ts, 2026-11-13) count here exactly like payments —
+  // those this board is to show (2026-11-14), none of them when the real board is asked for.
+  const extras = real ? [] : (await col(EXTRAS).find({ ...onScreen(location), at: { $gte: monthStart, $lt: monthEnd } }).toArray()) as any[];
+  // Somebody of the other location with an amount to show here: a row of their own, holding only what was added for
+  // them. Still an active CS — one switched off, or no longer a CS, drops off the board as anybody does.
+  const guests = new Set<string>();
+  const guestIds = [...new Set(extras.map((e) => String(e.cs_id)).filter((id) => !row.has(id)))].map((id) => toObjectId(id)).filter(Boolean);
+  if (guestIds.length) {
+    for (const u of (await col("users").find({ _id: { $in: guestIds as any[] }, app_role: "cs", status: { $ne: "inactive" } }, { projection: { full_name: 1, email: 1 } }).toArray()) as any[]) {
+      const id = String(u._id), team = index.teamOf(id);
+      guests.add(id);
+      row.set(id, { id, name: String(u.full_name ?? "").trim(), email: String(u.email ?? "").toLowerCase(), team_id: team?.id ?? "", team: team?.name ?? "No team",
+        month_aed: 0, today_aed: 0, payments: 0, today_payments: 0, photo: null as string | null });
+    }
+  }
   const items = [
     ...txs.map((t) => ({ id: String(t._id), cs_id: String(t.initiating_mentor_id || t.requested_by_id || ""), aed: Number(t.course_payment?.paid_today_aed) || Number(t.amount_aed) || 0,
-      product: String(t.course_payment?.product ?? (t.tags ?? [])[0] ?? ""), at: String(t.approved_at) })),
+      product: String(t.course_payment?.product ?? (t.tags ?? [])[0] ?? ""), at: String(t.approved_at) })).filter((t) => !guests.has(t.cs_id)),
     ...extras.map((e) => ({ id: String(e._id), cs_id: String(e.cs_id), aed: Number(e.aed) || 0, product: String(e.product ?? ""), at: String(e.at) })),
   ].sort((a, b) => b.at.localeCompare(a.at));
   const recent: any[] = [];
@@ -102,7 +123,7 @@ async function board(location: "dubai" | "bangalore", month?: string) {
 }
 
 /**
- * GET /api/public/cs-tv?location=dubai|bangalore — the board, for the TV page at /cs/dubai or /cs/bangalore. Open, no
+ * GET /api/public/cs-tv?location=dubai|bangalore[&month=][&real=1] — the board, for the TV page at /cs/dubai or /cs/bangalore. Open, no
  * secret (the user asked for it twice, 2026-10-22: "I need normal /cs/dubai only") — names, teams and amounts only,
  * never a student or an email.
  */
@@ -112,7 +133,9 @@ export async function handleCsTv(req: Request): Promise<Response> {
   // ?month=YYYY-MM: a month gone by (not one to come), kept 5 minutes — it no longer changes much.
   const asked = url.searchParams.get("month") ?? "";
   const month = /^\d{4}-(0[1-9]|1[0-2])$/.test(asked) && asked < dubaiDay().slice(0, 7) ? asked : undefined;
-  const key = month ? `${location}:${month}` : location;
+  // ?real=1: without the amounts added for the TV (Root's Manager TV, 2026-11-14) — kept apart from the TV's own.
+  const real = url.searchParams.get("real") === "1";
+  const key = `${month ? `${location}:${month}` : location}${real ? ":real" : ""}`;
   const had = cache.get(key);
   // Who collected each payment is kept for the voice (its recordings are by person), not shown.
   // The INR rate the screen converts with (lib/fxRate.ts, 2026-11-05).
@@ -120,7 +143,7 @@ export async function handleCsTv(req: Request): Promise<Response> {
   const shown = (data: any) => ({ ...data, usd_per_inr: usdPerInr, recent: (data.recent ?? []).map(({ cs_id: _id, ...r }: any) => r) });
   if (had && Date.now() - had.at < (month ? 5 * 60_000 : CACHE_MS)) return json(shown(had.data));
   try {
-    const data = await board(location, month);
+    const data = await board(location, month, real);
     cache.set(key, { at: Date.now(), data });
     return json(shown(data));
   } catch (err) {

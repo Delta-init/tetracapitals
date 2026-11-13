@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# ./test-cs-tv.sh — the open CS board (functions/csTv.ts): this month, and a month gone by (?month=),
+# ./test-cs-tv.sh — the open CS board (functions/csTv.ts): this month, and a month gone by (?month=); the amounts added
+# for the TV from Root (/api/v1/service/cs-tv-amounts), a Bangalore CS on the Dubai board, and the real board (?real=1),
 # end to end: throwaway mongod and the API — neither reading a .env. Tears everything down afterwards.
 set -euo pipefail
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -13,7 +14,7 @@ mkdir -p "$WORK/db"
 mongod --dbpath "$WORK/db" --port "$MONGO_PORT" --bind_ip 127.0.0.1 --fork --logpath "$WORK/mongod.log" >/dev/null
 export MONGO_URI="mongodb://127.0.0.1:$MONGO_PORT" MONGO_DB="commission_cs_tv_e2e" JWT_SECRET="cs-tv-e2e-secret-0123456789abcdef" \
   PORT="$API_PORT" E2E_API_PORT="$API_PORT" UPLOAD_DIR="$WORK/uploads" \
-  FINANCE_API_URL="" FINANCE_CLIENT_ID="" FINANCE_INTEGRATION_SECRET="" FINANCE_S2S_SECRET="cs-tv-e2e-shared-secret-0123456789" ROOT_ERP_API_URL="" ROOT_ERP_SECRET="" \
+  FINANCE_API_URL="" FINANCE_CLIENT_ID="" FINANCE_INTEGRATION_SECRET="" FINANCE_S2S_SECRET="cs-tv-e2e-shared-secret-0123456789" ROOT_ERP_API_URL="" ROOT_ERP_SECRET="cs-tv-e2e-root-secret-0123456789" \
   LMS_API_URL="http://127.0.0.1:$LMS_PORT" LMS_SERVICE_SECRET="cs-tv-e2e-lms-secret" E2E_LMS_PORT="$LMS_PORT" LMS_CS_SYNC=off COURSE_LMS_SYNC=off LMS_ACTIVITY=off LMS_ENROLMENT_SYNC=off FOLLOWUP_REMINDERS=off ONBOARDING_ALERTS=off WHATSAPP=off \
   SMTP_HOST="" SMTP_USER="" SMTP_PASS="" ANTHROPIC_API_KEY=""
 cd "$HERE"

@@ -14,6 +14,7 @@ import { csOverview, csDetail, type Period } from "./csOverview";
 import { CallFilterError, callsForPortal, recordingLinkForPortal } from "./calls";
 import { mentorReport, mentorReportDates, mentorReportDetail } from "../functions/mentorReport";
 import { instructorReviewList, reviewTrouble } from "../functions/instructorReviews";
+import { addExtra, listExtras, removeExtra, updateExtra } from "../functions/csTvExtras";
 
 /* ────────────────────────────────────────────────────────────────────────────
    /api/v1/service/*   — the Root portal asking about roles and people.
@@ -127,6 +128,30 @@ export async function handlePortalService(req: Request, path: string): Promise<R
      tickets, follow-ups due, class completions to call (portal/csPending.ts) — Root's Pending → CS portal tab. */
   if (path === "/cs-pending" && req.method === "GET") {
     return ok(await csPending());
+  }
+
+  /* The CS TV amounts, for Root's "CS TV amounts" page (2026-11-14; functions/csTvExtras.ts): amounts typed for a
+     Bangalore CS that the CS TV shows like payments — on Dubai's board, Bangalore's, or both. Bangalore's CSs only,
+     whatever is asked: Root's page is theirs alone. `by` is the root admin's name, kept as who added it.
+     GET /cs-tv-amounts[?month=YYYY-MM] · POST /cs-tv-amounts { cs_id, aed, product, at?, show_on?, by } ·
+     POST /cs-tv-amounts/update { id, aed?, product?, at?, show_on?, by } · POST /cs-tv-amounts/remove { id }. */
+  if (path === "/cs-tv-amounts" && req.method === "GET") {
+    return ok(await listExtras("bangalore", url.searchParams.get("month")));
+  }
+  if (path.startsWith("/cs-tv-amounts") && req.method === "POST") {
+    const by = { name: `${String(body.by ?? "").trim().slice(0, 80) || "A root admin"} (Root)` };
+    if (path === "/cs-tv-amounts") {
+      const r = await addExtra(body, by, "bangalore");
+      return typeof r === "string" ? refuse(400, "VALIDATION_ERROR", r) : ok(r);
+    }
+    if (path === "/cs-tv-amounts/update") {
+      const r = await updateExtra(body, by, "bangalore");
+      if (r === null) return refuse(404, "NOT_FOUND", "That amount is no longer there");
+      return typeof r === "string" ? refuse(400, "VALIDATION_ERROR", r) : ok(r);
+    }
+    if (path === "/cs-tv-amounts/remove") {
+      return (await removeExtra(body.id, "bangalore")) ? ok({ removed: true }) : refuse(404, "NOT_FOUND", "That amount is no longer there");
+    }
   }
 
   /* GET /cs-report[?period|from&to, location, team, cs] — what the CSs did in a period: revenue, follow-ups and
