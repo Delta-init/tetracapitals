@@ -3,6 +3,7 @@ import { json, error } from "../lib/response";
 import { toObjectId } from "../lib/id";
 import type { AuthUser } from "../auth/middleware";
 import { locationOfUser } from "../lib/userLocation";
+import { stoppedNow } from "../finance/commissionStops";
 
 /**
  * POST /api/functions/creditCommission
@@ -14,6 +15,7 @@ import { locationOfUser } from "../lib/userLocation";
  *   Level 1 = the initiator, Level 2 = their Up Head, Level 3 = the next up, …
  * Each method has its OWN level list, so e.g. Deposit can pay only Level 1 while
  * Bonus pays 3 levels. Idempotent.
+ * Someone whose commission counting Delta finance has stopped (2026-11-13) is credited nothing: see creditCommissionFor.
  */
 export async function creditCommission(req: Request, _user: AuthUser): Promise<Response> {
   const body: any = await req.json().catch(() => null);
@@ -51,6 +53,9 @@ export async function creditCommissionFor(txId: string, opts: { preview?: boolea
   // A preview (scripts/backfill-commission-by-role.ts) works the credits out without writing them.
   const already = opts.preview ? 0 : await col("commission_credits").countDocuments({ transaction_id: txId });
   if (already > 0) return { ok: true, skipped: true, reason: "Already credited", count: already };
+  // Credited already, while everyone it pays had their commission counting stopped (2026-11-13, below): nothing was
+  // written then, and nothing is on a later run — what a stop leaves out is not made up once it is lifted.
+  if (!opts.preview && Array.isArray(tx.commission_stopped) && tx.commission_stopped.length) return { ok: true, skipped: true, reason: "Already credited — commission counting was stopped", count: 0 };
   // Claimed first (2026-10-23): two approvals arriving together each counted none and both credited. A claim older
   // than CLAIM_MS with nothing credited (a run that died) may be taken again.
   if (!opts.preview) {
@@ -281,14 +286,26 @@ export async function creditCommissionFor(txId: string, opts: { preview?: boolea
     });
   }
 
-  if (opts.preview) return { ok: true, preview: true, credits };
-  if (credits.length) await col("commission_credits").insertMany(credits as any[]);
+  // Counting stopped by Delta finance (2026-11-13, finance/commissionStops.ts): whoever is stopped at this moment gets
+  // no credit — not as the initiator, not as someone's up-line, not as the meeting mentor. Their amount goes to nobody:
+  // everyone else's credit is what it would have been anyway. A pool's accrual stays, so the pool accrues as before —
+  // its split leaves a stopped member out (functions/distributeDepositPool.ts).
+  const stopped = await stoppedNow([...new Set(credits.map((c) => String(c.recipient_id)))]);
+  const skipped = credits.filter((c) => !c.is_pool && stopped.has(String(c.recipient_id)));
+  const kept = skipped.length ? credits.filter((c) => !skipped.includes(c)) : credits;
+  const notCredited = skipped.map((c) => ({ recipient_id: c.recipient_id, recipient_name: c.recipient_name, level: c.level, position: c.position, commission_usd: c.commission_usd }));
+
+  if (opts.preview) return { ok: true, preview: true, credits: kept, stopped: notCredited };
+  if (kept.length) await col("commission_credits").insertMany(kept as any[]);
+  // Who was left out, and what they would have had, kept on the request — there is no credit to say so.
+  if (notCredited.length) await col("funding_transactions").updateOne({ _id: oid }, { $set: { commission_stopped: notCredited } });
   return {
     ok: true,
-    credited: credits.length,
+    credited: kept.length,
     plan: plan.name,
     method: methodKey,
-    breakdown: credits.map((c) => ({ level: c.level, recipient: c.recipient_name, pct: c.percentage, amount: c.commission_usd })),
+    breakdown: kept.map((c) => ({ level: c.level, recipient: c.recipient_name, pct: c.percentage, amount: c.commission_usd })),
+    ...(notCredited.length ? { stopped: notCredited } : {}),
   };
 }
 
@@ -341,7 +358,7 @@ export async function reverseCommissionFor(txId: string, byName = ""): Promise<{
   const removed = await col("commission_credits").deleteMany({ transaction_id: txId, status: { $in: ["accrued", "pooled"] } });
   const kept = await col("commission_credits").updateMany({ transaction_id: txId }, { $set: { tx_reversed_at: now, tx_reversed_by: byName } });
   const oid = toObjectId(txId);
-  if (oid) await col("funding_transactions").updateOne({ _id: oid }, { $unset: { commission_claimed_at: "" } });
+  if (oid) await col("funding_transactions").updateOne({ _id: oid }, { $unset: { commission_claimed_at: "", commission_stopped: "" } });
   if (removed.deletedCount || kept.modifiedCount) console.log(`[commission] ${txId} turned back: ${removed.deletedCount} credit(s) removed, ${kept.modifiedCount} kept (paid or released)`);
   return { removed: removed.deletedCount, kept: kept.modifiedCount };
 }

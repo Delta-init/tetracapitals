@@ -12,6 +12,11 @@
  *   5. the CS Portal's own Finance button: a finance admin refused (it's finance's now), a Super Admin still may;
  *   6. the Senior/Junior pools (2026-11-07): each member's share of a pool not split yet listed (a member with nothing
  *      else too), approving one splits the pools they're in first; finance's Split; the Distribute button the same.
+ *   7. counting stopped, and additions / deductions (2026-11-13): finance stops someone with a reason — a new credit
+ *      skips them, as the initiator and as an up-line, the others still get theirs; resumed, credited again; a month
+ *      still running approved only for someone stopped; an amount added or deducted is listed (someone with nothing
+ *      else too), comes back with the approval, is fixed once released; a stopped pool member gets no share, a pool
+ *      whose members are all stopped is left unsplit; the person's own Commission report shows the stop and the amounts.
  */
 import bcrypt from "bcryptjs";
 import { MongoClient, ObjectId } from "mongodb";
@@ -239,6 +244,191 @@ check("the CS Portal's Distribute, Q2's deposit pool: 10 between two, each their
   && r.body.breakdown.map((b: any) => b.share).sort().join(",") === "4,6" && r.body.distributed === 2, show(r));
 r = await dist({ pool_group_id: String(chief._id), period: "2026-Q2", method: "deposit" });
 check("…again: nothing pooled", r.status === 200 && r.body?.distributed === 0, show(r));
+
+step("7. Counting stopped, and additions / deductions (2026-11-13)");
+const post = (path: string, body: Record<string, unknown>, headers: Record<string, string> = asFinance) =>
+  call("POST", `/api/v1/integrations/finance/cs-commission/${path}`, { by: "Mona Manager", ...body }, headers);
+// A plan paid step by step: Level 1 the one who raised it (2%), Level 2 their Up Head (1%).
+const plan = { _id: new ObjectId(), name: "Step plan", active: true, bonus_with_levels: [{ label: "Level 1", percentage: 2 }, { label: "Level 2", percentage: 1 }] };
+await db.collection("commission_plans").insertOne(plan as any);
+const onPlan = { commission_plan_id: String(plan._id) };
+const hugo = person("Head Hugo", "chief_mentor", onPlan);
+const stella = person("Staff Stella", "cs", { ...onPlan, email: "staff.stella@e2e-csc.test", up_head_id: String(hugo._id), up_head_name: hugo.full_name });
+const tara = person("Staff Tara", "cs", { ...onPlan, up_head_id: String(stella._id), up_head_name: stella.full_name });
+const esha = person("Mentor Esha", "junior_mentor", { up_head_id: String(chief._id), up_head_name: chief.full_name });
+await db.collection("users").insertMany([hugo, stella, tara, esha]);
+const stops = db.collection("commission_stops");
+const today = new Date();
+const thisMonth = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}`;
+// A bonus of 1,000 approved now, credited as an approval credits it: who got what.
+const bonus = async (by: any) => {
+  const _id = new ObjectId();
+  await db.collection("funding_transactions").insertOne({ _id, type: "BONUS", status: "APPROVED", amount_usd: 1000, initiating_mentor_id: String(by._id),
+    initiating_mentor_name: by.full_name, student_name: "Student", requested_at: new Date().toISOString() } as any);
+  const res = await call("POST", "/api/functions/creditCommission", { transaction_id: String(_id) }, { authorization: `Bearer ${adminToken}` });
+  const made = await db.collection("commission_credits").find({ transaction_id: String(_id) }).sort({ level: 1 }).toArray();
+  return { res, tx: await db.collection("funding_transactions").findOne({ _id }), got: made.map((c) => `L${c.level} ${c.recipient_name} ${c.commission_usd}`).join(", ") };
+};
+
+check("finance's secret only", (await post("stop", { recipient_id: String(stella._id), reason: "Under review" }, {})).status === 401
+  && (await post("resume", { recipient_id: String(stella._id) }, {})).status === 401
+  && (await post("adjustments/add", { kind: "bonus", period: thisMonth, recipient_id: String(stella._id), type: "addition", amount_minor: 100, currency: "AED", reason: "Extra" }, {})).status === 401
+  && (await post("adjustments/remove", { id: String(new ObjectId()) }, {})).status === 401);
+r = await post("stop", { recipient_id: String(stella._id) });
+const short = await post("stop", { recipient_id: String(stella._id), reason: "no" });
+check("a stop with no reason, or one under 3 characters: refused", r.status === 400 && short.status === 400 && !(await stops.countDocuments({})), show(r));
+r = await post("stop", { recipient_id: String(new ObjectId()), reason: "Under review" });
+check("…somebody unknown: 404", r.status === 404 && r.body?.error?.code === "NOT_FOUND", show(r));
+let b = await bonus(stella);
+check("before any stop: Stella 20, her Up Head Hugo 10", b.got === "L1 Staff Stella 20, L2 Head Hugo 10" && !b.tx?.commission_stopped, b.got);
+r = await post("stop", { recipient_id: String(stella._id), reason: "Under review until the audit ends" });
+const stoppedAt = r.body?.data?.stopped?.at;
+check("Stella stopped: when, by whom, why", r.status === 200 && !isNaN(Date.parse(stoppedAt)) && r.body.data.stopped.by === "Mona Manager"
+  && r.body.data.stopped.reason === "Under review until the audit ends" && r.body.data.already === undefined, show(r));
+r = await post("stop", { recipient_id: String(stella._id), reason: "Pressed twice" });
+const stopRows = await stops.find({ recipient_id: String(stella._id) }).toArray();
+check("…stopped again: already, the stop that holds — no second one written", r.status === 200 && r.body.data.already === true && r.body.data.stopped.at === stoppedAt
+  && r.body.data.stopped.reason === "Under review until the audit ends" && stopRows.length === 1 && stopRows[0].resumed_at === null && stopRows[0].resumed_by === "", show(r));
+b = await bonus(stella);
+check("a bonus she raises now: nothing for her — Hugo still gets his 10, and no more", b.got === "L2 Head Hugo 10" && b.res.body?.credited === 1, `${b.got} ${show(b.res)}`);
+check("…the request keeps who was left out and what they would have had", b.tx?.commission_stopped?.length === 1 && b.tx.commission_stopped[0].recipient_id === String(stella._id)
+  && b.tx.commission_stopped[0].commission_usd === 20, JSON.stringify(b.tx?.commission_stopped));
+b = await bonus(tara);
+check("a bonus Tara raises, Stella her Up Head: Tara her 20, Stella nothing as the up-line", b.got === "L1 Staff Tara 20", b.got);
+
+const addAdj = (who: any, period: string, extra: Record<string, unknown> = {}, kind = "bonus") =>
+  post("adjustments/add", { kind, period, recipient_id: String(who._id), type: "addition", amount_minor: 50000, currency: "AED", reason: "Festival allowance", ...extra });
+const bad = await Promise.all([
+  addAdj(stella, thisMonth, { type: "bonus" }), addAdj(stella, thisMonth, { amount_minor: 0 }), addAdj(stella, thisMonth, { amount_minor: 10.5 }),
+  addAdj(stella, thisMonth, { amount_minor: 100_000_001 }), addAdj(stella, thisMonth, { amount_minor: "500" }), addAdj(stella, thisMonth, { currency: "USD" }),
+  addAdj(stella, thisMonth, { reason: "x" }), addAdj(stella, "2026-Q4"), addAdj({ _id: "" }, thisMonth),
+]);
+check("an adjustment with a bad type, amount (0, 10.5, over 100,000,000, text), currency, reason, period or nobody: refused",
+  bad.every((x) => x.status === 400 && x.body?.error?.code === "VALIDATION_ERROR") && !(await db.collection("commission_adjustments").countDocuments({})), bad.map((x) => x.status).join(","));
+r = await addAdj(stella, thisMonth);
+const adj1 = r.body?.data?.adjustment;
+check("AED 500.00 added to Stella's running month: answered as stored", r.status === 200 && /^[0-9a-f]{24}$/.test(adj1?.id ?? "") && adj1.type === "addition" && adj1.amount_minor === 50000
+  && adj1.currency === "AED" && adj1.reason === "Festival allowance" && adj1.by === "Mona Manager" && !isNaN(Date.parse(adj1.at)), show(r));
+r = await list("bonus", thisMonth);
+check("the running month's list: Hugo 20 from two credits, not stopped, no adjustments", r.body?.data?.ended === false && row(hugo)?.total_usd === 20 && row(hugo).credits.length === 2
+  && row(hugo).stopped === null && Array.isArray(row(hugo).adjustments) && row(hugo).adjustments.length === 0, JSON.stringify(row(hugo)));
+check("…Stella: her 20 from before the stop, the stop (when, by, why) and her adjustment", row(stella)?.total_usd === 20 && row(stella).stopped?.at === stoppedAt
+  && row(stella).stopped.by === "Mona Manager" && /audit/.test(row(stella).stopped.reason) && row(stella).adjustments.length === 1 && row(stella).adjustments[0].id === adj1.id
+  && Object.keys(row(stella).adjustments[0]).sort().join(",") === "amount_minor,at,by,currency,id,reason,type", JSON.stringify(row(stella)));
+r = await addAdj(esha, "2026-09", { type: "deduction", amount_minor: 100_000_000, currency: "INR", reason: "Advance recovered" });
+const adjEsha = r.body?.data?.adjustment;
+r = await list("bonus", "2026-09");
+check("someone with only an adjustment (the most allowed, in INR) is listed: 0, no credits", row(esha)?.total_usd === 0 && row(esha).credits.length === 0 && row(esha).pool_usd === 0
+  && row(esha).name === "Mentor Esha" && row(esha).adjustments.length === 1 && row(esha).adjustments[0].type === "deduction" && row(esha).adjustments[0].amount_minor === 100_000_000
+  && row(esha).adjustments[0].currency === "INR" && row(esha).stopped === null, JSON.stringify(row(esha)));
+check("…and only in that month, of that kind", !(await list("bonus", "2026-08")).body.data.people.some((p: any) => p.recipient_id === String(esha._id))
+  && !(await list("deposit", "2026-Q3")).body.data.people.some((p: any) => p.recipient_id === String(esha._id)));
+r = await addAdj(csA, "2026-Q3", { reason: "Quarter top-up" }, "deposit");
+check("a deposit quarter takes one too — Meera's Q3, not her (released) September", r.status === 200 && (await list("deposit", "2026-Q3")).body.data.people[0].adjustments.length === 1, show(r));
+r = await addAdj(csA, "2026-09");
+check("…her September, released: LOCKED — take the approval back first", r.status === 409 && r.body?.error?.code === "LOCKED" && /take the approval back first/.test(r.body.error.message), show(r));
+
+r = await approve(String(stella._id), thisMonth);
+check("Stella is stopped: her running month may be approved — as ever, not before the broker admin without force", r.status === 409 && r.body?.error?.code === "NOT_READY", show(r));
+r = await approve(String(hugo._id), thisMonth);
+check("Hugo is not: his running month refused — stop counting first", r.status === 409 && r.body?.error?.code === "PERIOD_OPEN" && /stop counting their commission first/.test(r.body.error.message), show(r));
+r = await post("resume", { recipient_id: String(stella._id) });
+const resumedRow = await stops.findOne({ recipient_id: String(stella._id) });
+check("Stella resumed", r.status === 200 && r.body.data.resumed === true && !isNaN(Date.parse(resumedRow?.resumed_at)) && resumedRow?.resumed_by === "Mona Manager", show(r));
+r = await post("resume", { recipient_id: String(stella._id) });
+check("…resumed again: she was not stopped", r.status === 200 && r.body.data.resumed === false, show(r));
+b = await bonus(stella);
+check("a bonus she raises now: credited again — Stella 20, Hugo 10", b.got === "L1 Staff Stella 20, L2 Head Hugo 10" && !b.tx?.commission_stopped, b.got);
+r = await call("POST", "/api/v1/integrations/finance/cs-commission/approve", { kind: "bonus", period: thisMonth, recipient_id: String(stella._id), by: "Mona Manager", force: true, reason: "Leaving" }, asFinance);
+check("…and her running month refused again, even with force", r.status === 409 && r.body?.error?.code === "PERIOD_OPEN", show(r));
+check("…nothing listed as stopped", (await list("bonus", thisMonth)).body.data.people.every((p: any) => p.stopped === null));
+r = await post("stop", { recipient_id: String(stella._id), reason: "Leaving at the end of the week" });
+const stoppedAgainAt = r.body?.data?.stopped?.at;
+check("stopped once more: a new stop, the old one kept", r.status === 200 && r.body.data.already === undefined && (await stops.countDocuments({ recipient_id: String(stella._id) })) === 2, show(r));
+r = await call("POST", "/api/v1/integrations/finance/cs-commission/approve", { kind: "bonus", period: thisMonth, recipient_id: String(stella._id), by: "Mona Manager", force: true, reason: "Paid with her settlement" }, asFinance);
+check("her running month approved (early, with a reason): 40, two credits — with her adjustment and her stop", r.status === 200 && r.body.data.already === false && r.body.data.total_usd === 40
+  && r.body.data.credit_ids.length === 2 && r.body.data.adjustments.length === 1 && r.body.data.adjustments[0].id === adj1.id && r.body.data.adjustments[0].amount_minor === 50000
+  && r.body.data.stopped?.at === stoppedAgainAt && /Leaving/.test(r.body.data.stopped.reason), show(r));
+r = await approve(String(csA._id));
+check("…an approval of someone not stopped answers stopped null, adjustments none", r.status === 200 && r.body.data.stopped === null && Array.isArray(r.body.data.adjustments) && r.body.data.adjustments.length === 0, show(r));
+r = await addAdj(stella, thisMonth, { type: "deduction", amount_minor: 1 });
+const lockedRemove = await post("adjustments/remove", { id: adj1.id });
+check("released: no more added, none taken off — LOCKED", r.status === 409 && r.body?.error?.code === "LOCKED" && lockedRemove.status === 409 && lockedRemove.body?.error?.code === "LOCKED", `${show(r)} ${show(lockedRemove)}`);
+r = await unapprove(String(stella._id), thisMonth);
+check("the approval taken back", r.status === 200 && r.body.data.undone === true, show(r));
+r = await addAdj(stella, thisMonth, { type: "deduction", amount_minor: 12550, currency: "INR", reason: "Laptop damage" });
+const adj2 = r.body?.data?.adjustment;
+r = await post("adjustments/remove", { id: adj1.id });
+const removedRow = await db.collection("commission_adjustments").findOne({ _id: new ObjectId(adj1.id) });
+check("…then a deduction added and the addition taken off (kept, marked removed)", adj2?.type === "deduction" && r.status === 200 && r.body.data.removed === true
+  && !isNaN(Date.parse(removedRow?.removed_at)) && removedRow?.removed_by === "Mona Manager", show(r));
+check("…taken off again, or one that never was: 404", (await post("adjustments/remove", { id: adj1.id })).status === 404 && (await post("adjustments/remove", { id: String(new ObjectId()) })).status === 404
+  && (await post("adjustments/remove", { id: "nonsense" })).status === 404);
+r = await list("bonus", thisMonth);
+check("…the list: only the deduction left", row(stella)?.adjustments.length === 1 && row(stella).adjustments[0].id === adj2.id && row(stella).adjustments[0].type === "deduction", JSON.stringify(row(stella)?.adjustments));
+
+// A stopped member of a Senior/Junior pool.
+await db.collection("commission_credits").insertMany([
+  pooled(jay, "bonus_with", 10, "2026-06-05"), pooled(sam, "bonus_with", 5, "2026-06-05"),
+  pooled(jay, "bonus_with", 10, "2026-05-05"), pooled(sam, "bonus_with", 5, "2026-05-05"),
+]);
+await post("stop", { recipient_id: String(sam._id), reason: "On notice" });
+r = await list("bonus", "2026-06");
+check("June's pool, Sam stopped: his share shown as 0 — what a split would pay him — Jay's 10; the pool still 15", row(sam)?.pool_usd === 0 && /notice/.test(row(sam).stopped?.reason ?? "")
+  && row(jay)?.pool_usd === 10 && row(jay).pool[0].total_usd === 15 && row(jay).pool[0].members.find((m: any) => m.name === "Senior Sam")?.share_usd === 0, JSON.stringify([row(sam), row(jay)?.pool]));
+r = await split({ period: "2026-06" });
+const juneShares = await db.collection("commission_credits").find({ from_pool: true, pool_period: "2026-06" }).toArray();
+const juneAccruals = await db.collection("commission_credits").find({ is_pool: true, requested_at: { $regex: "^2026-06" } }).toArray();
+check("…split: Jay his own 10, Sam no share — his 5 to nobody", r.status === 200 && r.body.data.split.length === 1 && r.body.data.split[0].pool_total === 15 && r.body.data.split[0].members === 1
+  && r.body.data.split[0].shares.length === 1 && r.body.data.split[0].shares[0].name === "Junior Jay" && r.body.data.split[0].shares[0].share_usd === 10
+  && r.body.data.split[0].stopped.length === 1 && r.body.data.split[0].stopped[0].share_usd === 5
+  && juneShares.length === 1 && juneShares[0].recipient_id === String(jay._id) && juneShares[0].commission_usd === 10, show(r));
+check("…the pool is finished: every accrual distributed, Sam's marked as paying nobody", juneAccruals.length === 2 && juneAccruals.every((c) => c.status === "distributed")
+  && juneAccruals.find((c) => c.recipient_id === String(sam._id))?.stopped_no_share === true && !juneAccruals.find((c) => c.recipient_id === String(jay._id))?.stopped_no_share);
+await post("stop", { recipient_id: String(jay._id), reason: "On notice" });
+r = await split({ period: "2026-05" });
+const mayPooled = () => db.collection("commission_credits").countDocuments({ is_pool: true, status: "pooled", requested_at: { $regex: "^2026-05" }, method: "bonus_with" });
+check("May's pool, both stopped: left unsplit", r.status === 200 && r.body.data.split.length === 0 && (await mayPooled()) === 2
+  && !(await db.collection("commission_credits").countDocuments({ from_pool: true, pool_period: "2026-05", method: "bonus_with" })), show(r));
+r = await dist({ pool_group_id: String(chief._id), period: "2026-05", method: "bonus_with" });
+check("…the CS Portal's Distribute the same, saying why", r.status === 200 && r.body?.distributed === 0 && /stopped/.test(r.body.reason ?? "") && (await mayPooled()) === 2, show(r));
+await post("resume", { recipient_id: String(jay._id) });
+r = await split({ period: "2026-05" });
+check("…Jay resumed: split now — his 10, Sam (still stopped) none", r.status === 200 && r.body.data.split.length === 1 && r.body.data.split[0].members === 1 && r.body.data.split[0].shares[0].share_usd === 10
+  && (await mayPooled()) === 0, show(r));
+await post("resume", { recipient_id: String(sam._id) });
+
+// The person's own page: the Commission report (functions/reports.ts).
+const report = async (u: any, body: Record<string, unknown> = { period: "month" }) =>
+  call("POST", "/api/functions/getCommissionReport", body, { authorization: `Bearer ${u === admin ? adminToken : await login(u)}` });
+await addAdj(hugo, thisMonth, { reason: "Team target met" });
+r = await report(stella);
+check("Stella's own Commission report: her figures as they were (40, two credits), her stop and her deduction — nobody else's",
+  r.status === 200 && r.body.scope === "own" && r.body.total.usd === 40 && r.body.total.count === 2
+  && r.body.stopped.length === 2 && r.body.stopped.every((s: any) => s.recipient_id === String(stella._id) && s.name === "Staff Stella")
+  && r.body.stopped[0].at === stoppedAgainAt && r.body.stopped[0].resumed_at === null && /Leaving/.test(r.body.stopped[0].reason) && r.body.stopped[1].resumed_at
+  && r.body.adjustments.length === 1 && r.body.adjustments[0].id === adj2.id && r.body.adjustments[0].kind === "bonus" && r.body.adjustments[0].period === thisMonth
+  && r.body.adjustments[0].type === "deduction" && r.body.adjustments[0].amount_minor === 12550 && r.body.adjustments[0].currency === "INR" && r.body.adjustments[0].reason === "Laptop damage",
+  show(r));
+r = await report(stella, { period: "custom", from: "2026-09-01", to: "2026-09-30" });
+check("…a month before the stop: neither", r.status === 200 && r.body.stopped.length === 0 && r.body.adjustments.length === 0, show(r));
+r = await report(admin);
+check("a Super Admin's: everyone's — Stella's stop, hers and Hugo's amounts for the month; not Esha's September deduction",
+  r.status === 200 && r.body.stopped.some((s: any) => s.recipient_id === String(stella._id) && !s.resumed_at)
+  && r.body.adjustments.some((a: any) => a.id === adj2.id) && r.body.adjustments.some((a: any) => a.recipient_id === String(hugo._id) && a.name === "Head Hugo")
+  && !r.body.adjustments.some((a: any) => a.id === adjEsha.id) && !r.body.adjustments.some((a: any) => a.id === adj1.id), show(r));
+r = await report(admin, { period: "all" });
+check("…all time: Esha's too, and the deposit quarter's", r.body.adjustments.some((a: any) => a.id === adjEsha.id && a.period === "2026-09") && r.body.adjustments.some((a: any) => a.kind === "deposit" && a.period === "2026-Q3"), show(r));
+
+// A bonus that pays only people who are stopped: nothing then, and nothing once they are counted again.
+await post("stop", { recipient_id: String(hugo._id), reason: "Under review" });
+b = await bonus(stella);
+check("Stella and Hugo both stopped: a bonus she raises credits nobody", b.got === "" && b.res.body?.credited === 0 && b.tx?.commission_stopped?.length === 2, `${b.got} ${show(b.res)}`);
+await post("resume", { recipient_id: String(hugo._id) });
+await post("resume", { recipient_id: String(stella._id) });
+r = await call("POST", "/api/functions/creditCommission", { transaction_id: String(b.tx?._id) }, { authorization: `Bearer ${adminToken}` });
+check("…credited again once both are counted: still nothing — what a stop left out is not made up later", r.status === 200 && r.body?.skipped === true && /counting was stopped/.test(r.body.reason ?? "")
+  && !(await db.collection("commission_credits").countDocuments({ transaction_id: String(b.tx?._id) })), show(r));
 
 await client.close();
 console.log(`\n${fail ? "\x1b[31m" : "\x1b[32m"}${pass}/${pass + fail} checks passed\x1b[0m`);

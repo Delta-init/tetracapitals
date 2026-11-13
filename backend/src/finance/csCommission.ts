@@ -5,6 +5,7 @@ import { toObjectId } from "../lib/id";
 import { locationOfUser, teamIndex } from "../lib/userLocation";
 import { METHODS, periodRange, releaseCredits } from "../functions/approveCommissionPeriod";
 import { splitPool } from "../functions/distributeDepositPool";
+import { adjustmentRows, adjustmentView, stopOf, stoppedNow } from "./commissionStops";
 
 /* ────────────────────────────────────────────────────────────────────────────
    The CS commission Delta finance pays (the user, 2026-11-03: "CS commission in finance, beside the CRM
@@ -36,6 +37,16 @@ import { splitPool } from "../functions/distributeDepositPool";
    Distribute — each their own accruals (2026-11-07, "B, by own share"; equal before) — until then the Juniors and Seniors had no credits of their own, so finance never saw them. The list now
    gives each member their share of each pool not split yet (pool_usd, pool) and the pools (pools); approving someone
    splits the pools they are in first, so what is released is theirs.
+
+   Counting stopped, and additions / deductions (the user, 2026-11-13 — finance/commissionStops.ts):
+     POST …/cs-commission/stop               { recipient_id, by, reason }  → { stopped: { at, by, reason } } (already: true when it was)
+     POST …/cs-commission/resume             { recipient_id, by }          → { resumed } — false when they were not stopped
+     POST …/cs-commission/adjustments/add    { kind, period, recipient_id, type, amount_minor, currency, reason, by } → { adjustment }
+     POST …/cs-commission/adjustments/remove { id, by }                    → { removed: true }
+   Someone stopped is credited nothing more until resumed, and finance may approve their period while it still runs
+   (anyone else's only once it has ended). The list gives each person `stopped` and their `adjustments` for the period —
+   someone with only an adjustment is listed too — and so does the approval's answer. Once a period is released its
+   adjustments are fixed (LOCKED) until the approval is taken back.
 ──────────────────────────────────────────────────────────────────────────── */
 
 /** Who finance's approvals are recorded as here: not a user of this portal. */
@@ -47,7 +58,7 @@ const guard = (req: Request): Response | null => {
   return null;
 };
 
-type Asked = { kind: string; period: string; range: { start: Date; end: Date }; recipientId: string; poolGroupId: string; method: string; by: string; force: boolean; reason: string };
+type Asked = { kind: string; period: string; range: { start: Date; end: Date }; recipientId: string; poolGroupId: string; method: string; by: string; force: boolean; reason: string; body: Record<string, unknown> };
 async function asked(req: Request, needRecipient: boolean): Promise<Asked | Response> {
   const body = (await req.json().catch(() => null)) as Record<string, unknown> | null;
   if (!body || typeof body !== "object") return refuse(400, "VALIDATION_ERROR", "Body must be a JSON object");
@@ -60,8 +71,14 @@ async function asked(req: Request, needRecipient: boolean): Promise<Asked | Resp
   if (needRecipient && !recipientId) return refuse(400, "VALIDATION_ERROR", "recipient_id is required");
   return {
     kind, period, range, recipientId, poolGroupId: text(body.pool_group_id, 64), method: text(body.method, 20), by: text(body.by, 120) || "Delta finance", force: body.force === true,
-    reason: text(body.reason, 300),
+    reason: text(body.reason, 300), body,
   };
+}
+/** The body of a call that names no period (2026-11-13): a stop, a resume, an adjustment taken off. */
+async function bodyOf(req: Request): Promise<Record<string, unknown> | Response> {
+  const body = (await req.json().catch(() => null)) as Record<string, unknown> | null;
+  if (!body || typeof body !== "object") return refuse(400, "VALIDATION_ERROR", "Body must be a JSON object");
+  return body;
 }
 
 const inRange = (c: any, range: { start: Date; end: Date }) => {
@@ -106,8 +123,12 @@ async function splitAll(pools: Pool[], period: string, by: string) {
   for (const g of pools) {
     const r = await splitPool(g.group_id, g.method, period, { id: FINANCE_ID, name: `${by} (Delta finance)` });
     if ("error" in r) return r;
+    // Every member's counting stopped (2026-11-13): the pool was left as it is — not one of those split.
+    if (!r.distributed) continue;
     done.push({ group_id: r.group_id, method: r.method, pool_total: cents(r.pool_total), members: r.members, share_each: cents(r.share_each),
-      shares: r.breakdown.map((b) => ({ id: b.member_id, name: b.member, share_usd: cents(b.share) })) });
+      shares: r.breakdown.map((b) => ({ id: b.member_id, name: b.member, share_usd: cents(b.share) })),
+      // Members left out because their counting is stopped, with what each would have had — paid to nobody (2026-11-13).
+      stopped: (r.stopped ?? []).map((b) => ({ id: b.member_id, name: b.member, share_usd: cents(b.share) })) });
   }
   return done;
 }
@@ -141,17 +162,28 @@ export async function handleFinanceCsCommission(req: Request): Promise<Response>
   if (refused) return refused;
   const a = await asked(req, false);
   if (a instanceof Response) return a;
-  const [credits, approvals, idx, pools] = await Promise.all([
+  const [credits, approvals, idx, pools, stops, adjustments] = await Promise.all([
     creditsOf(a.kind, a.range),
     col("commission_period_approvals").find({ kind: a.kind, period: a.period }).toArray() as Promise<any[]>,
     teamIndex(),
     poolsOf(a.kind, a.range),
+    stoppedNow(),
+    adjustmentRows({ kind: a.kind, period: a.period }),
   ]);
   const approvalOf = new Map(approvals.map((r) => [String(r.recipient_id), r]));
   const byPerson = new Map<string, any[]>();
   for (const c of credits) byPerson.set(String(c.recipient_id), [...(byPerson.get(String(c.recipient_id)) ?? []), c]);
   // A pool's members with nothing of their own yet are listed too — with their share of it.
   for (const g of pools) for (const id of g.members.keys()) if (!byPerson.has(id)) byPerson.set(id, []);
+  // …and so is someone with only an addition or deduction for the period (2026-11-13).
+  const adjustmentsOf = new Map<string, any[]>();
+  for (const r of adjustments) {
+    const id = String(r.recipient_id ?? "");
+    adjustmentsOf.set(id, [...(adjustmentsOf.get(id) ?? []), r]);
+    if (id && !byPerson.has(id)) byPerson.set(id, []);
+  }
+  // A member whose counting is stopped has no share of a pool split now (2026-11-13): shown as Distribute would pay it.
+  const share = (g: Pool, memberId: string) => (stops.has(memberId) ? 0 : shareOf(g, memberId));
   const poolCredit = (c: any) => ({
     id: String(c._id), date: String(c.requested_at || c.created_date || ""), student: String(c.student_name ?? ""),
     method: String(c.method), level: Number(c.level) || 0, position: String(c.position ?? ""), percentage: Number(c.percentage) || 0,
@@ -169,10 +201,10 @@ export async function handleFinanceCsCommission(req: Request): Promise<Response>
       location: who.location,
       total_usd: cents(mine.reduce((t, c) => t + (Number(c.commission_usd) || 0), 0)),
       // Their share of each pool not split yet — what Distribute would pay them now (2026-11-07).
-      pool_usd: cents(theirPools.reduce((t, g) => t + shareOf(g, id), 0)),
+      pool_usd: cents(theirPools.reduce((t, g) => t + share(g, id), 0)),
       pool: theirPools.map((g) => ({
         group_id: g.group_id, group_name: g.group_name, method: g.method, total_usd: cents(g.total_usd),
-        members: [...g.members].map(([mid, name]) => ({ id: mid, name, share_usd: cents(shareOf(g, mid)) })), share_usd: cents(shareOf(g, id)),
+        members: [...g.members].map(([mid, name]) => ({ id: mid, name, share_usd: cents(share(g, mid)) })), share_usd: cents(share(g, id)),
         credits: g.accruals.sort((x, y) => String(x.requested_at || x.created_date).localeCompare(String(y.requested_at || y.created_date))).map(poolCredit),
       })),
       credits: mine
@@ -188,6 +220,10 @@ export async function handleFinanceCsCommission(req: Request): Promise<Response>
           from_pool: c.from_pool === true,
         })),
       approval: approvalView(approvalOf.get(id)),
+      // Their counting stopped by finance — when, by whom, why — or null; and what finance added or deducted for this
+      // period (2026-11-13).
+      stopped: stops.get(id) ?? null,
+      adjustments: (adjustmentsOf.get(id) ?? []).map(adjustmentView),
     });
   }
   people.sort((x, y) => y.total_usd + y.pool_usd - (x.total_usd + x.pool_usd));
@@ -195,7 +231,7 @@ export async function handleFinanceCsCommission(req: Request): Promise<Response>
   for (const g of pools) {
     pools_out.push({
       group_id: g.group_id, group_name: g.group_name, method: g.method, total_usd: cents(g.total_usd), share_usd: cents(g.total_usd / g.members.size),
-      members: await Promise.all([...g.members].map(async ([mid, name]) => ({ id: mid, name: (await person(mid, idx)).name || name, location: await locationOfUser(mid, idx), share_usd: cents(shareOf(g, mid)) }))),
+      members: await Promise.all([...g.members].map(async ([mid, name]) => ({ id: mid, name: (await person(mid, idx)).name || name, location: await locationOfUser(mid, idx), share_usd: cents(share(g, mid)) }))),
     });
   }
   return ok({ kind: a.kind, period: a.period, ended: Date.now() >= a.range.end.getTime(), people, pools: pools_out });
@@ -206,18 +242,25 @@ export async function handleFinanceCsCommissionApprove(req: Request): Promise<Re
   if (refused) return refused;
   const a = await asked(req, true);
   if (a instanceof Response) return a;
-  if (Date.now() < a.range.end.getTime()) return refuse(409, "PERIOD_OPEN", "This period is still open — approvals start after it ends.");
+  // A period still running (2026-11-13): only for someone whose counting finance has stopped — nothing more is coming
+  // for them, so what they have can be approved and paid now. Anyone else's waits for the period to end, as before.
+  const stopped = await stopOf(a.recipientId);
+  if (Date.now() < a.range.end.getTime() && !stopped) return refuse(409, "PERIOD_OPEN", "This period is still running — stop counting their commission first");
   const coll = col("commission_period_approvals");
   let record: any = await coll.findOne({ kind: a.kind, period: a.period, recipient_id: a.recipientId });
   let mine = await creditsOf(a.kind, a.range, a.recipientId);
-  // The Senior/Junior pools they are in, not split yet (2026-11-07): split once this approval goes ahead.
-  const theirPools = (await poolsOf(a.kind, a.range)).filter((g) => g.members.has(a.recipientId));
+  // The Senior/Junior pools they are in, not split yet (2026-11-07): split once this approval goes ahead. Someone
+  // stopped has no share of a pool (2026-11-13): theirs are left alone, for the others.
+  const theirPools = stopped ? [] : (await poolsOf(a.kind, a.range)).filter((g) => g.members.has(a.recipientId));
   const who = await person(a.recipientId, await teamIndex());
+  const adjustments = (await adjustmentRows({ kind: a.kind, period: a.period, recipient_id: a.recipientId })).map(adjustmentView);
   const answer = (already: boolean, override = false) => ok({
     already, total_usd: cents(mine.reduce((t, c) => t + (Number(c.commission_usd) || 0), 0)), credit_ids: mine.map((c) => String(c._id)),
     name: who.name || String(mine[0]?.recipient_name ?? ""), email: who.email, location: who.location,
     /** Released by Delta finance before the broker admin and academic head (2026-11-06). */
     finance_override: override,
+    /** What finance added or deducted for this period, and their stop if their counting is stopped (2026-11-13). */
+    adjustments, stopped,
   });
   // Released already — by a Super Admin here, or an earlier approval whose answer finance never got: finance pays it.
   if (record?.overall_status === "released") return answer(true, record.finance_override === true);
@@ -304,4 +347,87 @@ export async function handleFinanceCsCommissionUnapprove(req: Request): Promise<
     { $set: { status: "accrued", updated_date: now }, $unset: { released_at: "", released_by_id: "", released_by_name: "" } },
   );
   return ok({ undone: true, overall_status: backTo, credits: back.modifiedCount });
+}
+
+/* ── Counting stopped, and additions / deductions (the user, 2026-11-13 — finance/commissionStops.ts) ── */
+
+const MAX_ADJUSTMENT_MINOR = 100_000_000;
+const byOf = (body: Record<string, unknown>) => text(body.by, 120) || "Delta finance";
+/** Someone finance can name: a user here, or — removed since — whoever commission credits are still in the name of. */
+async function known(id: string): Promise<boolean> {
+  const oid = toObjectId(id);
+  if (oid && (await col("users").findOne({ _id: oid as any }, { projection: { _id: 1 } }))) return true;
+  return !!(await col("commission_credits").findOne({ recipient_id: id }, { projection: { _id: 1 } }));
+}
+/** Released already: its additions and deductions are what was paid — changed only once the approval is taken back. */
+const locked = async (kind: string, period: string, recipientId: string) =>
+  (await col("commission_period_approvals").findOne({ kind, period, recipient_id: recipientId }, { projection: { overall_status: 1 } }))?.overall_status === "released";
+const LOCKED = () => refuse(409, "LOCKED", "approved already — take the approval back first");
+
+/** Finance stops counting someone's commission from now, saying why — until it resumes it. */
+export async function handleFinanceCsCommissionStop(req: Request): Promise<Response> {
+  const refused = guard(req);
+  if (refused) return refused;
+  const body = await bodyOf(req);
+  if (body instanceof Response) return body;
+  const recipientId = text(body.recipient_id, 64), reason = text(body.reason, 300), by = byOf(body);
+  if (!recipientId) return refuse(400, "VALIDATION_ERROR", "recipient_id is required");
+  if (reason.length < 3) return refuse(400, "VALIDATION_ERROR", "Say why their commission is stopped (at least 3 characters).");
+  if (!(await known(recipientId))) return refuse(404, "NOT_FOUND", "Nobody with this id in the CS Portal.");
+  // Stopped already: the stop that holds, nothing new written.
+  const current = await stopOf(recipientId);
+  if (current) return ok({ stopped: current, already: true });
+  const now = new Date().toISOString();
+  await col("commission_stops").insertOne({ recipient_id: recipientId, stopped_at: now, stopped_by: by, reason, resumed_at: null, resumed_by: "" });
+  return ok({ stopped: { at: now, by, reason } });
+}
+
+/** …and counts it again from now. What was not credited meanwhile stays not credited. */
+export async function handleFinanceCsCommissionResume(req: Request): Promise<Response> {
+  const refused = guard(req);
+  if (refused) return refused;
+  const body = await bodyOf(req);
+  if (body instanceof Response) return body;
+  const recipientId = text(body.recipient_id, 64);
+  if (!recipientId) return refuse(400, "VALIDATION_ERROR", "recipient_id is required");
+  const r = await col("commission_stops").updateMany({ recipient_id: recipientId, resumed_at: null }, { $set: { resumed_at: new Date().toISOString(), resumed_by: byOf(body) } });
+  return ok({ resumed: r.modifiedCount > 0 });
+}
+
+/** An amount finance adds to, or deducts from, someone's bonus month or deposit quarter — before it is approved. */
+export async function handleFinanceCsCommissionAdjustmentAdd(req: Request): Promise<Response> {
+  const refused = guard(req);
+  if (refused) return refused;
+  const a = await asked(req, true);
+  if (a instanceof Response) return a;
+  const type = text(a.body.type, 20), currency = text(a.body.currency, 5), amount = a.body.amount_minor;
+  if (type !== "addition" && type !== "deduction") return refuse(400, "VALIDATION_ERROR", "type is addition or deduction");
+  if (typeof amount !== "number" || !Number.isInteger(amount) || amount < 1 || amount > MAX_ADJUSTMENT_MINOR) {
+    return refuse(400, "VALIDATION_ERROR", "amount_minor is a whole number of minor units, from 1 to 100,000,000");
+  }
+  if (currency !== "AED" && currency !== "INR") return refuse(400, "VALIDATION_ERROR", "currency is AED or INR");
+  if (a.reason.length < 3) return refuse(400, "VALIDATION_ERROR", "Say what it is for (at least 3 characters).");
+  if (!(await known(a.recipientId))) return refuse(404, "NOT_FOUND", "Nobody with this id in the CS Portal.");
+  if (await locked(a.kind, a.period, a.recipientId)) return LOCKED();
+  const doc = {
+    kind: a.kind, period: a.period, recipient_id: a.recipientId, type, amount_minor: amount, currency, reason: a.reason, by: a.by,
+    at: new Date().toISOString(), removed_at: null, removed_by: "",
+  };
+  const _id = (await col("commission_adjustments").insertOne(doc)).insertedId;
+  return ok({ adjustment: { ...adjustmentView({ ...doc, _id }), kind: a.kind, period: a.period, recipient_id: a.recipientId } });
+}
+
+/** …taken off again: kept, marked removed, no longer listed. */
+export async function handleFinanceCsCommissionAdjustmentRemove(req: Request): Promise<Response> {
+  const refused = guard(req);
+  if (refused) return refused;
+  const body = await bodyOf(req);
+  if (body instanceof Response) return body;
+  const oid = toObjectId(text(body.id, 64));
+  const coll = col("commission_adjustments");
+  const row: any = oid ? await coll.findOne({ _id: oid as any, removed_at: null }) : null;
+  if (!row) return refuse(404, "NOT_FOUND", "No such addition or deduction.");
+  if (await locked(String(row.kind), String(row.period), String(row.recipient_id))) return LOCKED();
+  await coll.updateOne({ _id: row._id }, { $set: { removed_at: new Date().toISOString(), removed_by: byOf(body) } });
+  return ok({ removed: true });
 }

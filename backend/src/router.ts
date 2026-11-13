@@ -10,7 +10,10 @@ import { handleFinanceStudentLookup } from "./finance/studentLookup";
 import { handleFundingDecision } from "./finance/funding";
 import { handleFinanceFundingDeleted } from "./finance/fundingDelete";
 import { handleFeeUpdate } from "./finance/feeUpdates";
-import { handleFinanceCsCommission, handleFinanceCsCommissionApprove, handleFinanceCsCommissionSplitPool, handleFinanceCsCommissionUnapprove } from "./finance/csCommission";
+import {
+  handleFinanceCsCommission, handleFinanceCsCommissionApprove, handleFinanceCsCommissionSplitPool, handleFinanceCsCommissionUnapprove,
+  handleFinanceCsCommissionStop, handleFinanceCsCommissionResume, handleFinanceCsCommissionAdjustmentAdd, handleFinanceCsCommissionAdjustmentRemove,
+} from "./finance/csCommission";
 import { handleReceiptFile } from "./finance/receiptFile";
 import { handleLmsStudents } from "./lms/students";
 import { handleLmsStudentCs } from "./lms/studentCs";
@@ -96,6 +99,11 @@ export async function route(req: Request): Promise<Response> {
   if (path === "/api/v1/integrations/finance/cs-commission/approve" && req.method === "POST") return handleFinanceCsCommissionApprove(req);
   if (path === "/api/v1/integrations/finance/cs-commission/unapprove" && req.method === "POST") return handleFinanceCsCommissionUnapprove(req);
   if (path === "/api/v1/integrations/finance/cs-commission/split-pool" && req.method === "POST") return handleFinanceCsCommissionSplitPool(req);
+  // …someone's commission counting stopped and resumed, and amounts added or deducted on a period (2026-11-13).
+  if (path === "/api/v1/integrations/finance/cs-commission/stop" && req.method === "POST") return handleFinanceCsCommissionStop(req);
+  if (path === "/api/v1/integrations/finance/cs-commission/resume" && req.method === "POST") return handleFinanceCsCommissionResume(req);
+  if (path === "/api/v1/integrations/finance/cs-commission/adjustments/add" && req.method === "POST") return handleFinanceCsCommissionAdjustmentAdd(req);
+  if (path === "/api/v1/integrations/finance/cs-commission/adjustments/remove" && req.method === "POST") return handleFinanceCsCommissionAdjustmentRemove(req);
   // ---- The Delta LMS sending every other new student (its own shared secret) ----
   if (path === "/api/v1/integrations/lms/students" && req.method === "POST") return handleLmsStudents(req);
   // ---- …and asking, now, who looks after one of them (the same secret) ----

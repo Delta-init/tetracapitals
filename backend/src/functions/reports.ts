@@ -8,6 +8,7 @@ import { loadTeams, type TeamIndex } from "../students/teams";
 import { notSentOf, stageWithPayment } from "../students/bonusPending";
 import { owedSalesCredits } from "../students/salesBonusPaid";
 import { csManagerReach } from "../lib/userLocation";
+import { adjustmentRows, adjustmentView } from "../finance/commissionStops";
 
 /* ────────────────────────────────────────────────────────────────────────────
    The Reports section (the user, 2026-10-11): each report added up here, for
@@ -348,11 +349,24 @@ export async function getBonusReport(req: Request, user: AuthUser): Promise<Resp
   return json({ ...meta(ctx), ...g.out("usd") });
 }
 
+/** A bonus month ("2026-11") or deposit quarter ("2026-Q4") as [since, until) in UTC ms — UAE calendar days, as the report's own period. */
+const periodMs = (period: string): [number, number] | null => {
+  const m = /^(\d{4})-(?:(0[1-9]|1[0-2])|Q([1-4]))$/.exec(period);
+  if (!m) return null;
+  const first = m[2] ? +m[2] - 1 : (+m[3] - 1) * 3;
+  return [Date.UTC(+m[1], first, 1) - UAE_OFFSET_MS, Date.UTC(+m[1], first + (m[2] ? 1 : 3), 1) - UAE_OFFSET_MS];
+};
+
 /**
  * POST /api/functions/getCommissionReport { period, … } (the user, 2026-11-09: "everyone's commission and the breakdown")
  * Every commission credit (commission_credits) in the period — by the person it is paid to, their team and the month
  * the payment was raised: own (their position's level) vs pool share (Senior / Junior pools), bonus vs deposit, how
  * many credits and students. Every number opens the credits behind it.
+ *
+ * With it, what Delta finance has done to the commission of the people shown (the user, 2026-11-13 —
+ * finance/commissionStops.ts), so each knows why their figure differs: `stopped` — whose counting is stopped, or was at
+ * some time in the period — and `adjustments` — the amounts finance added or deducted on a bonus month or deposit
+ * quarter the period touches. Read only, and never added into the figures: those stay the credits, in USD.
  */
 const LEADERS = new Set(["chief_mentor", "cs_manager", "super_admin", "admin"]);
 export async function getCommissionReport(req: Request, user: AuthUser): Promise<Response> {
@@ -365,6 +379,7 @@ export async function getCommissionReport(req: Request, user: AuthUser): Promise
     percentage: 1, base_amount: 1, tag: 1, txn_id: 1, student_id: 1, student_name: 1, initiator_name: 1, plan_name: 1, requested_at: 1, created_date: 1, status: 1,
   } }).toArray()) as any[];
   const teamView = !!ctx.reach && !ctx.lockedLocation;
+  const leaderOf = (p: Person) => teamView && p.id !== user.id && LEADERS.has(String(ctx.index.userById.get(p.id)?.app_role ?? ""));
   const blank = () => ({ count: 0, usd: 0, own: 0, own_usd: 0, pool: 0, pool_usd: 0, bonus: 0, bonus_usd: 0, deposit: 0, deposit_usd: 0, students: 0 });
   const g = grouper(blank, pick);
   const studentsOf = new Map<string, Set<string>>();
@@ -374,7 +389,7 @@ export async function getCommissionReport(req: Request, user: AuthUser): Promise
     const p = personOf(ctx, String(c.recipient_id ?? ""), c.recipient_name);
     if (!counts(ctx, p)) continue;
     // A team's view (a Chief's or a mentor's): not their leaders' commission — a Chief's, a CS Manager's — only their own.
-    if (teamView && p.id !== user.id && LEADERS.has(String(ctx.index.userById.get(p.id)?.app_role ?? ""))) continue;
+    if (leaderOf(p)) continue;
     const usd = Number(c.commission_usd) || 0;
     const seen = studentsOf.get(p.id) ?? new Set<string>();
     const fresh = c.student_id && !seen.has(String(c.student_id)) ? 1 : 0;
@@ -391,7 +406,25 @@ export async function getCommissionReport(req: Request, user: AuthUser): Promise
     }));
   }
   if (pick) return json({ details: await g.details() });
-  return json({ ...meta(ctx), ...g.out("usd") });
+  // Finance's stops and additions / deductions (2026-11-13) — of the same people whose commission this person sees.
+  const seen = (id: unknown): Person | null => {
+    const p = personOf(ctx, String(id ?? ""));
+    return p.id && counts(ctx, p) && !leaderOf(p) ? p : null;
+  };
+  const stopped = [];
+  for (const s of (await col("commission_stops").find({}).sort({ stopped_at: -1 }).toArray()) as any[]) {
+    const p = seen(s.recipient_id);
+    // Stopped now, or at some time in the period.
+    if (!p || !(when(s.stopped_at) < ctx.until) || (s.resumed_at && when(s.resumed_at) < ctx.since)) continue;
+    stopped.push({ recipient_id: p.id, name: p.name, at: String(s.stopped_at ?? ""), by: String(s.stopped_by ?? ""), reason: String(s.reason ?? ""), resumed_at: s.resumed_at ? String(s.resumed_at) : null });
+  }
+  const adjustments = [];
+  for (const a of await adjustmentRows()) {
+    const p = seen(a.recipient_id), range = periodMs(String(a.period ?? ""));
+    if (!p || !range || range[0] >= ctx.until || range[1] <= ctx.since) continue;
+    adjustments.push({ ...adjustmentView(a), recipient_id: p.id, name: p.name, kind: String(a.kind ?? ""), period: String(a.period ?? "") });
+  }
+  return json({ ...meta(ctx), ...g.out("usd"), stopped, adjustments });
 }
 
 /** POST /api/functions/getReportFilters — the teams and people this person can filter by. */
