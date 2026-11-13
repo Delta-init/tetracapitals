@@ -15,8 +15,10 @@
  *   7. counting stopped, and additions / deductions (2026-11-13): finance stops someone with a reason — a new credit
  *      skips them, as the initiator and as an up-line, the others still get theirs; resumed, credited again; a month
  *      still running approved only for someone stopped; an amount added or deducted is listed (someone with nothing
- *      else too), comes back with the approval, is fixed once released; a stopped pool member gets no share, a pool
- *      whose members are all stopped is left unsplit; the person's own Commission report shows the stop and the amounts.
+ *      else too), comes back with the approval, is fixed once released; a stopped pool member keeps what their position
+ *      put into the pool before the stop — listed, paid out on its own when they are approved (the rest left pooled),
+ *      never twice — and only what is written for them from the stop on goes to nobody; the person's own Commission
+ *      report shows the stop and the amounts.
  */
 import bcrypt from "bcryptjs";
 import { MongoClient, ObjectId } from "mongodb";
@@ -367,35 +369,104 @@ check("…taken off again, or one that never was: 404", (await post("adjustments
 r = await list("bonus", thisMonth);
 check("…the list: only the deduction left", row(stella)?.adjustments.length === 1 && row(stella).adjustments[0].id === adj2.id && row(stella).adjustments[0].type === "deduction", JSON.stringify(row(stella)?.adjustments));
 
-// A stopped member of a Senior/Junior pool.
-await db.collection("commission_credits").insertMany([
-  pooled(jay, "bonus_with", 10, "2026-06-05"), pooled(sam, "bonus_with", 5, "2026-06-05"),
-  pooled(jay, "bonus_with", 10, "2026-05-05"), pooled(sam, "bonus_with", 5, "2026-05-05"),
+// A stopped member of a Senior/Junior pool ("stop counting from now"): what their position put in before the stop stays
+// theirs; only what is written to the pool for them from the stop on goes to nobody.
+const credits = db.collection("commission_credits");
+const minutesAgo = (m: number) => new Date(Date.now() - m * 60_000).toISOString();
+// An accrual of the running month's pool, written at `written`.
+const pooledNow = (who: any, usd: number, written: string) => ({ ...pooled(who, "bonus_with", usd, "2026-01-01"), requested_at: written, created_date: written });
+// A past month's accrual written only now — its bonus credited late.
+const pooledLate = (who: any, usd: number, day: string) => ({ ...pooled(who, "bonus_with", usd, day), created_date: new Date().toISOString() });
+const poolShares = (who: any, period: string) => credits.find({ recipient_id: String(who._id), from_pool: true, pool_period: period }).toArray();
+const accruals = (who: any, from: string, to: string) => credits.find({ recipient_id: String(who._id), is_pool: true, method: "bonus_with", requested_at: { $gte: from, $lt: to } }).sort({ commission_usd: -1 }).toArray();
+const monthStart = minutesAgo(30), monthEnd = "9999";
+const forceApprove = (who: any, period: string) =>
+  call("POST", "/api/v1/integrations/finance/cs-commission/approve", { kind: "bonus", period, recipient_id: String(who._id), by: "Mona Manager", force: true, reason: "Paid with his settlement" }, asFinance);
+await credits.insertMany([
+  pooledNow(jay, 10, minutesAgo(5)), pooledNow(sam, 5, minutesAgo(5)),
+  { ...credit(sam, "bonus_with", 7, "2026-01-01"), requested_at: minutesAgo(5), created_date: minutesAgo(5) },
 ]);
-await post("stop", { recipient_id: String(sam._id), reason: "On notice" });
+r = await post("stop", { recipient_id: String(sam._id), reason: "On notice" });
+const samStoppedAt = r.body?.data?.stopped?.at;
+await credits.insertMany([pooledNow(jay, 4, new Date().toISOString()), pooledNow(sam, 3, new Date().toISOString())]);
+r = await list("bonus", thisMonth);
+check("the running month's pool, Sam stopped part-way: his share is the 5 from before the stop — not 0, not 8; Jay's 14; the pool the whole 22",
+  row(sam)?.total_usd === 7 && row(sam).pool_usd === 5 && row(sam).stopped?.at === samStoppedAt && row(sam).pool.length === 1 && row(sam).pool[0].total_usd === 22 && row(sam).pool[0].share_usd === 5
+  && row(sam).pool[0].members.find((m: any) => m.name === "Senior Sam")?.share_usd === 5 && row(sam).pool[0].members.find((m: any) => m.name === "Junior Jay")?.share_usd === 14
+  && row(jay)?.pool_usd === 14 && r.body.data.pools.length === 1 && r.body.data.pools[0].total_usd === 22
+  && r.body.data.pools[0].members.map((m: any) => m.share_usd).sort((x: number, y: number) => x - y).join(",") === "5,14", JSON.stringify([row(sam), r.body?.data?.pools]));
+r = await split({ period: thisMonth });
+check("…the month still runs: its pool is not split, stop or no stop", r.status === 409 && r.body?.error?.code === "PERIOD_OPEN", show(r));
+r = await forceApprove(sam, thisMonth);
+let samPaid = await poolShares(sam, thisMonth);
+let samRows = await accruals(sam, monthStart, monthEnd);
+const jayRows = await accruals(jay, monthStart, monthEnd);
+check("Sam approved in the running month: his own 7 and his 5 from the pool — 12, two credits", r.status === 200 && r.body.data.already === false && r.body.data.total_usd === 12
+  && r.body.data.credit_ids.length === 2 && r.body.data.stopped?.at === samStoppedAt, show(r));
+check("…the 5 paid out of the pool as his own credit, released by Delta finance", samPaid.length === 1 && samPaid[0].commission_usd === 5 && samPaid[0].status === "released"
+  && samPaid[0].released_by_id === "delta-finance" && samPaid[0].is_pool === false && r.body.data.credit_ids.includes(String(samPaid[0]._id)), JSON.stringify(samPaid));
+check("…only his accrual from before the stop taken out of the pool; the one after it, and Jay's two, still pooled — nothing paid to Jay",
+  samRows.length === 2 && samRows[0].commission_usd === 5 && samRows[0].status === "distributed" && samRows[0].distributed_by_id === "delta-finance" && !samRows[0].stopped_no_share
+  && samRows[1].commission_usd === 3 && samRows[1].status === "pooled" && jayRows.length === 2 && jayRows.every((c) => c.status === "pooled")
+  && !(await poolShares(jay, thisMonth)).length, JSON.stringify([samRows.map((c) => [c.commission_usd, c.status]), jayRows.map((c) => [c.commission_usd, c.status])]));
+r = await list("bonus", thisMonth);
+check("…the list: Sam 12 of his own, nothing more to come from the pool; Jay's 14 still to come; 17 left in it", row(sam)?.total_usd === 12 && row(sam).credits.some((c: any) => c.from_pool === true && c.amount_usd === 5)
+  && row(sam).pool_usd === 0 && row(jay)?.pool_usd === 14 && r.body.data.pools[0].total_usd === 17, JSON.stringify([row(sam), r.body?.data?.pools]));
+r = await forceApprove(sam, thisMonth);
+check("approved again: already, 12 — no second pool share", r.status === 200 && r.body.data.already === true && r.body.data.total_usd === 12 && (await poolShares(sam, thisMonth)).length === 1, show(r));
+r = await unapprove(String(sam._id), thisMonth);
+samPaid = await poolShares(sam, thisMonth);
+samRows = await accruals(sam, monthStart, monthEnd);
+check("the approval taken back: both his credits accrued again — the pool share as any credit; it does not go back into the pool", r.status === 200 && r.body.data.undone === true && r.body.data.credits === 2
+  && samPaid.length === 1 && samPaid[0].status === "accrued" && !samPaid[0].released_by_id && samRows[0].status === "distributed" && samRows[1].status === "pooled", show(r));
+r = await forceApprove(sam, thisMonth);
+check("…approved once more: 12 again, still the one pool share", r.status === 200 && r.body.data.already === false && r.body.data.total_usd === 12 && r.body.data.credit_ids.length === 2
+  && (await poolShares(sam, thisMonth)).length === 1, show(r));
+
+// A month that is over: Sam approved first, the pool split afterwards.
+await credits.insertMany([pooled(jay, "bonus_with", 10, "2026-06-05"), pooled(sam, "bonus_with", 5, "2026-06-05"), pooledLate(sam, 3, "2026-06-20")]);
 r = await list("bonus", "2026-06");
-check("June's pool, Sam stopped: his share shown as 0 — what a split would pay him — Jay's 10; the pool still 15", row(sam)?.pool_usd === 0 && /notice/.test(row(sam).stopped?.reason ?? "")
-  && row(jay)?.pool_usd === 10 && row(jay).pool[0].total_usd === 15 && row(jay).pool[0].members.find((m: any) => m.name === "Senior Sam")?.share_usd === 0, JSON.stringify([row(sam), row(jay)?.pool]));
+check("June's pool: Sam's share the 5 written before his stop, not the 3 written after; Jay's 10; the pool 18", row(sam)?.pool_usd === 5 && row(jay)?.pool_usd === 10 && r.body.data.pools[0].total_usd === 18, JSON.stringify([row(sam), row(jay)]));
+r = await forceApprove(sam, "2026-06");
+check("Sam approved: his 5 from the pool released; Jay's share left pooled", r.status === 200 && r.body.data.total_usd === 5 && r.body.data.credit_ids.length === 1
+  && (await poolShares(sam, "2026-06")).length === 1 && !(await poolShares(jay, "2026-06")).length && (await accruals(jay, "2026-06", "2026-07"))[0].status === "pooled", show(r));
 r = await split({ period: "2026-06" });
-const juneShares = await db.collection("commission_credits").find({ from_pool: true, pool_period: "2026-06" }).toArray();
-const juneAccruals = await db.collection("commission_credits").find({ is_pool: true, requested_at: { $regex: "^2026-06" } }).toArray();
-check("…split: Jay his own 10, Sam no share — his 5 to nobody", r.status === 200 && r.body.data.split.length === 1 && r.body.data.split[0].pool_total === 15 && r.body.data.split[0].members === 1
-  && r.body.data.split[0].shares.length === 1 && r.body.data.split[0].shares[0].name === "Junior Jay" && r.body.data.split[0].shares[0].share_usd === 10
-  && r.body.data.split[0].stopped.length === 1 && r.body.data.split[0].stopped[0].share_usd === 5
-  && juneShares.length === 1 && juneShares[0].recipient_id === String(jay._id) && juneShares[0].commission_usd === 10, show(r));
-check("…the pool is finished: every accrual distributed, Sam's marked as paying nobody", juneAccruals.length === 2 && juneAccruals.every((c) => c.status === "distributed")
-  && juneAccruals.find((c) => c.recipient_id === String(sam._id))?.stopped_no_share === true && !juneAccruals.find((c) => c.recipient_id === String(jay._id))?.stopped_no_share);
-await post("stop", { recipient_id: String(jay._id), reason: "On notice" });
-r = await split({ period: "2026-05" });
-const mayPooled = () => db.collection("commission_credits").countDocuments({ is_pool: true, status: "pooled", requested_at: { $regex: "^2026-05" }, method: "bonus_with" });
-check("May's pool, both stopped: left unsplit", r.status === 200 && r.body.data.split.length === 0 && (await mayPooled()) === 2
-  && !(await db.collection("commission_credits").countDocuments({ from_pool: true, pool_period: "2026-05", method: "bonus_with" })), show(r));
+samPaid = await poolShares(sam, "2026-06");
+samRows = await accruals(sam, "2026-06", "2026-07");
+check("the split afterwards: Jay his 10 and nobody else — Sam's 3 from after the stop to nobody, his 5 not paid a second time",
+  r.status === 200 && r.body.data.split.length === 1 && r.body.data.split[0].pool_total === 13 && r.body.data.split[0].members === 1 && r.body.data.split[0].shares.length === 1
+  && r.body.data.split[0].shares[0].name === "Junior Jay" && r.body.data.split[0].shares[0].share_usd === 10 && r.body.data.split[0].stopped.length === 1
+  && r.body.data.split[0].stopped[0].name === "Senior Sam" && r.body.data.split[0].stopped[0].share_usd === 3
+  && samPaid.length === 1 && samPaid[0].commission_usd === 5 && samPaid[0].status === "released" && (await poolShares(jay, "2026-06")).length === 1, show(r));
+check("…the pool is finished: every accrual distributed, only Sam's from after the stop marked as paying nobody", samRows.length === 2 && samRows.every((c) => c.status === "distributed")
+  && !samRows[0].stopped_no_share && samRows[1].commission_usd === 3 && samRows[1].stopped_no_share === true && !(await accruals(jay, "2026-06", "2026-07"))[0].stopped_no_share,
+  JSON.stringify(samRows.map((c) => [c.commission_usd, c.status, c.stopped_no_share])));
+r = await split({ period: "2026-06" });
+check("…split again: nothing left, nothing paid", r.status === 200 && r.body.data.split.length === 0 && (await poolShares(sam, "2026-06")).length === 1 && (await poolShares(jay, "2026-06")).length === 1, show(r));
+
+// A split with no approval before it: the stopped member is paid what is his like anyone.
+await credits.insertMany([pooled(jay, "bonus_with", 10, "2026-05-05"), pooled(sam, "bonus_with", 5, "2026-05-05"), pooledLate(sam, 3, "2026-05-20")]);
 r = await dist({ pool_group_id: String(chief._id), period: "2026-05", method: "bonus_with" });
-check("…the CS Portal's Distribute the same, saying why", r.status === 200 && r.body?.distributed === 0 && /stopped/.test(r.body.reason ?? "") && (await mayPooled()) === 2, show(r));
-await post("resume", { recipient_id: String(jay._id) });
-r = await split({ period: "2026-05" });
-check("…Jay resumed: split now — his 10, Sam (still stopped) none", r.status === 200 && r.body.data.split.length === 1 && r.body.data.split[0].members === 1 && r.body.data.split[0].shares[0].share_usd === 10
-  && (await mayPooled()) === 0, show(r));
+samPaid = await poolShares(sam, "2026-05");
+samRows = await accruals(sam, "2026-05", "2026-06");
+check("May's pool split by the CS Portal's Distribute: Jay 10, Sam the 5 from before his stop — his 3 from after it to nobody", r.status === 200 && r.body?.pool_total === 18 && r.body.members === 2
+  && r.body.distributed === 2 && r.body.breakdown.map((x: any) => x.share).sort((x: number, y: number) => x - y).join(",") === "5,10"
+  && samPaid.length === 1 && samPaid[0].commission_usd === 5 && samPaid[0].status === "accrued"
+  && samRows.every((c) => c.status === "distributed") && !samRows[0].stopped_no_share && samRows[1].stopped_no_share === true, show(r));
+r = await forceApprove(sam, "2026-05");
+check("…approved afterwards: that 5, the one share — not paid again", r.status === 200 && r.body.data.total_usd === 5 && r.body.data.credit_ids.length === 1 && (await poolShares(sam, "2026-05")).length === 1, show(r));
+
+// A pool holding nothing but what was written for a stopped member after the stop.
+await credits.insertOne(pooledLate(sam, 2, "2026-04-10"));
+r = await split({ period: "2026-04" });
+const aprilPooled = () => credits.countDocuments({ is_pool: true, status: "pooled", method: "bonus_with", requested_at: { $regex: "^2026-04" } });
+check("April's pool, only an accrual from after Sam's stop: left unsplit, nobody paid", r.status === 200 && r.body.data.split.length === 0 && (await aprilPooled()) === 1 && !(await poolShares(sam, "2026-04")).length, show(r));
+r = await dist({ pool_group_id: String(chief._id), period: "2026-04", method: "bonus_with" });
+check("…the CS Portal's Distribute the same, saying why", r.status === 200 && r.body?.distributed === 0 && /stopped/.test(r.body.reason ?? "") && (await aprilPooled()) === 1, show(r));
+r = await list("bonus", "2026-04");
+const noShare = await forceApprove(sam, "2026-04");
+check("…listed with a share of 0, and nothing of his to approve", row(sam)?.pool_usd === 0 && row(sam).pool[0].total_usd === 2 && noShare.status === 409 && noShare.body?.error?.code === "NOTHING_TO_APPROVE"
+  && (await aprilPooled()) === 1, `${JSON.stringify(row(sam))} ${show(noShare)}`);
 await post("resume", { recipient_id: String(sam._id) });
 
 // The person's own page: the Commission report (functions/reports.ts).

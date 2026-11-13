@@ -8,9 +8,14 @@ import { col } from "../db";
 
    A stop — commission_stops { recipient_id, stopped_at, stopped_by, reason, resumed_at: null | ISO, resumed_by } —
    holds while resumed_at is null. While it holds that person is credited nothing more: no credit of their own and none
-   as someone's up-line (functions/creditCommission.ts), and no share of a Senior/Junior pool split meanwhile
-   (functions/distributeDepositPool.ts). What they would have had goes to nobody — everyone else gets what they would
-   have got anyway. Finance may then approve and pay their month while it is still running.
+   as someone's up-line (functions/creditCommission.ts). What they would have had goes to nobody — everyone else gets
+   what they would have got anyway. Finance may then approve and pay their month while it is still running.
+
+   A Senior/Junior pool (the user, 2026-11-13: "stop counting from now" — what was earned before stays theirs): the pool
+   accrues as before, each accrual in the name of who held the position. What a stopped member's position put in before
+   the stop — their accruals written (created_date) before stopped_at — is still their share, paid like anyone's when
+   the pool is split, or on its own when finance approves them (functions/distributeDepositPool.ts). Only their accruals
+   written from the stop on are theirs no longer: those are paid to nobody (afterStop, below).
 
    An addition or deduction — commission_adjustments { kind, period, recipient_id, type, amount_minor, currency,
    reason, by, at } — is an amount in AED or INR (minor units) on someone's bonus month or deposit quarter. Finance
@@ -28,6 +33,11 @@ export async function stoppedNow(ids?: string[]): Promise<Map<string, Stop>> {
   for (const r of rows) if (r.recipient_id && !out.has(String(r.recipient_id))) out.set(String(r.recipient_id), stopView(r));
   return out;
 }
+/** A pool accrual its holder has no share of: written at or after their stop. One with no date they keep. */
+export const afterStop = (accrual: any, stops: Map<string, Stop>): boolean => {
+  const stop = stops.get(String(accrual?.recipient_id ?? ""));
+  return !!stop && Date.parse(String(accrual?.created_date ?? "")) >= Date.parse(stop.at);
+};
 /** One person's stop, or null when their commission is being counted. */
 export const stopOf = async (recipientId: string): Promise<Stop | null> => (await stoppedNow([recipientId])).get(recipientId) ?? null;
 
