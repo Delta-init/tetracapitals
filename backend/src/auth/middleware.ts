@@ -3,7 +3,7 @@ import { verifyJwt } from "./jwt";
 import { serialize } from "../lib/id";
 import { toObjectId } from "../lib/id";
 import { getDownlineIds } from "../lib/scope";
-import { csManagerReach } from "../lib/userLocation";
+import { csManagerReach, locationOfUser } from "../lib/userLocation";
 
 export interface AuthUser {
   id: string;
@@ -51,12 +51,14 @@ export async function getAuthUser(req: Request): Promise<AuthUser | null> {
     const targetOid = toObjectId(impersonateId);
     if (targetOid) {
       const targetDoc = await col("users").findOne({ _id: targetOid });
-      // A CS Manager views as any active CS, in any team (the user, 2026-10-09); a Chief only their own team's.
+      // A CS Manager views as any active CS, in any team (the user, 2026-10-09); a Chief too, since 2026-11-13 (before,
+      // only their own team's) — their own team's always, any other CS of their own location.
       const isCs = (targetDoc as any)?.app_role === "cs" && (targetDoc as any)?.status !== "inactive";
       // …their own location's only (2026-10-14: Dubai's CS Manager never Bangalore's CSs).
       const teamCs = leads && isCs && (realUser.app_role === "cs_manager"
         ? !!(await csManagerReach(realUser))?.ids.includes(impersonateId)
-        : (await getDownlineIds(realUser.id)).includes(impersonateId));
+        : (await getDownlineIds(realUser.id)).includes(impersonateId)
+          || (await locationOfUser(realUser.id)) === (await locationOfUser(impersonateId)));
       // Anybody but a Super Admin — the Personnel page never offers one, and the server doesn't take one either.
       if (targetDoc && (targetDoc as any).app_role !== "super_admin" && (!leads || teamCs)) {
         const { password_hash: _pw, ...targetSafe } = targetDoc as any;

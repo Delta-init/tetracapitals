@@ -17,27 +17,19 @@ import { addressRe } from "./meetingOutcomes";
                 meeting is booked then with the same mentor (the LMS invites);
                 this one is cancelled in the LMS silently, so its mentor gets no
                 "meeting done" window. The mentor is told here, in the bell.
-   Unanswered after 30 minutes: their location's CS Managers see it too (and
-   are told once). Only meetings that start after this first ran are asked
-   about. MEETING_STATUS_CHECKS=off keeps a server out of it.
+   Only the CS answers (2026-11-13): an unanswered one stays with them — CS
+   Managers no longer get other CSs' checks — and nobody viewing as a CS gets
+   theirs. Only meetings that start after this first ran are asked about. MEETING_STATUS_CHECKS=off keeps a server out of it.
 ──────────────────────────────────────────────────────────────────────────── */
 
 const C = "meeting_status_checks";
 const ASK_AFTER_MS = 10 * 60_000;
-const MANAGER_AFTER_MS = 30 * 60_000;
 const OPEN = ["asked", "asked_again"];
 const ADMINS = new Set(["super_admin", "admin"]);
 const str = (v: unknown, max = 2000) => String(v ?? "").trim().slice(0, max);
 const nowIso = () => new Date().toISOString();
 const dubaiDay = (t: number) => new Date(t + 4 * 3600_000).toISOString().slice(0, 10);
 const timeText = (iso: string) => new Date(iso).toLocaleString("en-GB", { weekday: "short", day: "numeric", month: "short", hour: "numeric", minute: "2-digit", hour12: true, timeZone: "Asia/Dubai" });
-
-async function csManagersOf(location: string): Promise<string[]> {
-  const managers = (await col("users").find({ app_role: "cs_manager", status: { $ne: "inactive" } }, { projection: { _id: 1 } }).toArray()) as any[];
-  const ids: string[] = [];
-  for (const m of managers) if ((await locationOfUser(String(m._id))) === location) ids.push(String(m._id));
-  return ids;
-}
 
 /** Meetings that started 10+ minutes ago and aren't asked about yet: asked now. Ongoing ones whose end + 10 has come: asked again. */
 async function tick(): Promise<void> {
@@ -78,12 +70,6 @@ async function tick(): Promise<void> {
     const r = await col(C).updateOne({ _id: d._id, status: "ongoing" }, { $set: { status: "asked_again", asked_at: nowIso(), manager_told_at: null } });
     if (r.modifiedCount) await notify(d.assignee_ids ?? [], { type: "meeting_status", title: `Meeting over? — ${d.student?.name || d.title}`, body: `Was the meeting with ${d.mentor?.name || "the mentor"} completed or cancelled?`, link: "/", tag: `meeting-status-${d._id}`, renotify: true });
   }
-  // Unanswered 30 minutes: the CS Managers of that location are told, once.
-  const late = new Date(now - MANAGER_AFTER_MS).toISOString();
-  for (const d of (await col(C).find({ status: { $in: OPEN }, asked_at: { $lte: late }, manager_told_at: { $in: [null, undefined] } } as any).limit(100).toArray()) as any[]) {
-    const r = await col(C).updateOne({ _id: d._id, manager_told_at: { $in: [null, undefined] } } as any, { $set: { manager_told_at: nowIso() } });
-    if (r.modifiedCount) await notify(await csManagersOf(d.area ?? "dubai"), { type: "meeting_status", title: `Meeting status not given — ${d.student?.name || d.title}`, body: `${d.student?.cs_name || "The CS"} hasn't said what became of the meeting with ${d.mentor?.name || "the mentor"} at ${timeText(d.starts_at)}.`, link: "/", tag: `meeting-status-${d._id}` });
-  }
 }
 
 export function startMeetingStatusWorker(): void {
@@ -91,13 +77,8 @@ export function startMeetingStatusWorker(): void {
   setInterval(() => void tick().catch((err) => console.error("[meeting-status] run failed", err instanceof Error ? err.message : err)), 60_000);
 }
 
-const isManager = (user: AuthUser) => ADMINS.has(user.app_role) || user.app_role === "cs_manager";
-/** Whose open checks this person answers: theirs, and a CS Manager their location's unanswered 30 minutes. */
-async function mineFilter(user: AuthUser): Promise<Record<string, unknown>> {
-  const late = new Date(Date.now() - MANAGER_AFTER_MS).toISOString();
-  if (user.app_role === "cs_manager") return { $or: [{ assignee_ids: user.id }, { area: await locationOfUser(user.id), asked_at: { $lte: late } }] };
-  return { assignee_ids: user.id };
-}
+/** Whose open checks this person answers: only their own (a CS Manager too — only where they are the CS). */
+const mineFilter = (user: AuthUser): Record<string, unknown> => ({ assignee_ids: user.id });
 const out = (d: any) => ({
   id: String(d._id), status: d.status, title: d.title, category: d.category, starts_at: d.starts_at, ends_at: d.ends_at, duration_mins: d.duration_mins,
   in_person: d.in_person, location: d.location_text, mentor: d.mentor, student: d.student, attendees: d.attendees, asked_at: d.asked_at,
@@ -106,7 +87,9 @@ const out = (d: any) => ({
 
 /** POST /api/functions/getMeetingStatusChecks → { pending } — the window's: oldest first. */
 export async function getMeetingStatusChecks(_req: Request, user: AuthUser): Promise<Response> {
-  const list = (await col(C).find({ ...(await mineFilter(user)), status: { $in: OPEN } }).sort({ starts_at: 1 }).limit(20).toArray()) as any[];
+  // Viewing as a CS (a Chief, CS Manager or Super Admin): their checks are theirs to answer, not shown to the viewer.
+  if ((user as any)._impersonatedBy) return json({ pending: [] });
+  const list = (await col(C).find({ ...mineFilter(user), status: { $in: OPEN } }).sort({ starts_at: 1 }).limit(20).toArray()) as any[];
   return json({ pending: list.map(out) });
 }
 
@@ -119,8 +102,7 @@ export async function answerMeetingStatus(req: Request, user: AuthUser): Promise
   const id = str(body?.id, 60);
   const d: any = id ? await col(C).findOne({ _id: id } as any) : null;
   if (!d) return notFound("No such meeting check");
-  const mine = (d.assignee_ids ?? []).includes(user.id) || ADMINS.has(user.app_role)
-    || (user.app_role === "cs_manager" && (await locationOfUser(user.id)) === d.area);
+  const mine = (d.assignee_ids ?? []).includes(user.id) || ADMINS.has(user.app_role);
   if (!mine) return forbidden("This meeting's status is for its student's CS");
   if (!OPEN.includes(d.status)) return error(`Already answered — ${d.status}`, 409);
   const status = str(body?.status, 20);

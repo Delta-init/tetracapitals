@@ -88,14 +88,15 @@ export default function Teams() {
     unassigned.sort((a, b) => String(a.full_name || '').localeCompare(String(b.full_name || '')));
 
     const isAdmin = currentUser && ADMIN_VIEWERS.includes(currentUser.app_role);
-    // A CS Manager sees every team (2026-10-09) — to reach any CS's View as.
-    if (!isAdmin && currentUser && currentUser.app_role !== 'cs_manager' && !isAllTeamsCsManager(users.find(u => u.id === currentUser.id) || currentUser)) {
+    // A CS Manager sees every team (2026-10-09) — to reach any CS's View as; a Chief Mentor too (2026-11-13).
+    const seesLocation = currentUser?.app_role === 'cs_manager' || currentUser?.app_role === 'chief_mentor';
+    if (!isAdmin && currentUser && !seesLocation && !isAllTeamsCsManager(users.find(u => u.id === currentUser.id) || currentUser)) {
       // Non-admins: only the team they belong to. A Chief roots their own team.
       const myRoot = rootOf(currentUser);
       return { teams: teams.filter(t => t.rootId === myRoot), unassigned: [], isAdmin };
     }
-    // A CS Manager: their own location's teams only (2026-10-14).
-    if (!isAdmin && currentUser?.app_role === 'cs_manager') {
+    // A CS Manager or Chief Mentor: their own location's teams only (2026-10-14).
+    if (!isAdmin && seesLocation) {
       const mine = userLocationIn(users, currentUser.id);
       return { teams: teams.filter(t => t.location === mine), unassigned: [], isAdmin };
     }
