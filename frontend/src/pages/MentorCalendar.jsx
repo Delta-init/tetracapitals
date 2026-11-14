@@ -339,6 +339,19 @@ export default function MentorCalendar() {
     setEditingId(null);
   };
 
+  /* The "Staff meeting" button at the top (the user, 2026-11-14: "a separate button for that"): the form, set to a
+     staff meeting, on the first day on screen — in the name of the person pressing it when they are one of the
+     mentors they may book for, else the first such mentor; the form lets them change the day and whose it is. */
+  const openStaffMeeting = () => {
+    const owner = (myMentor?.may_invite ? myMentor : null) ?? invitable[0];
+    if (!owner) { toast.error('There is no mentor you can book a staff meeting for'); return; }
+    setBooking({ mentor: owner, day: days[0] });
+    setForm({ ...emptyForm, kind: 'team' });
+    setGuests([{ name: '', email: '' }]);
+    setEditingId(null);
+    setTeam(new Set()); setHadTeam(false); setFinder(null);
+  };
+
   // A student picked from the suggestions: their name and address — and so a meeting with a student.
   const pickStudent = (i, s) => {
     const name = String(s.full_name || s.student_code || '').trim();
@@ -600,6 +613,12 @@ export default function MentorCalendar() {
             </p>
           </div>
           <div className="flex flex-wrap items-center gap-2">
+            {/* A Chief Mentor's staff meeting (2026-11-14) — for whoever may book one. */}
+            {mayStaff && (
+              <Button size="sm" className="h-9 gap-1.5" onClick={openStaffMeeting} data-testid="staff-meeting-button">
+                <Users2 className="h-4 w-4" /> Staff meeting
+              </Button>
+            )}
             <div className="relative w-full sm:w-64">
               <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
               <Input value={query} onChange={e => setQuery(e.target.value)} placeholder="Search by name or email…" className="h-9 pl-9" />
@@ -912,6 +931,34 @@ export default function MentorCalendar() {
             {/* A staff meeting's mentors: ticked from the team, each with what is in their diary at the time chosen. */}
             {isTeam && booking && (
               <div className="space-y-2 sm:col-span-2" data-testid="staff-meeting-team">
+                {/* Which day, and whose meeting it is — opened from the button there is no row to say either. */}
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <div className="space-y-1.5">
+                    <Label htmlFor="mday">Day</Label>
+                    <select id="mday" value={columnKey(booking.day)} className={selectCls}
+                      onChange={e => { const d = [booking.day, ...days].find(x => columnKey(x) === e.target.value); if (d) setBooking(b => ({ ...b, day: d })); }}>
+                      {[...(days.some(d => columnKey(d) === columnKey(booking.day)) ? [] : [booking.day]), ...days].map(d => (
+                        <option key={columnKey(d)} value={columnKey(d)}>{d.toLocaleDateString(undefined, { weekday: 'long', day: 'numeric', month: 'short' })}</option>
+                      ))}
+                    </select>
+                  </div>
+                  {!editingId && invitable.length > 1 && (
+                    <div className="space-y-1.5">
+                      <Label htmlFor="mowner">In the name of</Label>
+                      <select id="mowner" value={lower(booking.mentor.email)} className={selectCls}
+                        onChange={e => {
+                          const next = invitable.find(m => lower(m.email) === e.target.value);
+                          if (!next) return;
+                          // The one it was in the name of stays in it, ticked; the new one is no longer a tick.
+                          const was = lower(booking.mentor.email);
+                          setTeam(prev => { const n = new Set(prev); n.delete(lower(next.email)); if (invitable.some(m => lower(m.email) === was)) n.add(was); return n; });
+                          setBooking(b => ({ ...b, mentor: next }));
+                        }}>
+                        {invitable.map(m => <option key={lower(m.email)} value={lower(m.email)}>{m.name || m.email}</option>)}
+                      </select>
+                    </div>
+                  )}
+                </div>
                 <div className="flex flex-wrap items-center justify-between gap-2">
                   <Label>Mentors in the meeting <span className="font-normal text-slate-400">({people.length})</span></Label>
                   <span className="flex gap-1">
