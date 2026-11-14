@@ -7,6 +7,10 @@
  * /api/v1/service/cs-tv-amounts (2026-11-14): Bangalore's CSs only; one shown on the Dubai board puts that CS among
  * Dubai's with only what was added (never their own board's payments), told apart by nothing; on both boards; changed,
  * removed; an amount from before `screens` on its CS's own board; ?real=1 without any of them.
+ *
+ * Somebody added by name (2026-11-14, /api/v1/service/cs-tv-people): no account here, picked like the team's CSs, a
+ * row on a board only while an amount added for them shows there, under the team they were put under; taken away
+ * again with their amounts.
  * Run through ./test-cs-tv.sh (throwaway mongod, the API — no .env). Scratch database only.
  */
 import { MongoClient, ObjectId } from "mongodb";
@@ -150,6 +154,50 @@ d = await boardOf("dubai"); b = await boardOf("bangalore");
 check("…Bela is off the Dubai board, and back to 1,100 on Bangalore's", !by(d, "Bela CS") && d.totals?.month_aed === 800 && by(b, "Bela CS")?.month_aed === 1100, `${show(d.totals)} ${show(by(b, "Bela CS"))}`);
 s = await svc("POST", "/cs-tv-amounts/remove", { id: added });
 check("removing it again: already gone", s.status === 404, show(s.body));
+
+// ── Somebody added by name: no account here ──────────────────────────────────────────────────────────────────────
+const usersBefore = await db.collection("users").countDocuments({});
+for (const [label, bad] of [["no name", { name: " " }], ["the name of a CS already there", { name: "bela  cs" }], ["a team that isn't Bangalore's", { name: "Nila Guest", team_id: String(asha) }], ["an email that isn't one", { name: "Nila Guest", email: "nila-at-hrms" }]] as const) {
+  const res = await svc("POST", "/cs-tv-people", { by: "Root Admin", ...bad });
+  check(`adding somebody by name with ${label}: refused`, res.status === 400 && !!res.body.error?.message, show(res.body));
+}
+s = await svc("POST", "/cs-tv-people", { name: "  Nila   Guest ", by: "Root Admin" });
+const nila = String(s.body.data?.id ?? "");
+check("adding Nila by name: kept, under Bangalore's one team", s.status === 200 && /^[a-f\d]{24}$/.test(nila), show(s.body));
+s = await svc("POST", "/cs-tv-people", { name: "nila guest", by: "Root Admin" });
+check("…and not a second time, however it is typed", s.status === 400 && /already added/.test(s.body.error?.message ?? ""), show(s.body));
+check("…nobody's account was made", (await db.collection("users").countDocuments({})) === usersBefore);
+s = await svc("GET", "/cs-tv-amounts");
+check("the list: Nila to pick beside Bela, marked as added by name, with the team to show her under", (s.body.data?.cs ?? []).map((c: any) => `${c.name}:${c.tv_only}:${c.team}`).join() === "Bela CS:false:Team Bangalore,Nila Guest:true:Team Bangalore"
+  && (s.body.data?.people ?? []).length === 1 && s.body.data.people[0].name === "Nila Guest" && s.body.data.people[0].added_by === "Root Admin (Root)" && !("email" in s.body.data.people[0])
+  && JSON.stringify(s.body.data?.teams) === JSON.stringify([{ id: String(lena), name: "Team Bangalore" }]), show(s.body.data));
+d = await boardOf("dubai"); b = await boardOf("bangalore");
+check("with no amount she is on no board", !by(d, "Nila Guest") && !by(b, "Nila Guest"), show(d.cs));
+
+s = await svc("POST", "/cs-tv-amounts", { cs_id: nila, aed: 20000, product: "MSNR", show_on: "dubai", by: "Root Admin" });
+const nilaAmount = String(s.body.data?.id ?? "");
+check("an amount for her, on the Dubai board", s.status === 200, show(s.body));
+d = await boardOf("dubai"); b = await boardOf("bangalore");
+check("the Dubai board: Nila first with 20,000, in Team Bangalore", d.cs?.[0]?.name === "Nila Guest" && d.cs[0].id === nila && d.cs[0].month_aed === 20000 && d.cs[0].payments === 1 && d.cs[0].team === "Team Bangalore" && d.totals?.month_aed === 20800, show(d.cs));
+check("…her team among the teams, her amount among the latest", (d.teams ?? []).some((t: any) => t.team === "Team Bangalore" && t.month_aed === 20000) && (d.recent ?? []).some((p: any) => p.id === nilaAmount && p.cs === "Nila Guest"), show(d.teams));
+check("…and nothing tells her row from Asha's", Object.keys(d.cs[0]).sort().join() === Object.keys(by(d, "Asha CS")).sort().join() && !/tv_only|tv-only|guest@|invalid/i.test(JSON.stringify(d)), JSON.stringify(d.cs[0]));
+check("…not on Bangalore's board, which wasn't asked for", !by(b, "Nila Guest") && b.totals?.month_aed === 1100, show(b.cs));
+d = await boardOf("dubai", "&real=1");
+check("…and not on the real board", !by(d, "Nila Guest") && d.totals?.month_aed === 500, show(d.totals));
+s = await svc("POST", "/cs-tv-amounts/update", { id: nilaAmount, show_on: "both", by: "Root Admin" });
+b = await boardOf("bangalore");
+check("on both boards: Bangalore's has her too, with what was added", s.status === 200 && by(b, "Nila Guest")?.month_aed === 20000 && by(b, "Nila Guest")?.team === "Team Bangalore" && b.totals?.month_aed === 21100, show(b.cs));
+s = await svc("GET", `/cs-tv-amounts?month=${thisMonth}`);
+check("the month's list has her amount, under her name", (s.body.data?.extras ?? []).some((e: any) => e.id === nilaAmount && e.cs_name === "Nila Guest" && e.show_on === "both"), show(s.body.data?.extras));
+
+s = await svc("POST", "/cs-tv-people/remove", { id: nila });
+check("taking her away", s.status === 200 && s.body.data?.removed === true, show(s.body));
+d = await boardOf("dubai"); b = await boardOf("bangalore");
+check("…off both boards, her amounts gone with her", !by(d, "Nila Guest") && !by(b, "Nila Guest") && d.totals?.month_aed === 800 && (await db.collection("cs_tv_extras").countDocuments({ cs_id: nila })) === 0, show(d.totals));
+s = await svc("POST", "/cs-tv-people/remove", { id: nila });
+check("…and again: already gone", s.status === 404, show(s.body));
+s = await svc("POST", "/cs-tv-amounts", { cs_id: nila, aed: 100, product: "MSNR", show_on: "dubai", by: "Root Admin" });
+check("…no amount for somebody taken away", s.status === 400, show(s.body));
 
 // Switched off: her amounts leave the other board with her, as anybody's do.
 s = await svc("POST", "/cs-tv-amounts", { cs_id: String(bela), aed: 2500, product: "MSNR", show_on: "dubai", by: "Root Admin" });

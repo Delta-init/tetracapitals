@@ -20,9 +20,17 @@ import { loadTeams } from "../students/teams";
 
    Root's "CS TV amounts" page adds, changes and removes them too, through
    /api/v1/service/cs-tv-amounts (portal/service.ts) — Bangalore's CSs only.
+
+   People added by name (the user, 2026-11-14 — somebody of the Bangalore
+   academy with no CS account here, to stand on the TV with the team): kept in
+   `cs_tv_people` — a name, the location, the team they are shown under, and an
+   HRMS email when their photo is to be found by it rather than by their name.
+   They are nobody's account and nothing else knows them: a row on a board only
+   while an amount added for them shows there, like a CS of the other location.
 ──────────────────────────────────────────────────────────────────────────── */
 
 export const EXTRAS = "cs_tv_extras";
+export const PEOPLE = "cs_tv_people";
 export type Screen = "dubai" | "bangalore";
 const str = (v: unknown, max = 200) => String(v ?? "").trim().slice(0, max);
 const round = (n: number) => Math.round(n * 100) / 100;
@@ -49,13 +57,40 @@ function screensAsked(v: unknown, home: Screen): Screen[] | null {
 /** Who added or changed an amount — a Super Admin here, or a root admin on Root's page. */
 export interface ExtraBy { id?: string; name: string }
 
-/** The location's active CSs, for the picker. */
-async function csOf(location: Screen) {
-  const index = await loadTeams();
-  return ((await col("users").find({ app_role: "cs", status: { $ne: "inactive" } }, { projection: { full_name: 1 } }).toArray()) as any[])
+type Teams = Awaited<ReturnType<typeof loadTeams>>;
+const nameKey = (v: unknown) => str(v, 80).toLowerCase().replace(/\s+/g, " ");
+
+/** Somebody added by name for the TV. `email`: what the HRMS is asked for their photo by — theirs when it was given,
+ *  else a made-up one nobody has, so the HRMS finds them by name. */
+export interface TvPerson { id: string; name: string; location: Screen; team_id: string; team: string; email: string; added_by: string; added_at: string }
+const personOf = (p: any, index: Teams): TvPerson => {
+  const team = index.teams.find((t) => t.id === String(p.team_id ?? ""));
+  return {
+    id: String(p._id), name: String(p.name ?? "").trim(), location: p.location === "bangalore" ? "bangalore" : "dubai",
+    team_id: team?.id ?? "", team: team?.name ?? "No team", email: str(p.email, 200).toLowerCase() || `tv-${String(p._id)}@tv-only.invalid`,
+    added_by: String(p.created_by_name ?? ""), added_at: String(p.created_date ?? ""),
+  };
+};
+
+/** The people added by name — one location's, or those with these ids. */
+export async function tvPeople(by: { location?: Screen; ids?: string[] }, index?: Teams): Promise<TvPerson[]> {
+  const oids = (by.ids ?? []).map((id) => toObjectId(id)).filter(Boolean);
+  if (by.ids && !oids.length) return [];
+  const docs = (await col(PEOPLE).find({ ...(by.location ? { location: by.location } : {}), ...(by.ids ? { _id: { $in: oids as any[] } } : {}) }).toArray()) as any[];
+  const teams = index ?? (await loadTeams());
+  return docs.map((p) => personOf(p, teams)).sort((a, b) => a.name.localeCompare(b.name));
+}
+
+/** The location's teams a person added by name can be shown under. */
+const teamsOf = (index: Teams, location: Screen) => index.teams.filter((t) => t.location === location && t.active).map((t) => ({ id: t.id, name: t.name }));
+
+/** The location's active CSs, and the people added by name for it, for the picker. */
+async function csOf(location: Screen, index: Teams) {
+  const cs = ((await col("users").find({ app_role: "cs", status: { $ne: "inactive" } }, { projection: { full_name: 1 } }).toArray()) as any[])
     .filter((u) => (index.teamOf(String(u._id))?.location ?? "dubai") === location)
-    .map((u) => ({ id: String(u._id), name: String(u.full_name ?? "").trim(), team: index.teamOf(String(u._id))?.name ?? "No team" }))
-    .sort((a, b) => a.name.localeCompare(b.name));
+    .map((u) => ({ id: String(u._id), name: String(u.full_name ?? "").trim(), team: index.teamOf(String(u._id))?.name ?? "No team", tv_only: false }));
+  const added = (await tvPeople({ location }, index)).map((p) => ({ id: p.id, name: p.name, team: p.team, tv_only: true }));
+  return [...cs, ...added].sort((a, b) => a.name.localeCompare(b.name));
 }
 
 const amountOf = (v: unknown): number | string => {
@@ -77,7 +112,12 @@ export async function listExtras(location: Screen, monthAsked: unknown) {
     .map((e) => ({ id: String(e._id), cs_id: e.cs_id, cs_name: e.cs_name, aed: e.aed, product: e.product, at: e.at, show_on: showOn(e), added_by: e.created_by_name, added_at: e.created_date }));
   const products = ((await col("funding_transactions").distinct("course_payment.product", { "course_payment.product": { $exists: true } })) as any[])
     .map((p) => String(p ?? "").trim()).filter(Boolean).sort();
-  return { location, month, extras, cs: await csOf(location), products, total_aed: round(extras.reduce((s, e) => s + (Number(e.aed) || 0), 0)) };
+  const index = await loadTeams();
+  return {
+    location, month, extras, cs: await csOf(location, index), products, total_aed: round(extras.reduce((s, e) => s + (Number(e.aed) || 0), 0)),
+    // The people added by name, and the teams one can be shown under.
+    people: (await tvPeople({ location }, index)).map(({ email: _e, ...p }) => p), teams: teamsOf(index, location),
+  };
 }
 
 /**
@@ -86,9 +126,13 @@ export async function listExtras(location: Screen, monthAsked: unknown) {
  */
 export async function addExtra(body: any, by: ExtraBy, only?: Screen): Promise<string | { id: string }> {
   const oid = toObjectId(str(body?.cs_id, 40));
-  const cs: any = oid ? await col("users").findOne({ _id: oid as any, app_role: "cs", status: { $ne: "inactive" } }, { projection: { full_name: 1 } }) : null;
+  const index = await loadTeams();
+  const user: any = oid ? await col("users").findOne({ _id: oid as any, app_role: "cs", status: { $ne: "inactive" } }, { projection: { full_name: 1 } }) : null;
+  // Not a CS here: somebody added by name for the TV.
+  const person = user || !oid ? null : (await tvPeople({ ids: [String(oid)] }, index))[0] ?? null;
+  const cs: { _id: unknown; full_name: string } | null = user ?? (person ? { _id: person.id, full_name: person.name } : null);
   if (!cs) return "Pick an active CS";
-  const home: Screen = (await loadTeams()).teamOf(String(cs._id))?.location ?? "dubai";
+  const home: Screen = person ? person.location : index.teamOf(String(cs._id))?.location ?? "dubai";
   if (only && home !== only) return `Pick one of ${only === "bangalore" ? "Bangalore" : "Dubai"}'s CSs`;
   const aed = amountOf(body?.aed);
   if (typeof aed === "string") return aed;
@@ -135,6 +179,42 @@ export async function removeExtra(id: unknown, only?: Screen): Promise<boolean> 
   const oid = toObjectId(str(id, 40));
   const r = oid ? await col(EXTRAS).deleteOne({ _id: oid as any, ...(only ? { location: only } : {}) }) : null;
   if (!r?.deletedCount) return false;
+  onChange();
+  return true;
+}
+
+/**
+ * Add somebody by name for the TV: { name, team_id?, email? } — in `location`; the team one of its teams (the only one
+ * when there is just one). A sentence when it can't be: no name, a name already there, a team that isn't the location's.
+ */
+export async function addTvPerson(body: any, by: ExtraBy, location: Screen): Promise<string | { id: string }> {
+  const name = str(body?.name, 80).replace(/\s+/g, " ");
+  if (name.length < 2) return "Give the name";
+  const key = nameKey(name);
+  if (await col(PEOPLE).findOne({ location, name_key: key })) return `${name} is already added`;
+  const index = await loadTeams();
+  const taken = ((await col("users").find({ app_role: "cs", status: { $ne: "inactive" } }, { projection: { full_name: 1 } }).toArray()) as any[])
+    .some((u) => nameKey(u.full_name) === key && (index.teamOf(String(u._id))?.location ?? "dubai") === location);
+  if (taken) return `${name} is a CS here already — pick them from the list`;
+  const teams = teamsOf(index, location);
+  const asked = str(body?.team_id, 40);
+  const team = asked ? teams.find((t) => t.id === asked) : teams.length === 1 ? teams[0] : undefined;
+  if (asked && !team) return "Pick one of this location's teams";
+  if (!asked && teams.length > 1) return "Pick the team to show them under";
+  const email = str(body?.email, 200).toLowerCase();
+  if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return "That email isn't right";
+  const r = await col(PEOPLE).insertOne({
+    name, name_key: key, location, team_id: team?.id ?? "", email, created_by_id: by.id ?? "", created_by_name: by.name, created_date: new Date().toISOString(),
+  } as any);
+  return { id: String(r.insertedId) };
+}
+
+/** Take somebody added by name away again, with every amount added for them — false when they're already gone. */
+export async function removeTvPerson(id: unknown, location?: Screen): Promise<boolean> {
+  const oid = toObjectId(str(id, 40));
+  const r = oid ? await col(PEOPLE).deleteOne({ _id: oid as any, ...(location ? { location } : {}) }) : null;
+  if (!r?.deletedCount) return false;
+  await col(EXTRAS).deleteMany({ cs_id: String(oid) });
   onChange();
   return true;
 }

@@ -5,7 +5,7 @@ import { json, error, forbidden } from "../lib/response";
 import type { AuthUser } from "../auth/middleware";
 import { loadTeams } from "../students/teams";
 import { hrmsPhotos } from "../lib/hrms";
-import { EXTRAS, onExtrasChange, onScreen } from "./csTvExtras";
+import { EXTRAS, onExtrasChange, onScreen, tvPeople } from "./csTvExtras";
 import { toObjectId } from "../lib/id";
 
 /* ────────────────────────────────────────────────────────────────────────────
@@ -21,7 +21,8 @@ import { toObjectId } from "../lib/id";
    the boards they say. Somebody of the other location with one to show here —
    a Bangalore CS on the Dubai TV (the user, 2026-11-14) — gets a row among this
    location's, with only what was added for them: never their own board's
-   payments. `?real=1` leaves every added amount out, and those rows with them:
+   payments. So does somebody added by name (2026-11-14, cs_tv_people), who has
+   no account here at all. `?real=1` leaves every added amount out, and those rows with them:
    what Root's Manager TV asks for, so managers read what was collected.
 ──────────────────────────────────────────────────────────────────────────── */
 
@@ -87,6 +88,10 @@ async function board(location: "dubai" | "bangalore", month?: string, real = fal
       guests.add(id);
       row.set(id, { id, name: String(u.full_name ?? "").trim(), email: String(u.email ?? "").toLowerCase(), team_id: team?.id ?? "", team: team?.name ?? "No team",
         month_aed: 0, today_aed: 0, payments: 0, today_payments: 0, photo: null as string | null });
+    }
+    // …and the people added by name for the TV (functions/csTvExtras.ts): no account, the team they were put under.
+    for (const p of await tvPeople({ ids: guestIds.map(String).filter((id) => !row.has(id)) }, index)) {
+      row.set(p.id, { id: p.id, name: p.name, email: p.email, team_id: p.team_id, team: p.team, month_aed: 0, today_aed: 0, payments: 0, today_payments: 0, photo: null as string | null });
     }
   }
   const items = [

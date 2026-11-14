@@ -5,6 +5,7 @@ import type { AuthUser } from "../auth/middleware";
 import { loadTeams } from "../students/teams";
 import { r2Configured, r2Delete, r2Put } from "../lib/r2";
 import { csLine, courseLine, amountLine, CONGRATS, ROUND_AED, VOICE_KEY, type VoiceLine } from "../lib/voiceLines";
+import { tvPeople } from "./csTvExtras";
 
 /* ────────────────────────────────────────────────────────────────────────────
    The TV board's voice, recorded by the owner (the user, 2026-10-26: "own
@@ -35,6 +36,8 @@ export async function allVoiceLines(): Promise<VoiceLine[]> {
   const rupeesPerAed = await inrPerAed();   // the live rate (lib/fxRate.ts, 2026-11-05)
   const add = (l: VoiceLine) => { if (!lines.has(l.key)) lines.set(l.key, l); };
   for (const u of people) add(csLine(String(u._id), String(u.full_name ?? ""), teams.teamOf(String(u._id))?.name));
+  // The people added by name for the TV (functions/csTvExtras.ts): a board calls them like anybody on it.
+  for (const p of await tvPeople({}, teams)) add(csLine(p.id, p.name, p.team));
   for (const t of paid) if (t.course_payment?.product) add(courseLine(String(t.course_payment.product)));
   for (const p of products) if (Number(p.bonus_usd) > 0 && p.name) add(courseLine(String(p.name)));
   for (const a of ROUND_AED) add(amountLine(a, "AED"));

@@ -14,7 +14,7 @@ import { csOverview, csDetail, type Period } from "./csOverview";
 import { CallFilterError, callsForPortal, recordingLinkForPortal } from "./calls";
 import { mentorReport, mentorReportDates, mentorReportDetail } from "../functions/mentorReport";
 import { instructorReviewList, reviewTrouble } from "../functions/instructorReviews";
-import { addExtra, listExtras, removeExtra, updateExtra } from "../functions/csTvExtras";
+import { addExtra, addTvPerson, listExtras, removeExtra, removeTvPerson, updateExtra } from "../functions/csTvExtras";
 
 /* ────────────────────────────────────────────────────────────────────────────
    /api/v1/service/*   — the Root portal asking about roles and people.
@@ -134,12 +134,22 @@ export async function handlePortalService(req: Request, path: string): Promise<R
      Bangalore CS that the CS TV shows like payments — on Dubai's board, Bangalore's, or both. Bangalore's CSs only,
      whatever is asked: Root's page is theirs alone. `by` is the root admin's name, kept as who added it.
      GET /cs-tv-amounts[?month=YYYY-MM] · POST /cs-tv-amounts { cs_id, aed, product, at?, show_on?, by } ·
-     POST /cs-tv-amounts/update { id, aed?, product?, at?, show_on?, by } · POST /cs-tv-amounts/remove { id }. */
+     POST /cs-tv-amounts/update { id, aed?, product?, at?, show_on?, by } · POST /cs-tv-amounts/remove { id }.
+     People added by name (2026-11-14) — somebody of the Bangalore academy with no CS account here, to be picked like
+     the team's CSs: POST /cs-tv-people { name, team_id?, email?, by } · POST /cs-tv-people/remove { id } (with their
+     amounts). The list above carries them (`people`, and in `cs` with tv_only) and the teams to put one under. */
   if (path === "/cs-tv-amounts" && req.method === "GET") {
     return ok(await listExtras("bangalore", url.searchParams.get("month")));
   }
-  if (path.startsWith("/cs-tv-amounts") && req.method === "POST") {
+  if ((path.startsWith("/cs-tv-amounts") || path.startsWith("/cs-tv-people")) && req.method === "POST") {
     const by = { name: `${String(body.by ?? "").trim().slice(0, 80) || "A root admin"} (Root)` };
+    if (path === "/cs-tv-people") {
+      const r = await addTvPerson(body, by, "bangalore");
+      return typeof r === "string" ? refuse(400, "VALIDATION_ERROR", r) : ok(r);
+    }
+    if (path === "/cs-tv-people/remove") {
+      return (await removeTvPerson(body.id, "bangalore")) ? ok({ removed: true }) : refuse(404, "NOT_FOUND", "They are no longer there");
+    }
     if (path === "/cs-tv-amounts") {
       const r = await addExtra(body, by, "bangalore");
       return typeof r === "string" ? refuse(400, "VALIDATION_ERROR", r) : ok(r);
