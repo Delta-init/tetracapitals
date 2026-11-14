@@ -236,7 +236,7 @@ export function CoursePaymentPanel({ product, plan, payment, className = '' }) {
       <div className="grid grid-cols-2 gap-x-4 gap-y-2 text-sm sm:grid-cols-3">
         {full
           ? <Stat label="Course price" value={plan.price ? moneyText(plan.price, plan.currency) : 'Not set'} hint={plan.price ? other(plan.priceMoney, plan.currency) : 'an admin sets it on Products'} />
-          : <Stat label="Instalment plan" value={aedText(plan.planAed)} hint={plan.ownPlan ? `paid in instalments of ${aedText(INSTALMENT_AED)}` : `${plan.instalments} × ${aedText(INSTALMENT_AED)}`} />}
+          : <Stat label="Instalment plan" value={aedText(plan.planAed)} hint={plan.ownPlan ? `${plan.instalments} × ${aedText(plan.planAed / plan.instalments)}` : `${plan.instalments} × ${aedText(INSTALMENT_AED)}`} />}
         {!full && <Stat label="Paid before" value={aedText(payment.paid_before_aed)} />}
         <Stat label={full ? 'Paid now' : 'Paid till date'} value={aedText(full ? payment.paid_today_aed : payment.paid_total_aed)} />
         <Stat
