@@ -190,6 +190,7 @@ export default function TransactionTags() {
                   <TableHead>Full price</TableHead>
                   <TableHead>Bonus (USD)</TableHead>
                   <TableHead title="How many AED 2,000 instalments — 0 for full payment only">Instalments</TableHead>
+                  <TableHead title="What the instalments add up to, in AED — empty: instalments × AED 2,000">Instalment total (AED)</TableHead>
                   <TableHead>Bonus type</TableHead>
                   <TableHead>Includes (bundled)</TableHead>
                   <TableHead>Color</TableHead>
@@ -276,6 +277,25 @@ export default function TransactionTags() {
                         }}
                         className="w-16 h-8"
                         aria-label={`${t.name} instalments of AED 2,000`}
+                      />
+                    </TableCell>
+                    <TableCell>
+                      {/* The course's own instalment total (2026-11-14): the plan a partial payment is paid against; empty or 0 → instalments × AED 2,000. */}
+                      <Input
+                        type="number"
+                        step="0.01"
+                        min="0"
+                        key={`${t.id}-plan-${t.plan_aed ?? 0}`}
+                        defaultValue={t.plan_aed || ''}
+                        placeholder={t.instalments ? String((t.instalments || 0) * 2000) : '—'}
+                        disabled={!t.instalments}
+                        onBlur={(e) => {
+                          const v = Math.max(0, Math.round((parseFloat(e.target.value) || 0) * 100) / 100);
+                          if (v !== (t.plan_aed ?? 0)) updateMutation.mutate({ id: t.id, data: { plan_aed: v } });
+                        }}
+                        className="w-28 h-8"
+                        aria-label={`${t.name} instalment total in AED`}
+                        title={t.instalments ? 'Empty: instalments × AED 2,000' : 'Set the instalments first'}
                       />
                     </TableCell>
                     <TableCell>
