@@ -97,7 +97,8 @@ export function coursePlan(product) {
   const currency = product?.full_price_currency === 'AED' ? 'AED' : 'USD';
   const instalments = Math.max(0, Math.floor(Number(product?.instalments) || 0));
   // A course's own instalment total (Products, 2026-11-14: DGMP's is its price, AED 91,850): used as the plan instead of
-  // instalments × AED 2,000 when set — the bonus is still $500 per AED 2,000 paid.
+  // instalments × AED 2,000 when set, in equal instalments of it (DGMP 12 × AED 7,654.17), each worth the whole bonus's
+  // share ($25,000 / 12) — all of them paid is the whole bonus. Otherwise AED 2,000 instalments of $500 each.
   const ownPlan = instalments > 0 ? Math.max(0, Number(product?.plan_aed) || 0) : 0;
   return {
     price,
@@ -107,6 +108,7 @@ export function coursePlan(product) {
     instalments,
     planAed: ownPlan || instalments * INSTALMENT_AED,
     ownPlan: ownPlan > 0,
+    instalmentAed: ownPlan ? ownPlan / instalments : INSTALMENT_AED,
   };
 }
 
@@ -145,12 +147,16 @@ export function coursePayment({ plan, kind, beforeAed, todayAed }) {
   const total = paid.paid_total_aed;
   // Rounding — or a payment typed in USD — never costs an instalment.
   const counted = (n) => (fee ? Math.min(n, fee) : n);
-  const blocks = (n) => Math.floor((counted(n) + ROUNDING_AED) / INSTALMENT_AED);
+  const step = plan.instalmentAed || INSTALMENT_AED;
+  const blocks = (n) => Math.floor((counted(n) + ROUNDING_AED) / step);
+  // The bonus for so many instalments — an own total's share of the whole bonus (rounded the same way each time, so all
+  // of them make the whole bonus exactly), else $500 each.
+  const bonusFor = (k) => (plan.ownPlan ? cents((plan.bonusUsd * Math.min(k, plan.instalments)) / plan.instalments) : k * BONUS_PER_INSTALMENT_USD);
   const withBonus = plan.bonusUsd > 0;
   return {
     ...paid,
-    bonus_usd: withBonus ? (blocks(total) - blocks(beforeAed)) * BONUS_PER_INSTALMENT_USD : 0,
-    hold_aed: withBonus ? Math.max(0, cents(counted(total) - blocks(total) * INSTALMENT_AED)) : 0,
+    bonus_usd: withBonus ? cents(bonusFor(blocks(total)) - bonusFor(blocks(beforeAed))) : 0,
+    hold_aed: withBonus ? Math.max(0, cents(counted(total) - blocks(total) * step)) : 0,
     balance_aed: fee ? (fee - total <= ROUNDING_AED ? 0 : cents(fee - total)) : null,
     short_aed: 0,
     over_aed: fee && total > fee ? cents(total - fee) : 0,
@@ -236,14 +242,14 @@ export function CoursePaymentPanel({ product, plan, payment, className = '' }) {
       <div className="grid grid-cols-2 gap-x-4 gap-y-2 text-sm sm:grid-cols-3">
         {full
           ? <Stat label="Course price" value={plan.price ? moneyText(plan.price, plan.currency) : 'Not set'} hint={plan.price ? other(plan.priceMoney, plan.currency) : 'an admin sets it on Products'} />
-          : <Stat label="Instalment plan" value={aedText(plan.planAed)} hint={plan.ownPlan ? `${plan.instalments} × ${aedText(plan.planAed / plan.instalments)}` : `${plan.instalments} × ${aedText(INSTALMENT_AED)}`} />}
+          : <Stat label="Instalment plan" value={aedText(plan.planAed)} hint={plan.ownPlan ? `${plan.instalments} × ${aedText(plan.instalmentAed)}` :`${plan.instalments} × ${aedText(INSTALMENT_AED)}`} />}
         {!full && <Stat label="Paid before" value={aedText(payment.paid_before_aed)} />}
         <Stat label={full ? 'Paid now' : 'Paid till date'} value={aedText(full ? payment.paid_today_aed : payment.paid_total_aed)} />
         <Stat
           label="Bonus to credit in MT5"
           value={withBonus ? usdText(payment.bonus_usd) : 'No bonus'}
           tone="green"
-          hint={!withBonus ? 'a without-bonus course' : full ? 'the whole bonus, at once' : `$${BONUS_PER_INSTALMENT_USD} per ${aedText(INSTALMENT_AED)} paid`}
+          hint={!withBonus ? 'a without-bonus course' : full ? 'the whole bonus, at once' : (plan.ownPlan ? `${usdText(plan.bonusUsd / plan.instalments)} per ${aedText(plan.instalmentAed)} paid` : `$${BONUS_PER_INSTALMENT_USD} per ${aedText(INSTALMENT_AED)} paid`)}
         />
         {!full && withBonus && <Stat label="On hold" value={aedText(payment.hold_aed)} tone="amber" hint={payment.hold_aed > 0 ? 'joins the next payment' : ''} />}
         <Stat label="Balance pending" value={payment.balance_aed == null ? '—' : aedText(payment.balance_aed)} />
