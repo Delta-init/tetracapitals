@@ -10,6 +10,8 @@ import {
 import { getMeetingsDone } from "../functions/meetingOutcomes";
 import { getMeetingCommissions } from "../functions/meetingCommissions";
 import { getCommissionReport, getReportFilters } from "../functions/reports";
+import { getDownlineIds } from "../lib/scope";
+import { toObjectId } from "../lib/id";
 
 /* ────────────────────────────────────────────────────────────────────────────
    POST /api/v1/integrations/lms/mentor-meetings — the Delta LMS admin's
@@ -22,7 +24,11 @@ import { getCommissionReport, getReportFilters } from "../functions/reports";
    commission's reach, Converted).
 
    Actions — what that mentor can do on this portal's pages, nothing more:
-     me                        → { mentor, role, name, asks, meetings_done }
+     me                        → { mentor, role, name, asks, meetings_done, staff_meeting }
+                               staff_meeting (2026-11-14): whether they book a staff
+                               meeting with several mentors in it on the LMS's Mentor
+                               Calendar, and with whom — a Chief their own team
+                               (`team`: addresses), an Admin anyone (`team` null)
      listMeetingRequests       their own requests, every status
      createMeetingRequest      Senior / Junior / Sub-junior only (a Chief books)
      cancelMeetingRequest      take back their own, still waiting
@@ -79,6 +85,20 @@ async function staffWithEmail(email: string): Promise<AuthUser | null> {
   return serialize(safe) as AuthUser;
 }
 
+/**
+ * A staff meeting from the LMS's Mentor Calendar (the user, 2026-11-14): a Chief Mentor books one with their own team —
+ * the addresses of theirs and everybody below them, as on this portal's own calendar; an Admin with anyone (null);
+ * nobody else.
+ */
+async function staffMeetingReach(user: AuthUser): Promise<{ may: boolean; team: string[] | null }> {
+  if (ADMINS.has(user.app_role)) return { may: true, team: null };
+  if (!CHIEF.has(user.app_role)) return { may: false, team: [] };
+  const ids = (await getDownlineIds(user.id)).map(toObjectId).filter(Boolean) as any[];
+  const below = (await col("users").find({ _id: { $in: ids }, status: { $ne: "inactive" } }, { projection: { email: 1 } }).toArray()) as any[];
+  const team = [user.email, ...below.map((u) => u.email)].map((e) => String(e ?? "").trim().toLowerCase()).filter(Boolean);
+  return { may: true, team: [...new Set(team)] };
+}
+
 export async function handleLmsMentorMeetings(req: Request): Promise<Response> {
   if (!config.lmsS2sSecret) return refuse(503, "INTEGRATION_DISABLED", "The Delta LMS link is not configured on this server");
   if (!secretMatches(req.headers.get("x-lms-secret"), config.lmsS2sSecret)) return refuse(401, "UNAUTHORISED", "Bad secret");
@@ -96,11 +116,13 @@ export async function handleLmsMentorMeetings(req: Request): Promise<Response> {
   if (action === "me") {
     if (viewer) {
       return ok({ mentor: false, viewer: true, role: user!.app_role, name: user!.full_name ?? "", asks: false, requests: "to_decide",
-        meetings_done: ADMINS.has(user!.app_role) ? ["meetings", "commission"] : ["commission"], commission_report: true });
+        meetings_done: ADMINS.has(user!.app_role) ? ["meetings", "commission"] : ["commission"], commission_report: true,
+        staff_meeting: await staffMeetingReach(user!) });
     }
     if (!mentor) return ok({ mentor: false, viewer: false, message: user ? "Your CS Portal account isn't a mentor's" : "No CS Portal account has your email" });
     const asks = ASKS_FOR_MEETINGS.has(user!.app_role);
-    return ok({ mentor: true, viewer: false, role: user!.app_role, name: user!.full_name ?? "", asks, requests: asks ? "mine" : null, meetings_done: asks ? ["commission"] : ["meetings", "commission"], commission_report: true });
+    return ok({ mentor: true, viewer: false, role: user!.app_role, name: user!.full_name ?? "", asks, requests: asks ? "mine" : null, meetings_done: asks ? ["commission"] : ["meetings", "commission"], commission_report: true,
+      staff_meeting: await staffMeetingReach(user!) });
   }
   const spec = ACTIONS[action];
   if (!spec) return refuse(400, "VALIDATION_ERROR", "Unknown action");
