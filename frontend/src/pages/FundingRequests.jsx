@@ -34,7 +34,7 @@ import { format } from "date-fns";
 import { logAction } from "../components/utils/AuditLogger";
 import { methodsOf, methodsText } from "../components/funding/payments";
 import { AED_PER_USD, USD_PER_INR, requestMt5Email } from "../components/funding/FundingRequestForm";
-import { AmountCell, PaidCell, InvoiceCell, SourceCell, studentInfoOf, sourceOf, bonusUsdOf, receivedOf, paidLines, invoicesOf, sourceLabel } from "../components/funding/mt5Cells";
+import { AmountCell, PaidCell, InvoiceCell, SourceCell, studentInfoOf, sourceOf, bonusUsdOf, receivedOf, paidLines, paidText as paidLineText, invoicesOf, sourceLabel } from "../components/funding/mt5Cells";
 import { CopyText } from "../components/funding/corrections";
 import { DeleteFundingButton } from "../components/funding/DeleteFundingRequest";
 
@@ -509,7 +509,7 @@ export default function FundingRequests() {
         const tagsStr = Array.isArray(t.tags) ? t.tags.join('; ') : '';
         const row = { ...t, student: studentInfoOf(student), source: sourceOf(t) };
         const got = receivedOf(row);
-        const paidText = got ? `Received ${got.received}${got.method ? ` · ${got.method}` : ''}${got.balance ? ` · balance ${got.balance}` : ''}` : paidLines(row).map(l => (l.collected ? `Collected by counsellor ${l.collected}` : `Paid ${l.paid}`)).join('; ');
+        const paidText = got ? `Received ${got.received}${got.method ? ` · ${got.method}` : ''}${got.balance ? ` · balance ${got.balance}` : ''}` : paidLines(row).map(paidLineText).join('; ');
         return [
           escapeCSV(t.requested_at ? format(new Date(t.requested_at), 'yyyy-MM-dd HH:mm') : ''),
           escapeCSV(t.type || ''),

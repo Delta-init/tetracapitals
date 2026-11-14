@@ -22,7 +22,7 @@ import ProcessFundingDialog from '@/components/funding/ProcessFundingDialog';
 import TagChips from '@/components/funding/TagChips';
 import { PaymentDetails } from '@/components/funding/FundingRequestForm';
 import { ReceiptsButton, methodsText } from '@/components/funding/payments';
-import { usdText, bonusUsdOf, bonusLabel, partLabel, receivedOf, sourceLabel, paidLines, upgradeReceiptsOf, receiptTxOf, extraReceiptsOf } from '@/components/funding/mt5Cells';
+import { usdText, bonusUsdOf, bonusLabel, partLabel, receivedOf, sourceLabel, paidLines, paidText, PaidLine, upgradeReceiptsOf, receiptTxOf, extraReceiptsOf } from '@/components/funding/mt5Cells';
 import { useUrlState } from '@/components/utils/urlState';
 
 /*
@@ -85,7 +85,7 @@ const EXPORT_COLUMNS = [
   { header: 'MT5 email', value: t => t.mt5_email },
   { header: 'Amount to credit USD', type: 'number', value: t => bonusUsdOf(t) },
   { header: 'Original amount', value: t => original(t) },
-  { header: 'Paid by the student', value: t => (receivedOf(t) ? `Received ${receivedOf(t).received}${receivedOf(t).method ? ` · ${receivedOf(t).method}` : ''}` : paidLines(t).map(l => (l.collected ? `Collected by counsellor ${l.collected}` : `Paid ${l.paid}`)).join('; ')) },
+  { header: 'Paid by the student', value: t => (receivedOf(t) ? `Received ${receivedOf(t).received}${receivedOf(t).method ? ` · ${receivedOf(t).method}` : ''}` : paidLines(t).map(paidText).join('; ')) },
   { header: 'On hold', value: t => receivedOf(t)?.hold || '' },
   { header: 'Balance', value: t => receivedOf(t)?.balance || '' },
   { header: 'Recorded against invoice', value: t => paidLines(t).map(l => l.recorded || '').filter(Boolean).join('; ') },
@@ -413,14 +413,7 @@ export default function BonusApprovals() {
                                   {r.hold && <div className="text-amber-700">On hold {r.hold}</div>}
                                   {r.balance && <div className="text-slate-500">Balance {r.balance}</div>}
                                 </div>
-                              ); })() : paidLines(t).length ? paidLines(t).map(l => (
-                                <div key={l.key} className="mb-1 last:mb-0">
-                                  {paidLines(t).length > 1 && <div className="font-mono text-[11px] text-slate-400">{l.key}</div>}
-                                  {l.collected ? <div className="text-slate-800">Collected by counsellor <b>{l.collected}</b></div> : <div className="text-slate-800">Paid <b>{l.paid}</b></div>}
-                                  {l.recorded && <div className="text-slate-500">Recorded {l.recorded}</div>}
-                                  <div className="text-slate-400">of {l.fee}{l.balance ? <span className="text-amber-700"> · owes {l.balance}</span> : ''}</div>
-                                </div>
-                              )) : <span className="text-slate-300">—</span>}
+                              ); })() : paidLines(t).length ? paidLines(t).map(l => <PaidLine key={l.key} l={l} many={paidLines(t).length > 1} />) : <span className="text-slate-300">—</span>}
                               {/* The receipts — the request's own, an upgrade's payments, or finance's for its invoice */}
                               <div className="mt-1.5">
                                 <ReceiptsButton tx={receiptTxOf(t)} title={t.student?.full_name || t.student_name} />

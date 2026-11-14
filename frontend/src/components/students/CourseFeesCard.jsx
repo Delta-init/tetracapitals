@@ -47,7 +47,16 @@ function PaymentsLine({ f }) {
   const list = Array.isArray(f.payments) ? f.payments : [];
   if (!list.length) return null;
   const last = list.map(p => p?.paid_on).filter(Boolean).sort().pop();
-  return <div className="mt-0.5 text-xs font-normal text-gray-500">{list.length} payment{list.length === 1 ? "" : "s"}{last ? ` · last ${fmtDay(last)}` : ""}</div>;
+  // Each payment's method and amount, oldest first (2026-11-14) — "Tabby 1,125 + Tamara 562.5 + Tamara 562.5".
+  const methods = [...list].filter(p => Number(p?.amount_minor) > 0).sort((a, b) => String(a?.paid_on || "").localeCompare(String(b?.paid_on || "")))
+    .map(p => { const m = String(p?.method || "").trim().replace(/_/g, " "); return `${m ? m.charAt(0).toUpperCase() + m.slice(1) : "Payment"} ${((Number(p.amount_minor) || 0) / 100).toLocaleString("en-US", { minimumFractionDigits: Number(p.amount_minor) % 100 ? 2 : 0, maximumFractionDigits: 2 })}`; })
+    .join(" + ");
+  return (
+    <>
+      {methods && <div className="mt-0.5 text-xs font-normal text-slate-600">{methods}</div>}
+      <div className="mt-0.5 text-xs font-normal text-gray-500">{list.length} payment{list.length === 1 ? "" : "s"}{last ? ` · last ${fmtDay(last)}` : ""}</div>
+    </>
+  );
 }
 
 /**
@@ -127,7 +136,7 @@ export default function CourseFeesCard({ fees }) {
                     {money(f.paid_minor, f.currency)}
                     {!fromTracker(f) && <PaymentsLine f={f} />}
                     {/* What the counsellor declared collected, and what accounts recorded (finance, 2026-10-12) */}
-                    {f.collected_minor != null && <div className="text-[11px] font-normal text-slate-500">Collected by counsellor {money(f.collected_minor, f.currency)}{f.collected_method ? ` · ${f.collected_method}` : ''}</div>}
+                    {f.collected_minor != null && <div className="text-[11px] font-normal text-slate-500">{Array.isArray(f.payments) && f.payments.length ? "At the close: " : "Collected by counsellor "}{money(f.collected_minor, f.currency)}{f.collected_method ? ` · ${f.collected_method}` : ''}</div>}
                     {f.recorded_minor != null && <div className="text-[11px] font-normal text-slate-400">Recorded {money(f.recorded_minor, f.currency)}</div>}
                   </td>
                   <td className={`p-3 text-sm text-right whitespace-nowrap font-semibold ${CLOSED[f.status] ? "text-gray-400 line-through" : f.balance_minor > 0 ? "text-amber-700" : f.balance_minor === null || f.balance_minor === undefined ? "text-gray-400" : "text-emerald-700"}`}>

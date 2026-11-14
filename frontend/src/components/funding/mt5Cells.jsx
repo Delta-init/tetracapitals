@@ -65,13 +65,51 @@ export const financeReceiptsOf = (t) => {
   return list.length ? { payments: list } : null;
 };
 export const money = (n, cur) => `${cur || 'AED'} ${Number(n || 0).toLocaleString('en-US', { maximumFractionDigits: 2 })}`;
-/** "Collected AED 2,250 · tabby · recorded AED 2,250" for each invoice the request is about. */
-export const paidLines = (t) => invoicesOf(t).map(f => ({
-  key: f.invoice_number,
-  collected: f.collected != null ? money(f.collected, f.currency) + (f.collected_method ? ` · ${f.collected_method}` : '') : null,
-  recorded: f.recorded != null ? money(f.recorded, f.currency) : null,
-  paid: money(f.paid, f.currency), fee: money(f.fee, f.currency), balance: f.balance > 0 ? money(f.balance, f.currency) : null,
-}));
+const amountText = (n) => { const v = Number(n || 0); return v.toLocaleString('en-US', { minimumFractionDigits: v % 1 ? 2 : 0, maximumFractionDigits: 2 }); };
+const methodName = (m) => {
+  const s = String(m || '').trim().replace(/_/g, ' ');
+  return s ? s.charAt(0).toUpperCase() + s.slice(1) : 'Payment';
+};
+/** "Tabby 1,125 + Tamara 562.5 + Tamara 562.5" — every payment finance recorded, oldest first; "" when none came. */
+export const methodsSum = (f) => [...(f.all_payments || [])].filter(p => Number(p.amount) > 0)
+  .sort((a, b) => String(a.paid_on || '').localeCompare(String(b.paid_on || '')))
+  .map(p => `${methodName(p.method)} ${amountText(p.amount)}`).join(' + ');
+/**
+ * Each invoice the request is about: what has been paid now — every payment's method and amount, and the total
+ * (2026-11-14: only the close's "AED 1,125 · Tabby" showed, not the two Tamara payments after it) — then what the
+ * counsellor declared at the close, what accounts recorded, the fee and the balance as it stands.
+ */
+export const paidLines = (t) => invoicesOf(t).map(f => {
+  const methods = methodsSum(f);
+  return {
+    key: f.invoice_number,
+    methods,
+    collected: f.collected != null ? money(f.collected, f.currency) + (f.collected_method ? ` · ${f.collected_method}` : '') : null,
+    recorded: f.recorded != null ? money(f.recorded, f.currency) : null,
+    paid: money(f.paid, f.currency), fee: money(f.fee, f.currency), balance: f.balance > 0 ? money(f.balance, f.currency) : null,
+    fullyPaid: !!methods && !(f.balance > 0) && f.fee > 0,
+  };
+});
+/** One line of text for exports: "Paid AED 2,250 (Tabby 1,125 + Tamara 562.5 + Tamara 562.5)", else the close's. */
+export const paidText = (l) => (l.methods ? `Paid ${l.paid} (${l.methods})` : l.collected ? `Collected by counsellor ${l.collected}` : `Paid ${l.paid}`);
+
+/** One invoice's line in "Paid by the student". */
+export function PaidLine({ l, many }) {
+  return (
+    <div className="mb-1 last:mb-0">
+      {many && <div className="font-mono text-[11px] text-slate-400">{l.key}</div>}
+      {l.methods ? (
+        <>
+          <div className="text-slate-800">Paid <b>{l.paid}</b></div>
+          <div className="text-slate-600">{l.methods}</div>
+        </>
+      ) : l.collected ? <div className="text-slate-800">Collected by counsellor <b>{l.collected}</b></div> : <div className="text-slate-800">Paid <b>{l.paid}</b></div>}
+      {!l.methods && l.recorded && <div className="text-slate-500">Recorded {l.recorded}</div>}
+      <div className="text-slate-400">of {l.fee}{l.balance ? <span className="text-amber-700"> · owes {l.balance}</span> : l.fullyPaid ? <span className="text-emerald-700"> · fully paid</span> : ''}</div>
+      {l.methods && l.collected && <div className="text-[11px] text-slate-400">At the close: {l.collected}</div>}
+    </div>
+  );
+}
 /** A course-upgrade bonus: every payment of its upgrade with its receipt — this bonus's own first (2026-10-12). */
 export const upgradeReceiptsOf = (t) => {
   const list = [...(t.upgrade_receipts || [])].sort((a, b) => (b.this_one ? 1 : 0) - (a.this_one ? 1 : 0));
@@ -100,6 +138,10 @@ export const studentInfoOf = (s) => (s ? {
     payments: (Array.isArray(f.declared_payments) ? f.declared_payments : []).map(p => ({
       method: String(p.method ?? ''), amount: (Number(p.amount_minor) || 0) / 100, paid_on: String(p.paid_on ?? ''),
       receipt_url: String(p.receipt_url ?? ''), receipt_name: String(p.receipt_name ?? ''),
+    })),
+    // Every payment finance recorded on the invoice, receipt or not (2026-11-14), as MT5 Approvals has it.
+    all_payments: (Array.isArray(f.payments) ? f.payments : []).map(p => ({
+      method: String(p.method ?? ''), amount: (Number(p.amount_minor) || 0) / 100, paid_on: String(p.paid_on ?? ''),
     })),
     // Each payment finance recorded with its own receipt, as MT5 Approvals has it (2026-10-31: Funding Requests showed
     // only the close's — a second payment's never).
@@ -143,14 +185,7 @@ export function PaidCell({ t, title }) {
           {r.hold && <div className="text-amber-700">On hold {r.hold}</div>}
           {r.balance && <div className="text-slate-500">Balance {r.balance}</div>}
         </div>
-      ) : lines.length ? lines.map(l => (
-        <div key={l.key} className="mb-1 last:mb-0">
-          {lines.length > 1 && <div className="font-mono text-[11px] text-slate-400">{l.key}</div>}
-          {l.collected ? <div className="text-slate-800">Collected by counsellor <b>{l.collected}</b></div> : <div className="text-slate-800">Paid <b>{l.paid}</b></div>}
-          {l.recorded && <div className="text-slate-500">Recorded {l.recorded}</div>}
-          <div className="text-slate-400">of {l.fee}{l.balance ? <span className="text-amber-700"> · owes {l.balance}</span> : ''}</div>
-        </div>
-      )) : <span className="text-slate-300">—</span>}
+      ) : lines.length ? lines.map(l => <PaidLine key={l.key} l={l} many={lines.length > 1} />) : <span className="text-slate-300">—</span>}
       <div className="mt-1.5">
         <ReceiptsButton tx={receiptTxOf(t)} title={title || t.student?.full_name || t.student_name} />
         {receiptTxOf(t) !== t && <span className="ml-1.5 text-[11px] text-slate-400">{upgradeReceiptsOf(t) ? 'upgrade payments' : 'from finance'}</span>}

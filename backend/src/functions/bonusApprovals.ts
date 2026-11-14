@@ -176,6 +176,11 @@ export async function getBonusApprovals(req: Request, user: AuthUser): Promise<R
                 method: String(p.method ?? ""), amount: (Number(p.amount_minor) || 0) / 100, paid_on: String(p.paid_on ?? ""),
                 receipt_url: String(p.receipt_url ?? ""), receipt_name: String(p.receipt_name ?? ""),
               })),
+              // Every payment finance recorded on the invoice, how and how much — receipt or not (2026-11-14: only the close's
+              // Tabby showed, not the two Tamara payments after it).
+              all_payments: (Array.isArray(f.payments) ? f.payments : []).map((p: any) => ({
+                method: String(p.method ?? ""), amount: (Number(p.amount_minor) || 0) / 100, paid_on: String(p.paid_on ?? ""),
+              })),
               // Each payment finance recorded, with its own receipt (2026-10-27) — a second payment's too.
               recorded_payments: (Array.isArray(f.payments) ? f.payments : []).filter((p: any) => /^https?:\/\//i.test(String(p?.receipt_url ?? ""))).map((p: any) => ({
                 method: String(p.method ?? ""), amount: (Number(p.amount_minor) || 0) / 100, paid_on: String(p.paid_on ?? ""),
