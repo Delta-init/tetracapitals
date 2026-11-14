@@ -48,7 +48,8 @@ const KIND_LABEL = { staff: 'Staff', student: 'Student', client: 'Client' };
 /* What a meeting is for (the user, 2026-10-25) — beside its kind; kept in the LMS. */
 // Course Upgradation, with its course (2026-11-09) — components/meetings/meetingRequests.jsx.
 const CATEGORY_LABEL = Object.fromEntries(MEETING_CATEGORIES);
-const kindAndCategory = (v) => [KIND_LABEL[v.kind] ?? v.kind, CATEGORY_LABEL[v.category], v.category === 'course_upgrade' && v.course].filter(Boolean).join(' · ');
+// A staff meeting with several mentors in it (2026-11-14) says so, on each of their calendars.
+const kindAndCategory = (v) => [(v.staffMeeting || v.staff?.length) ? 'Staff meeting' : KIND_LABEL[v.kind] ?? v.kind, CATEGORY_LABEL[v.category], v.category === 'course_upgrade' && v.course].filter(Boolean).join(' · ');
 
 /* ── Working hours and leave from the HRMS (backend/src/students/mentorHours.ts), in Dubai time ── */
 const DAY_NAMES = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
@@ -203,6 +204,15 @@ export default function MentorCalendar() {
   const [tab, setTab] = useUrlState('tab', 'calendar');
   const [requesting, setRequesting] = useState(false);
   const [staffSlot, setStaffSlot] = useState(null); // the day Book was pressed on — for "a staff meeting instead"
+  /* A staff meeting with several mentors in it (the user, 2026-11-14: "an option in meeting with: staff meeting, only
+     for the Chief… staff can be selected; if they have a meeting at that time it shows the specific mentor"). A Chief
+     Mentor's, with their own team; an admin's, with anyone (may_staff_meeting, may_invite — the backend decides). The
+     form's Kind "team" is this page's word for it: it goes to the LMS as a staff meeting with `staffEmails`. */
+  const mayStaff = Boolean(schedule.data?.may_staff_meeting);
+  const invitable = useMemo(() => (schedule.data?.mentors ?? []).filter(m => m.may_invite), [schedule.data]);
+  const [team, setTeam] = useState(() => new Set()); // the mentors ticked, by address — besides the meeting's own
+  const [hadTeam, setHadTeam] = useState(false);     // the meeting being changed had mentors in it
+  const [finder, setFinder] = useState(null);        // "Find free time": { scope: 'day' | 'week', from, to } or null
   // From a student's page (?student=): a mentor who asks gets the request form, the student in it.
   useEffect(() => { if (asks && forStudent?.id) setRequesting(true); }, [asks, forStudent?.id]);
 
@@ -312,6 +322,7 @@ export default function MentorCalendar() {
     // A mentor who asks: Book is a meeting request — the CS picks the time (2026-11-09); a staff meeting books as before.
     if (asks && !staff) { setStaffSlot({ mentor, day }); setRequesting(true); return; }
     setBooking({ mentor, day });
+    setTeam(new Set()); setHadTeam(false); setFinder(null);
     if (asks) {
       setForm({ ...emptyForm, kind: 'staff' });
       setGuests([{ name: '', email: '' }]);
@@ -339,9 +350,12 @@ export default function MentorCalendar() {
   const openEdit = (mentor, d) => {
     const when = new Date(d.startsAt);
     setBooking({ mentor, day: when });
+    // A staff meeting with mentors in it: they are ticked, and left out of the people typed (the LMS invites them itself).
+    const staffEmails = new Set((d.staff ?? []).map(s => String(s.email || '').trim().toLowerCase()).filter(Boolean));
+    setTeam(staffEmails); setHadTeam(staffEmails.size > 0); setFinder(null);
     setForm({
       title: d.title,
-      kind: d.kind,
+      kind: staffEmails.size ? 'team' : d.kind,
       category: d.category || '',
       course: d.course || '',
       time: when.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', timeZone: tz }),
@@ -351,7 +365,8 @@ export default function MentorCalendar() {
       meetingUrl: d.meetingUrl || '',
       notes: d.notes || '',
     });
-    setGuests(d.attendees?.length ? d.attendees.map(a => ({ name: a.name, email: a.email || '' })) : [{ name: '', email: '' }]);
+    const typed = (d.attendees ?? []).filter(a => !a.email || !staffEmails.has(String(a.email).trim().toLowerCase()));
+    setGuests(typed.length ? typed.map(a => ({ name: a.name, email: a.email || '' })) : [{ name: '', email: '' }]);
     setEditingId(d.id);
     setViewing(null);
   };
@@ -367,46 +382,96 @@ export default function MentorCalendar() {
    * the mentor's hours is marked, never disabled (the hours are a pattern, not
    * a contract — the LMS does not enforce them either).
    */
-  const slotList = useMemo(() => {
-    if (!booking) return [];
-    const { mentor, day } = booking;
-    const duration = Number(form.durationMins) || SLOT_MINUTES;
-    const busy = [
-      ...mentor.classes
-        .filter(c => sameDay(c.startsAt, day) && c.status !== 'cancelled')
-        .map(c => { const f = minutesInZone(c.startsAt); return { from: f, to: f + (c.durationMins || 0), what: c.mine ? (c.title || 'a class') : 'another academy' }; }),
-      ...mentor.meetings
-        .filter(v => sameDay(v.startsAt, day) && v.id !== editingId)
-        .map(v => { const f = minutesInZone(v.startsAt); return { from: f, to: f + (v.durationMins || 0), what: v.attendeeNames?.join(', ') || v.title }; }),
-      // Their time off: never offered (the LMS refuses it anyway).
-      ...(mentor.timeOff ?? []).map(t => offOnDay(t, day)).filter(Boolean).map(o => ({ from: o.from, to: o.to, what: 'Not available' })),
-    ];
+  const lower = (v) => String(v || '').trim().toLowerCase();
+  const hhmm = (m) => `${String(Math.floor(m / 60)).padStart(2, '0')}:${String(m % 60).padStart(2, '0')}`;
+  /* What is in one mentor's diary on a day, in the zone's minutes: classes (a cancelled one aside), meetings and staff
+     meetings they are in (the one being changed aside), their time off. `kind` is for whoever lists them. */
+  const busyOn = (mentor, day) => [
+    ...mentor.classes
+      .filter(c => sameDay(c.startsAt, day) && c.status !== 'cancelled')
+      .map(c => { const f = minutesInZone(c.startsAt); return { from: f, to: f + (c.durationMins || 0), kind: 'class', what: c.mine ? (c.title || 'a class') : 'another academy' }; }),
+    ...mentor.meetings
+      .filter(v => sameDay(v.startsAt, day) && v.id !== editingId)
+      .map(v => { const f = minutesInZone(v.startsAt); return { from: f, to: f + (v.durationMins || 0), kind: 'meeting', what: v.staffMeeting ? v.title : (v.attendeeNames?.join(', ') || v.title) }; }),
+    // Their time off: never offered (the LMS refuses it anyway).
+    ...(mentor.timeOff ?? []).map(t => offOnDay(t, day)).filter(Boolean).map(o => ({ from: o.from, to: o.to, kind: 'off', what: 'Not available' })),
+  ];
+  /** Inside the weekly hours the mentor set (no hours set: always inside) — a pattern, not a rule. */
+  const inHoursOf = (mentor, day, start, duration) => {
     const free = mentor.slots.filter(sl => sl.dayOfWeek === day.getDay());
-    const inHours = (start) => free.length === 0 || free.some(sl => {
+    return free.length === 0 || free.some(sl => {
       const [fh, fm] = sl.startTime.split(':').map(Number);
       const [th, tm] = sl.endTime.split(':').map(Number);
       return start >= (fh ?? 0) * 60 + (fm ?? 0) && start + duration <= (th ?? 0) * 60 + (tm ?? 0);
     });
+  };
+  const isTeam = form.kind === 'team';
+  /* Everybody in a staff meeting: its own mentor, then whoever is ticked. For any other meeting, its mentor alone. */
+  const people = useMemo(() => {
+    if (!booking) return [];
+    if (!isTeam) return [booking.mentor];
+    const own = lower(booking.mentor.email);
+    return [booking.mentor, ...invitable.filter(m => lower(m.email) !== own && team.has(lower(m.email)))];
+  }, [booking, isTeam, invitable, team]);
+
+  const slotList = useMemo(() => {
+    if (!booking) return [];
+    const { day } = booking;
+    const duration = Number(form.durationMins) || SLOT_MINUTES;
+    const diaries = people.map(p => ({ p, busy: busyOn(p, day) }));
     const out = [];
     for (let m = 0; m < 24 * 60; m += SLOT_MINUTES) {
-      const value = `${String(Math.floor(m / 60)).padStart(2, '0')}:${String(m % 60).padStart(2, '0')}`;
-      const clash = busy.find(b => m < b.to && b.from < m + duration);
-      out.push({ value, taken: clash ? clash.what : '', outside: !inHours(m) });
+      // Who is in the way at this start, and with what — a staff meeting names each of them.
+      const clashes = diaries.map(({ p, busy }) => ({ p, b: busy.find(b => m < b.to && b.from < m + duration) })).filter(x => x.b);
+      const taken = !clashes.length ? ''
+        : !isTeam ? clashes[0].b.what
+        : `${clashes[0].p.name || clashes[0].p.email} busy${clashes.length > 1 ? ` +${clashes.length - 1}` : ''}`;
+      out.push({ value: hhmm(m), taken, clashes, outside: diaries.some(({ p }) => !inHoursOf(p, day, m, duration)) });
     }
     return out;
-  }, [booking, form.durationMins, tz, schedule.data, editingId]);
+  }, [booking, form.durationMins, tz, schedule.data, editingId, people, isTeam]);
+
+  /* "Find free time" (the user, 2026-11-14: "a button to find free time between this time range for all selected
+     mentors"): on the day in hand, or each of the seven on screen, every half-hour start between two times when
+     everybody in the meeting is free — and, for the one day, what is in the way and whose it is. Nothing is fetched:
+     the week on screen has every diary. */
+  const found = useMemo(() => {
+    if (!booking || !finder || !isTeam) return [];
+    const duration = Number(form.durationMins) || SLOT_MINUTES;
+    const toMins = (v) => { const [h, m] = String(v || '').split(':').map(Number); return (h || 0) * 60 + (m || 0); };
+    const lo = toMins(finder.from), hi = toMins(finder.to);
+    const now = Date.now();
+    return (finder.scope === 'week' ? days : [booking.day]).map(day => {
+      const diaries = people.map(p => ({ p, busy: busyOn(p, day) }));
+      const free = [];
+      for (let m = Math.ceil(lo / SLOT_MINUTES) * SLOT_MINUTES; m + duration <= hi; m += SLOT_MINUTES) {
+        if (wallInZone(columnKey(day), hhmm(m), tz).getTime() <= now) continue;   // a time already gone
+        if (diaries.some(({ busy }) => busy.some(b => m < b.to && b.from < m + duration))) continue;
+        free.push({ value: hhmm(m), outside: diaries.some(({ p }) => !inHoursOf(p, day, m, duration)) });
+      }
+      const blocked = diaries
+        .flatMap(({ p, busy }) => busy.filter(b => b.from < hi && lo < b.to).map(b => ({ ...b, who: p.name || p.email })))
+        .sort((a, b) => a.from - b.from || a.who.localeCompare(b.who));
+      return { day, free, blocked };
+    });
+  }, [booking, finder, isTeam, people, form.durationMins, tz, schedule.data, editingId, days]);
 
   /* Nothing free on the day (a whole day off, say): the start left on a taken time — Book stays off. */
   const chosenTaken = booking ? (slotList.find(sl => sl.value === form.time)?.taken || '') : '';
 
-  // Stretching a meeting can take away its start: then the next free slot is picked.
+  // Stretching a meeting can take away its start: then the next free slot is picked. Not for a staff meeting: there
+  // the time asked for stays, and the form says who is busy then — "Find free time" picks another.
   useEffect(() => {
-    if (!booking || !slotList.length) return;
+    if (!booking || !slotList.length || isTeam) return;
     const current = slotList.find(sl => sl.value === form.time);
     if (current && !current.taken) return;
     const next = slotList.find(sl => !sl.taken);
     if (next) setForm(f => ({ ...f, time: next.value }));
-  }, [slotList, booking, form.time]);
+  }, [slotList, booking, form.time, isTeam]);
+
+  /* A staff meeting: who of those in it is busy at the time chosen, and with what. */
+  const chosenClashes = booking && isTeam ? (slotList.find(sl => sl.value === form.time)?.clashes ?? []) : [];
+  const clashOf = (m) => chosenClashes.find(x => lower(x.p.email) === lower(m.email))?.b ?? null;
 
   const book = useMutation({
     mutationFn: async () => {
@@ -420,7 +485,10 @@ export default function MentorCalendar() {
       const payload = {
         mentorEmail: booking.mentor.email,
         title: form.title.trim(),
-        kind: form.kind,
+        // A staff meeting with mentors in it is a staff meeting to the LMS, with who they are; one changed back to a
+        // plain meeting gives its mentors up.
+        kind: isTeam ? 'staff' : form.kind,
+        ...(isTeam ? { staffEmails: people.slice(1).map(p => lower(p.email)) } : editingId && hadTeam ? { staffEmails: [] } : {}),
         category: form.category || '',
         course: form.category === 'course_upgrade' ? form.course : undefined,
         scheduledStart: startsAt.toISOString(),
@@ -782,7 +850,7 @@ export default function MentorCalendar() {
       <Dialog open={Boolean(booking)} onOpenChange={(o) => { if (!o) setBooking(null); }}>
         <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-lg">
           <DialogHeader>
-            <DialogTitle className="text-brand-navy">{editingId ? 'Change this meeting' : `Book time with ${booking?.mentor.name || booking?.mentor.email}`}</DialogTitle>
+            <DialogTitle className="text-brand-navy">{editingId ? 'Change this meeting' : isTeam ? 'Book a staff meeting' : `Book time with ${booking?.mentor.name || booking?.mentor.email}`}</DialogTitle>
             <DialogDescription>
               {booking?.day.toLocaleDateString(undefined, { weekday: 'long', day: 'numeric', month: 'long' })} · times are {tzName}
             </DialogDescription>
@@ -795,8 +863,14 @@ export default function MentorCalendar() {
             </div>
             <div className="space-y-1.5">
               <Label htmlFor="mkind">Kind</Label>
-              <select id="mkind" value={form.kind} onChange={e => setForm(f => ({ ...f, kind: e.target.value }))} className={selectCls}>
-                <option value="staff">Staff meeting</option>
+              <select id="mkind" value={form.kind} onChange={e => { setForm(f => ({ ...f, kind: e.target.value })); if (e.target.value !== 'team') setFinder(null); }} className={selectCls}>
+                {/* Several mentors in one meeting (2026-11-14) — a Chief Mentor with their team, an admin with anyone. */}
+                {(mayStaff || isTeam) && (
+                  <option value="team" disabled={!isTeam && !booking?.mentor.may_invite}>
+                    Staff meeting — pick the mentors{!isTeam && booking && !booking.mentor.may_invite ? ' (not your team’s mentor)' : ''}
+                  </option>
+                )}
+                <option value="staff">{mayStaff ? 'Staff meeting — one mentor' : 'Staff meeting'}</option>
                 <option value="student" disabled={asks && !editingId}>With a student{asks && !editingId ? ' — use Request a meeting' : ''}</option>
                 <option value="client">Outside client</option>
               </select>
@@ -821,8 +895,9 @@ export default function MentorCalendar() {
               <div className="space-y-1.5">
                 <Label htmlFor="mtime">Start</Label>
                 <select id="mtime" value={form.time} onChange={e => setForm(f => ({ ...f, time: e.target.value }))} className={selectCls}>
+                  {/* A staff meeting: a busy time can still be looked at — the list below says who is in the way. */}
                   {slotList.map(sl => (
-                    <option key={sl.value} value={sl.value} disabled={Boolean(sl.taken)}>
+                    <option key={sl.value} value={sl.value} disabled={Boolean(sl.taken) && !isTeam}>
                       {sl.value}{sl.taken ? ` · ${sl.taken}` : sl.outside ? ' · outside their hours' : ''}
                     </option>
                   ))}
@@ -834,9 +909,105 @@ export default function MentorCalendar() {
               </div>
             </div>
 
+            {/* A staff meeting's mentors: ticked from the team, each with what is in their diary at the time chosen. */}
+            {isTeam && booking && (
+              <div className="space-y-2 sm:col-span-2" data-testid="staff-meeting-team">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <Label>Mentors in the meeting <span className="font-normal text-slate-400">({people.length})</span></Label>
+                  <span className="flex gap-1">
+                    <Button type="button" variant="ghost" size="sm" onClick={() => setTeam(new Set(invitable.map(m => lower(m.email))))}>Select all</Button>
+                    <Button type="button" variant="ghost" size="sm" onClick={() => setTeam(new Set())}>Clear</Button>
+                  </span>
+                </div>
+                <ul className="max-h-56 divide-y overflow-y-auto rounded-md border border-slate-200">
+                  {[booking.mentor, ...invitable.filter(m => lower(m.email) !== lower(booking.mentor.email))].map((m, i) => {
+                    const own = i === 0, key = lower(m.email);
+                    const on = own || team.has(key);
+                    const clash = on ? clashOf(m) : null;
+                    return (
+                      <li key={key || i}>
+                        <label className={cn('flex cursor-pointer items-center gap-2 px-3 py-1.5 text-sm', own && 'cursor-default')}>
+                          <input type="checkbox" className="h-4 w-4 shrink-0" checked={on} disabled={own}
+                            onChange={() => setTeam(prev => { const n = new Set(prev); if (n.has(key)) n.delete(key); else n.add(key); return n; })} />
+                          <span className="min-w-0 flex-1 truncate">{m.name || m.email}{own && <span className="text-xs text-slate-400"> · the meeting is in their name</span>}</span>
+                          {on && (clash
+                            ? <span className={cn('shrink-0 rounded px-1.5 py-0.5 text-xs', clash.kind === 'off' ? 'bg-amber-50 text-amber-800' : 'bg-rose-50 text-rose-700')}>
+                                {clash.kind === 'off' ? 'Not available' : `Busy · ${clash.kind === 'class' ? 'class' : 'meeting'}: ${clash.what}`} · {hhmm(clash.from)}–{hhmm(Math.min(clash.to, 1440))}
+                              </span>
+                            : <span className="shrink-0 rounded bg-emerald-50 px-1.5 py-0.5 text-xs text-emerald-700">Free</span>)}
+                        </label>
+                      </li>
+                    );
+                  })}
+                </ul>
+                {invitable.length <= 1 && <p className="text-xs text-slate-500">There is no other mentor in your team to pick.</p>}
+                {chosenClashes.length > 0 && (
+                  <p className="rounded-md border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700" data-testid="staff-meeting-busy">
+                    {chosenClashes.length} of the {people.length} {chosenClashes.length === 1 ? 'is' : 'are'} busy at {form.time}: {chosenClashes.map(x => x.p.name || x.p.email).join(', ')}. Untick them, or pick another time.
+                  </p>
+                )}
+
+                {/* Find free time: every start between two times when everybody ticked is free. */}
+                <div className="rounded-md border border-slate-200 p-3">
+                  <div className="grid grid-cols-2 items-end gap-2 sm:grid-cols-4">
+                    <div className="col-span-2 sm:col-span-1">
+                      <Label htmlFor="ffscope" className="mb-1 block text-xs">Look in</Label>
+                      <select id="ffscope" value={finder?.scope ?? 'day'} onChange={e => setFinder(f => ({ from: '09:00', to: '18:00', ...(f ?? {}), scope: e.target.value }))} className={cn(selectCls, 'h-9 w-full')}>
+                        <option value="day">This day</option>
+                        <option value="week">The 7 days on screen</option>
+                      </select>
+                    </div>
+                    <div>
+                      <Label htmlFor="fffrom" className="mb-1 block text-xs">Between</Label>
+                      <Input id="fffrom" type="time" step={1800} className="h-9 w-full" value={finder?.from ?? '09:00'} onChange={e => setFinder(f => ({ scope: 'day', to: '18:00', ...(f ?? {}), from: e.target.value }))} />
+                    </div>
+                    <div>
+                      <Label htmlFor="ffto" className="mb-1 block text-xs">And</Label>
+                      <Input id="ffto" type="time" step={1800} className="h-9 w-full" value={finder?.to ?? '18:00'} onChange={e => setFinder(f => ({ scope: 'day', from: '09:00', ...(f ?? {}), to: e.target.value }))} />
+                    </div>
+                    <Button type="button" variant="outline" size="sm" className="col-span-2 h-9 gap-1.5 sm:col-span-1" onClick={() => setFinder(f => (f ? null : { scope: 'day', from: '09:00', to: '18:00' }))}>
+                      <Search className="h-3.5 w-3.5" /> {finder ? 'Hide free time' : 'Find free time'}
+                    </Button>
+                  </div>
+                  {finder && (
+                    <div className="mt-3 space-y-3" data-testid="staff-meeting-free">
+                      {found.every(d => d.free.length === 0) && (
+                        <p className="text-sm text-slate-500">No time between {finder.from} and {finder.to} when all {people.length} are free for {Number(form.durationMins) || SLOT_MINUTES} minutes. Widen the times, look in the 7 days, or untick somebody.</p>
+                      )}
+                      {found.filter(d => d.free.length > 0 || finder.scope === 'day').map(d => (
+                        <div key={columnKey(d.day)} className="space-y-1.5">
+                          {finder.scope === 'week' && <p className="text-xs font-semibold text-slate-600">{d.day.toLocaleDateString(undefined, { weekday: 'long', day: 'numeric', month: 'short' })}</p>}
+                          {d.free.length > 0 && (
+                            <div className="flex flex-wrap gap-1.5">
+                              {d.free.map(sl => (
+                                <button key={sl.value} type="button" title={sl.outside ? 'Outside somebody’s working hours' : 'Everybody is free'}
+                                  onClick={() => { setBooking(b => ({ ...b, day: d.day })); setForm(f => ({ ...f, time: sl.value })); }}
+                                  className={cn('rounded-md border px-2 py-1 text-xs tabular', sl.outside ? 'border-slate-200 text-slate-500 hover:bg-slate-50' : 'border-emerald-300 bg-emerald-50 text-emerald-800 hover:bg-emerald-100',
+                                    columnKey(d.day) === columnKey(booking.day) && sl.value === form.time && 'ring-2 ring-brand-navy')}>
+                                  {sl.value}{sl.outside ? ' ·' : ''}
+                                </button>
+                              ))}
+                            </div>
+                          )}
+                          {finder.scope === 'day' && d.blocked.length > 0 && (
+                            <ul className="space-y-0.5 text-xs text-slate-600">
+                              {d.blocked.map((b, i) => (
+                                <li key={i}><span className="tabular text-slate-500">{hhmm(b.from)}–{hhmm(Math.min(b.to, 1440))}</span> · <span className="font-medium">{b.who}</span> · {b.kind === 'off' ? 'not available' : `${b.kind}: ${b.what}`}</li>
+                              ))}
+                            </ul>
+                          )}
+                        </div>
+                      ))}
+                      {found.some(d => d.free.some(sl => sl.outside)) && <p className="text-xs text-slate-400">A time with a dot is outside somebody&apos;s working hours.</p>}
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+
             {/* Everybody with an address gets the invitation and the joining link, each separately. */}
             <div className="space-y-2 sm:col-span-2">
-              <Label>Who they are meeting</Label>
+              <Label>{isTeam ? <>Anybody else <span className="font-normal text-slate-400">(optional — the mentors ticked are invited already)</span></> : 'Who they are meeting'}</Label>
               {guests.map((g, i) => (
                 <div key={i} className="flex items-center gap-2">
                   <StudentNameInput
@@ -876,10 +1047,12 @@ export default function MentorCalendar() {
             </div>
           </div>
 
-          {chosenTaken && <p className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">No free time left on this day{chosenTaken === 'Not available' ? ` — ${booking?.mentor.name || 'the mentor'} is not available` : ''}. Pick another day.</p>}
+          {/* A staff meeting says who is busy beside the mentors, above — this line is for a meeting with one mentor. */}
+          {chosenTaken && !isTeam && <p className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">No free time left on this day{chosenTaken === 'Not available' ? ` — ${booking?.mentor.name || 'the mentor'} is not available` : ''}. Pick another day.</p>}
+          {isTeam && people.length < 2 && <p className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">Tick at least one more mentor for a staff meeting.</p>}
           <DialogFooter className="gap-2 sm:gap-0">
             <Button variant="outline" onClick={() => setBooking(null)}>Cancel</Button>
-            <Button disabled={Boolean(chosenTaken) || book.isPending || (form.category === 'course_upgrade' && !form.course) || (asks && !editingId && form.kind === 'student') || form.title.trim().length < 3 || !guests.some(g => g.name.trim()) || (form.inPerson && form.location.trim().length < 2)} onClick={() => book.mutate()}>
+            <Button disabled={Boolean(chosenTaken) || book.isPending || (form.category === 'course_upgrade' && !form.course) || (asks && !editingId && form.kind === 'student') || form.title.trim().length < 3 || (isTeam ? people.length < 2 : !guests.some(g => g.name.trim())) || (form.inPerson && form.location.trim().length < 2)} onClick={() => book.mutate()}>
               {book.isPending && <Loader2 className="h-4 w-4 animate-spin" />} {editingId ? 'Save changes' : 'Book it'}
             </Button>
           </DialogFooter>

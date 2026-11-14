@@ -60,6 +60,30 @@ async function timeOffReach(user: AuthUser): Promise<Set<string> | null> {
 }
 const reaches = (reach: Set<string> | null, email: unknown) => reach === null || reach.has(String(email ?? "").trim().toLowerCase());
 
+/* ── Staff meetings (the user, 2026-11-14) ───────────────────────────────────
+   "An option in meeting with: staff meeting, only for the Chief… staff can be
+   selected; if they have a meeting at that time it shows the specific mentor."
+   A Chief Mentor books one meeting with several mentors of their team in it;
+   an admin, with anyone. The LMS keeps them on the meeting, checks each one's
+   diary (refusing with whoever is in the way, by name), shows it on each
+   calendar and tells each. Who may name whom is decided here — the same reach
+   as marking time off: one's own team. */
+const mayBookStaffMeeting = (user: AuthUser) => user.app_role === "chief_mentor" || isAdmin(user);
+const emailsOf = (v: unknown) => [...new Set((Array.isArray(v) ? v : []).map((e) => str(e, 200).toLowerCase()).filter(Boolean))].slice(0, 30);
+
+/**
+ * The mentors named for a staff meeting, once this person may book one with them: a sentence when they may not.
+ * `mentorEmail`: whose meeting it is — one of the team too, unless it is the person's own.
+ */
+async function staffFor(user: AuthUser, staffEmails: string[], mentorEmail: string, kind: string): Promise<string | null> {
+  if (!staffEmails.length) return null;
+  if (!mayBookStaffMeeting(user)) return "Only a Chief Mentor books a staff meeting";
+  if (kind !== "staff") return "A staff meeting is a meeting with staff";
+  const reach = await timeOffReach(user);
+  const outside = [mentorEmail, ...staffEmails].filter((e) => e && !reaches(reach, e));
+  return outside.length ? `Not in your team: ${outside.join(", ")}` : null;
+}
+
 /**
  * POST /api/functions/getMentorSchedule { from?, to? } → { timezone, from, to, hrms, mentors }
  * Each mentor with `work` — their HRMS working hours and leave in Dubai time (students/mentorHours.ts), or null when
@@ -78,12 +102,15 @@ export async function getMentorSchedule(req: Request, user: AuthUser): Promise<R
     const data: any = await callLms("/mentors", { query: { from: from.toISOString(), to: to.toISOString(), allAcademies: "1", timeOffReasons: "all" }, verb: "list its mentors" });
     // Time off with its reason only for whom it's theirs to mark; may_mark_time_off says so to the page.
     const reach = await timeOffReach(user);
+    // A staff meeting (2026-11-14): whether this person books one, and with which of the mentors (their team's).
+    const staffMeetings = mayBookStaffMeeting(user);
     const mentors = (data?.mentors ?? []).map((m: any) => {
       const mine = reaches(reach, m.email);
       return {
         ...m, slots: m.slots ?? [], classes: m.classes ?? [], meetings: m.meetings ?? [],
         timeOff: (m.timeOff ?? []).map((t: any) => ({ ...t, reason: mine ? t.reason ?? "" : null })),
         may_mark_time_off: mine,
+        may_invite: staffMeetings && mine,
       };
     });
     const hours = await mentorHours(mentors.map((m: any) => m.email), from, to);
@@ -92,6 +119,7 @@ export async function getMentorSchedule(req: Request, user: AuthUser): Promise<R
       from: data?.from || from.toISOString(),
       to: data?.to || to.toISOString(),
       hrms: { configured: hours.configured, available: hours.available, ...(hours.message ? { message: hours.message } : {}) },
+      may_staff_meeting: staffMeetings,
       mentors: mentors.map((m: any) => ({ ...m, work: hours.byEmail.get(String(m.email ?? "").trim().toLowerCase()) ?? null })),
     };
   });
@@ -108,7 +136,8 @@ export async function getMentorClass(req: Request, _user: AuthUser): Promise<Res
 
 /**
  * POST /api/functions/bookMentorMeeting { mentorEmail, title, kind, scheduledStart, durationMins, attendees,
- *   inPerson?, location? (where, when in person), meetingUrl? (online only), notes? }
+ *   inPerson?, location? (where, when in person), meetingUrl? (online only), notes?,
+ *   staffEmails? (a staff meeting's other mentors — a Chief Mentor's team, an admin anyone) }
  */
 export async function bookMentorMeeting(req: Request, user: AuthUser): Promise<Response> {
   const body: any = await req.json().catch(() => ({}));
@@ -118,6 +147,10 @@ export async function bookMentorMeeting(req: Request, user: AuthUser): Promise<R
   if (ASKS_FOR_MEETINGS.has(user.app_role) && str(body?.kind, 20) === "student") {
     return error("Send a meeting request — the student's CS picks the time and approves it", 403);
   }
+  // A staff meeting (2026-11-14): the other mentors in it, once this person may book one with them.
+  const staffEmails = emailsOf(body?.staffEmails).filter((e) => e !== mentorEmail.toLowerCase());
+  const refused = await staffFor(user, staffEmails, mentorEmail.toLowerCase(), str(body?.kind, 20));
+  if (refused) return error(refused, 403);
   const inPerson = body?.inPerson === true;
   return lms(() =>
     callLms("/mentor-meetings", {
@@ -138,6 +171,7 @@ export async function bookMentorMeeting(req: Request, user: AuthUser): Promise<R
         location: inPerson ? str(body?.location, 300) : undefined,
         meetingUrl: !inPerson && body?.meetingUrl ? str(body.meetingUrl, 500) : undefined,
         attendees: attendeesOf(body?.attendees),
+        ...(staffEmails.length ? { staffEmails } : {}),
         // Either academy's mentor (2026-10-15) — the calendar lists both.
         allAcademies: true,
         notes: body?.notes ? str(body.notes) : undefined,
@@ -168,11 +202,19 @@ export async function updateMentorMeeting(req: Request, user: AuthUser): Promise
   const meetingId = str(body?.meetingId, 100);
   if (!meetingId) return error("meetingId is required", 400);
   const has = (k: string) => body?.[k] !== undefined;
+  // A staff meeting's mentors changed (2026-11-14): who is in it now — all of them reachable by this person. An empty
+  // list takes everybody off, which anybody who may change the meeting may do.
+  const staffEmails = Array.isArray(body?.staffEmails) ? emailsOf(body.staffEmails) : null;
+  if (staffEmails?.length) {
+    const refused = await staffFor(user, staffEmails, "", "staff");
+    if (refused) return error(refused, 403);
+  }
   return lms(() =>
     callLms(`/mentor-meetings/${encodeURIComponent(meetingId)}`, {
       method: "PATCH",
       verb: "change that meeting",
       body: {
+        ...(staffEmails ? { staffEmails, allAcademies: true } : {}),
         ...(has("title") ? { title: str(body.title, 200) } : {}),
         ...(has("kind") ? { kind: str(body.kind, 20) } : {}),
         ...(has("category") ? { category: str(body.category, 20) } : {}),
