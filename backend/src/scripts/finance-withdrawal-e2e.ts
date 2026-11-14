@@ -124,27 +124,20 @@ const approvedByFinance = async (aed = 2000) => {
 };
 
 /* ── 1. Raised twice ───────────────────────────────────────────────────── */
-step("1. The same payment raised twice");
+step("1. The same payment raised twice: allowed");
 let r = await raise(2000);
 const first = String(r.body?.id ?? "");
 check("the first is raised", r.status === 200 && !!first, show(r));
 r = await raise(2000);
-check("the same course and amount again, while the first waits: refused, saying when and that it waits",
-  r.status === 409 && /raised already — DSLP Offer, AED 2,000, .*waiting for approval/.test(JSON.stringify(r.body)), show(r));
-r = await raise(2000, { course_payment: { ...cp(2000), product: "  dslp offer " } });
-check("…whatever the course name's case or spacing", r.status === 409, show(r));
+const again = String(r.body?.id ?? "");
+check("the same course and amount again: raised, the repeat refusal having been removed",
+  r.status === 200 && !!again, show(r));
 r = await raise(2500);
-check("another amount is another payment: raised", r.status === 200, show(r));
 const other = String(r.body?.id ?? "");
+check("another amount is another payment: raised", r.status === 200, show(r));
 await financeApproves(first);
 await patchAs(brokerToken, first, { status: "APPROVED", approved_by_name: "Broker Bo", transaction_id: "TXN-A1" });
-r = await raise(2000);
-check("refused while the first is approved, too", r.status === 409 && /approved\./.test(JSON.stringify(r.body)), show(r));
-await txs.updateOne({ _id: new ObjectId(first) }, { $set: { requested_at: "2026-01-01T00:00:00.000Z", created_date: "2026-01-01T00:00:00.000Z" } });
-r = await raise(2000);
-check("a day later the same amount is a new payment: raised", r.status === 200, show(r));
-const later = String(r.body?.id ?? "");
-await txs.deleteMany({ _id: { $in: [new ObjectId(later), new ObjectId(other)] } });
+await txs.deleteMany({ _id: { $in: [new ObjectId(again), new ObjectId(other)] } });
 
 /* ── 2. Rejected by a broker admin after finance approved ──────────────── */
 step("2. Finance approved it; a broker admin rejects it as a repeat");

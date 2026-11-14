@@ -200,9 +200,6 @@ export async function createEntity(req: Request, entityName: string): Promise<Re
     // The same course paid in full twice (2026-10-23).
     const paidTwice = await (await import("../finance/funding")).coursePaidInFullRefusal(data);
     if (paidTwice) return error(paidTwice, 409);
-    // The same payment raised again within a day, while the first stands (2026-10-31).
-    const repeat = await (await import("../finance/funding")).repeatPaymentRefusal(data);
-    if (repeat) return error(repeat, 409);
     // A rejected request, corrected and sent again: that one claimed, once (finance/funding.ts).
     const refused = await claimResubmit(data, ctx.user);
     if (refused) return error(refused.message, refused.status);
