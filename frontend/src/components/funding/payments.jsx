@@ -23,8 +23,9 @@ import { Eye, Loader2, Paperclip, Plus, Upload, X } from 'lucide-react';
 
 /** How money came in: the portal's own, Pay by link (the student paid a payment link), and the sales CRMs' — the user,
  *  2026-10-06. POS (the card machine, beside CARD PAYMENT) and Razorpay (rupees, beside INR TRANSFER) added, and
- *  'Other' no longer picked for a new payment — the owner, 2026-11-13. */
-export const SALES_CRM_METHODS = ['Cash', 'Bank Transfer', 'Cheque', 'Card', 'Easebuzz EMI', 'Tabby', 'Tamara', 'BillExPro'];
+ *  'Other' no longer picked for a new payment — the owner, 2026-11-13. Tamara KSA (Tamara's Saudi account, beside
+ *  Tamara) — 2026-11-17. */
+export const SALES_CRM_METHODS = ['Cash', 'Bank Transfer', 'Cheque', 'Card', 'Easebuzz EMI', 'Tabby', 'Tamara', 'Tamara KSA', 'BillExPro'];
 export const DEPOSIT_METHODS = ['AED TRANSFER', 'UPI', 'CARD PAYMENT', 'POS', 'USDT', 'INR TRANSFER', 'Razorpay', 'Cash deposit', 'Pay by link', ...SALES_CRM_METHODS];
 /** The same, for a request already saved (processing it): older ones say 'Other', and must go on showing it. */
 export const SAVED_DEPOSIT_METHODS = [...DEPOSIT_METHODS, 'Other'];

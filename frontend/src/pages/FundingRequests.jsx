@@ -1120,6 +1120,8 @@ export default function FundingRequests() {
                     <SelectItem value="USDT">USDT</SelectItem>
                     <SelectItem value="INR TRANSFER">INR TRANSFER</SelectItem>
                     <SelectItem value="Razorpay">Razorpay</SelectItem>
+                    {/* Tamara KSA (2026-11-17) */}
+                    <SelectItem value="Tamara KSA">Tamara KSA</SelectItem>
                     <SelectItem value="Cash deposit">Cash deposit</SelectItem>
                     <SelectItem value="Cash Withdrawal">Cash Withdrawal</SelectItem>
                     <SelectItem value="Bank Withdrawal">Bank Withdrawal</SelectItem>
