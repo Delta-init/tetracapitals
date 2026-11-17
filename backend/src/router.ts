@@ -33,6 +33,7 @@ import { handleProgramConfirm } from "./students/programNotices";
 import { streamRecording } from "./students/calls";
 import { streamWhatsAppMedia } from "./functions/whatsapp";
 import { handleCsTv, handleCsTvVoice, handleCsTvVoicePlan } from "./functions/csTv";
+import { handleMentorTv } from "./functions/mentorTv";
 
 /**
  * Main HTTP router. The API is namespaced under /api.
@@ -76,6 +77,8 @@ export async function route(req: Request): Promise<Response> {
 
   // ---- The CS TV board for the office screens: no sign-in, a secret in the link (functions/csTv.ts) ----
   if (path === "/api/public/cs-tv" && req.method === "GET") return handleCsTv(req);
+  // The Mentors TV (2026-11-17): mentors' revenue — course payments after their meetings — for Root's Mentors TV.
+  if (path === "/api/public/mentor-tv" && req.method === "GET") return handleMentorTv(req);
   // The board's payments in the user's own voice (2026-10-26; functions/csTv.ts, lib/voice.ts).
   if (path === "/api/public/cs-tv/voice" && req.method === "GET") return handleCsTvVoice(req);
   // The owner's own recordings, as a list to play (2026-10-26; R2 — functions/voiceRecordings.ts).
