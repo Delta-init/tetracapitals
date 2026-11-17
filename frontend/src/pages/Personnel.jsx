@@ -435,7 +435,9 @@ export default function Personnel() {
                         {/* View as: who the server lets do it (auth/middleware.ts — Super Admin and Admin), as anybody but
                             a Super Admin or themselves — broker admins included (the user, 2026-10-05). */}
                         {/* …and a CS Manager as any active CS (2026-10-13; the server checks it too) */}
-                        {(['super_admin', 'admin'].includes(currentUser.app_role) || (currentUser.app_role === 'cs_manager' && user.app_role === 'cs' && !isOff(user))) && !isImpersonating() && user.app_role !== 'super_admin' && user.id !== currentUser.id && (
+                        {/* …and a Chief Mentor as any active member of their own team (2026-11-17; the list holds only those) */}
+                        {(['super_admin', 'admin'].includes(currentUser.app_role) || (currentUser.app_role === 'cs_manager' && user.app_role === 'cs' && !isOff(user))
+                          || (currentUser.app_role === 'chief_mentor' && !isOff(user))) && !isImpersonating() && user.app_role !== 'super_admin' && user.id !== currentUser.id && (
                           <Button
                             variant="ghost"
                             size="sm"

@@ -234,6 +234,8 @@ export default function Layout({ children, currentPageName }) {
     if (item.name === 'MyKpis' && item.roles.includes(currentUser?.app_role)) return true;
     // …and Not joined yet and Message Logs (2026-10-29): made after the roles' page lists, so for everyone they're made for.
     if (['LiveNotJoined', 'MessageLogs', 'MeetingRequests'].includes(item.name) && item.roles.includes(currentUser?.app_role)) return true;
+    // …and Personnel for Chief Mentors (2026-11-17): their own team's members, to see and View as.
+    if (item.name === 'Personnel' && currentUser?.app_role === 'chief_mentor') return true;
     if (Array.isArray(allowedPages)) return allowedPages.includes(item.sameAccessAs || item.name);
     return item.roles.includes('all') || item.roles.includes(currentUser?.app_role);
   });

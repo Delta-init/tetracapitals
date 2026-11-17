@@ -196,8 +196,9 @@ export default function TeamDetail() {
               {members.map(m => {
                 const count = seesAll || m.id === currentUser.id ? (countByMentor[m.id] || 0) : null;
                 // The team's leader views as one of its CS (the server allows only their own team's, 2026-10-08);
-                // a CS Manager any team's CS (2026-10-09), a Chief Mentor too (2026-11-13) — the server keeps both to their location.
-                const canViewAs = (isLeader || currentUser.app_role === 'cs_manager' || currentUser.app_role === 'chief_mentor') && !isImpersonating() && m.app_role === 'cs' && m.status !== 'inactive';
+                // a CS Manager any team's CS (2026-10-09). A Chief only their own team's (2026-11-17; their mentors too).
+                const canViewAs = (isLeader || currentUser.app_role === 'cs_manager') && !isImpersonating() && m.status !== 'inactive'
+                  && (m.app_role === 'cs' || (isLeader && ['senior_mentor', 'junior_mentor', 'subjunior_mentor', 'assistance'].includes(m.app_role)));
                 return (
                   <div key={m.id} className="flex items-center">
                   <button

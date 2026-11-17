@@ -3,7 +3,7 @@ import { verifyJwt } from "./jwt";
 import { serialize } from "../lib/id";
 import { toObjectId } from "../lib/id";
 import { getDownlineIds } from "../lib/scope";
-import { csManagerReach, locationOfUser } from "../lib/userLocation";
+import { csManagerReach } from "../lib/userLocation";
 
 export interface AuthUser {
   id: string;
@@ -51,14 +51,16 @@ export async function getAuthUser(req: Request): Promise<AuthUser | null> {
     const targetOid = toObjectId(impersonateId);
     if (targetOid) {
       const targetDoc = await col("users").findOne({ _id: targetOid });
-      // A CS Manager views as any active CS, in any team (the user, 2026-10-09); a Chief too, since 2026-11-13 (before,
-      // only their own team's) — their own team's always, any other CS of their own location.
-      const isCs = (targetDoc as any)?.app_role === "cs" && (targetDoc as any)?.status !== "inactive";
-      // …their own location's only (2026-10-14: Dubai's CS Manager never Bangalore's CSs).
-      const teamCs = leads && isCs && (realUser.app_role === "cs_manager"
-        ? !!(await csManagerReach(realUser))?.ids.includes(impersonateId)
-        : (await getDownlineIds(realUser.id)).includes(impersonateId)
-          || (await locationOfUser(realUser.id)) === (await locationOfUser(impersonateId)));
+      // A CS Manager views as any active CS, in any team (the user, 2026-10-09) — their own location's only (2026-10-14:
+      // Dubai's CS Manager never Bangalore's CSs).
+      const active = (targetDoc as any)?.status !== "inactive";
+      const isCs = (targetDoc as any)?.app_role === "cs" && active;
+      // A Chief views as any active member of their own team — its CSs and mentors (the user, 2026-11-17: "their team
+      // members only"); never a CS Manager (who reaches every CS of the location), another Chief or an admin.
+      const CHIEF_TARGETS = ["cs", "senior_mentor", "junior_mentor", "subjunior_mentor", "assistance"];
+      const teamCs = leads && (realUser.app_role === "cs_manager"
+        ? isCs && !!(await csManagerReach(realUser))?.ids.includes(impersonateId)
+        : active && CHIEF_TARGETS.includes(String((targetDoc as any)?.app_role)) && (await getDownlineIds(realUser.id)).includes(impersonateId));
       // Anybody but a Super Admin — the Personnel page never offers one, and the server doesn't take one either.
       if (targetDoc && (targetDoc as any).app_role !== "super_admin" && (!leads || teamCs)) {
         const { password_hash: _pw, ...targetSafe } = targetDoc as any;
