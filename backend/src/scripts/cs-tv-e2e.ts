@@ -67,6 +67,7 @@ check("?month=<last month>: that month named — Asha 1,000, Ben 2,000, ranked, 
   && by(r.body, "Ben CS")?.month_aed === 2000 && r.body.cs?.[0]?.name === "Ben CS" && r.body.totals?.month_aed === 3000 && r.body.totals?.payments === 2, show(r.body));
 check("…nothing for today, no latest payments", r.body.totals?.today_aed === 0 && (r.body.cs ?? []).every((p: any) => p.today_aed === 0) && (r.body.recent ?? []).length === 0, show(r.body.recent));
 check("…the teams added up the same", (r.body.teams ?? []).reduce((s: number, t: any) => s + t.month_aed, 0) === 3000, show(r.body.teams));
+check("…CSs on no team: their row names no leader", (r.body.teams ?? []).every((t: any) => t.leader === null && t.leader_photo === null), show(r.body.teams));
 
 r = await board(`&month=${nextMonth}`);
 check("a month to come: this month's board", r.body.month === thisMonth && r.body.totals?.month_aed === 500, show(r.body.month));
@@ -115,6 +116,7 @@ let d = await boardOf("dubai");
 check("the Dubai board: Bela first with 9,000 — only what was added, not her own 700", d.cs?.[0]?.name === "Bela CS" && d.cs[0].month_aed === 9000 && d.cs[0].today_aed === 9000 && d.cs[0].payments === 1 && d.cs[0].rank === 1 && d.cs[0].team === "Team Bangalore", show(d.cs));
 check("…Asha with her payment and her earlier amount (800), the total 9,800", by(d, "Asha CS")?.month_aed === 800 && d.totals?.month_aed === 9800 && d.totals?.payments === 3, show(d.totals));
 check("…her team among Dubai's teams", (d.teams ?? []).some((t: any) => t.team === "Team Bangalore" && t.month_aed === 9000 && t.cs_count === 1), show(d.teams));
+check("…with its leader named (Root's CS & Mentors TV, 2026-11-18)", (d.teams ?? []).some((t: any) => t.team === "Team Bangalore" && t.leader === "Lena Lead" && "leader_photo" in t), show(d.teams));
 check("…the amount among the latest payments, like any other", (d.recent ?? []).some((p: any) => p.id === added && p.cs === "Bela CS" && p.aed === 9000 && p.product === "MSNR" && !("cs_id" in p)), show(d.recent));
 check("…and nothing tells her row from Asha's", Object.keys(d.cs[0]).sort().join() === Object.keys(by(d, "Asha CS")).sort().join() && !/extra|guest|added|screens/i.test(JSON.stringify(d)), show(Object.keys(d.cs[0])));
 let b = await boardOf("bangalore");

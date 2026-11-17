@@ -107,7 +107,13 @@ async function board(location: "dubai" | "bangalore", month?: string, real = fal
     if (!past && t.at >= todayStart) { r.today_aed += t.aed; r.today_payments += 1; }
     if (!past && recent.length < 20) recent.push({ id: t.id, cs_id: r.id, cs: r.name, team: r.team, aed: round(t.aed), product: t.product, at: t.at });
   }
-  const photos = await hrmsPhotos([...row.values()].map((r) => ({ email: r.email, name: r.name })));
+  // Each team's leader (2026-11-18: Root's CS & Mentors TV names them under the board) — their HRMS photo asked with the rest.
+  const leaderOf = (teamId: string) => {
+    const lead = teamId ? index.userById.get(teamId) : null;
+    return lead ? { name: String(lead.full_name || lead.email || "").trim(), email: String(lead.email ?? "").toLowerCase() } : null;
+  };
+  const leaders = [...new Set([...row.values()].map((r) => r.team_id).filter(Boolean))].map(leaderOf).filter((l): l is { name: string; email: string } => !!l);
+  const photos = await hrmsPhotos([...[...row.values()].map((r) => ({ email: r.email, name: r.name })), ...leaders]);
   const cs = [...row.values()]
     .map(({ email, ...r }) => ({ ...r, photo: photos.get(email) ?? null, month_aed: round(r.month_aed), today_aed: round(r.today_aed) }))
     .sort((a, b) => b.month_aed - a.month_aed || b.payments - a.payments || a.name.localeCompare(b.name))
@@ -115,7 +121,9 @@ async function board(location: "dubai" | "bangalore", month?: string, real = fal
   const teams = new Map<string, any>();
   for (const r of cs) {
     const k = r.team_id || "-";
-    const t = teams.get(k) ?? { id: r.team_id, team: r.team, month_aed: 0, today_aed: 0, payments: 0, cs_count: 0 };
+    const lead = leaderOf(r.team_id);
+    const t = teams.get(k) ?? { id: r.team_id, team: r.team, leader: lead?.name ?? null, leader_photo: lead ? photos.get(lead.email) ?? null : null,
+      month_aed: 0, today_aed: 0, payments: 0, cs_count: 0 };
     t.month_aed += r.month_aed; t.today_aed += r.today_aed; t.payments += r.payments; t.cs_count += 1;
     teams.set(k, t);
   }
