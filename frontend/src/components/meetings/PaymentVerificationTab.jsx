@@ -80,7 +80,7 @@ export default function PaymentVerificationTab({ days }) {
   const q = useQuery({ queryKey: ['payment-verifications', days], queryFn: () => fn('getPaymentVerifications', days), placeholderData: (p) => p });
   const opts = useQuery({ queryKey: ['meeting-outcome-options'], queryFn: () => fn('getMeetingOutcomeOptions', {}), staleTime: 10 * 60_000, retry: false });
   // The LMS's list; the one here only until it loads — POS and Razorpay added to it 2026-11-13 (the owner).
-  const modes = opts.data?.paymentModes ?? ['Cash', 'Card', 'POS', 'Bank Transfer', 'Tabby', 'Tamara', 'Tamara KSA', 'INR Transfer', 'Razorpay', 'Payment link'];
+  const modes = opts.data?.paymentModes ?? ['Cash', 'Card', 'POS', 'Bank Transfer', 'Tabby', 'Tabby DGO', 'Tamara', 'Tamara KSA', 'INR Transfer', 'Razorpay', 'Payment link'];
   const [tab, setTab] = useState('unverified');
   const [search, setSearch] = useState('');
   const [mentor, setMentor] = useState('');

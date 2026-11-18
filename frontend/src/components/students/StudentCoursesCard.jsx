@@ -288,7 +288,7 @@ function PaymentsList({ payments }) {
 }
 
 // The server's list (backend courses/coursePayments.ts) — POS and Razorpay added 2026-11-13 (the owner).
-const METHODS = ['Card', 'POS', 'Cash', 'Bank transfer', 'Payment link', 'Tabby', 'Tamara KSA', 'Razorpay'];
+const METHODS = ['Card', 'POS', 'Cash', 'Bank transfer', 'Payment link', 'Tabby', 'Tabby DGO', 'Tamara KSA', 'Razorpay'];
 
 /** The CS records a payment the student made, with its receipt; it goes to Delta Finance to approve. */
 export function PaymentDialog({ upgrade, onClose, onSaved }) {
