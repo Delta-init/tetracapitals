@@ -38,6 +38,11 @@ function transport(): Transporter {
       port: config.smtp.port,
       secure: config.smtp.secure ?? config.smtp.port === 465, // 465 = SSL; 587 = STARTTLS
       auth: { user: config.smtp.user, pass: config.smtp.pass },
+      // One connection kept open and used for email after email (2026-11-18): signing in again for each one is what
+      // made Gmail refuse the mail account — "454 4.7.0 Too many login attempts" — after a burst of emails.
+      pool: true,
+      maxConnections: 2,
+      maxMessages: 100,
       connectionTimeout: 20_000,
       greetingTimeout: 20_000,
       socketTimeout: 30_000,
@@ -75,7 +80,13 @@ async function deliver(msg: { to: string; subject: string; html: string; text: s
     if (!accepted.length) return { ok: false, error: `Rejected by the mail server: ${info.response || "no recipients accepted"}` };
     return { ok: true, messageId: String(info.messageId || ""), accepted, response: String(info.response || "") };
   } catch (err) {
-    transporter = null; // a broken connection shouldn't stick for the next try
+    // A broken connection or a refused sign-in shouldn't stick for the next try: that one is closed and a new one
+    // opened next time. A refused address or message leaves the open connection as it is.
+    if (/^(ECONNECTION|ETIMEDOUT|ESOCKET|EAUTH|EDNS)$/.test(String((err as { code?: string })?.code ?? ""))) {
+      const old = transporter;
+      transporter = null;
+      old?.close();
+    }
     return { ok: false, error: err instanceof Error ? err.message : String(err) };
   }
 }
