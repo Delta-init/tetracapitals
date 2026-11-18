@@ -73,17 +73,20 @@ try {
       if (!/mentor/.test(String(user.app_role ?? ""))) { refused.push(`${id}: ${user.full_name} is ${user.app_role}, not a mentor`); continue; }
       const who = `${tx.student_name ?? "?"} · ${tx.type} ${tx.status} · ${tx.txn_id || tx.transaction_id || id} · ${String(tx.requested_at ?? "").slice(0, 10)}`;
       const now = tx.meeting_mentor_none === true ? "None" : tx.meeting_mentor_name || "(not set)";
-      if (String(tx.meeting_mentor_id ?? "") === String(user._id) && tx.meeting_mentor_none !== true) {
+      const paidRole = /^(junior|senior|subjunior)_mentor$/.test(String(user.app_role));
+      // Already credited (approved before): its Meeting mentor credit follows the new person (2026-11-18) — moved to
+      // them, or taken off for a Chief — only while not paid out; one released or paid refuses the whole run. A request
+      // that already names them but whose credit is still someone else's (named by the older script) has it moved too.
+      const credits = ((await col("commission_credits").find({ transaction_id: { $in: [String(tx._id), tx._id] }, position: "Meeting mentor" }).toArray()) as any[])
+        .filter((c) => !paidRole || String(c.recipient_id) !== String(user._id));
+      const named = String(tx.meeting_mentor_id ?? "") === String(user._id) && tx.meeting_mentor_none !== true;
+      if (named && !credits.length) {
         console.log(`   ${who}\n      already ${user.full_name} — unchanged`);
         unchanged++;
         continue;
       }
-      const paidRole = /^(junior|senior|subjunior)_mentor$/.test(String(user.app_role));
       const paid = paidRole ? "" : "  (a Chief: no Meeting mentor commission)";
-      console.log(`   ${who}\n      ${now} → ${user.full_name} · ${user.app_role}${user.status === "inactive" ? " · switched off" : ""}${paid}`);
-      // Already credited (approved before): its Meeting mentor credit follows the new person (2026-11-18) — moved to
-      // them, or taken off for a Chief — only while not paid out; one released or paid refuses the whole run.
-      const credits = (await col("commission_credits").find({ transaction_id: { $in: [String(tx._id), tx._id] }, position: "Meeting mentor" }).toArray()) as any[];
+      console.log(`   ${who}\n      ${named ? `already ${user.full_name} on the request — the commission still goes to someone else` : `${now} → ${user.full_name} · ${user.app_role}`}${user.status === "inactive" ? " · switched off" : ""}${paid}`);
       const outPaid = credits.filter((c) => !["accrued", "pooled"].includes(String(c.status)));
       if (outPaid.length) { refused.push(`${id}: its Meeting mentor credit to ${outPaid[0].recipient_name} is already ${outPaid[0].status} — not moved`); continue; }
       for (const c of credits) console.log(`      credit: Meeting mentor ${c.percentage}% USD ${Number(c.commission_usd).toFixed(2)} (AED ${(Number(c.commission_usd) * 3.67).toFixed(2)}) ${c.recipient_name} → ${paidRole ? user.full_name : "removed (a Chief gets none)"}`);
