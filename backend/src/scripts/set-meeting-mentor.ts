@@ -40,9 +40,11 @@ let failed = false;
 try {
   const undo = option("undo");
   if (undo) {
-    const u = EJSON.parse(readFileSync(undo, "utf8")) as { run: string; before: Record<string, any>[] };
-    console.log(`${u.before.length} request(s) ${apply ? "put back" : "would be put back"} as they were${apply ? "." : " — add --apply"}`);
+    const u = EJSON.parse(readFileSync(undo, "utf8")) as { run: string; before: Record<string, any>[]; credits?: Record<string, any>[] };
+    console.log(`${u.before.length} request(s) ${apply ? "put back" : "would be put back"} as they were${u.credits?.length ? `, and ${u.credits.length} Meeting mentor credit(s)` : ""}${apply ? "." : " — add --apply"}`);
     if (apply) {
+      // The Meeting mentor credits as they were (moved or removed by that run).
+      for (const c of u.credits ?? []) await col("commission_credits").replaceOne({ _id: c._id }, c, { upsert: true });
       for (const b of u.before) {
         const set: Record<string, unknown> = {}, unset: Record<string, ""> = {};
         for (const f of FIELDS) (b[f] === undefined ? (unset[f] = "") : (set[f] = b[f]));
@@ -52,7 +54,7 @@ try {
     }
   } else {
     if (!sets.length) throw new Error("Nothing to do — give --set=<request id>=<staff email> (as many as needed)");
-    const refused: string[] = [], changes: { tx: any; user: any }[] = [];
+    const refused: string[] = [], changes: { tx: any; user: any; credits: any[]; paidRole: boolean }[] = [];
     let unchanged = 0;
     const seen = new Set<string>();
     for (const s of sets) {
@@ -76,9 +78,16 @@ try {
         unchanged++;
         continue;
       }
-      const paid = /^(junior|senior|subjunior)_mentor$/.test(String(user.app_role)) ? "" : "  (a Chief: no Meeting mentor commission)";
+      const paidRole = /^(junior|senior|subjunior)_mentor$/.test(String(user.app_role));
+      const paid = paidRole ? "" : "  (a Chief: no Meeting mentor commission)";
       console.log(`   ${who}\n      ${now} → ${user.full_name} · ${user.app_role}${user.status === "inactive" ? " · switched off" : ""}${paid}`);
-      changes.push({ tx, user });
+      // Already credited (approved before): its Meeting mentor credit follows the new person (2026-11-18) — moved to
+      // them, or taken off for a Chief — only while not paid out; one released or paid refuses the whole run.
+      const credits = (await col("commission_credits").find({ transaction_id: { $in: [String(tx._id), tx._id] }, position: "Meeting mentor" }).toArray()) as any[];
+      const outPaid = credits.filter((c) => !["accrued", "pooled"].includes(String(c.status)));
+      if (outPaid.length) { refused.push(`${id}: its Meeting mentor credit to ${outPaid[0].recipient_name} is already ${outPaid[0].status} — not moved`); continue; }
+      for (const c of credits) console.log(`      credit: Meeting mentor ${c.percentage}% USD ${Number(c.commission_usd).toFixed(2)} (AED ${(Number(c.commission_usd) * 3.67).toFixed(2)}) ${c.recipient_name} → ${paidRole ? user.full_name : "removed (a Chief gets none)"}`);
+      changes.push({ tx, user, credits, paidRole });
     }
     if (refused.length) {
       console.log(`\nRefused — nothing is written until every line is right:`);
@@ -91,9 +100,15 @@ try {
         const run = `set-meeting-mentor-${at}`;
         const file = join(homedir(), `set-meeting-mentor-undo-${at.replace(/[:.]/g, "-")}.json`);
         const before = changes.map(({ tx }) => Object.fromEntries([["_id", tx._id], ...FIELDS.map((f) => [f, tx[f]])]));
-        writeFileSync(file, EJSON.stringify({ database: config.mongoDb, host, run, before }));
-        if ((EJSON.parse(readFileSync(file, "utf8")) as any).before?.length !== before.length) throw new Error(`The undo file ${file} didn't read back whole — nothing changed`);
-        for (const { tx, user } of changes) {
+        const creditsBefore = changes.flatMap((c) => c.credits);
+        writeFileSync(file, EJSON.stringify({ database: config.mongoDb, host, run, before, credits: creditsBefore }));
+        const back = EJSON.parse(readFileSync(file, "utf8")) as any;
+        if (back.before?.length !== before.length || back.credits?.length !== creditsBefore.length) throw new Error(`The undo file ${file} didn't read back whole — nothing changed`);
+        for (const { tx, user, credits, paidRole } of changes) {
+          for (const c of credits) {
+            if (paidRole) await col("commission_credits").updateOne({ _id: c._id, status: { $in: ["accrued", "pooled"] } }, { $set: { recipient_id: String(user._id), recipient_name: user.full_name ?? "", updated_date: at, moved_by_run: run, moved_from: { id: c.recipient_id, name: c.recipient_name } } });
+            else await col("commission_credits").deleteOne({ _id: c._id, status: { $in: ["accrued", "pooled"] } });
+          }
           await col("funding_transactions").updateOne({ _id: tx._id }, { $set: {
             meeting_mentor_id: String(user._id), meeting_mentor_name: user.full_name ?? "", meeting_mentor_none: false,
             meeting_mentor_backfill: { at, run, from: { id: tx.meeting_mentor_id ?? null, name: tx.meeting_mentor_name ?? null, none: tx.meeting_mentor_none === true } },
@@ -101,8 +116,9 @@ try {
         }
         console.log(`Done.\nUndo file: ${file}\n  bun src/scripts/set-meeting-mentor.ts --undo=${file} --apply`);
       } else if (changes.length) console.log("Nothing was written. Run again with --apply to do it.");
-      const months = [...new Set(changes.map(({ tx }) => monthOf(tx.requested_at)).filter(Boolean))].sort();
-      if (changes.length) {
+      // Requests already credited had their credit moved above; the backfill is for the rest.
+      const months = [...new Set(changes.filter((c) => !c.credits.length).map(({ tx }) => monthOf(tx.requested_at)).filter(Boolean))].sort();
+      if (months.length) {
         console.log(`\nThen the commission — the Meeting mentor credits (dry run first, then --apply):`);
         for (const m of months) console.log(`  bun src/scripts/backfill-meeting-mentor.ts --month=${m}`);
       }
