@@ -14,7 +14,7 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { BadgeAlert, CheckCircle2, Layers, Download, Gift, Hourglass, Landmark, Loader2, Pencil, Search, Undo2, XCircle } from 'lucide-react';
 import NotCreditedYet from '@/pages/NotCreditedYet';
 import { downloadExcel } from '@/components/utils/excelExport';
-import { CopyText, SendBackDialog, FIELDS } from '@/components/funding/corrections';
+import { CopyText, SendBackDialog, SentBackCell } from '@/components/funding/corrections';
 import { getEffectiveUser } from '@/components/utils/ImpersonationContext';
 import { createPageUrl } from '@/utils';
 import { logAction } from '@/components/utils/AuditLogger';
@@ -42,12 +42,13 @@ const TABS = [
   { key: 'pending', label: 'Pending', icon: Hourglass, on: 'border-amber-300 bg-amber-50 text-amber-800' },
   { key: 'approved', label: 'Approved',  icon: CheckCircle2, on: 'border-emerald-300 bg-emerald-50 text-emerald-700' },
   { key: 'rejected', label: 'Rejected',  icon: XCircle, on: 'border-rose-300 bg-rose-50 text-rose-700' },
-  { key: 'returned', label: 'Sent back to CS', icon: Undo2, on: 'border-orange-300 bg-orange-50 text-orange-700' },
+  { key: 'returned', label: 'Sent back', icon: Undo2, on: 'border-orange-300 bg-orange-50 text-orange-700' },
   // Every request in one list, each with its status (the user, 2026-11-04).
   { key: 'all', label: 'All', icon: Layers, on: 'border-slate-400 bg-slate-100 text-slate-800' },
 ];
 /** Which tab a row is on — for the All tab, by its own status. */
-const tabOf = (t) => (t.returned?.at ? 'returned' : t.status === 'PENDING' ? 'pending' : t.status === 'APPROVED' ? 'approved' : 'rejected');
+// Sent back: to the CS, or to finance to check again (2026-11-19).
+const tabOf = (t) => (t.returned?.at || t.rechecking?.at ? 'returned' : t.status === 'PENDING' ? 'pending' : t.status === 'APPROVED' ? 'approved' : 'rejected');
 // The decision column stays at the right edge when the table scrolls sideways.
 const STICKY_END = 'sticky right-0 shadow-[-8px_0_8px_-8px_rgba(15,23,42,0.15)]';
 const when = (iso) => (iso ? new Date(iso).toLocaleString('en-GB', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' }) : '');
@@ -73,7 +74,7 @@ function FilterSelect({ value, onChange, options }) {
 const EXPORT_COLUMNS = [
   { header: 'Requested', type: 'datetime', value: t => t.resubmitted_at || t.requested_at || t.created_date },
   { header: 'Type', value: t => typeOf(t).label },
-  { header: 'Status', value: t => (t.returned?.at ? 'SENT BACK' : t.status) },
+  { header: 'Status', value: t => (t.returned?.at ? 'SENT BACK' : t.rechecking?.at ? 'WITH FINANCE' : t.status) },
   { header: 'Student', value: t => t.student?.full_name || t.student_name },
   { header: 'Email', value: t => t.student?.email },
   { header: 'Code', value: t => t.student?.student_code || t.student_code },
@@ -103,13 +104,14 @@ const EXPORT_COLUMNS = [
   { header: 'Decided by', value: t => t.approved_by_name },
   { header: 'Decided at', type: 'datetime', value: t => t.approved_at },
   { header: 'Rejection reason', width: 30, value: t => t.rejection_reason },
-  { header: 'Sent back / corrected', width: 40, value: t => (t.returned?.at ? `Sent back by ${t.returned.by_name}: ${(t.returned.fields || []).join(', ')}${t.returned.note ? ` — ${t.returned.note}` : ''}` : t.corrected?.at ? `Corrected by ${t.corrected.by_name}${t.corrected.changed?.length ? `: ${t.corrected.changed.join(', ')}` : ''}` : '') },
+  { header: 'Sent back / corrected', width: 40, value: t => (t.returned?.at ? `Sent back by ${t.returned.by_name}: ${(t.returned.fields || []).join(', ')}${t.returned.note ? ` — ${t.returned.note}` : ''}` : t.rechecking?.at ? `Sent to finance by ${t.rechecking.by_name}: ${(t.rechecking.fields || []).join(', ')}${t.rechecking.note ? ` — ${t.rechecking.note}` : ''}` : t.corrected?.at ? `Corrected by ${t.corrected.by_name}${t.corrected.changed?.length ? `: ${t.corrected.changed.join(', ')}` : ''}` : '') },
 ];
 const csvCell = (v) => { const x = v == null ? '' : String(v); return /[",\n]/.test(x) ? `"${x.replace(/"/g, '""')}"` : x; };
 
 const STATUS_CLS = {
   PENDING: 'border-amber-200 bg-amber-50 text-amber-700', APPROVED: 'border-emerald-200 bg-emerald-50 text-emerald-700',
   REJECTED: 'border-rose-200 bg-rose-50 text-rose-700', RETURNED: 'border-orange-200 bg-orange-50 text-orange-700',
+  WITH_FINANCE: 'border-sky-200 bg-sky-50 text-sky-700',
 };
 const original = (t) => (t.amount_currency && t.amount_currency !== 'USD' && t.amount_original
   ? `${t.amount_currency} ${Number(t.amount_original).toLocaleString('en-US')}` : '');
@@ -360,8 +362,8 @@ export default function BonusApprovals() {
                               <span className={`inline-block rounded-full px-2 py-0.5 text-[11px] font-semibold ring-1 ring-inset ${typeOf(t).cls}`}>{typeOf(t).label}</span>
                             </td>
                             <td className="whitespace-nowrap px-3 py-2.5">
-                              <span className={`inline-block rounded-full border px-2 py-0.5 text-[11px] font-semibold ${STATUS_CLS[t.returned?.at ? 'RETURNED' : t.status] || STATUS_CLS.PENDING}`}>
-                                {t.returned?.at ? 'SENT BACK' : t.status}
+                              <span className={`inline-block rounded-full border px-2 py-0.5 text-[11px] font-semibold ${STATUS_CLS[t.returned?.at ? 'RETURNED' : t.rechecking?.at ? 'WITH_FINANCE' : t.status] || STATUS_CLS.PENDING}`}>
+                                {t.returned?.at ? 'SENT BACK' : t.rechecking?.at ? 'WITH FINANCE' : t.status}
                               </span>
                               {t.finance_approval?.decision === 'approved' && <div className="mt-0.5 text-[11px] text-slate-400">Finance approved</div>}
                             </td>
@@ -461,13 +463,12 @@ export default function BonusApprovals() {
                               {tabOf(t) === 'pending' ? (
                                 <div className="flex flex-col items-stretch gap-1.5">
                                   <Button size="sm" onClick={() => setDeciding(t)}>Approve / Reject</Button>
-                                  <Button size="sm" variant="outline" onClick={() => setSendingBack(t)}><Undo2 className="mr-1.5 h-3.5 w-3.5" />Send back to CS</Button>
+                                  <Button size="sm" variant="outline" onClick={() => setSendingBack(t)}><Undo2 className="mr-1.5 h-3.5 w-3.5" />Send back</Button>
                                 </div>
                               ) : tabOf(t) === 'returned' ? (
-                                <div className="max-w-[240px] whitespace-normal text-xs">
-                                  <div className="text-orange-700">Sent back {when(t.returned?.at)} by {t.returned?.by_name}</div>
-                                  <div className="text-slate-500">{(t.returned?.fields || []).map(f => FIELDS[f] || f).join(', ')}{t.returned?.note ? ` — “${t.returned.note}”` : ''}</div>
-                                  <div className="text-slate-400">Waiting for the CS to correct it</div>
+                                <div className="max-w-[240px] whitespace-normal">
+                                  <SentBackCell tx={t} />
+                                  <div className="text-xs text-slate-400">{t.rechecking?.at ? 'Comes back here when finance approves it' : 'Waiting for the CS to correct it'}</div>
                                 </div>
                               ) : (
                                 <div className="text-xs">

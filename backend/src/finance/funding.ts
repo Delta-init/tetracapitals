@@ -656,6 +656,68 @@ async function depositPayload(tx: any, location: "dubai" | "bangalore" = "dubai"
   };
 }
 
+/* ── Back to finance to check again (the user, 2026-11-19) ───────────────────
+   A bonus finance approved can go back there: sent by the broker admin who finds the amount asked isn't the
+   receipt's, or by its CS correcting the amount or the receipt after the broker admin sent it to them. Finance takes
+   the payment it recorded back off its invoice, decides it again (at a corrected amount if need be) and its decision
+   comes back as any other does (handleFundingDecision). Asked straight away, not queued: whoever asks learns at once
+   whether finance took it back — a payment reconciled there, or finance unreachable, and nothing here changes. */
+
+const RECHECK_PATH = `${INTAKE_PATH}/recheck`;
+
+/** Who sent it back to finance, and what to check: the money and its proof. */
+export interface RecheckAsk { from: "broker_admin" | "cs"; by_id: string; by_name: string; fields: string[]; note: string }
+
+/**
+ * Asks finance to take `tx` back and decide it again. `tx` as finance should now see it — a CS's corrected amount,
+ * receipt or MT5 login in it. To the finance organization it went to. Throws with finance's words; a
+ * FinancePermanentError when finance won't (it isn't approved there, its payment is reconciled, …).
+ */
+export async function recheckAtFinance(tx: any, ask: RecheckAsk, at: string): Promise<{ amountMinor: number; currency: string; org: string }> {
+  if (!financeFundingConfigured()) throw new FinancePermanentError("The Delta Finance link isn't set up on this server");
+  const location: "dubai" | "bangalore" = tx.finance_approval?.org === "bangalore" || (!tx.finance_approval?.org && (await bonusLocationOf(tx)) === "bangalore")
+    ? "bangalore" : "dubai";
+  const orgId = location === "bangalore" ? config.financeOrgIdBangalore : config.financeOrgId;
+  if (!orgId) throw new FinancePermanentError("FINANCE_ORG_ID_BANGALORE is not set on the CS Portal server");
+  const payload = await depositPayload(tx, location);
+  await postToFinance(RECHECK_PATH, {
+    ...payload,
+    // One ask, one key: a retry of it is the same ask to finance.
+    recheck: { key: `${String(tx._id)}:${at}`, from: ask.from, byName: ask.by_name.slice(0, 120), fields: ask.fields.slice(0, 6), note: ask.note.slice(0, 1000) },
+  }, orgId);
+  return { amountMinor: payload.amountMinor, currency: payload.currency, org: location === "bangalore" ? "bangalore" : "delta_hq" };
+}
+
+/**
+ * The request once finance has it back: with finance again (withFinance — nobody here decides it, and it leaves MT5
+ * Approvals), its earlier approval kept in `finance_approval.rechecks`, and `rechecking` saying who sent it and why.
+ */
+export function recheckUpdate(tx: any, ask: RecheckAsk, at: string, sent: { amountMinor: number; currency: string; org: string }) {
+  const fa = tx.finance_approval ?? {};
+  return {
+    $set: {
+      "finance_approval.state": "sent",
+      "finance_approval.sent_at": at,
+      "finance_approval.org": sent.org,
+      "finance_approval.amount_minor": sent.amountMinor,
+      "finance_approval.currency": sent.currency,
+      "finance_approval.last_error": null,
+      rechecking: { at, ...ask },
+      updated_date: at,
+    },
+    $unset: {
+      "finance_approval.decision": "", "finance_approval.decided_at": "", "finance_approval.decided_by_name": "",
+      "finance_approval.decided_by_email": "", "finance_approval.note": "",
+    },
+    $push: {
+      "finance_approval.rechecks": {
+        at, ...ask,
+        previous: { decided_by_name: fa.decided_by_name ?? "", decided_at: fa.decided_at ?? "", amount_usd: tx.amount_usd ?? null, amount_aed: tx.amount_aed ?? null },
+      },
+    },
+  };
+}
+
 /** Backs off to a quarter of an hour and stays there, still trying. */
 export const backoffMs = (attempts: number) => Math.min(2 ** attempts * 1000, 15 * 60_000);
 
@@ -1069,6 +1131,8 @@ export async function handleFundingDecision(req: Request): Promise<Response> {
     "finance_approval.request_id": text(body.financeId, 40) || String(tx.finance_approval?.request_id ?? ""),
     "finance_approval.note": note,
     "finance_approval.last_error": null,
+    // Sent back to finance to check again (2026-11-19): decided there now.
+    ...(tx.rechecking?.at ? { rechecking: null } : {}),
   };
 
   if (decision === "approved") {

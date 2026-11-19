@@ -197,7 +197,10 @@ export async function getBonusApprovals(req: Request, user: AuthUser): Promise<R
   // Corrected ones first — they were waiting already; those sent back to the CS are listed apart.
   const waitAt = (t: any) => String(t.corrected?.at ? "0" + t.corrected.at : "1" + at(t));
   const pending = bonuses.filter((t) => t.status === "PENDING" && !withFinance(t) && !t.returned?.at).sort((a, b) => waitAt(a).localeCompare(waitAt(b)));
-  const returned = bonuses.filter((t) => t.status === "PENDING" && t.returned?.at).sort((a, b) => String(b.returned.at).localeCompare(String(a.returned.at)));
+  // …and those sent to finance to check again (2026-11-19), while finance has them.
+  const sentBackAt = (t: any) => String(t.returned?.at ?? t.rechecking?.at ?? "");
+  const returned = bonuses.filter((t) => t.status === "PENDING" && (t.returned?.at || (t.rechecking?.at && withFinance(t))))
+    .sort((a, b) => sentBackAt(b).localeCompare(sentBackAt(a)));
   const decided = (status: string) =>
     bonuses.filter((t) => t.status === status).sort((a, b) => String(b.approved_at ?? "").localeCompare(String(a.approved_at ?? "")));
   const approved = decided("APPROVED");
