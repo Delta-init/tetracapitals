@@ -17,7 +17,6 @@ import SearchableSelect from '../common/SearchableSelect';
 import TagsPicker from './TagsPicker';
 import PaymentMeetingPicker from './PaymentMeetingPicker';
 import { isMentorRole } from '../utils/roles';
-import { teamMembersOf } from '../utils/teams';
 import { Mt5LoginField, MT5_LOGIN, mt5LoginOf } from '../students/mt5Accounts';
 import { PaymentRows, newPayment, paymentsOf, paymentsTotal, paymentsMissing, paymentsToSave } from './payments';
 
@@ -395,22 +394,21 @@ export default function FundingRequestForm({ students, allStudents = [], current
   };
 
   // Mentors (junior / senior / sub-junior / chief) for the "meeting conducted by"
-  // picker — only from the submitter's own team (their Up Head chain). Admins
-  // aren't on a team, so they see every mentor. Everyone can read the user list,
-  // so staff roles like CS can load it.
+  // picker — every active mentor, whoever raises it (the user, 2026-11-19: a
+  // student meets mentors of other teams too; before, a mentor saw only their own
+  // team). Everyone can read the user list, so staff roles like CS can load it.
   const { data: allUsers = [] } = useQuery({
     queryKey: ['users-mentor-options'],
     queryFn: () => base44.entities.User.list(),
     staleTime: 5 * 60_000,
   });
   const mentorOptions = React.useMemo(() => {
-    // A CS Manager raises requests for every CS's students (the user, 2026-10-12): every mentor.
-    const pool = isMentorRole(currentUser?.app_role) && currentUser?.app_role !== 'cs_manager' ? teamMembersOf(currentUser, allUsers) : allUsers;
-    return pool
-      .filter(u => /mentor/.test(String(u.app_role || '')) && u.full_name)
+    // A request being edited keeps the mentor it names, even one switched off since.
+    return allUsers
+      .filter(u => /mentor/.test(String(u.app_role || '')) && u.full_name && (u.status !== 'inactive' || u.id === formData.meeting_mentor_id))
       .sort((a, b) => String(a.full_name).localeCompare(String(b.full_name)))
       .map(u => ({ value: u.id, label: `${u.full_name} · ${roleLabel(u.app_role)}` }));
-  }, [allUsers, currentUser]);
+  }, [allUsers, formData.meeting_mentor_id]);
 
   const isMentor = isMentorRole(currentUser?.app_role);
 
@@ -799,9 +797,6 @@ export default function FundingRequestForm({ students, allStudents = [], current
             />
             {formData.type === 'BONUS' && (
               <p className="text-xs text-slate-500">Required. The mentor picked here gets the mentor's commission on this payment; None — no mentor is paid.</p>
-            )}
-            {isMentorRole(currentUser?.app_role) && mentorOptions.length === 0 && (
-              <p className="text-xs text-amber-600">No mentors on your team yet — ask an admin to set your Up Head in Personnel.</p>
             )}
           </div>
 
