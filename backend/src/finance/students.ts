@@ -55,6 +55,15 @@ import { toObjectId } from "../lib/id";
    academy sold it. A student already here stays on their team, whichever
    academy the new course is from.
 
+   A DUBAI-STUD (the user, 2026-11-20): a Sales CRM, Draw or Remote close for
+   the Bangalore academy, which finance tags DUBAI-STUD and sends with
+   `dubaiStudent: true` beside `academy: "bangalore"`. Served by Dubai — a new
+   one goes to Dubai's teams in Dubai's round and is stored as `location`
+   "dubai" — with `dubai_student` kept on them, so their money stays in the
+   Bangalore books (lib/location.ts moneyLocationOf). The course's fees still
+   say Bangalore: that is the academy it was sold for, in rupees. A student
+   already here is not moved; the flag is set on them all the same.
+
    A new student is told at once: their CS gets "New student" (intake.ts),
    their CS's leaders and the Super Admins a notice of their own (tellLeaders).
 ──────────────────────────────────────────────────────────────────────────── */
@@ -213,6 +222,22 @@ async function recordClosedBy(student: { _id: unknown }, closer: ClosedBy | null
   await col("students").updateOne({ _id: student._id as never, "closed_by.email": { $ne: closer.email } }, { $push: { closed_by: closer } as never });
 }
 
+/**
+ * A DUBAI-STUD close for a student already here (2026-11-20): `dubai_student` set, once, said in their history. Their
+ * team is left as it is — only the backfill (scripts/dubai-students.ts) moves anybody.
+ */
+async function recordDubaiStudent(student: { _id: unknown; dubai_student?: unknown }, invoiceNumber: string): Promise<void> {
+  if (student.dubai_student === true) return;
+  const now = new Date().toISOString();
+  const res = await col("students").updateOne({ _id: student._id as never, dubai_student: { $ne: true } }, { $set: { dubai_student: true, updated_date: now } });
+  if (!res.modifiedCount) return;
+  await recordHistory([{
+    student_id: String(student._id), at: now, type: "details_changed",
+    text: `DUBAI-STUD — a sales close for the Bangalore academy${invoiceNumber ? ` (invoice ${invoiceNumber})` : ""}: served by Dubai, the money in Bangalore's books`,
+    by_id: null, by_name: "Delta finance", from: { dubai_student: false }, to: { dubai_student: true }, via: "finance",
+  }]);
+}
+
 const TEST_EMAIL = /@deltatest\.dev$/i;
 
 /**
@@ -272,9 +297,13 @@ export async function handleFinanceStudents(req: Request): Promise<Response> {
   const salesCrm = salesCrmOf(body.crm);
   const closer = closedByEntry(body.closedBy);
   // Dubai or Bangalore — the academy picked at the close, or (an older finance) the CRM's.
-  const location = studentLocationOf({ salesCrm: body.crm, academy: body.academy });
+  const academy = studentLocationOf({ salesCrm: body.crm, academy: body.academy });
+  // A DUBAI-STUD (2026-11-20): sold for the Bangalore academy, served by Dubai. Only ever for a Bangalore sale.
+  const dubaiStudent = body.dubaiStudent === true && academy === "bangalore";
+  const location: Location = dubaiStudent ? "dubai" : academy;
 
-  const fee = courseFee(body.feeSummary, invoiceId, invoiceNumber, course, language, salesCrm, location);
+  // The fees keep the academy it was sold for — Bangalore's rupees for a DUBAI-STUD too.
+  const fee = courseFee(body.feeSummary, invoiceId, invoiceNumber, course, language, salesCrm, academy);
 
   // The same invoice again — finance retrying, or asked twice. One student.
   // …or on a record another was merged into (students/merge.ts, other_finance_invoice_ids).
@@ -283,6 +312,7 @@ export async function handleFinanceStudents(req: Request): Promise<Response> {
     // Not the language: this close's was set when it first came, and a later close may have set another since.
     await recordCourseFee(already, fee);
     await recordClosedBy(already, closer);
+    if (dubaiStudent) await recordDubaiStudent(already, invoiceNumber);
     return ok(answer(already, false, "invoice", "This invoice's student is already here"));
   }
 
@@ -296,6 +326,8 @@ export async function handleFinanceStudents(req: Request): Promise<Response> {
     await recordCloseLanguage(existing, language, invoiceNumber);
     await recordSalesCrm(existing, salesCrm);
     await recordClosedBy(existing, closer);
+    // Not moved for it either; their money for it is in the Bangalore books all the same.
+    if (dubaiStudent) await recordDubaiStudent(existing, invoiceNumber);
     return ok(answer(existing, false, "email", `${email} is already a student here — left as they are${fee ? ", with this course's fees added" : ""}`));
   }
 
@@ -319,8 +351,9 @@ export async function handleFinanceStudents(req: Request): Promise<Response> {
       course_fees: fee ? [fee] : [],
       // With an LMS account: enrolled from the start (the hourly LMS check confirms it).
       ...(text(body.lmsUserId, 64) ? lmsEnrolledFields() : {}),
+      ...(dubaiStudent ? { dubai_student: true } : {}),
     },
-    arrived: `Arrived from ${salesCrm === "draw" ? "" : "the "}${salesCrmName(salesCrm)}${location === "bangalore" && salesCrm !== "banglore" ? " for the Bangalore academy" : ""}, via finance — ${course || "a course"}${invoiceNumber ? `, invoice ${invoiceNumber}` : ""}${madeUpEmail(email) ? `. ${madeUpNote(email)}` : ""}`,
+    arrived: `Arrived from ${salesCrm === "draw" ? "" : "the "}${salesCrmName(salesCrm)}${academy === "bangalore" && salesCrm !== "banglore" ? " for the Bangalore academy" : ""}${dubaiStudent ? " (DUBAI-STUD: served by a Dubai team, the money in Bangalore's books)" : ""}, via finance — ${course || "a course"}${invoiceNumber ? `, invoice ${invoiceNumber}` : ""}${madeUpEmail(email) ? `. ${madeUpNote(email)}` : ""}`,
     createdBy: "delta-finance",
     createdByName: "Delta LMS (via finance)",
     unique: { field: "finance_invoice_id", value: invoiceId, existing: "invoice", detail: "This invoice's student is already here" },

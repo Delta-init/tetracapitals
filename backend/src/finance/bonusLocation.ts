@@ -1,6 +1,6 @@
 import { col } from "../db";
 import { toObjectId } from "../lib/id";
-import { currentLocationOf, locationOf, LOCATIONS, type Location } from "../lib/location";
+import { moneyLocationOf, locationOf, LOCATIONS, type Location } from "../lib/location";
 import { teamIndex } from "../lib/userLocation";
 import type { TeamIndex } from "../students/teams";
 
@@ -15,6 +15,11 @@ import type { TeamIndex } from "../students/teams";
    `team_location`), else the location they arrived for (lib/location.ts).
    A broker admin's is their own `team_location` (Personnel → edit), unset
    Dubai.
+
+   A DUBAI-STUD's is Bangalore whatever team serves them (the user,
+   2026-11-20: their money stays in the Bangalore books — lib/location.ts
+   moneyLocationOf): Bangalore's finance, in rupees, decided by Bangalore's
+   broker admins.
 ──────────────────────────────────────────────────────────────────────────── */
 
 const BONUS_DECIDERS = ["broker_admin", "super_admin"];
@@ -36,14 +41,14 @@ export async function brokerLocationsOf(user: { app_role?: string; team_location
   return [...new Set([mine, ...(uncovered ?? (await uncoveredLocations()))])];
 }
 
-/** Where each student belongs now, by id. */
+/** Where each student's money belongs now, by id — their team's location, Bangalore for a DUBAI-STUD. */
 export async function studentLocations(studentIds: unknown[], index?: TeamIndex): Promise<Map<string, Location>> {
   const ids = [...new Set(studentIds.map((v) => String(v ?? "")).filter(Boolean))].map(toObjectId).filter(Boolean);
   if (!ids.length) return new Map();
   const idx = index ?? (await teamIndex());
   const teamLocation = (id: string) => idx.teams.find((t) => t.id === id)?.location;
-  const students = (await col("students").find({ _id: { $in: ids as any[] } }, { projection: { team_id: 1, location: 1 } }).toArray()) as any[];
-  return new Map(students.map((s) => [String(s._id), currentLocationOf(s, teamLocation)]));
+  const students = (await col("students").find({ _id: { $in: ids as any[] } }, { projection: { team_id: 1, location: 1, dubai_student: 1 } }).toArray()) as any[];
+  return new Map(students.map((s) => [String(s._id), moneyLocationOf(s, teamLocation)]));
 }
 
 /** Where a bonus belongs: its student's location now (Dubai when there is no student). */

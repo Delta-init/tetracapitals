@@ -23,6 +23,16 @@ export function BangaloreBadge({ location, className = '' }) {
   );
 }
 
+/** DUBAI-STUD beside a student (2026-11-20): sold for the Bangalore academy by the Sales CRM, Draw or Remote, served by a
+ *  Dubai team — their bonuses go to Bangalore's finance, in rupees (backend lib/location.ts moneyLocationOf). */
+export function DubaiStudBadge({ student, className = '' }) {
+  if (student?.dubai_student !== true) return null;
+  return (
+    <span title="DUBAI-STUD — sold for the Bangalore academy, served by a Dubai team; their money stays in Bangalore's books"
+      className={`inline-block whitespace-nowrap rounded-full bg-sky-100 px-1.5 py-0.5 align-middle text-[11px] font-semibold text-sky-800 ${className}`}>DUBAI-STUD</span>
+  );
+}
+
 export function LocationFilter({ value, onChange, className = '' }) {
   return (
     <div className={`flex rounded-md border bg-white p-0.5 text-xs ${className}`} role="group" aria-label="Location">

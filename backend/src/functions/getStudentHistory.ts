@@ -38,8 +38,10 @@ function cameFrom(s: any) {
     // The sales CRM that sold it, as finance said — or, for a student from
     // before it said, Delta's, which every one of those came through.
     const salesCrm = salesCrmOf(s.sales_crm) || "delta";
-    // The academy picked at the close, said only when it is Bangalore — Dubai is what every one before was.
-    const academy = locationOf(s.location) === "bangalore" ? "Bangalore academy" : null;
+    // The academy picked at the close, said only when it is Bangalore — Dubai is what every one before was. A DUBAI-STUD
+    // (2026-11-20) was sold for Bangalore and is served by Dubai.
+    const academy = s.dubai_student === true ? "Bangalore academy — DUBAI-STUD, served by Dubai"
+      : locationOf(s.location) === "bangalore" ? "Bangalore academy" : null;
     return { label: `${salesCrmName(salesCrm)}, via finance`, salesCrm, invoice: s.finance_invoice_number || null, course: s.lms_course || null, academy };
   }
   if (s.source === "delta_lms" && s.lms_user_id) {

@@ -40,3 +40,12 @@ export const studentLocationOf = (input: { salesCrm?: unknown; academy?: unknown
  */
 export const currentLocationOf = (student: any, teamLocation: (teamId: string) => Location | undefined): Location =>
   (student?.team_id ? teamLocation(String(student.team_id)) : undefined) ?? locationOf(student?.location);
+
+/**
+ * Where a student's money is kept — MT5 bonuses, which finance organization they go to, in what currency, and which
+ * broker admins decide them (finance/bonusLocation.ts). Where they are now (currentLocationOf), except a DUBAI-STUD
+ * (the user, 2026-11-20: a Sales CRM, Draw or Remote close for the Bangalore academy, served by a Dubai team —
+ * finance/students.ts): `dubai_student`, whose money stays in the Bangalore books whatever team serves them.
+ */
+export const moneyLocationOf = (student: any, teamLocation: (teamId: string) => Location | undefined): Location =>
+  student?.dubai_student === true ? "bangalore" : currentLocationOf(student, teamLocation);

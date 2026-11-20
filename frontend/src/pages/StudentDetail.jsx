@@ -31,7 +31,7 @@ import { BonusPendingBadge, useStudentBonusPending } from "@/components/students
 import { RaiseCreditRequestButton } from "@/components/funding/CreditRequests";
 import { StudentCategoryTags } from '@/components/students/StudentCategories';
 import { BirthdayTag } from "@/components/students/Birthday";
-import { BangaloreBadge } from "@/components/common/LocationFilter";
+import { BangaloreBadge, DubaiStudBadge } from "@/components/common/LocationFilter";
 import StudentHistory, { useStudentHistory } from "../components/students/StudentHistory";
 import StudentFollowupsSection from "@/components/followups/StudentFollowupsSection";
 import StudentCallsSection from "@/components/calls/StudentCallsSection";
@@ -341,6 +341,8 @@ export default function StudentDetail() {
                 </span>
                 {/* Which sales CRM they came through */}
                 <SalesCrmBadge crm={salesCrmOfStudent(displayStudent)} />
+                {/* Sold for the Bangalore academy, served by Dubai (2026-11-20) */}
+                <DubaiStudBadge student={displayStudent} />
                 {/* A bonus not decided yet, and where it waits — opens their Funding tab */}
                 <BonusPendingBadge info={bonusPending} student={student} onClick={() => changeTab('funding')} />
                 {/* Their birthday, from the LMS — "Birthday today" on the day (2026-10-14) */}
@@ -525,6 +527,7 @@ export default function StudentDetail() {
                       {history?.team?.name || displayStudent.team_name || '-'}
                       {/* Dubai / Bangalore: their team's, or with no team the academy they arrived for */}
                       <BangaloreBadge location={history?.location || (displayStudent.location === 'bangalore' ? 'bangalore' : 'dubai')} className="ml-1.5" />
+                      <DubaiStudBadge student={displayStudent} className="ml-1.5" />
                     </p>
                   </div>
 

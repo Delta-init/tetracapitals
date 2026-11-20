@@ -85,9 +85,10 @@ export function describePerson(index: TeamIndex, id: unknown, fallbackName: unkn
 // inactivity rule (inactivity.ts) counts from. `common_cs` — the other CSs a
 // student is Common with — only the CS-sheet import sets; `tags` only
 // setStudentTag; `onboarded…` and `onboarding` only setOnboarding; `sales_crm`
-// only finance (finance/students.ts). Never set by a client.
+// only finance (finance/students.ts); `dubai_student` only finance and scripts/dubai-students.ts (it puts their money in
+// the Bangalore books — lib/location.ts moneyLocationOf). Never set by a client.
 const SERVER_OWNED = ["team_id", "team_name", "first_assignee_id", "first_assignee_name", "first_assignee_role", "first_assigned_at", "assigned_at", "common_cs", "tags", "new_for_id", "new_since", "lms_account", "enrolment_manual", "lms_classes",
-  "onboarded", "onboarded_at", "onboarded_by_id", "onboarded_by_name", "onboarding", "sales_crm"];
+  "onboarded", "onboarded_at", "onboarded_by_id", "onboarded_by_name", "onboarding", "sales_crm", "dubai_student"];
 
 /**
  * Before a student is made in CS Portal itself (the Students page, or

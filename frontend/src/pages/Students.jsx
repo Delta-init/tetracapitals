@@ -37,7 +37,7 @@ import { downloadExcel } from "@/components/utils/excelExport";
 import TransferStudentsDialog from "../components/students/TransferStudentsDialog";
 import { CallButton } from "@/components/followups/CallFlow";
 import { listTeams, LOCATIONS, locationLabel, studentLocationOf, userLocationIn, teamLocationOf, isAllTeamsCsManager } from "@/components/utils/teams";
-import { BangaloreBadge } from "@/components/common/LocationFilter";
+import { BangaloreBadge, DubaiStudBadge } from "@/components/common/LocationFilter";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
@@ -1109,7 +1109,7 @@ export default function Students() {
                             <TableCell><div className="text-sm font-mono">{student.phone}</div><div className="mt-1.5"><LanguagePicker student={student} currentUser={currentUser} /></div></TableCell>
 <TableCell className="whitespace-nowrap font-mono text-sm">{student.mt5_primary ? <span title={student.mt5_count > 1 ? `Primary of ${student.mt5_count} MT5 accounts` : "Primary MT5"}>{student.mt5_primary}{student.mt5_count > 1 && <span className="ml-1 font-sans text-[10px] text-gray-400">+{student.mt5_count - 1}</span>}</span> : <span className="text-gray-300">—</span>}</TableCell>
                             <TableCell className="text-sm">{student.primary_mentor_name}</TableCell>
-                            <TableCell className="text-sm">{student.team_name || '-'}<BangaloreBadge location={studentLocationOf(student)} className="ml-1.5" /></TableCell>
+                            <TableCell className="text-sm">{student.team_name || '-'}<BangaloreBadge location={studentLocationOf(student)} className="ml-1.5" /><DubaiStudBadge student={student} className="ml-1.5" /></TableCell>
                             <TableCell className="max-w-[220px] text-sm"><CourseCell student={student} /></TableCell>
                             <TableCell><BalanceCell student={student} /></TableCell>
                             <TableCell>
@@ -1214,7 +1214,7 @@ export default function Students() {
                          <TableCell><div className="text-sm font-mono">{student.phone}</div><div className="mt-1.5"><LanguagePicker student={student} currentUser={currentUser} /></div></TableCell>
 <TableCell className="whitespace-nowrap font-mono text-sm">{student.mt5_primary ? <span title={student.mt5_count > 1 ? `Primary of ${student.mt5_count} MT5 accounts` : "Primary MT5"}>{student.mt5_primary}{student.mt5_count > 1 && <span className="ml-1 font-sans text-[10px] text-gray-400">+{student.mt5_count - 1}</span>}</span> : <span className="text-gray-300">—</span>}</TableCell>
                          <TableCell className="text-sm text-purple-600 font-medium">{student.primary_mentor_name}</TableCell>
-                         <TableCell className="text-sm">{student.team_name || '-'}<BangaloreBadge location={studentLocationOf(student)} className="ml-1.5" /></TableCell>
+                         <TableCell className="text-sm">{student.team_name || '-'}<BangaloreBadge location={studentLocationOf(student)} className="ml-1.5" /><DubaiStudBadge student={student} className="ml-1.5" /></TableCell>
                             <TableCell className="max-w-[220px] text-sm"><CourseCell student={student} /></TableCell>
                             <TableCell><BalanceCell student={student} /></TableCell>
                          <TableCell>
@@ -1347,7 +1347,7 @@ export default function Students() {
                           <TableCell><div className="text-sm font-mono">{student.phone}</div><div className="mt-1.5"><LanguagePicker student={student} currentUser={allTabUser} /></div></TableCell>
 <TableCell className="whitespace-nowrap font-mono text-sm">{student.mt5_primary ? <span title={student.mt5_count > 1 ? `Primary of ${student.mt5_count} MT5 accounts` : "Primary MT5"}>{student.mt5_primary}{student.mt5_count > 1 && <span className="ml-1 font-sans text-[10px] text-gray-400">+{student.mt5_count - 1}</span>}</span> : <span className="text-gray-300">—</span>}</TableCell>
                           <TableCell className="text-sm">{student.primary_mentor_name}</TableCell>
-                          <TableCell className="text-sm">{student.team_name || '-'}<BangaloreBadge location={studentLocationOf(student)} className="ml-1.5" /></TableCell>
+                          <TableCell className="text-sm">{student.team_name || '-'}<BangaloreBadge location={studentLocationOf(student)} className="ml-1.5" /><DubaiStudBadge student={student} className="ml-1.5" /></TableCell>
                             <TableCell className="max-w-[220px] text-sm"><CourseCell student={student} /></TableCell>
                             <TableCell><BalanceCell student={student} /></TableCell>
                           <TableCell>
@@ -1564,7 +1564,7 @@ export default function Students() {
                       <TableCell><div className="text-sm font-mono">{student.phone}</div><div className="mt-1.5"><LanguagePicker student={student} currentUser={currentUser} /></div></TableCell>
 <TableCell className="whitespace-nowrap font-mono text-sm">{student.mt5_primary ? <span title={student.mt5_count > 1 ? `Primary of ${student.mt5_count} MT5 accounts` : "Primary MT5"}>{student.mt5_primary}{student.mt5_count > 1 && <span className="ml-1 font-sans text-[10px] text-gray-400">+{student.mt5_count - 1}</span>}</span> : <span className="text-gray-300">—</span>}</TableCell>
                       <TableCell className="text-sm">{student.primary_mentor_name}</TableCell>
-                      <TableCell className="text-sm">{student.team_name || '-'}<BangaloreBadge location={studentLocationOf(student)} className="ml-1.5" /></TableCell>
+                      <TableCell className="text-sm">{student.team_name || '-'}<BangaloreBadge location={studentLocationOf(student)} className="ml-1.5" /><DubaiStudBadge student={student} className="ml-1.5" /></TableCell>
                             <TableCell className="max-w-[220px] text-sm"><CourseCell student={student} /></TableCell>
                             <TableCell><BalanceCell student={student} /></TableCell>
                       <TableCell>

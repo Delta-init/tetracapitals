@@ -83,8 +83,8 @@ export async function takeNext<T extends Keyed>(recordId: string, inTurn: T[], e
   return null;
 }
 
-/** Whose turn it is: the next team that can take a student, then that team's next CS person. */
-async function takeTurn(location: Location): Promise<{ team: Team; cs: Member } | null> {
+/** Whose turn it is: the next team that can take a student, then that team's next CS person. Also scripts/dubai-students.ts. */
+export async function takeTurn(location: Location): Promise<{ team: Team; cs: Member } | null> {
   // Dubai keeps the round it always had; Bangalore has its own.
   const round = location === "dubai" ? TURN : `${TURN}:${location}`;
   for (let attempt = 0; attempt < 5; attempt++) {
