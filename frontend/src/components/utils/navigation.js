@@ -245,6 +245,14 @@ export const ROLE_ONLY_PAGES = {
   subjunior_mentor: MENTOR_PAGES,
   broker_admin: ['BonusApprovals', 'Tickets', 'DepositReport', 'WithdrawalReport', 'FundingRequestReport', 'BonusReport', 'Reports', 'CommissionReports', 'StudentDetail', 'ReportTransactionDetails', 'Reminders', 'MyWallet'],
 };
+/**
+ * DGO Points (2026-11-21): staff rewards live in HRMS, so the sidebar links out to it in a new tab (HRMS asks for its
+ * own sign-in if needed). Not a page of this app, so not in NAV_ITEMS — Role Management lists those. Everyone on the
+ * staff side sees it; a broker's admin, who isn't Delta staff, doesn't.
+ */
+export const HRMS_DGO_POINTS_URL = `${(import.meta.env.VITE_HRMS_URL || 'https://hrms.deltainstitutions.com').replace(/\/+$/, '')}/dgo-points`;
+export const showsDgoPointsLink = (role) => !!role && role !== 'broker_admin';
+
 /** Where such a role starts instead of the Dashboard. */
 export const ROLE_HOME = { broker_admin: 'BonusApprovals' };
 const roleOnlyBlocks = (role, name) => {

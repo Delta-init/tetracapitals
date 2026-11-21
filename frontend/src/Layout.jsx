@@ -4,7 +4,7 @@ import { useQuery } from '@tanstack/react-query';
 import { motion, AnimatePresence } from 'framer-motion';
 import { createPageUrl } from './utils';
 import { base44 } from '@/api/base44Client';
-import { Menu, X, LogOut, PanelLeftClose, PanelLeftOpen, ShieldAlert, ChevronDown } from 'lucide-react';
+import { Menu, X, LogOut, PanelLeftClose, PanelLeftOpen, ShieldAlert, ChevronDown, Gem, ExternalLink } from 'lucide-react';
 import { Card, CardContent } from '@/components/ui/card';
 import ImpersonationBanner from './components/utils/ImpersonationBanner';
 import NotificationBell from './components/utils/NotificationBell';
@@ -13,7 +13,7 @@ import { displayCurrency, setDisplayCurrency, setUsdPerInr, USD_PER_INR } from '
 import { locationByUser, isAllTeamsCsManager } from './components/utils/teams';
 import { filterTicketsByRole } from './components/utils/TicketAccessControl';
 import { EASE } from '@/components/motion';
-import { NAV_ITEMS, NAV_GROUPS, NESTED_GROUPS, GROUP_OF, ROLE_HOME, ROLE_ONLY_PAGES, humanize, pageBlockedFor } from '@/components/utils/navigation';
+import { NAV_ITEMS, NAV_GROUPS, NESTED_GROUPS, GROUP_OF, ROLE_HOME, ROLE_ONLY_PAGES, humanize, pageBlockedFor, HRMS_DGO_POINTS_URL, showsDgoPointsLink } from '@/components/utils/navigation';
 import { readsClosedOnly } from '@/components/utils/roles';
 import { CallFlowProvider } from '@/components/followups/CallFlow';
 import MeetingOutcomeGate from '@/components/meetings/MeetingOutcomeGate';
@@ -459,6 +459,27 @@ export default function Layout({ children, currentPageName }) {
           )}
         </div>
       ))}
+      {showsDgoPointsLink(currentUser?.app_role) && (
+        <div className="space-y-0.5">
+          {compact && <div className="mx-auto mb-2 h-px w-6 bg-white/10" />}
+          {/* Out to HRMS in a new tab: never the active item here. */}
+          <a
+            href={HRMS_DGO_POINTS_URL}
+            target="_blank"
+            rel="noopener noreferrer"
+            title={compact ? 'DGO Points (opens HRMS)' : undefined}
+            onClick={() => setMobileMenuOpen(false)}
+            className={`group relative flex items-center rounded-xl py-2 text-[13.5px] font-medium transition-colors duration-200
+              ${compact ? 'justify-center px-0' : 'px-3'} text-white/60 hover:bg-white/[0.04] hover:text-white`}
+          >
+            <span className={`relative flex min-w-0 items-center ${compact ? '' : 'gap-3'}`}>
+              <Gem className="h-[18px] w-[18px] flex-shrink-0 text-white/45 transition-colors group-hover:text-white/80" />
+              {!compact && <span className="truncate">DGO Points</span>}
+            </span>
+            {!compact && <ExternalLink className="relative ml-auto h-3.5 w-3.5 text-white/35" aria-hidden="true" />}
+          </a>
+        </div>
+      )}
     </nav>
   );
 
