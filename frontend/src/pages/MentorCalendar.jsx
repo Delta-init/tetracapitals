@@ -206,10 +206,16 @@ export default function MentorCalendar() {
   const [staffSlot, setStaffSlot] = useState(null); // the day Book was pressed on — for "a staff meeting instead"
   /* A staff meeting with several mentors in it (the user, 2026-11-14: "an option in meeting with: staff meeting, only
      for the Chief… staff can be selected; if they have a meeting at that time it shows the specific mentor"). A Chief
-     Mentor's, with their own team; an admin's, with anyone (may_staff_meeting, may_invite — the backend decides). The
-     form's Kind "team" is this page's word for it: it goes to the LMS as a staff meeting with `staffEmails`. */
+     Mentor's or an admin's, with any mentor of either academy (2026-11-24: "show every mentor including Bangalore and
+     Dubai" — a Chief had their own team only before; may_staff_meeting, may_invite — the backend decides), Dubai's
+     first, then Bangalore's, each by name. The form's Kind "team" is this page's word for it: it goes to the LMS as a
+     staff meeting with `staffEmails`. */
   const mayStaff = Boolean(schedule.data?.may_staff_meeting);
-  const invitable = useMemo(() => (schedule.data?.mentors ?? []).filter(m => m.may_invite), [schedule.data]);
+  const invitable = useMemo(() => {
+    const inBangalore = (m) => (/bangal|banglo|bengal/i.test(String(m.academy?.name ?? '')) ? 1 : 0);
+    return (schedule.data?.mentors ?? []).filter(m => m.may_invite)
+      .sort((a, b) => inBangalore(a) - inBangalore(b) || String(a.name || a.email).localeCompare(String(b.name || b.email)));
+  }, [schedule.data]);
   const [team, setTeam] = useState(() => new Set()); // the mentors ticked, by address — besides the meeting's own
   const [hadTeam, setHadTeam] = useState(false);     // the meeting being changed had mentors in it
   const [finder, setFinder] = useState(null);        // "Find free time": { scope: 'day' | 'week', from, to } or null
@@ -883,10 +889,10 @@ export default function MentorCalendar() {
             <div className="space-y-1.5">
               <Label htmlFor="mkind">Kind</Label>
               <select id="mkind" value={form.kind} onChange={e => { setForm(f => ({ ...f, kind: e.target.value })); if (e.target.value !== 'team') setFinder(null); }} className={selectCls}>
-                {/* Several mentors in one meeting (2026-11-14) — a Chief Mentor with their team, an admin with anyone. */}
+                {/* Several mentors in one meeting (2026-11-14) — a Chief Mentor or an admin, with any mentor (2026-11-24). */}
                 {(mayStaff || isTeam) && (
                   <option value="team" disabled={!isTeam && !booking?.mentor.may_invite}>
-                    Staff meeting — pick the mentors{!isTeam && booking && !booking.mentor.may_invite ? ' (not your team’s mentor)' : ''}
+                    Staff meeting — pick the mentors{!isTeam && booking && !booking.mentor.may_invite ? ' (not yours to book)' : ''}
                   </option>
                 )}
                 <option value="staff">{mayStaff ? 'Staff meeting — one mentor' : 'Staff meeting'}</option>
@@ -928,7 +934,7 @@ export default function MentorCalendar() {
               </div>
             </div>
 
-            {/* A staff meeting's mentors: ticked from the team, each with what is in their diary at the time chosen. */}
+            {/* A staff meeting's mentors: ticked from every mentor, each with what is in their diary at the time chosen. */}
             {isTeam && booking && (
               <div className="space-y-2 sm:col-span-2" data-testid="staff-meeting-team">
                 {/* Which day, and whose meeting it is — opened from the button there is no row to say either. */}
@@ -954,7 +960,7 @@ export default function MentorCalendar() {
                           setTeam(prev => { const n = new Set(prev); n.delete(lower(next.email)); if (invitable.some(m => lower(m.email) === was)) n.add(was); return n; });
                           setBooking(b => ({ ...b, mentor: next }));
                         }}>
-                        {invitable.map(m => <option key={lower(m.email)} value={lower(m.email)}>{m.name || m.email}</option>)}
+                        {invitable.map(m => <option key={lower(m.email)} value={lower(m.email)}>{m.name || m.email}{bothAcademies && m.academy ? ` · ${academyOf(m) === 'bangalore' ? 'Bangalore' : 'Dubai'}` : ''}</option>)}
                       </select>
                     </div>
                   )}
@@ -977,6 +983,8 @@ export default function MentorCalendar() {
                           <input type="checkbox" className="h-4 w-4 shrink-0" checked={on} disabled={own}
                             onChange={() => setTeam(prev => { const n = new Set(prev); if (n.has(key)) n.delete(key); else n.add(key); return n; })} />
                           <span className="min-w-0 flex-1 truncate">{m.name || m.email}{own && <span className="text-xs text-slate-400"> · the meeting is in their name</span>}</span>
+                          {/* Which academy — every mentor of both can be picked (2026-11-24). */}
+                          {bothAcademies && m.academy && <Badge variant="outline" className={cn('shrink-0 text-[10px]', academyOf(m) === 'bangalore' ? 'border-amber-200 bg-amber-50 text-amber-800' : 'border-sky-200 bg-sky-50 text-sky-800')}>{academyOf(m) === 'bangalore' ? 'Bangalore' : 'Dubai'}</Badge>}
                           {on && (clash
                             ? <span className={cn('shrink-0 rounded px-1.5 py-0.5 text-xs', clash.kind === 'off' ? 'bg-amber-50 text-amber-800' : 'bg-rose-50 text-rose-700')}>
                                 {clash.kind === 'off' ? 'Not available' : `Busy · ${clash.kind === 'class' ? 'class' : 'meeting'}: ${clash.what}`} · {hhmm(clash.from)}–{hhmm(Math.min(clash.to, 1440))}
@@ -987,7 +995,7 @@ export default function MentorCalendar() {
                     );
                   })}
                 </ul>
-                {invitable.length <= 1 && <p className="text-xs text-slate-500">There is no other mentor in your team to pick.</p>}
+                {invitable.length <= 1 && <p className="text-xs text-slate-500">There is no other mentor to pick.</p>}
                 {chosenClashes.length > 0 && (
                   <p className="rounded-md border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700" data-testid="staff-meeting-busy">
                     {chosenClashes.length} of the {people.length} {chosenClashes.length === 1 ? 'is' : 'are'} busy at {form.time}: {chosenClashes.map(x => x.p.name || x.p.email).join(', ')}. Untick them, or pick another time.

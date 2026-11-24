@@ -95,9 +95,10 @@ check("a Senior, whatever the letter case: a mentor who asks, Meeting commission
   && r.body.data.role === "senior_mentor" && JSON.stringify(r.body.data.meetings_done) === '["commission"]', show(r.body));
 r = await as(chief, "me");
 check("a Chief: books, so doesn't ask; Meetings + Meeting commission", r.body.data.mentor === true && r.body.data.asks === false && JSON.stringify(r.body.data.meetings_done) === '["meetings","commission"]', show(r.body));
-// A staff meeting from the LMS's Mentor Calendar (2026-11-14): a Chief with their own team — the switched-off one left out.
-check("…and books a staff meeting with their own team: themselves and everybody below, not one switched off",
-  r.body.data.staff_meeting?.may === true && [...(r.body.data.staff_meeting?.team ?? [])].sort().join() === [chief.email, senior.email, junior.email, cs.email].map((e) => e.toLowerCase()).sort().join(), show(r.body.data.staff_meeting));
+// A staff meeting from the LMS's Mentor Calendar (2026-11-14): a Chief with any mentor of either academy (2026-11-24 —
+// their own team only before).
+check("…and books a staff meeting with anyone (team null)",
+  r.body.data.staff_meeting?.may === true && r.body.data.staff_meeting?.team === null, show(r.body.data.staff_meeting));
 r = await as(senior, "me");
 check("a Senior: no staff meeting", r.body.data.staff_meeting?.may === false && (r.body.data.staff_meeting?.team ?? []).length === 0, show(r.body.data.staff_meeting));
 r = await as(cs, "me");

@@ -4,11 +4,12 @@
  * /service/mentor-meetings and /service/mentors). The user, 2026-11-14: "an option in meeting with: staff meeting, only
  * for the Chief… staff can be selected; if they have a meeting at that time it shows the specific mentor".
  *
- *   - who books one: a Chief Mentor and an admin (may_staff_meeting); with whom: a chief their team (may_invite),
- *     an admin anyone; nobody else, and never as a student meeting;
+ *   - who books one: a Chief Mentor and an admin (may_staff_meeting); with whom: any mentor of either academy
+ *     (may_invite — 2026-11-24: "show every mentor including Bangalore and Dubai"; a Chief had their own team only
+ *     before); nobody else, never as a student meeting, at most 60 besides its own;
  *   - booked: one meeting on the Chief's and every picked mentor's calendar, nobody typed;
  *   - somebody busy then: refused in the LMS's words, naming them and what they are in;
- *   - changed: somebody taken off (off their calendar), nobody added from outside the team;
+ *   - changed: somebody taken off (off their calendar), another team's mentor added;
  *   - called off: off everybody's.
  *
  * Run through ./test-staff-meetings.sh (throwaway mongod, this API and the LMS — no .env).
@@ -46,8 +47,11 @@ step("Setting up");
 const org = new ObjectId(process.env.E2E_LMS_ORG);
 await lms.collection("organizations").updateOne({ _id: org }, { $set: { name: "E2E Academy", slug: "e2e-academy", currency: "AED", paymentGateway: "abzer", updatedAt: new Date() }, $setOnInsert: { createdAt: new Date() } }, { upsert: true });
 const instructor = (name: string, email: string) => ({ _id: new ObjectId(), name, email, passwordHash: "x", role: "instructor", isActive: true, isVerified: true, organizationId: org, createdAt: new Date(), updatedAt: new Date() });
-// The LMS's mentors: the Chief, two of the Chief's team, one of another team.
-const mentors = [instructor("CHIEF", "chief@e2e-sm.test"), instructor("HAFFIS", "haf@e2e-sm.test"), instructor("RIYA", "riya@e2e-sm.test"), instructor("MOIZ", "moiz@e2e-sm.test")];
+// The LMS's mentors: the Chief, two of the Chief's team, one of another team — and one of the other academy.
+const blr = new ObjectId("6a0e2e000000000000000b1a");
+await lms.collection("organizations").updateOne({ _id: blr }, { $set: { name: "E2E Bangalore", slug: "e2e-bangalore", currency: "INR", paymentGateway: "abzer", updatedAt: new Date() }, $setOnInsert: { createdAt: new Date() } }, { upsert: true });
+const mentors = [instructor("CHIEF", "chief@e2e-sm.test"), instructor("HAFFIS", "haf@e2e-sm.test"), instructor("RIYA", "riya@e2e-sm.test"), instructor("MOIZ", "moiz@e2e-sm.test"),
+  { ...instructor("ARJUN", "arjun@e2e-sm.test"), organizationId: blr }];
 await lms.collection("users").insertMany(mentors);
 
 // The portal: an admin, a chief mentor over Haffis and Riya, Moiz (nobody's team here), a CS.
@@ -83,8 +87,9 @@ const onCalendar = (s: any, name: string, id: string) => (columnOf(s, name)?.mee
 
 step("1. Who books a staff meeting, and with whom");
 let s = await schedule("chief");
-check("a Chief Mentor does — with themselves and their team, not somebody else's mentor", s.may_staff_meeting === true
-  && columnOf(s, "CHIEF")?.may_invite === true && columnOf(s, "HAFFIS")?.may_invite === true && columnOf(s, "RIYA")?.may_invite === true && columnOf(s, "MOIZ")?.may_invite === false, j((s.mentors ?? []).map((m: any) => [m.name, m.may_invite])));
+check("a Chief Mentor does — with every mentor: their team, another team's, the other academy's", s.may_staff_meeting === true
+  && ["CHIEF", "HAFFIS", "RIYA", "MOIZ", "ARJUN"].every((n) => columnOf(s, n)?.may_invite === true), j((s.mentors ?? []).map((m: any) => [m.name, m.may_invite])));
+check("…the other academy's said to be so", /Bangalore/.test(columnOf(s, "ARJUN")?.academy?.name ?? ""), j(columnOf(s, "ARJUN")?.academy));
 s = await schedule("admin");
 check("an admin does — with anyone", s.may_staff_meeting === true && (s.mentors ?? []).every((m: any) => m.may_invite === true));
 s = await schedule("haf");
@@ -95,12 +100,10 @@ step("2. The Chief books one");
 const base = { mentorEmail: "chief@e2e-sm.test", title: "Weekly team meeting", kind: "staff", durationMins: 60, scheduledStart: dubaiAt(1, "10:00").toISOString(), attendees: [] };
 let r = await call("haf", "bookMentorMeeting", { ...base, mentorEmail: "haf@e2e-sm.test", staffEmails: ["riya@e2e-sm.test"] });
 check("a mentor naming staff: refused", r.status === 403 && /Only a Chief Mentor/.test(msg(r)), j(r.body));
-r = await call("chief", "bookMentorMeeting", { ...base, staffEmails: ["haf@e2e-sm.test", "moiz@e2e-sm.test"] });
-check("the Chief naming another team's mentor: refused, naming them", r.status === 403 && /Not in your team: moiz@e2e-sm\.test/.test(msg(r)) && !/haf@/.test(msg(r)), j(r.body));
 r = await call("chief", "bookMentorMeeting", { ...base, kind: "student", staffEmails: ["haf@e2e-sm.test"] });
 check("staff named on a student meeting: refused", r.status === 403 && /meeting with staff/.test(msg(r)), j(r.body));
-r = await call("chief", "bookMentorMeeting", { ...base, mentorEmail: "moiz@e2e-sm.test", staffEmails: ["haf@e2e-sm.test"] });
-check("the Chief making it another team's mentor's meeting: refused", r.status === 403 && /Not in your team: moiz@/.test(msg(r)), j(r.body));
+r = await call("chief", "bookMentorMeeting", { ...base, staffEmails: Array.from({ length: 61 }, (_, i) => `m${i}@e2e-sm.test`) });
+check("61 mentors besides its own: refused, said so (not cut short)", r.status === 400 && /At most 60 mentors/.test(msg(r)), j(r.body));
 check("…none of which was booked", (await lms.collection("mentormeetings").countDocuments({})) === 0);
 r = await call("chief", "bookMentorMeeting", { ...base, staffEmails: ["haf@e2e-sm.test", "RIYA@e2e-sm.test", "chief@e2e-sm.test"] });
 const id = String(r.body?.meeting?.id ?? "");
@@ -110,6 +113,11 @@ s = await schedule("cs");
 check("on the Chief's, Haffis's and Riya's calendars for everybody looking — not Moiz's", onCalendar(s, "CHIEF", id) && onCalendar(s, "HAFFIS", id) && onCalendar(s, "RIYA", id) && !onCalendar(s, "MOIZ", id));
 const seen = (columnOf(s, "HAFFIS")?.meetings ?? []).find((m: any) => m.id === id);
 check("…said to be a staff meeting, the Chief's", seen?.staffMeeting === true && seen?.mentorName === "CHIEF", j(seen));
+r = await call("chief", "bookMentorMeeting", { ...base, title: "Across teams and academies", scheduledStart: dubaiAt(2, "14:00").toISOString(), mentorEmail: "moiz@e2e-sm.test", staffEmails: ["arjun@e2e-sm.test"] });
+const across = String(r.body?.meeting?.id ?? "");
+s = await schedule("cs");
+check("the Chief, in another team's mentor's name, with the other academy's: booked, on both calendars", r.status === 200 && !!across
+  && (r.body.meeting.staff ?? []).map((x: any) => x.email).join() === "arjun@e2e-sm.test" && onCalendar(s, "MOIZ", across) && onCalendar(s, "ARJUN", across), j(r.body));
 
 step("3. Somebody busy then is named");
 r = await call("chief", "bookMentorMeeting", { ...base, title: "A second one", scheduledStart: dubaiAt(1, "10:30").toISOString(), mentorEmail: "riya@e2e-sm.test", staffEmails: ["haf@e2e-sm.test"] });
@@ -123,13 +131,13 @@ check("an admin, across teams: booked", r.status === 200 && (r.body.meeting?.sta
 step("4. Changed, and called off");
 r = await call("chief", "getMentorMeeting", { meetingId: id });
 check("read back for changing: its mentors", (r.body?.staff ?? []).map((x: any) => x.email).sort().join() === "haf@e2e-sm.test,riya@e2e-sm.test", j(r.body?.staff));
-r = await call("chief", "updateMentorMeeting", { meetingId: id, staffEmails: ["haf@e2e-sm.test", "moiz@e2e-sm.test"] });
-check("adding another team's mentor: refused", r.status === 403 && /Not in your team: moiz@/.test(msg(r)), j(r.body));
+r = await call("chief", "updateMentorMeeting", { meetingId: id, staffEmails: ["haf@e2e-sm.test", "riya@e2e-sm.test", "moiz@e2e-sm.test"] });
+check("adding another team's mentor: done, on his calendar", r.status === 200 && onCalendar(await schedule("cs"), "MOIZ", id), j(r.body));
 r = await call("haf", "updateMentorMeeting", { meetingId: id, title: "Not mine" });
 check("somebody in it who didn't book it can't change it (the LMS's rule)", r.status === 409 && /Only the person who booked this/.test(msg(r)), j(r.body));
 r = await call("chief", "updateMentorMeeting", { meetingId: id, staffEmails: ["haf@e2e-sm.test"] });
 s = await schedule("cs");
-check("Riya taken off: off her calendar, still on Haffis's and the Chief's", r.status === 200 && !onCalendar(s, "RIYA", id) && onCalendar(s, "HAFFIS", id) && onCalendar(s, "CHIEF", id), j(r.body));
+check("Riya and Moiz taken off: off their calendars, still on Haffis's and the Chief's", r.status === 200 && !onCalendar(s, "RIYA", id) && !onCalendar(s, "MOIZ", id) && onCalendar(s, "HAFFIS", id) && onCalendar(s, "CHIEF", id), j(r.body));
 r = await call("chief", "updateMentorMeeting", { meetingId: id, scheduledStart: dubaiAt(1, "15:15").toISOString() });
 check("moved into Haffis's class: refused naming him, left where it was", r.status === 409 && /HAFFIS \(class: Forex A\)/.test(msg(r))
   && +new Date((await lms.collection("mentormeetings").findOne({ _id: new ObjectId(id) }))!.scheduledStart) === +dubaiAt(1, "10:00"), j(r.body));

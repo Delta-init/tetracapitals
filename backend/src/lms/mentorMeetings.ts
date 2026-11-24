@@ -10,8 +10,6 @@ import {
 import { getMeetingsDone } from "../functions/meetingOutcomes";
 import { getMeetingCommissions } from "../functions/meetingCommissions";
 import { getCommissionReport, getReportFilters } from "../functions/reports";
-import { getDownlineIds } from "../lib/scope";
-import { toObjectId } from "../lib/id";
 
 /* ────────────────────────────────────────────────────────────────────────────
    POST /api/v1/integrations/lms/mentor-meetings — the Delta LMS admin's
@@ -27,8 +25,8 @@ import { toObjectId } from "../lib/id";
      me                        → { mentor, role, name, asks, meetings_done, staff_meeting }
                                staff_meeting (2026-11-14): whether they book a staff
                                meeting with several mentors in it on the LMS's Mentor
-                               Calendar, and with whom — a Chief their own team
-                               (`team`: addresses), an Admin anyone (`team` null)
+                               Calendar, and with whom — a Chief or an Admin anyone
+                               (`team` null; a Chief's own team only until 2026-11-24)
      listMeetingRequests       their own requests, every status
      createMeetingRequest      Senior / Junior / Sub-junior only (a Chief books)
      cancelMeetingRequest      take back their own, still waiting
@@ -86,17 +84,13 @@ async function staffWithEmail(email: string): Promise<AuthUser | null> {
 }
 
 /**
- * A staff meeting from the LMS's Mentor Calendar (the user, 2026-11-14): a Chief Mentor books one with their own team —
- * the addresses of theirs and everybody below them, as on this portal's own calendar; an Admin with anyone (null);
- * nobody else.
+ * A staff meeting from the LMS's Mentor Calendar (the user, 2026-11-14): a Chief Mentor or an Admin books one with any
+ * mentor of either academy (`team` null — the user, 2026-11-24: "show every mentor including Bangalore and Dubai";
+ * a Chief had their own team only before); nobody else.
  */
 async function staffMeetingReach(user: AuthUser): Promise<{ may: boolean; team: string[] | null }> {
-  if (ADMINS.has(user.app_role)) return { may: true, team: null };
-  if (!CHIEF.has(user.app_role)) return { may: false, team: [] };
-  const ids = (await getDownlineIds(user.id)).map(toObjectId).filter(Boolean) as any[];
-  const below = (await col("users").find({ _id: { $in: ids }, status: { $ne: "inactive" } }, { projection: { email: 1 } }).toArray()) as any[];
-  const team = [user.email, ...below.map((u) => u.email)].map((e) => String(e ?? "").trim().toLowerCase()).filter(Boolean);
-  return { may: true, team: [...new Set(team)] };
+  if (ADMINS.has(user.app_role) || CHIEF.has(user.app_role)) return { may: true, team: null };
+  return { may: false, team: [] };
 }
 
 export async function handleLmsMentorMeetings(req: Request): Promise<Response> {
