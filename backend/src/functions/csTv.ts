@@ -136,6 +136,39 @@ async function board(location: "dubai" | "bangalore", month?: string, real = fal
 }
 
 /**
+ * Every payment behind the real board for a month (2026-11-25, Root's Manager TV "Export Excel": a sheet per CS with
+ * the payments that make up their figure) — exactly what `board(location, month, true)` counts: approved course
+ * payments of a bonus by their approval day (Dubai), credited to the CS who raised them, for the CSs on that location's
+ * board; no amounts added for the TV. Root only (portal/service.ts, behind its secret) — client names are in it.
+ */
+export async function csTvPayments(location: "dubai" | "bangalore", month: string) {
+  const index = await loadTeams();
+  const people = ((await col("users").find({ app_role: "cs", status: { $ne: "inactive" } }, { projection: { full_name: 1, email: 1 } }).toArray()) as any[])
+    .filter((u) => (index.teamOf(String(u._id))?.location ?? "dubai") === location);
+  const who = new Map(people.map((u) => [String(u._id), { name: String(u.full_name ?? "").trim(), email: String(u.email ?? "").toLowerCase(), team: index.teamOf(String(u._id))?.name ?? "No team" }]));
+  const monthStart = dubaiStart(`${month}-01`), monthEnd = dubaiStart(`${nextMonth(month)}-01`);
+  const txs = (await col("funding_transactions").find({
+    type: "BONUS", status: "APPROVED", bonus_credit: { $in: [null, ""] }, "course_payment.product": { $exists: true }, approved_at: { $gte: monthStart, $lt: monthEnd },
+  }, { projection: { initiating_mentor_id: 1, requested_by_id: 1, course_payment: 1, amount_aed: 1, approved_at: 1, tags: 1, student_name: 1, student_code: 1, payment_method: 1, transaction_id: 1, course_invoice: 1 } })
+    .sort({ approved_at: 1 }).toArray()) as any[];
+  const payments = txs.flatMap((t) => {
+    const csId = String(t.initiating_mentor_id || t.requested_by_id || "");
+    const p = who.get(csId);
+    if (!p) return [];
+    return [{
+      id: String(t._id), cs_id: csId, cs: p.name, cs_email: p.email, team: p.team,
+      aed: round(Number(t.course_payment?.paid_today_aed) || Number(t.amount_aed) || 0),
+      product: String(t.course_payment?.product ?? (t.tags ?? [])[0] ?? ""),
+      student: String(t.student_name ?? ""), student_code: String(t.student_code ?? ""),
+      method: String(t.payment_method ?? ""), reference: String(t.transaction_id ?? ""),
+      invoice: String(t.course_invoice?.invoiceNumber ?? t.course_invoice?.number ?? ""),
+      kind: String(t.course_payment?.kind ?? ""), balance_aed: round(Number(t.course_payment?.balance_aed) || 0), at: String(t.approved_at),
+    }];
+  });
+  return { location, month, payments };
+}
+
+/**
  * GET /api/public/cs-tv?location=dubai|bangalore[&month=][&real=1] — the board, for the TV page at /cs/dubai or /cs/bangalore. Open, no
  * secret (the user asked for it twice, 2026-10-22: "I need normal /cs/dubai only") — names, teams and amounts only,
  * never a student or an email.

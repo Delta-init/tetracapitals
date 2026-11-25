@@ -14,6 +14,7 @@ import { csOverview, csDetail, type Period } from "./csOverview";
 import { CallFilterError, callsForPortal, recordingLinkForPortal } from "./calls";
 import { mentorReport, mentorReportDates, mentorReportDetail } from "../functions/mentorReport";
 import { instructorReviewList, reviewTrouble } from "../functions/instructorReviews";
+import { csTvPayments } from "../functions/csTv";
 import { addExtra, addTvPerson, listExtras, removeExtra, removeTvPerson, updateExtra } from "../functions/csTvExtras";
 
 /* ────────────────────────────────────────────────────────────────────────────
@@ -138,6 +139,15 @@ export async function handlePortalService(req: Request, path: string): Promise<R
      People added by name (2026-11-14) — somebody of the Bangalore academy with no CS account here, to be picked like
      the team's CSs: POST /cs-tv-people { name, team_id?, email?, by } · POST /cs-tv-people/remove { id } (with their
      amounts). The list above carries them (`people`, and in `cs` with tv_only) and the teams to put one under. */
+  /* GET /cs-tv-payments?location=dubai|bangalore&month=YYYY-MM — every payment behind the real CS board that month, per
+     CS (2026-11-25): Root's Manager TV export, a sheet per CS. Read-only. */
+  if (path === "/cs-tv-payments" && req.method === "GET") {
+    const location = url.searchParams.get("location") === "bangalore" ? "bangalore" : "dubai";
+    const month = url.searchParams.get("month") ?? "";
+    if (!/^20\d{2}-(0[1-9]|1[0-2])$/.test(month)) return refuse(400, "VALIDATION_ERROR", "month is YYYY-MM");
+    return ok(await csTvPayments(location, month));
+  }
+
   if (path === "/cs-tv-amounts" && req.method === "GET") {
     return ok(await listExtras("bangalore", url.searchParams.get("month")));
   }
