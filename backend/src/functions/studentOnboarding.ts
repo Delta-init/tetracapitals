@@ -11,6 +11,8 @@ import { sendMail, mailConfigured, type MailAttachment } from "../lib/mailer";
 import { status as whatsAppStatus, sendText, intlNumbers } from "../whatsapp/service";
 import { isCsLike } from "../lib/roles";
 import { loadTeams } from "../students/teams";
+import { locationOfUser } from "../lib/userLocation";
+import type { Location } from "../lib/location";
 
 /* ────────────────────────────────────────────────────────────────────────────
    Onboarding: a student is Onboarded once they have been sent their welcome —
@@ -118,6 +120,22 @@ M: 971 52 419 2022
 www.deltainstitutions.com`;
 
 /**
+ * The Bangalore teams' welcome (the user, 2026-11-25): the same words, with the Bangalore help number and the
+ * Bengaluru signature. Built from the Dubai one, so a change to the shared words reaches both; a part not found stops
+ * the API at start rather than sending Dubai's details to a Bangalore student.
+ */
+const DUBAI_HELP = "or call 971 52 157 0613.";
+const DUBAI_SIGNATURE = WELCOME.slice(WELCOME.indexOf("Academic Department\nDelta International"));
+const BANGALORE_SIGNATURE = `Academic Department
+RBL Bank Ltd - Prestige Towers, 412A,4th floor, Residency Rd, Shanthala Nagar, Ashok Nagar, Bengaluru, Karnataka 560025
+M: +91 80507 38877
+M: +91 91872 36408
+
+https://www.deltainstitutions.com`;
+if (!WELCOME.includes(DUBAI_HELP) || !DUBAI_SIGNATURE.startsWith("Academic Department")) throw new Error("Onboarding welcome: the Bangalore version could not be made");
+const WELCOME_BANGALORE = WELCOME.replace(DUBAI_HELP, "or call +91 63667 80102").replace(DUBAI_SIGNATURE, BANGALORE_SIGNATURE);
+
+/**
  * Each team's own WhatsApp community, by its name (the user, 2026-10-27). The welcome carries the link of the
  * student's team — the link only, never the team's name; a team not here (Bangalore, none) gets no extra line.
  */
@@ -135,9 +153,9 @@ async function teamCommunityOf(s: any): Promise<string> {
 }
 
 /** The welcome for this student — the email (subject, message) and the WhatsApp (the same message). */
-function welcome(s: any, teamCommunity = "") {
+function welcome(s: any, teamCommunity = "", location: Location = "dubai") {
   const name = firstName(s.full_name);
-  const message = WELCOME.replace("{name}", name || "Student")
+  const message = (location === "bangalore" ? WELCOME_BANGALORE : WELCOME).replace("{name}", name || "Student")
     // Only the team's own community (the user, 2026-11-05: the two general ones are gone); no team link, no section.
     .replace("{team_community}", teamCommunity
       ? `\n*Community Channels*\nTo foster collaboration and communication, please join your team community using the link below:\n\n- Your Team Community: ${teamCommunity}\n`
@@ -214,7 +232,8 @@ export async function getOnboardingDraft(req: Request, user: AuthUser): Promise<
   const body: any = await req.json().catch(() => ({}));
   const s = await studentFor(body, user);
   if (s instanceof Response) return s;
-  const w = welcome(s, await teamCommunityOf(s));
+  // Bangalore or Dubai: the student's CS's team; no CS, the sender's (2026-11-25).
+  const w = welcome(s, await teamCommunityOf(s), await locationOfUser(s.primary_mentor_id || user.id));
   const emails = String(s.email ?? "").match(/[^\s,;<>]+@[^\s,;<>]+\.[^\s,;<>]+/g) ?? [];
   const numbers = intlNumbers(s.phone);
   const whatsAppWhyNot = !isCsLike(user.app_role) ? "WhatsApp goes from a CS's own WhatsApp — only a CS or CS Manager can send it"
