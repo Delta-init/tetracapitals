@@ -161,7 +161,10 @@ export async function csTvPayments(location: "dubai" | "bangalore", month: strin
       product: String(t.course_payment?.product ?? (t.tags ?? [])[0] ?? ""),
       student: String(t.student_name ?? ""), student_code: String(t.student_code ?? ""),
       method: String(t.payment_method ?? ""), reference: String(t.transaction_id ?? ""),
-      invoice: String(t.course_invoice?.invoiceNumber ?? t.course_invoice?.number ?? ""),
+      // The finance invoice this payment went on (course-invoice.ts there; IN-00327).
+      invoice: String(t.course_invoice?.invoice_number ?? ""),
+      // The finance payment it became, and its receipt — Root finds its tax invoice by it.
+      finance_payment_id: String(t.course_invoice?.payment_id ?? ""), receipt: String(t.course_invoice?.receipt_number ?? ""),
       kind: String(t.course_payment?.kind ?? ""), balance_aed: round(Number(t.course_payment?.balance_aed) || 0), at: String(t.approved_at),
     }];
   });
