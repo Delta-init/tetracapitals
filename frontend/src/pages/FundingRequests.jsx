@@ -509,7 +509,7 @@ export default function FundingRequests() {
         const tagsStr = Array.isArray(t.tags) ? t.tags.join('; ') : '';
         const row = { ...t, student: studentInfoOf(student), source: sourceOf(t) };
         const got = receivedOf(row);
-        const paidText = got ? `Received ${got.received}${got.method ? ` · ${got.method}` : ''}${got.balance ? ` · balance ${got.balance}` : ''}` : paidLines(row).map(paidLineText).join('; ');
+        const paidText = got ? `Received ${got.received}${got.method ? ` · ${got.method}` : ''}${got.inAed ? ` (≈ ${got.inAed})` : ''}${got.balance ? ` · balance ${got.balance}` : ''}` : paidLines(row).map(paidLineText).join('; ');
         return [
           escapeCSV(t.requested_at ? format(new Date(t.requested_at), 'yyyy-MM-dd HH:mm') : ''),
           escapeCSV(t.type || ''),

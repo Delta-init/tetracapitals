@@ -86,7 +86,7 @@ const EXPORT_COLUMNS = [
   { header: 'MT5 email', value: t => t.mt5_email },
   { header: 'Amount to credit USD', type: 'number', value: t => bonusUsdOf(t) },
   { header: 'Original amount', value: t => original(t) },
-  { header: 'Paid by the student', value: t => (receivedOf(t) ? `Received ${receivedOf(t).received}${receivedOf(t).method ? ` · ${receivedOf(t).method}` : ''}` : paidLines(t).map(paidText).join('; ')) },
+  { header: 'Paid by the student', value: t => (receivedOf(t) ? `Received ${receivedOf(t).received}${receivedOf(t).method ? ` · ${receivedOf(t).method}` : ''}${receivedOf(t).inAed ? ` (≈ ${receivedOf(t).inAed})` : ''}` : paidLines(t).map(paidText).join('; ')) },
   { header: 'On hold', value: t => receivedOf(t)?.hold || '' },
   { header: 'Balance', value: t => receivedOf(t)?.balance || '' },
   { header: 'Recorded against invoice', value: t => paidLines(t).map(l => l.recorded || '').filter(Boolean).join('; ') },
@@ -411,6 +411,7 @@ export default function BonusApprovals() {
                               {receivedOf(t) ? (() => { const r = receivedOf(t); return (
                                 <div>
                                   <div className="text-slate-800">Received <b>{r.received}{r.method ? ` · ${r.method}` : ''}</b></div>
+                                  {r.inAed && <div className="text-[11px] text-slate-400">≈ {r.inAed}</div>}
                                   {r.kind && <div className="text-slate-500">{r.kind}{r.before ? ` · paid before ${r.before}` : ''}</div>}
                                   {r.hold && <div className="text-amber-700">On hold {r.hold}</div>}
                                   {r.balance && <div className="text-slate-500">Balance {r.balance}</div>}

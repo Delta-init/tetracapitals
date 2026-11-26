@@ -25,14 +25,32 @@ export const bonusLabel = (t) => (t.bonus_part ? `Sales-close bonus credit · ${
   : 'MT5 bonus');
 /** Direct from the CS portal: what the student paid with this request, and how — beside the bonus, as a sales close
  *  shows the counsellor's collection; with what waits on hold and the balance. */
+const moneyIn = (n, cur) => (cur === 'USD' ? usdText(n) : `${cur} ${Number(n).toLocaleString('en-US', { maximumFractionDigits: 2 })}`);
+/** What the student handed over, by currency, as typed — the payments' own, else the request's amount. */
+const paidParts = (t) => {
+  const by = new Map();
+  for (const p of t.payments || []) {
+    const cur = String(p.currency || t.amount_currency || 'AED').toUpperCase();
+    if (Number(p.amount) > 0) by.set(cur, (by.get(cur) || 0) + Number(p.amount));
+  }
+  if (!by.size && Number(t.amount_original) > 0) by.set(String(t.amount_currency || 'AED').toUpperCase(), Number(t.amount_original));
+  return [...by.entries()];
+};
 export const receivedOf = (t) => {
   if (t.type !== 'BONUS' || t.bonus_credit) return null;
   const cp = t.course_payment;
-  const amount = typedLocal(t) || (cp && Number(cp.paid_today_aed) > 0 ? aedText(cp.paid_today_aed)
-    : Number(t.amount_original) > 0 ? `${t.amount_currency === 'USD' ? usdText(t.amount_original) : `${t.amount_currency || 'AED'} ${Number(t.amount_original).toLocaleString('en-US', { maximumFractionDigits: 2 })}`}` : null);
+  // Paid in another currency (rupees by UPI, dollars): shown as received, in that currency — never only its AED value
+  // (the user, 2026-11-26) — with the AED it came to beside it.
+  const parts = paidParts(t);
+  const foreign = parts.some(([cur]) => cur !== 'AED');
+  const aedValue = cp && Number(cp.paid_today_aed) > 0 ? Number(cp.paid_today_aed) : Number(t.amount_aed) > 0 ? Number(t.amount_aed) : 0;
+  const amount = foreign ? parts.map(([cur, n]) => moneyIn(n, cur)).join(' + ')
+    : typedLocal(t) || (cp && Number(cp.paid_today_aed) > 0 ? aedText(cp.paid_today_aed)
+    : Number(t.amount_original) > 0 ? moneyIn(t.amount_original, t.amount_currency || 'AED') : null);
   if (!amount) return null;
   return {
     received: amount, method: methodsText(t),
+    inAed: foreign && aedValue > 0 ? `AED ${aedValue.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : null,
     kind: cp?.kind === 'partial' ? 'Partial payment' : cp?.kind === 'full' ? 'Full payment' : '',
     before: cp && Number(cp.paid_before_aed) > 0 ? aedText(cp.paid_before_aed) : null,
     hold: cp && Number(cp.hold_aed) > 0 ? aedText(cp.hold_aed) : null,
@@ -181,6 +199,7 @@ export function PaidCell({ t, title }) {
       {r ? (
         <div>
           <div className="text-slate-800">Received <b>{r.received}{r.method ? ` · ${r.method}` : ''}</b></div>
+          {r.inAed && <div className="text-[11px] text-slate-400">≈ {r.inAed}</div>}
           {r.kind && <div className="text-slate-500">{r.kind}{r.before ? ` · paid before ${r.before}` : ''}</div>}
           {r.hold && <div className="text-amber-700">On hold {r.hold}</div>}
           {r.balance && <div className="text-slate-500">Balance {r.balance}</div>}
